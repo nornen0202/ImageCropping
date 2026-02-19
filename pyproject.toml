@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "crop_datasets"
+version = "0.1.0"
+description = "Unified dataset manager for image cropping and composition research datasets"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{name = "ImageCropping Contributors"}]
+dependencies = [
+  "PyYAML>=6.0",
+  "requests>=2.31",
+  "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+gdrive = ["gdown>=5.2"]
+test = ["pytest>=8.0"]
+
+[project.scripts]
+crop-datasets = "crop_datasets.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

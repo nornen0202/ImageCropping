@@ -1,157 +1,138 @@
-{
-  "datasets": [
-    {
-      "name": "cpc",
-      "description": "Comparative Photo Composition dataset from Good View Hunting.",
-      "download_type": "gdrive",
-      "source_url": "https://drive.google.com/file/d/1TMvuCSONEN1_9y7KnzKgy_7_fSFTHzyO/view",
-      "file_id": "1TMvuCSONEN1_9y7KnzKgy_7_fSFTHzyO",
-      "artifacts": [
-        {
-          "filename": "CPCDataset.tar.gz"
-        }
-      ],
-      "expected_structure": {
-        "required_paths": []
-      },
-      "license_url": "https://github.com/v-vietlq4/thesis/blob/master/links-and-codes/image-croping.md",
-      "citation": "Wei et al., Good View Hunting, 2018",
-      "size_estimate": "~2-5 GB (estimate)",
-      "notes": "Google Drive hosted file; checksum not published upstream."
-    },
-    {
-      "name": "xpview",
-      "description": "XPViewDataset from Good View Hunting project page.",
-      "download_type": "gdrive",
-      "source_url": "https://drive.google.com/file/d/1DpNY_Fb9eCabwROYF02eMzy4gK3I4Pzj/view",
-      "file_id": "1DpNY_Fb9eCabwROYF02eMzy4gK3I4Pzj",
-      "artifacts": [
-        {
-          "filename": "XPViewDataset.tar.gz"
-        }
-      ],
-      "expected_structure": {
-        "required_paths": []
-      },
-      "license_url": "https://github.com/v-vietlq4/thesis/blob/master/links-and-codes/image-croping.md",
-      "citation": "Wei et al., Good View Hunting, 2018",
-      "size_estimate": "~2-5 GB (estimate)",
-      "notes": "Google Drive hosted file; checksum not published upstream."
-    },
-    {
-      "name": "flms",
-      "description": "FLMS dataset (Fang et al., MM 2014), image and annotations tar archives.",
-      "download_type": "http",
-      "source_url": "http://fangchen.org/proj_page/FLMS_mm14/",
-      "artifacts": [
-        {
-          "filename": "image.tar",
-          "url": "http://fangchen.org/proj_page/FLMS_mm14/data/radomir500_image/image.tar"
-        },
-        {
-          "filename": "release_data.tar",
-          "url": "http://fangchen.org/proj_page/FLMS_mm14/data/radomir500_gt/release_data.tar"
-        }
-      ],
-      "expected_structure": {
-        "required_paths": [
-          "image",
-          "release_data"
-        ]
-      },
-      "license_url": "http://fangchen.org/proj_page/FLMS_mm14/",
-      "citation": "Fang et al., Automatic Image Cropping Using Visual Composition, MM 2014",
-      "size_estimate": "~1 GB",
-      "notes": "Official links may be slow; tool supports retry/resume."
-    },
-    {
-      "name": "fcdb",
-      "description": "Flickr Cropping Dataset; images fetched via official script/API, annotations provided.",
-      "download_type": "script",
-      "source_url": "https://github.com/gy20073/FCDB",
-      "artifacts": [
-        {
-          "filename": "annotations.zip"
-        }
-      ],
-      "expected_structure": {
-        "required_paths": [
-          "crop_data",
-          "images"
-        ]
-      },
-      "license_url": "https://github.com/gy20073/FCDB",
-      "citation": "Flickr Cropping Database",
-      "size_estimate": "~2-4 GB",
-      "notes": "Requires Flickr API credentials and compliance with Flickr ToS."
-    },
-    {
-      "name": "sacd",
-      "description": "Subject-Aware Composition Dataset.",
-      "download_type": "manual",
-      "source_url": "https://www.yingcong.me/projects/subject-aware-composition/",
-      "artifacts": [],
-      "expected_structure": {
-        "required_paths": []
-      },
-      "license_url": "https://www.yingcong.me/projects/subject-aware-composition/",
-      "citation": "SACD paper",
-      "size_estimate": "Unknown",
-      "notes": "Auto-download not guaranteed; register local data when link is unavailable."
-    },
-    {
-      "name": "unsplash",
-      "description": "Unsplash-based datasets (GenCrop/stock); access-controlled by Unsplash terms.",
-      "download_type": "manual",
-      "source_url": "https://unsplash.com/data",
-      "artifacts": [],
-      "expected_structure": {
-        "required_paths": [
-          "photos.tsv"
-        ],
-        "any_of": [
-          [
-            "photos.tsv",
-            "photos"
-          ],
-          [
-            "photos.parquet",
-            "photos"
-          ]
-        ]
-      },
-      "license_url": "https://unsplash.com/license",
-      "citation": "Unsplash Dataset Terms",
-      "size_estimate": "Large / varies",
-      "notes": "No automated download. Register local export and run prepare command."
-    },
-    {
-      "name": "gaicd",
-      "description": "GAIC / GAICD (Grid Anchor Image Cropping Dataset).",
-      "download_type": "manual",
-      "source_url": "https://github.com/HuiZeng/Image-Cropping",
-      "artifacts": [],
-      "expected_structure": {
-        "required_paths": []
-      },
-      "license_url": "https://github.com/HuiZeng/Image-Cropping",
-      "citation": "GAIC paper",
-      "size_estimate": "Unknown",
-      "notes": "Register local path only; extend manifest when canonical URL is stable."
-    },
-    {
-      "name": "icit",
-      "description": "ICIT InstructCrop instruction tuning dataset.",
-      "download_type": "manual",
-      "source_url": "https://github.com/search?q=InstructCrop",
-      "artifacts": [],
-      "expected_structure": {
-        "required_paths": []
-      },
-      "license_url": "https://github.com/search?q=InstructCrop",
-      "citation": "InstructCrop",
-      "size_estimate": "Unknown",
-      "notes": "Register local path only until official direct distribution is available."
-    }
-  ]
-}
+datasets:
+  - name: cpc
+    description: "Comparative Photo Composition dataset from Good View Hunting (Stony Brook)."
+    download_type: gdrive
+    source_url: "https://drive.google.com/file/d/1TMvuCSONEN1_9y7KnzKgy_7_fSFTHzyO/view"
+    file_id: "1TMvuCSONEN1_9y7KnzKgy_7_fSFTHzyO"
+    artifacts:
+      - filename: CPCDataset.tar.gz
+    expected_structure:
+      required_paths: []
+    license_url: "https://github.com/v-vietlq4/thesis/blob/master/links-and-codes/image-croping.md"
+    citation: "Wei et al., Good View Hunting, 2018"
+    size_estimate: "~2-5 GB (estimate)"
+    notes: "Google Drive hosted. Requires gdown: pip install 'crop_datasets[gdrive]'"
+
+  - name: xpview
+    description: "XPViewDataset from Good View Hunting project page (Stony Brook)."
+    download_type: gdrive
+    source_url: "https://drive.google.com/file/d/1DpNY_Fb9eCabwROYF02eMzy4gK3I4Pzj/view"
+    file_id: "1DpNY_Fb9eCabwROYF02eMzy4gK3I4Pzj"
+    artifacts:
+      - filename: XPViewDataset.tar.gz
+    expected_structure:
+      required_paths: []
+    license_url: "https://github.com/v-vietlq4/thesis/blob/master/links-and-codes/image-croping.md"
+    citation: "Wei et al., Good View Hunting, 2018"
+    size_estimate: "~2-5 GB (estimate)"
+    notes: "Google Drive hosted. Requires gdown: pip install 'crop_datasets[gdrive]'"
+
+  - name: flms
+    description: "FLMS dataset (Fang et al., MM 2014) — 500 images with free-form cropping annotations."
+    download_type: http
+    source_url: "http://fangchen.org/proj_page/FLMS_mm14/"
+    artifacts:
+      - filename: image.tar
+        url: "http://fangchen.org/proj_page/FLMS_mm14/data/radomir500_image/image.tar"
+      - filename: release_data.tar
+        url: "http://fangchen.org/proj_page/FLMS_mm14/data/radomir500_gt/release_data.tar"
+    expected_structure:
+      # Paths relative to the extracted/ directory; actual names inside tar archives
+      any_of:
+        - ["image", "images"]
+      required_paths:
+        - release_data
+    license_url: "http://fangchen.org/proj_page/FLMS_mm14/"
+    citation: "Fang et al., Automatic Image Cropping Using Visual Composition, MM 2014"
+    size_estimate: "~1 GB"
+    notes: "Official links may be slow; tool supports retry/resume."
+
+  - name: fcdb
+    description: >
+      Flickr Cropping Dataset — images fetched from Flickr via official script,
+      annotations provided by repo. Requires a Flickr API key.
+    download_type: script
+    source_url: "https://github.com/gy20073/FCDB"
+    artifacts:
+      - filename: annotations.zip
+    expected_structure:
+      required_paths:
+        - crop_data
+        - images
+    license_url: "https://github.com/gy20073/FCDB"
+    citation: "Chen & Gallagher, Detecting a Camera's Recording Location ..., CVPR 2014"
+    size_estimate: "~2-4 GB"
+    notes: >
+      Images must be fetched via the official Flickr script.
+      Set FLICKR_KEY and FLICKR_SECRET env vars, then follow FCDB repo instructions.
+      Register the resulting directory with: crop-datasets register fcdb --path <dir>
+
+  - name: sacd
+    description: "Subject-Aware Composition Dataset (SACD)."
+    download_type: manual
+    source_url: "https://www.yingcong.me/projects/subject-aware-composition/"
+    artifacts: []
+    expected_structure:
+      required_paths: []
+    license_url: "https://www.yingcong.me/projects/subject-aware-composition/"
+    citation: "SACD paper"
+    size_estimate: "Unknown"
+    notes: >
+      Auto-download not guaranteed (links may expire).
+      Download manually from the project page, then:
+      crop-datasets register sacd --path <local_dir_or_zip>
+
+  - name: unsplash
+    description: >
+      Unsplash Lite Dataset — 25k nature-themed photos, keywords, collections, colors.
+      Commercial and non-commercial use permitted (Unsplash Terms).
+    download_type: manual
+    source_url: "https://unsplash.com/data/lite/latest"
+    artifacts:
+      - filename: unsplash-lite.zip
+        url: "https://unsplash.com/data/lite/latest"
+    expected_structure:
+      # At least one of photos.tsv or photos.csv000 must exist
+      any_of:
+        - ["photos.tsv", "photos.csv000"]
+    license_url: "https://github.com/unsplash/datasets/blob/master/TERMS.md"
+    citation: "Unsplash Lite Dataset 1.3.0 — unsplash.com/data"
+    size_estimate: "~700 MB (zip) / ~1 GB (raw)"
+    notes: >
+      Step 1 — Download:
+        curl -L "https://unsplash.com/data/lite/latest" -o unsplash-lite.zip && unzip unsplash-lite.zip
+      Step 2 — Download images + build annotations (requires pandas):
+        python -m crop_datasets.datasets.unsplash_prepare
+          --dataset_root ./data/unsplash-research-dataset-lite-latest
+          --output_root  ./data/unsplash
+          --img_size 640 --workers 8
+
+
+
+  - name: gaicd
+    description: "GAIC / GAICD — Grid Anchor Image Cropping Dataset."
+    download_type: manual
+    source_url: "https://github.com/HuiZeng/Image-Cropping"
+    artifacts: []
+    expected_structure:
+      required_paths: []
+    license_url: "https://github.com/HuiZeng/Image-Cropping"
+    citation: "Zeng et al., Reliable and Efficient Image Cropping, CVPR 2020"
+    size_estimate: "Unknown"
+    notes: >
+      Register local path after manual download.
+      crop-datasets register gaicd --path <local_dir>
+
+  - name: icit
+    description: "ICIT — InstructCrop instruction-tuning dataset."
+    download_type: manual
+    source_url: "https://github.com/search?q=InstructCrop"
+    artifacts: []
+    expected_structure:
+      required_paths: []
+    license_url: "https://github.com/search?q=InstructCrop"
+    citation: "InstructCrop"
+    size_estimate: "Unknown"
+    notes: >
+      Register local path until official direct distribution is available.
+      crop-datasets register icit --path <local_dir>

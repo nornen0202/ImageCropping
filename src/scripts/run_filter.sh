@@ -4,22 +4,32 @@
 # Filter Shutterstock Dataset 
 # ==============================================================================
 # Usage: ./run_filter.sh [BUCKET] [OUTPUT_FILE] [POOL_SIZE] [TOP_PERCENTILE] [SERVER_MODE]
-# Ex) bash ./src/scripts/run_filter.sh sstk_100 filtered.parquet 1000000 0.5 1
+# Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/filtered_sstk_100.parquet 1000000 0.5 1
+# Ex) bash ./src/scripts/run_filter.sh sstk_100
 # 
 # Arguments:
 #   BUCKET         : 처리할 sstk 버킷명 (기본값: sstk_100)
 #   OUTPUT_FILE    : 저장될 Parquet 파일 경로 (기본값: filtered_sstk_100.parquet)
 #   POOL_SIZE      : 최종 선별할 curated pool 사이즈. 0일 경우 샘플링 안함. (기본값: 1000000)
 #   TOP_PERCENTILE : 각 카테고리별 Aesthetic 점수 상위 비율 (e.g. 0.5 = 상위 50%) (기본값: 0.5)
-#   SERVER_MODE    : 서버 환경 여부 (1일 경우 로컬 가상환경 비활성화) (기본값: 0)
+#   SERVER_MODE    : 서버 환경 여부 (1일 경우 로컬 가상환경 비활성화) (기본값: 1)
 # ==============================================================================
 
 # 파라미터 기본값 설정
 BUCKET=${1:-sstk_100}
-OUTPUT_FILE=${2:-filtered_${BUCKET}.parquet}
+
+# 스크립트 실행 위치에 구애받지 않도록 프로젝트 루트 절대 경로 탐색
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
+# 출력 경로 확보
+OUTPUT_DIR="$PROJECT_ROOT/data/SSTK"
+mkdir -p "$OUTPUT_DIR"
+
+OUTPUT_FILE=${2:-"${OUTPUT_DIR}/filtered_${BUCKET}.parquet"}
 POOL_SIZE=${3:-1000000}
 TOP_PERCENTILE=${4:-0.5}
-SERVER_MODE=${5:-0}
+SERVER_MODE=${5:-1}
 
 # 가상환경 활성화 (서버 모드가 아닐 경우에만)
 if [ "$SERVER_MODE" -ne 1 ]; then
@@ -28,9 +38,7 @@ if [ "$SERVER_MODE" -ne 1 ]; then
     fi
 fi
 
-# 스크립트 실행 위치에 구애받지 않도록 프로젝트 루트 절대 경로 탐색
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+
 
 # 데이터셋 디렉토리 경로 (서버 등 다른 환경일 경우 환경변수를 통해 덮어쓸 수 있도록 설정)
 ## Local
@@ -57,7 +65,7 @@ echo "Top Percentile    : ${PCT}%"
 echo "========================================="
 
 # 필터링 스크립트 실행
-python "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
+python3 "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
     --sdp_dir "$SDP_DIR" \
     --train_dir "$TRAIN_DIR" \
     --tar_dir "$TAR_DIR" \

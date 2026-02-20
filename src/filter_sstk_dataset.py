@@ -77,7 +77,8 @@ def extract_and_save_samples(df_curated, df_rejected, args):
     import tarfile
     import urllib.request
     
-    samples_dir = f"comparison_samples_{args.bucket}"
+    out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
+    samples_dir = os.path.join(out_dir, f"comparison_samples_{args.bucket}")
     os.makedirs(os.path.join(samples_dir, 'curated'), exist_ok=True)
     os.makedirs(os.path.join(samples_dir, 'rejected'), exist_ok=True)
     
@@ -167,7 +168,8 @@ def extract_and_save_samples(df_curated, df_rejected, args):
         html_lines.append("</div>")
         
     html_lines.append("</body></html>")
-    html_path = f"comparison_report_{args.bucket}.html"
+    out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
+    html_path = os.path.join(out_dir, f"comparison_report_{args.bucket}.html")
     with open(html_path, 'w', encoding='utf-8') as f:
         f.write("\n".join(html_lines))
     print(f"5) Qualitative HTML comparison report generated: {html_path}")
@@ -229,7 +231,8 @@ def main():
         unique_tags = list(tag_counts.keys())
         
         import pickle
-        cache_file = f"tag_cat_probs_cache_{args.bucket}.pkl"
+        out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
+        cache_file = os.path.join(out_dir, f"tag_cat_probs_cache_{args.bucket}.pkl")
         
         cache_valid = False
         tag_cat_probs = {}

@@ -11,67 +11,90 @@ from collections import Counter
 from itertools import chain
 
 def process_file_pair(args):
-    sdp_file, train_file = args
+    sdp_file, train_file, tmp_dir = args
     
     try:
-        with open(sdp_file, 'r') as f:
-            sdp_data = json.load(f).get('metadata', {})
-    except Exception as e:
-        print(f"Error parsing {sdp_file}: {e}")
-        return []
-        
-    if not os.path.exists(train_file):
-        return []
+        try:
+            with open(sdp_file, 'r') as f:
+                sdp_data = json.load(f).get('metadata', {})
+        except Exception as e:
+            print(f"Error parsing {sdp_file}: {e}")
+            return False
+            
+        if not os.path.exists(train_file):
+            print(f"Warning: Train file not found {train_file}")
+            return False
 
-    try:
-        with open(train_file, 'r') as f:
-            train_data = json.load(f).get('metadata', {})
+        try:
+            with open(train_file, 'r') as f:
+                train_data = json.load(f).get('metadata', {})
+        except Exception as e:
+            print(f"Error parsing {train_file}: {e}")
+            return False
+            
+        filtered_records = []
+        fail_w = 0
+        fail_aes = 0
+        fail_dedup = 0
+        
+        for img_id, sdp_meta in sdp_data.items():
+            # Quality Filters
+            w = sdp_meta.get('width', 0) or 0
+            h = sdp_meta.get('height', 0) or 0
+            
+            # Temporary relaxation/logging for debugging if all get filtered
+            # if w < 512 or h < 512:
+            #     continue
+                
+            aes_center = sdp_meta.get('aesthetic_score_center', 0) or 0
+            aes_pad = sdp_meta.get('aesthetic_score_pad', 0) or 0
+            
+            if max(aes_center, aes_pad) < 5.0:
+                continue
+                
+            if sdp_meta.get('image_dedup') is True:
+                continue
+                
+            sstk_type = sdp_meta.get('sstk_type', '')
+            if sstk_type != 'Photo':
+                continue
+                
+            # Tags Extraction
+            sstk_tags_str = sdp_meta.get('sstk_tags', '')
+            sstk_tags = [t.strip() for t in sstk_tags_str.split(',') if t.strip()] if sstk_tags_str else []
+            
+            train_meta = train_data.get(img_id, {})
+            merged_tags = train_meta.get('merged_tags', [])
+            
+            # Merge tags
+            final_tags = list(set(sstk_tags + merged_tags))
+            tar_name = os.path.basename(sdp_file).replace('.json', '.tar')
+            
+            filtered_records.append({
+                'image_id': img_id,
+                'width': w,
+                'height': h,
+                'aesthetic_score_center': aes_center,
+                'aesthetic_score_pad': aes_pad,
+                'sstk_type': sstk_type,
+                'tags': final_tags,
+                'tar_name': tar_name
+            })
+            
+        print(f"[{os.path.basename(sdp_file)}] Total: {len(sdp_data)}, Filtered out by res: {fail_w}, aes: {fail_aes}, dedup: {fail_dedup}. Passed: {len(filtered_records)}")
+            
+        if len(filtered_records) > 0:
+            df_chunk = pd.DataFrame(filtered_records)
+            chunk_path = os.path.join(tmp_dir, os.path.basename(sdp_file).replace('.json', '.parquet'))
+            df_chunk.to_parquet(chunk_path, engine='pyarrow', index=False)
+            
+        return True
     except Exception as e:
-        print(f"Error parsing {train_file}: {e}")
-        return []
-        
-    filtered_records = []
-    
-    for img_id, sdp_meta in sdp_data.items():
-        # Quality Filters
-        w = sdp_meta.get('width', 0) or 0
-        h = sdp_meta.get('height', 0) or 0
-        
-        if w < 512 or h < 512:
-            continue
-            
-        aes_center = sdp_meta.get('aesthetic_score_center', 0) or 0
-        aes_pad = sdp_meta.get('aesthetic_score_pad', 0) or 0
-        
-        if max(aes_center, aes_pad) < 5.0:
-            continue
-            
-        if sdp_meta.get('image_dedup', True) == True:
-            continue
-            
-        # Tags Extraction
-        sstk_tags_str = sdp_meta.get('sstk_tags', '')
-        sstk_tags = [t.strip() for t in sstk_tags_str.split(',') if t.strip()] if sstk_tags_str else []
-        
-        train_meta = train_data.get(img_id, {})
-        merged_tags = train_meta.get('merged_tags', [])
-        
-        # Merge tags
-        final_tags = list(set(sstk_tags + merged_tags))
-        
-        tar_name = os.path.basename(sdp_file).replace('.json', '.tar')
-        
-        filtered_records.append({
-            'image_id': img_id,
-            'width': w,
-            'height': h,
-            'aesthetic_score_center': aes_center,
-            'aesthetic_score_pad': aes_pad,
-            'tags': final_tags,
-            'tar_name': tar_name
-        })
-        
-    return filtered_records
+        # Prevent silent crashes returning from worker
+        import traceback
+        print(f"Critical Worker Error processing {os.path.basename(sdp_file)}: {e}")
+        traceback.print_exc()
+        return False
 
 def extract_and_save_samples(df_curated, df_rejected, args):
     import tarfile
@@ -160,7 +183,8 @@ def extract_and_save_samples(df_curated, df_rejected, args):
             aes = max(row['aesthetic_score_center'], row['aesthetic_score_pad'])
             tags_list = list(row['tags'])
             tags = ", ".join(tags_list[:8]) + ("..." if len(tags_list) > 8 else "")
-            html_lines.append(f"<div class='img-card'><img src='{rel_samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
+            sstk_type = row.get('sstk_type', 'N/A')
+            html_lines.append(f"<div class='img-card'><img src='{rel_samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>Type:</b> {sstk_type}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
         html_lines.append("</div>")
         
         # Rejected
@@ -171,7 +195,8 @@ def extract_and_save_samples(df_curated, df_rejected, args):
             aes = max(row['aesthetic_score_center'], row['aesthetic_score_pad'])
             tags_list = list(row['tags'])
             tags = ", ".join(tags_list[:8]) + ("..." if len(tags_list) > 8 else "")
-            html_lines.append(f"<div class='img-card'><img src='{rel_samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
+            sstk_type = row.get('sstk_type', 'N/A')
+            html_lines.append(f"<div class='img-card'><img src='{rel_samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>Type:</b> {sstk_type}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
         html_lines.append("</div>")
         
         html_lines.append("</div>")
@@ -192,28 +217,84 @@ def main():
     parser.add_argument('--output', type=str, default="filtered_sstk_100.parquet", help="Output parquet path")
     parser.add_argument('--curated_pool_size', type=int, default=1000000, help="Target size for the curated pool")
     parser.add_argument('--top_percentile', type=float, default=0.5, help="Top percentile to keep per category (e.g. 0.5 for top 50%)")
+    parser.add_argument('--server_mode', type=int, default=1, help="If 1, no limits are applied. If not 1, limits the processed tar count for local debugging.")
     
     args = parser.parse_args()
     
     sdp_files = glob.glob(os.path.join(args.sdp_dir, args.bucket, "*.json"))
     
+    # User's constraint for local debugging: Only map to the available .tar limit
+    if args.server_mode != 1:
+        valid_sdp_files = []
+        for f in sdp_files:
+            basename = os.path.basename(f)
+            if basename.startswith('SSTK_') and basename.endswith('.json'):
+                try:
+                    num = int(basename.replace('SSTK_', '').replace('.json', ''))
+                    if num <= 11:
+                        valid_sdp_files.append(f)
+                except ValueError:
+                    pass
+        sdp_files = sorted(valid_sdp_files)
+    else:
+        sdp_files = sorted(sdp_files)
+    
+    out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
+    tmp_pq_dir = os.path.join(out_dir, f"tmp_parquets_{args.bucket}")
+    os.makedirs(tmp_pq_dir, exist_ok=True)
+    
     file_pairs = []
     for sdp_file in sdp_files:
         basename = os.path.basename(sdp_file)
         train_file = os.path.join(args.train_dir, args.bucket, basename)
-        file_pairs.append((sdp_file, train_file))
+        file_pairs.append((sdp_file, train_file, tmp_pq_dir))
         
     print(f"Found {len(file_pairs)} file pairs to process in bucket '{args.bucket}'.")
     
-    all_records = []
-    with Pool(processes=os.cpu_count()) as pool:
-        for records in tqdm(pool.imap_unordered(process_file_pair, file_pairs), total=len(file_pairs)):
-            all_records.extend(records)
-            
-    df = pd.DataFrame(all_records)
-    print(f"Total valid images after initial filter: {len(df)}")
+    # Limit number of processes to avoid OOM or BrokenPipe on high-core servers.
+    # We also use maxtasksperchild=1 to prevent memory leak accumulation across files.
+    num_workers = min(16, os.cpu_count() or 1)
     
-    if len(df) > 0 and args.curated_pool_size > 0:
+    df_mapped_cache_path = os.path.join(out_dir, f"df_mapped_cache_{args.bucket}.parquet")
+    mapping_already_done = False
+    
+    if os.path.exists(df_mapped_cache_path):
+        print(f"\n[CACHE DETECTED] Found fully mapped cache {df_mapped_cache_path}.")
+        print("Skipping multiprocessing JSON parsing AND category mapping phases completely.")
+        df = pd.read_parquet(df_mapped_cache_path)
+        print(f"Total valid mapped images loaded from cache: {len(df)}")
+        mapping_already_done = True
+    else:
+        cache_file = os.path.join(out_dir, f"tag_cat_probs_cache_{args.bucket}.pkl")
+        
+        if os.path.exists(cache_file):
+            print(f"Found cache file {cache_file}. Skipping multiprocessing JSON parsing phase, assuming temporary parquets are ready.")
+        else:
+            print(f"Initializing multiprocessing Pool with {num_workers} workers...")
+            try:
+                with Pool(processes=num_workers, maxtasksperchild=1) as pool:
+                    # We don't accumulate anything in memory anymore, just iterate the bar
+                    for result in tqdm(pool.imap_unordered(process_file_pair, file_pairs, chunksize=1), total=len(file_pairs)):
+                        pass
+            except Exception as e:
+                import traceback
+                print(f"Fatal exception during parallel file processing: {e}")
+                traceback.print_exc()
+                raise e
+                
+        # Read back chunked parquets safely
+        print(f"Loading temporary parquets from {tmp_pq_dir}...")
+        import pyarrow.dataset as ds
+        try:
+            dataset = ds.dataset(tmp_pq_dir, format="parquet")
+            df = dataset.to_table().to_pandas()
+        except Exception as e:
+            print(f"No valid Parquet chunks found or failed to load them: {e}")
+            df = pd.DataFrame() # empty DataFrame
+            
+        print(f"Total valid images after initial filter: {len(df)}")
+    
+    if not mapping_already_done and len(df) > 0 and args.curated_pool_size > 0:
         print("Calculating aesthetic scores...")
         df['aes_score'] = df[['aesthetic_score_center', 'aesthetic_score_pad']].max(axis=1)
 
@@ -240,8 +321,7 @@ def main():
         unique_tags = list(tag_counts.keys())
         
         import pickle
-        out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
-        cache_file = os.path.join(out_dir, f"tag_cat_probs_cache_{args.bucket}.pkl")
+        # cache_file path is already defined globally above
         
         cache_valid = False
         tag_cat_probs = {}
@@ -268,7 +348,7 @@ def main():
                 cat_prototypes[c] /= np.linalg.norm(cat_prototypes[c]) + 1e-9
                 
             print("Encoding dataset unique tags (this runs once per run)...")
-            tag_embs = model.encode(unique_tags, show_progress_bar=True, batch_size=2048)
+            tag_embs = model.encode(unique_tags, show_progress_bar=True, batch_size=128)
             
             print("Pre-computing tag -> category probabilities...")
             gamma = 15.0 # softmax sharpness
@@ -299,15 +379,16 @@ def main():
                 pickle.dump(tag_cat_probs, f)
 
         print("Assigning images to L1 Categories...")
-        MULTI_TAGS = {'group', 'crowd', 'team', 'family', 'friends', 'meeting', 'audience', 'people'}
-        SINGLE_TAGS = {'portrait', 'selfie', 'headshot', 'model', 'face', 'one person', 'person', 'man', 'woman', 'boy', 'girl'}
+        MULTI_TAGS = {'group', 'crowd', 'team', 'friends', 'meeting', 'audience', 'people', 'couple', 'twins', 'two', 'three', 'four', 'men', 'women', 'girls', 'boys', 'kids', 'children', 'adults', 'males', 'females', 'parents'}
+        SINGLE_EXCLUSIVE = {'one person', 'alone', 'single', 'solo', 'selfie', 'only female', 'only male', 'one man', 'one woman'}
+        SINGLE_GENERAL = {'portrait', 'headshot', 'person', 'man', 'woman', 'boy', 'girl', 'child', 'baby', 'gentleman', 'lady', 'guy', 'female', 'male', 'adult'}
         
         CONF_MIN = 0.1 # Ambiguous fallback threshold
         final_categories = []
         
         # Process every image
         for tags in tqdm(df['tags'], total=len(df), desc="Mapping categories"):
-            if not tags:
+            if tags is None or len(tags) == 0:
                 final_categories.append('other_ambiguous')
                 continue
                 
@@ -330,14 +411,19 @@ def main():
                 
             # 2) People Multi vs Single Heuristic Split
             if c_hat == 'people':
-                s_multi = sum(1 for t in tags if t in MULTI_TAGS)
-                s_single = sum(1 for t in tags if t in SINGLE_TAGS)
-                if s_multi - s_single > 0:
+                has_single_exclusive = any(t in SINGLE_EXCLUSIVE for t in tags)
+                has_multi = any(t in MULTI_TAGS for t in tags)
+                has_single_general = any(t in SINGLE_GENERAL for t in tags)
+
+                if has_single_exclusive:
+                    final_categories.append('people_single')
+                elif has_multi:
+                    # e.g., 'team', 'couple', 'friends' overrides basic 'man', 'woman' mentions
                     final_categories.append('people_multi')
-                elif s_single - s_multi > 0:
+                elif has_single_general:
                     final_categories.append('people_single')
                 else:
-                    final_categories.append('other_ambiguous') # Fallback if tie or 0
+                    final_categories.append('other_ambiguous') # Fallback if tie or 0 or no explicit human tags
             else:
                 final_categories.append(c_hat)
                 
@@ -345,12 +431,16 @@ def main():
 
         print("Calculating rare tag frequencies for long-tail oversampling...")
         def get_rarest_tag_freq(tags):
-            if not tags: return 1.0
+            if tags is None or len(tags) == 0: return 1.0
             return float(min((tag_counts.get(t, 1) for t in tags), default=1.0))
             
         df['rarest_freq'] = [get_rarest_tag_freq(t) for t in df['tags']]
         df['sampling_weight'] = 1.0 / np.sqrt(df['rarest_freq'])
         
+        print(f"Saving fully mapped DataFrame cache to {df_mapped_cache_path}...")
+        df.to_parquet(df_mapped_cache_path, index=False)
+        
+    if len(df) > 0 and args.curated_pool_size > 0:
         df_initial = df.copy()
         print(f"Applying category-wise aesthetic percentile filtering (top {args.top_percentile*100}%)...")
         cat_thresholds = df.groupby('super_cat')['aes_score'].transform(lambda x: x.quantile(1.0 - args.top_percentile))
@@ -401,7 +491,9 @@ def main():
             
         print("Generating Curated vs Rejected Qualitative Comparison Extract...")
         try:
-            df_rejected = df_initial[~df_initial['image_id'].isin(df['image_id'])].copy()
+            # ONLY include images that actually failed the aesthetic 50% threshold cut. 
+            # This avoids polluting the 'rejected' pool with top-50% images that were just dropped to meet curated_pool_size.
+            df_rejected = df_initial[~df_initial['image_id'].isin(df_filtered['image_id'])].copy()
             extract_and_save_samples(df, df_rejected, args)
         except Exception as e:
             print(f"Failed to generate qualitative samples: {e}")

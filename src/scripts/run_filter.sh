@@ -4,8 +4,9 @@
 # Filter Shutterstock Dataset 
 # ==============================================================================
 # Usage: ./run_filter.sh [BUCKET] [OUTPUT_FILE] [POOL_SIZE] [TOP_PERCENTILE] [SERVER_MODE]
-# Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/filtered_sstk_100.parquet 1000000 0.5 1
-# Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/filtered_sstk_100.parquet 10000 0.2 1
+# Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/10K_local/filtered_sstk_100.parquet 10000 0.2 0 2>&1 | tee data/SSTK/10K_local/filter_debug.log
+# Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/10K/filtered_sstk_100.parquet 10000 0.2 1 2>&1 | tee data/SSTK/10K/filter_debug.log
+# Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/100K/filtered_sstk_100.parquet 1000000 0.5 1 2>&1 | tee data/SSTK/100K/filter_debug.log
 # Ex) bash ./src/scripts/run_filter.sh sstk_100
 # 
 # Arguments:
@@ -14,6 +15,7 @@
 #   POOL_SIZE      : 최종 선별할 curated pool 사이즈. 0일 경우 샘플링 안함. (기본값: 1000000)
 #   TOP_PERCENTILE : 각 카테고리별 Aesthetic 점수 상위 비율 (e.g. 0.5 = 상위 50%) (기본값: 0.5)
 #   SERVER_MODE    : 서버 환경 여부 (1일 경우 로컬 가상환경 비활성화) (기본값: 1)
+#   2>&1 | tee data/SSTK/filter_debug.log : 로그를 파일로 저장하고 싶을 때 사용
 # ==============================================================================
 
 # 파라미터 기본값 설정
@@ -42,14 +44,17 @@ fi
 
 
 # 데이터셋 디렉토리 경로 (서버 등 다른 환경일 경우 환경변수를 통해 덮어쓸 수 있도록 설정)
-## Local
-#SDP_DIR=${SDP_DIR:-"/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/sdp-sstk"}
-#TRAIN_DIR=${TRAIN_DIR:-"/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/SSTK_train_json/v1.0.1"}
-#TAR_DIR=${TAR_DIR:-"/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/tars"}
-## SPACE N6
-SDP_DIR=${SDP_DIR:-"/sstk/sdp-sstk"}
-TRAIN_DIR=${TRAIN_DIR:-"/group-volume/jaden.ju/Dataset/SSTK/SSTK_train_json/v1.0.1"}
-TAR_DIR=${TAR_DIR:-"/sstk/20230916/sstk_100"}
+if [ "$SERVER_MODE" -ne 1 ]; then
+    ## Local
+    SDP_DIR=${SDP_DIR:-"/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/sdp-sstk"}
+    TRAIN_DIR=${TRAIN_DIR:-"/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/SSTK_train_json/v1.0.1"}
+    TAR_DIR=${TAR_DIR:-"/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"}
+else
+    ## SPACE N6
+    SDP_DIR=${SDP_DIR:-"/sstk/sdp-sstk"}
+    TRAIN_DIR=${TRAIN_DIR:-"/group-volume/jaden.ju/Dataset/SSTK/SSTK_train_json/v1.0.1"}
+    TAR_DIR=${TAR_DIR:-"/sstk/20230916/sstk_100"}
+fi
 
 echo "========================================="
 echo "Starting Filter Pipeline"
@@ -73,7 +78,8 @@ python3 "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
     --bucket "$BUCKET" \
     --output "$OUTPUT_FILE" \
     --curated_pool_size "$POOL_SIZE" \
-    --top_percentile "$TOP_PERCENTILE"
+    --top_percentile "$TOP_PERCENTILE" \
+    --server_mode "$SERVER_MODE"
 
 echo "Filtering completed."
 

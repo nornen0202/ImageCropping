@@ -5,6 +5,7 @@
 # ==============================================================================
 # Usage: ./run_filter.sh [BUCKET] [OUTPUT_FILE] [POOL_SIZE] [TOP_PERCENTILE] [SERVER_MODE]
 # Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/filtered_sstk_100.parquet 1000000 0.5 1
+# Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/filtered_sstk_100.parquet 10000 0.2 1
 # Ex) bash ./src/scripts/run_filter.sh sstk_100
 # 
 # Arguments:

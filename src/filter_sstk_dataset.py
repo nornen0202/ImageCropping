@@ -104,26 +104,35 @@ def extract_and_save_samples(df_curated, df_rejected, args):
         
     print(f"3) Extracting sample images from {len(tasks_by_tar)} tars. This may take a minute...")
     for tar_name, group in tqdm(tasks_by_tar.items(), desc="Extracting sample images"):
-        tar_path = os.path.join(args.tar_dir, args.bucket, tar_name)
+        tar_path = os.path.join(args.tar_dir, tar_name)
+        if not os.path.exists(tar_path):
+            # Fallback for nested bucket structure
+            tar_path = os.path.join(args.tar_dir, args.bucket, tar_name)
+            
         if not os.path.exists(tar_path):
             continue
+            
         try:
-            with tarfile.open(tar_path, 'r') as tf:
-                for task in group:
-                    tar_name, image_id, pool_name, row_meta = task
-                    jpg_name = f"{image_id}.jpg" # Some tars might prepend keys, but usually basic match works:
-                    try:
-                        # Attempt to find member ending with image_id.jpg
-                        matched_member = next((m for m in tf.getmembers() if m.name.endswith(jpg_name)), None)
-                        if matched_member:
-                            matched_member.name = jpg_name
-                            tf.extract(matched_member, path=os.path.join(samples_dir, pool_name))
-                    except Exception:
-                        pass
+            target_map = {f"{task[1]}.jpg": task for task in group}
+            extracted_count = 0
+            # Use streaming read 'r|' which is tremendously faster for extraction than 'r'
+            with tarfile.open(tar_path, 'r|') as tf:
+                for member in tf:
+                    basename = os.path.basename(member.name)
+                    if basename in target_map:
+                        task = target_map[basename]
+                        pool_name = task[2]
+                        # Flatten path when extracting
+                        member.name = basename
+                        tf.extract(member, path=os.path.join(samples_dir, pool_name))
+                        extracted_count += 1
+                        if extracted_count >= len(target_map):
+                            break
         except Exception as e:
-            print(f"Failed to read tar {tar_name}: {e}")
+            print(f"Failed to extract from tar {tar_name}: {e}")
             
     print("4) Generating HTML comparison report...")
+    rel_samples_dir = os.path.basename(samples_dir)
     html_lines = [
         "<html><head><style>",
         "body { font-family: Arial, sans-serif; background-color: #f4f4f9; color: #333; margin: 20px; }",
@@ -151,7 +160,7 @@ def extract_and_save_samples(df_curated, df_rejected, args):
             aes = max(row['aesthetic_score_center'], row['aesthetic_score_pad'])
             tags_list = list(row['tags'])
             tags = ", ".join(tags_list[:8]) + ("..." if len(tags_list) > 8 else "")
-            html_lines.append(f"<div class='img-card'><img src='{samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
+            html_lines.append(f"<div class='img-card'><img src='{rel_samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
         html_lines.append("</div>")
         
         # Rejected
@@ -162,7 +171,7 @@ def extract_and_save_samples(df_curated, df_rejected, args):
             aes = max(row['aesthetic_score_center'], row['aesthetic_score_pad'])
             tags_list = list(row['tags'])
             tags = ", ".join(tags_list[:8]) + ("..." if len(tags_list) > 8 else "")
-            html_lines.append(f"<div class='img-card'><img src='{samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
+            html_lines.append(f"<div class='img-card'><img src='{rel_samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
         html_lines.append("</div>")
         
         html_lines.append("</div>")

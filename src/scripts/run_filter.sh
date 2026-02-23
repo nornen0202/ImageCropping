@@ -71,7 +71,7 @@ echo "Top Percentile    : ${PCT}%"
 echo "========================================="
 
 # 필터링 스크립트 실행
-python3 "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
+python3 -u "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
     --sdp_dir "$SDP_DIR" \
     --train_dir "$TRAIN_DIR" \
     --tar_dir "$TAR_DIR" \

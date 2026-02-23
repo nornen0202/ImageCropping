@@ -1,3 +1,7 @@
+'''
+SSTK_Curation_Guide/curated_vs_rejected_logic.md
+'''
+
 import os
 import glob
 import json
@@ -54,22 +58,22 @@ def process_file_pair(args):
                 
             if sdp_meta.get('image_dedup') is True:
                 continue
-                
+
             sstk_type = sdp_meta.get('sstk_type', '')
             if sstk_type != 'Photo':
                 continue
-                
+
             # Tags Extraction
             sstk_tags_str = sdp_meta.get('sstk_tags', '')
             sstk_tags = [t.strip() for t in sstk_tags_str.split(',') if t.strip()] if sstk_tags_str else []
-            
+
             train_meta = train_data.get(img_id, {})
             merged_tags = train_meta.get('merged_tags', [])
-            
+
             # Merge tags
             final_tags = list(set(sstk_tags + merged_tags))
             tar_name = os.path.basename(sdp_file).replace('.json', '.tar')
-            
+
             filtered_records.append({
                 'image_id': img_id,
                 'width': w,
@@ -77,17 +81,17 @@ def process_file_pair(args):
                 'aesthetic_score_center': aes_center,
                 'aesthetic_score_pad': aes_pad,
                 'sstk_type': sstk_type,
-                'tags': final_tags,
+                'tags': "|".join(final_tags),
                 'tar_name': tar_name
             })
-            
+
         print(f"[{os.path.basename(sdp_file)}] Total: {len(sdp_data)}, Filtered out by res: {fail_w}, aes: {fail_aes}, dedup: {fail_dedup}. Passed: {len(filtered_records)}")
-            
+
         if len(filtered_records) > 0:
             df_chunk = pd.DataFrame(filtered_records)
             chunk_path = os.path.join(tmp_dir, os.path.basename(sdp_file).replace('.json', '.parquet'))
             df_chunk.to_parquet(chunk_path, engine='pyarrow', index=False)
-            
+
         return True
     except Exception as e:
         # Prevent silent crashes returning from worker
@@ -99,42 +103,42 @@ def process_file_pair(args):
 def extract_and_save_samples(df_curated, df_rejected, args):
     import tarfile
     import urllib.request
-    
+
     out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
     samples_dir = os.path.join(out_dir, f"comparison_samples_{args.bucket}")
     os.makedirs(os.path.join(samples_dir, 'curated'), exist_ok=True)
     os.makedirs(os.path.join(samples_dir, 'rejected'), exist_ok=True)
-    
+
     print("1) Sampling 20 images per category for qualitative comparison...")
     s_curated = df_curated.groupby('super_cat', group_keys=False).apply(lambda x: x.sample(n=min(len(x), 20), random_state=42))
     s_rejected = df_rejected.groupby('super_cat', group_keys=False).apply(lambda x: x.sample(n=min(len(x), 20), random_state=42))
-    
+
     tasks = []
     for _, row in s_curated.iterrows():
         tasks.append((row['tar_name'], row['image_id'], 'curated', row))
     for _, row in s_rejected.iterrows():
         tasks.append((row['tar_name'], row['image_id'], 'rejected', row))
-        
+
     tasks_df = pd.DataFrame([t[3] for t in tasks])
     tasks_df['pool'] = [t[2] for t in tasks]
     csv_meta_path = f"{samples_dir}/metadata_samples.csv"
     tasks_df.to_csv(csv_meta_path, index=False)
     print(f"2) Metadata for samples saved to: {csv_meta_path}")
-    
+
     tasks_by_tar = {}
     for t in tasks:
         tasks_by_tar.setdefault(t[0], []).append(t)
-        
+
     print(f"3) Extracting sample images from {len(tasks_by_tar)} tars. This may take a minute...")
     for tar_name, group in tqdm(tasks_by_tar.items(), desc="Extracting sample images"):
         tar_path = os.path.join(args.tar_dir, tar_name)
         if not os.path.exists(tar_path):
             # Fallback for nested bucket structure
             tar_path = os.path.join(args.tar_dir, args.bucket, tar_name)
-            
+
         if not os.path.exists(tar_path):
             continue
-            
+
         try:
             target_map = {f"{task[1]}.jpg": task for task in group}
             extracted_count = 0
@@ -153,7 +157,7 @@ def extract_and_save_samples(df_curated, df_rejected, args):
                             break
         except Exception as e:
             print(f"Failed to extract from tar {tar_name}: {e}")
-            
+
     print("4) Generating HTML comparison report...")
     rel_samples_dir = os.path.basename(samples_dir)
     html_lines = [
@@ -171,36 +175,44 @@ def extract_and_save_samples(df_curated, df_rejected, args):
         "</style></head><body><h1>Curated vs Rejected Comparison</h1>"
     ]
     all_cats = sorted(pd.concat([s_curated['super_cat'], s_rejected['super_cat']]).unique())
-    
+
     for cat in all_cats:
         html_lines.append(f"<div class='cat-section'><h2>Category: {cat}</h2>")
-        
+
         # Curated
         html_lines.append("<h3 class='curated-title'>Curated Pool (Accepted)</h3><div class='pool-section'>")
         cat_c = s_curated[s_curated['super_cat'] == cat]
         for _, row in cat_c.iterrows():
             img_path = f"curated/{row['image_id']}.jpg"
             aes = max(row['aesthetic_score_center'], row['aesthetic_score_pad'])
-            tags_list = list(row['tags'])
+            raw_tags = row['tags']
+            if isinstance(raw_tags, str):
+                tags_list = raw_tags.split('|') if raw_tags else []
+            else:
+                tags_list = list(raw_tags) if raw_tags is not None else []
             tags = ", ".join(tags_list[:8]) + ("..." if len(tags_list) > 8 else "")
             sstk_type = row.get('sstk_type', 'N/A')
             html_lines.append(f"<div class='img-card'><img src='{rel_samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>Type:</b> {sstk_type}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
         html_lines.append("</div>")
-        
+
         # Rejected
         html_lines.append("<h3>Rejected Pool (Discarded by Aesthetics/Long-Tail Cut)</h3><div class='pool-section'>")
         cat_r = s_rejected[s_rejected['super_cat'] == cat]
         for _, row in cat_r.iterrows():
             img_path = f"rejected/{row['image_id']}.jpg"
             aes = max(row['aesthetic_score_center'], row['aesthetic_score_pad'])
-            tags_list = list(row['tags'])
+            raw_tags = row['tags']
+            if isinstance(raw_tags, str):
+                tags_list = raw_tags.split('|') if raw_tags else []
+            else:
+                tags_list = list(raw_tags) if raw_tags is not None else []
             tags = ", ".join(tags_list[:8]) + ("..." if len(tags_list) > 8 else "")
             sstk_type = row.get('sstk_type', 'N/A')
             html_lines.append(f"<div class='img-card'><img src='{rel_samples_dir}/{img_path}' loading='lazy'><p><b>ID:</b> {row['image_id']}<br><b>Type:</b> {sstk_type}<br><b>AES:</b> {aes:.2f}<br><b>DIMS:</b> {row['width']}x{row['height']}<br><b>TAGS:</b> {tags}</p></div>")
         html_lines.append("</div>")
-        
+
         html_lines.append("</div>")
-        
+
     html_lines.append("</body></html>")
     out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
     html_path = os.path.join(out_dir, f"comparison_report_{args.bucket}.html")
@@ -218,11 +230,11 @@ def main():
     parser.add_argument('--curated_pool_size', type=int, default=1000000, help="Target size for the curated pool")
     parser.add_argument('--top_percentile', type=float, default=0.5, help="Top percentile to keep per category (e.g. 0.5 for top 50%)")
     parser.add_argument('--server_mode', type=int, default=1, help="If 1, no limits are applied. If not 1, limits the processed tar count for local debugging.")
-    
+
     args = parser.parse_args()
-    
+
     sdp_files = glob.glob(os.path.join(args.sdp_dir, args.bucket, "*.json"))
-    
+
     # User's constraint for local debugging: Only map to the available .tar limit
     if args.server_mode != 1:
         valid_sdp_files = []
@@ -238,26 +250,26 @@ def main():
         sdp_files = sorted(valid_sdp_files)
     else:
         sdp_files = sorted(sdp_files)
-    
+
     out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
     tmp_pq_dir = os.path.join(out_dir, f"tmp_parquets_{args.bucket}")
     os.makedirs(tmp_pq_dir, exist_ok=True)
-    
+
     file_pairs = []
     for sdp_file in sdp_files:
         basename = os.path.basename(sdp_file)
         train_file = os.path.join(args.train_dir, args.bucket, basename)
         file_pairs.append((sdp_file, train_file, tmp_pq_dir))
-        
+
     print(f"Found {len(file_pairs)} file pairs to process in bucket '{args.bucket}'.")
-    
+
     # Limit number of processes to avoid OOM or BrokenPipe on high-core servers.
-    # We also use maxtasksperchild=1 to prevent memory leak accumulation across files.
-    num_workers = min(16, os.cpu_count() or 1)
-    
+    # Servers with high core counts can easily OOM if memory per worker is ~2GB.
+    num_workers = min(6, os.cpu_count() or 1)
+
     df_mapped_cache_path = os.path.join(out_dir, f"df_mapped_cache_{args.bucket}.parquet")
     mapping_already_done = False
-    
+
     if os.path.exists(df_mapped_cache_path):
         print(f"\n[CACHE DETECTED] Found fully mapped cache {df_mapped_cache_path}.")
         print("Skipping multiprocessing JSON parsing AND category mapping phases completely.")
@@ -266,7 +278,7 @@ def main():
         mapping_already_done = True
     else:
         cache_file = os.path.join(out_dir, f"tag_cat_probs_cache_{args.bucket}.pkl")
-        
+
         if os.path.exists(cache_file):
             print(f"Found cache file {cache_file}. Skipping multiprocessing JSON parsing phase, assuming temporary parquets are ready.")
         else:
@@ -281,7 +293,7 @@ def main():
                 print(f"Fatal exception during parallel file processing: {e}")
                 traceback.print_exc()
                 raise e
-                
+
         # Read back chunked parquets safely
         print(f"Loading temporary parquets from {tmp_pq_dir}...")
         import pyarrow.dataset as ds
@@ -291,9 +303,9 @@ def main():
         except Exception as e:
             print(f"No valid Parquet chunks found or failed to load them: {e}")
             df = pd.DataFrame() # empty DataFrame
-            
+
         print(f"Total valid images after initial filter: {len(df)}")
-    
+
     if not mapping_already_done and len(df) > 0 and args.curated_pool_size > 0:
         print("Calculating aesthetic scores...")
         df['aes_score'] = df[['aesthetic_score_center', 'aesthetic_score_pad']].max(axis=1)
@@ -312,17 +324,36 @@ def main():
             'product_object': ['product', 'device', 'smartphone', 'laptop', 'gadget', 'bottle', 'cosmetics', 'clothing', 'shoes', 'object', 'item', 'tool'],
             'transportation': ['car', 'train', 'airplane', 'vehicle', 'boat', 'truck', 'bus', 'transportation']
         }
-        
+
         CATEGORIES = list(SEED_STRONG.keys())
-        
+
+        def get_tags_list(t_val):
+            # Handle numpy arrays / lists first to avoid ValueError from pd.isna(array)
+            if isinstance(t_val, (list, np.ndarray)):
+                return [str(x) for x in t_val if x is not None and str(x).strip()]
+            # Now safe to call scalar pd.isna
+            try:
+                if pd.isna(t_val) or not t_val:
+                    return []
+            except (TypeError, ValueError):
+                return []
+            if isinstance(t_val, str):
+                return [x for x in t_val.split('|') if x.strip()]
+            return []
+
         # Unique tags
         print("Gathering unique tags...")
-        tag_counts = Counter(chain.from_iterable(df['tags']))
+        tag_counts = Counter()
+        for t_raw in df['tags']:
+            t_list = get_tags_list(t_raw)
+            if t_list:
+                tag_counts.update(t_list)
+
         unique_tags = list(tag_counts.keys())
-        
+
         import pickle
         # cache_file path is already defined globally above
-        
+
         cache_valid = False
         tag_cat_probs = {}
         if os.path.exists(cache_file):
@@ -333,47 +364,47 @@ def main():
                 cache_valid = True
             else:
                 print("Cache is missing some tags. Recomputing...")
-        
+
         if not cache_valid:
             print(f"Loading SentenceTransformer for {len(unique_tags)} unique tags...")
             from sentence_transformers import SentenceTransformer
             # Use a highly-efficient, lightweight embedding model for MVP
-            model = SentenceTransformer('all-MiniLM-L6-v2') 
-            
+            model = SentenceTransformer('all-MiniLM-L6-v2')
+
             print("Generating prototype embeddings...")
             cat_prototypes = {}
             for c, words in SEED_STRONG.items():
                 emb = model.encode(words, show_progress_bar=False)
                 cat_prototypes[c] = emb.mean(axis=0)
                 cat_prototypes[c] /= np.linalg.norm(cat_prototypes[c]) + 1e-9
-                
+
             print("Encoding dataset unique tags (this runs once per run)...")
             tag_embs = model.encode(unique_tags, show_progress_bar=True, batch_size=128)
-            
+
             print("Pre-computing tag -> category probabilities...")
             gamma = 15.0 # softmax sharpness
             alpha = 0.8 # rule vs embedding mixture weight
-            
+
             for i, t in enumerate(unique_tags):
                 emb = tag_embs[i]
                 emb /= (np.linalg.norm(emb) + 1e-9)
-                
+
                 # Embedding-based Probability
                 cos_sims = {c: np.dot(emb, cat_prototypes[c]) for c in CATEGORIES}
                 exp_sims = {c: np.exp(gamma * sim) for c, sim in cos_sims.items()}
                 sum_exp = sum(exp_sims.values())
                 p_emb = {c: exp_sims[c]/sum_exp for c in CATEGORIES}
-                
+
                 # Rule-based Probability
                 p_rule = {c: 0.0 for c in CATEGORIES}
                 matched_c = [c for c, words in SEED_STRONG.items() if t in words]
                 if len(matched_c) > 0:
                     for c in matched_c:
                         p_rule[c] = 1.0 / len(matched_c)
-                
+
                 # Hybrid mix
                 tag_cat_probs[t] = {c: alpha * p_rule[c] + (1 - alpha) * p_emb[c] for c in CATEGORIES}
-                
+
             print(f"Saving tag probabilities to {cache_file} for future runs...")
             with open(cache_file, 'wb') as f:
                 pickle.dump(tag_cat_probs, f)
@@ -382,33 +413,34 @@ def main():
         MULTI_TAGS = {'group', 'crowd', 'team', 'friends', 'meeting', 'audience', 'people', 'couple', 'twins', 'two', 'three', 'four', 'men', 'women', 'girls', 'boys', 'kids', 'children', 'adults', 'males', 'females', 'parents'}
         SINGLE_EXCLUSIVE = {'one person', 'alone', 'single', 'solo', 'selfie', 'only female', 'only male', 'one man', 'one woman'}
         SINGLE_GENERAL = {'portrait', 'headshot', 'person', 'man', 'woman', 'boy', 'girl', 'child', 'baby', 'gentleman', 'lady', 'guy', 'female', 'male', 'adult'}
-        
+
         CONF_MIN = 0.1 # Ambiguous fallback threshold
         final_categories = []
-        
+
         # Process every image
-        for tags in tqdm(df['tags'], total=len(df), desc="Mapping categories"):
-            if tags is None or len(tags) == 0:
+        for t_raw in tqdm(df['tags'], total=len(df), desc="Mapping categories"):
+            tags = get_tags_list(t_raw)
+            if not tags:
                 final_categories.append('other_ambiguous')
                 continue
-                
+
             # Evidence aggregation S(c|i) = sum_t p(c|t)
             S_c = {c: 0.0 for c in CATEGORIES}
             for t in tags:
                 probs = tag_cat_probs[t]
                 for c in CATEGORIES:
                     S_c[c] += probs[c]
-            
+
             sorted_c = sorted(S_c.items(), key=lambda x: x[1], reverse=True)
             c_hat = sorted_c[0][0]
             score_1st = sorted_c[0][1]
             score_2nd = sorted_c[1][1] if len(sorted_c) > 1 else 0
-            
+
             # 1) Category Confidence Fallback
             if (score_1st - score_2nd) < CONF_MIN:
                 final_categories.append('other_ambiguous')
                 continue
-                
+
             # 2) People Multi vs Single Heuristic Split
             if c_hat == 'people':
                 has_single_exclusive = any(t in SINGLE_EXCLUSIVE for t in tags)
@@ -426,12 +458,13 @@ def main():
                     final_categories.append('other_ambiguous') # Fallback if tie or 0 or no explicit human tags
             else:
                 final_categories.append(c_hat)
-                
+
         df['super_cat'] = final_categories
 
         print("Calculating rare tag frequencies for long-tail oversampling...")
-        def get_rarest_tag_freq(tags):
-            if tags is None or len(tags) == 0: return 1.0
+        def get_rarest_tag_freq(t_raw):
+            tags = get_tags_list(t_raw)
+            if not tags: return 1.0
             return float(min((tag_counts.get(t, 1) for t in tags), default=1.0))
             
         df['rarest_freq'] = [get_rarest_tag_freq(t) for t in df['tags']]

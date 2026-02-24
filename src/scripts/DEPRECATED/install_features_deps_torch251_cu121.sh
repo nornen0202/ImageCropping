@@ -1,8 +1,29 @@
 #!/usr/bin/env bash
-# Stable torch/cuda plan installer for SSTK Feature Extraction deps
-# - Torch: 2.5.1 + cu121 (stable wheel set)
-# - OpenMMLab: mmcv-lite==2.1.0 (no CUDA ops, but avoids mmcv/mmdet version deadlocks)
-# - mmdet/mmpose: source editable install (pinned tags) + filtered runtime req install
+# [DEPRECATED] 이 스크립트는 구버전입니다.
+# 아래 개선 버전을 사용하십시오:
+#
+#   bash src/scripts/install_features_deps_torch251_cu121_stable.sh
+#
+# 이유:
+#   - pip 26 PEP660 호환성 개선 (editable → non-editable)
+#   - openmim 의존성 제거 (openxlab setuptools 다운그레이드 방지)
+#   - numpy<2.0.0 전역 constraints 적용
+#   - SAM2 CUDA extension 빌드 기본 비활성화
+#   - mmcv 설치 3단계 전략 내장 (binary wheel → no-build-isolation → direct download)
+#   - Python >= 3.10 버전 체크 내장
+# ============================================================
+echo "WARNING: This script is DEPRECATED."
+echo "Please use: bash src/scripts/install_features_deps_torch251_cu121_stable.sh"
+echo "Forwarding to stable script in 5 seconds... (Ctrl+C to cancel)"
+sleep 5
+
+STABLE_SCRIPT="$(dirname "${BASH_SOURCE[0]}")/install_features_deps_torch251_cu121_stable.sh"
+if [[ -f "${STABLE_SCRIPT}" ]]; then
+  exec bash "${STABLE_SCRIPT}" "$@"
+else
+  echo "ERROR: Stable script not found at ${STABLE_SCRIPT}"
+  exit 1
+fi
 #
 # ==============================================================================
 # USAGE
@@ -44,8 +65,11 @@ TORCHVISION_VER="0.20.1"
 TORCHAUDIO_VER="2.5.1"
 TORCH_CUDA="cu121"
 
-MMENGINE_VER=""          # empty = let mim pick compatible
-MMCV_LITE_VER="2.1.0"
+MMENGINE_VER="0.10.7"    # mim 대신 직접 pip install
+# mmcv-lite → mmcv (CUDA 빌드 휠)로 교체
+# mmpose inference 시 mmcv._ext(CUDA ops) 필요: mmcv-lite에는 미포함
+MMCV_VER="2.1.0"
+MMCV_WHEEL_INDEX="https://download.openmmlab.com/mmcv/dist/cu121/torch2.5.1/index.html"
 
 MMDET_TAG="v3.3.0"
 MMPOSE_TAG="v1.3.2"
@@ -144,27 +168,58 @@ $PIP install -U click rich requests tabulate pyyaml
 
 # MMEngine
 MMENGINE_INSTALLED=$($PYTHON -m pip show mmengine 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "")
-if [[ -z "${MMENGINE_VER}" ]]; then
-  if [[ -z "${MMENGINE_INSTALLED}" ]]; then
-    mim install mmengine
-  else
-    echo "  [SKIP] mmengine==${MMENGINE_INSTALLED} already installed."
-  fi
+if [[ "${MMENGINE_INSTALLED}" == "${MMENGINE_VER}" ]]; then
+  echo "  [SKIP] mmengine==${MMENGINE_VER} already installed."
 else
-  if [[ "${MMENGINE_INSTALLED}" == "${MMENGINE_VER}" ]]; then
-    echo "  [SKIP] mmengine==${MMENGINE_VER} already installed."
+  $PIP install "mmengine==${MMENGINE_VER}"
+fi
+
+# [CRITICAL] mmcv 설치 전 setuptools 복구
+# openxlab dep이 setuptools~=60.2으로 다운그레이드한 경우 pkg_resources 에러 발생
+echo "  [Pre-step] Restoring setuptools >= 68 for pkg_resources availability..."
+$PIP install -U "setuptools>=68" wheel 2>/dev/null || true
+
+# MMCV (CUDA 빌드 휠) 설치 — mmpose._ext CUDA ops 포함 버전
+MMCV_INSTALLED=$($PYTHON -m pip show mmcv 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "")
+if [[ "${MMCV_INSTALLED}" == "${MMCV_VER}" ]]; then
+  echo "  [SKIP] mmcv==${MMCV_VER} already installed."
+else
+  echo "  [Strategy 1] Installing mmcv==${MMCV_VER} binary wheel (no source build)..."
+  if $PIP install \
+      --only-binary :all: \
+      --extra-index-url "${MMCV_WHEEL_INDEX}" \
+      "mmcv==${MMCV_VER}"; then
+    echo "  [Strategy 1] SUCCESS"
   else
-    mim install "mmengine==${MMENGINE_VER}"
+    echo "  [Strategy 2] Source build with --no-build-isolation..."
+    $PIP install \
+      --no-build-isolation \
+      --find-links "${MMCV_WHEEL_INDEX}" \
+      "mmcv==${MMCV_VER}" || {
+      echo "  [Strategy 3] Direct wheel download..."
+      MMCV_WHL="mmcv-${MMCV_VER}-cp310-cp310-manylinux1_x86_64.whl"
+      MMCV_URL="https://download.openmmlab.com/mmcv/dist/cu121/torch2.5.1/${MMCV_WHL}"
+      TMP_WHL="/tmp/${MMCV_WHL}"
+      echo "  Downloading: ${MMCV_URL}"
+      if curl -fsSL -o "${TMP_WHL}" "${MMCV_URL}"; then
+        $PIP install "${TMP_WHL}"
+        rm -f "${TMP_WHL}"
+      else
+        echo "  [ERROR] All strategies failed. Manual install:"
+        echo "    pip install mmcv==${MMCV_VER} --no-build-isolation --find-links ${MMCV_WHEEL_INDEX}"
+        exit 1
+      fi
+    }
   fi
 fi
 
-# MMCV-Lite (no CUDA ops) — avoids mmcv/mmdet version incompatibilities and source builds
-MMCV_INSTALLED=$($PYTHON -m pip show mmcv-lite 2>/dev/null | grep "^Version:" | awk '{print $2}' || echo "")
-if [[ "${MMCV_INSTALLED}" == "${MMCV_LITE_VER}" ]]; then
-  echo "  [SKIP] mmcv-lite==${MMCV_LITE_VER} already installed."
-else
-  mim install "mmcv-lite==${MMCV_LITE_VER}"
-fi
+$PYTHON - <<'PY'
+try:
+    from mmcv import _ext
+    print("MMCV _ext (CUDA ops): OK")
+except ImportError as e:
+    print(f"MMCV _ext WARNING (mmpose C3 may not work): {e}")
+PY
 
 # Helper: install requirements but drop mmcv/mmengine pins to avoid pulling full mmcv
 install_filtered_requirements () {
@@ -300,8 +355,8 @@ import mmdet
 import mmpose
 print("MMDet/MMPose OK:", mmdet.__version__, mmpose.__version__)
 
-from paddleocr import PaddleOCR
-print("PaddleOCR OK")
+#from paddleocr import PaddleOCR
+#print("PaddleOCR OK")
 
 print("All Good")
 PY

@@ -12,6 +12,9 @@
 # USAGE
 # ==============================================================================
 #
+# [가이드 출력 — 10K 전체에서 feats_c2c3c5_v2_strict_enriched.jsonl 만들기]
+# bash src/scripts/run_extract_component.sh --guide_10k
+#
 # [로컬 — C1만 추출]
 # bash src/scripts/run_extract_component.sh \
 #     data/SSTK/10K_local/filtered_sstk_100.parquet sstk_100 \
@@ -37,7 +40,7 @@
 #   (1) INPUT_PARQUET : 필터링된 parquet 파일 경로
 #   (2) BUCKET        : 버킷명 (예: sstk_100)
 #   (3) OUTPUT_JSONL  : 결과 저장 경로
-#   --component       : 실행할 컴포넌트 목록 (c1 c2 c3 c4 all) [기본: all]
+#   --component       : 실행할 컴포넌트 목록 (c1 c2 c3 c4 c5 all) [기본: all]
 #   --priority        : high_efficiency | quality_first  [기본: high_efficiency]
 #   --mode            : auto | single | multi            [기본: auto]
 #   --num_workers     : Ray worker 수 (multi 모드; 기본: GPU 수 자동 감지)
@@ -48,6 +51,9 @@
 # ==============================================================================
 
 : <<'USAGE'
+# [가이드 출력 — 10K 전체에서 feats_c2c3c5_v2_strict_enriched.jsonl 만들기]
+bash src/scripts/run_extract_component.sh --guide_10k
+
 # [서버 — C1만 추출]
 bash src/scripts/run_extract_component.sh \
    data/SSTK/10K_local/filtered_sstk_100.parquet sstk_100 \
@@ -66,6 +72,12 @@ bash src/scripts/run_extract_component.sh \
    data/SSTK/10K_local/feats_c3.jsonl \
    --component c3 --priority quality_first --server_mode 1
 
+# [로컬 — C5(수평선/롤/대칭)만 추출]
+bash src/scripts/run_extract_component.sh \
+   data/SSTK/10K_local/filtered_sstk_100.parquet sstk_100 \
+   data/SSTK/10K_local/feats_c5.jsonl \
+   --component c5 --priority high_efficiency --server_mode 0
+
 # [로컬 — C3만 추출]
 bash src/scripts/run_extract_component.sh \
    data/SSTK/10K_local/filtered_sstk_100.parquet sstk_100 \
@@ -74,12 +86,94 @@ bash src/scripts/run_extract_component.sh \
 
 # [서버 — C1+C2+C3만, quality_first]
 bash src/scripts/run_extract_component.sh \
+   data/SSTK/10K_local/filtered_sstk_100.parquet sstk_100 \
+   data/SSTK/10K_local/feats_c1c2c3.jsonl \
+   --component c1 c2 c3 --priority quality_first --server_mode 1
+
+# [서버 — C1+C2+C3만, quality_first]
+bash src/scripts/run_extract_component.sh \
    data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
    data/SSTK/10K/feats_c1c2c3.jsonl \
    --component c1 c2 c3 --priority quality_first --server_mode 1
+
+# [서버 — 10K 전체에서 C2+C3(strict)+C5 추출 후 병합 피처 생성]
+# 1) C2
+bash src/scripts/run_extract_component.sh \
+   data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
+   data/SSTK/10K/feats_c2.jsonl \
+   --component c2 --priority quality_first --server_mode 1
+
+# 2) C3 (사람 오검출 억제 strict 모드: 기본값 1)
+C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
+   data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
+   data/SSTK/10K/feats_c3_v2_strict.jsonl \
+   --component c3 --priority quality_first --server_mode 1
+
+# 3) C3 enrich (face/gaze proxy 보강)
+python src/scripts/enrich_c3_pose_jsonl.py \
+   --input_c3_jsonl data/SSTK/10K/feats_c3_v2_strict.jsonl \
+   --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
+   --output_jsonl data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl
+
+# 4) C5 (horizon/roll/symmetry)
+bash src/scripts/run_extract_component.sh \
+   data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
+   data/SSTK/10K/feats_c5.jsonl \
+   --component c5 --priority high_efficiency --server_mode 1
+
+# 5) 병합 피처 생성 (최종)
+python src/scripts/merge_feature_jsonl.py \
+   --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
+   --inputs data/SSTK/10K/feats_c2.jsonl \
+            data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl \
+            data/SSTK/10K/feats_c5.jsonl \
+   --output_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_enriched.jsonl
 USAGE
 
 set -euo pipefail
+
+if [ "${1:-}" = "--guide_10k" ]; then
+cat <<'GUIDE'
+==============================================
+ 10K Full Guide (C2 + C3 strict + C5 + merge)
+==============================================
+
+# (A) C2 추출
+bash src/scripts/run_extract_component.sh \
+  data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
+  data/SSTK/10K/feats_c2.jsonl \
+  --component c2 --priority quality_first --server_mode 1
+
+# (B) C3 strict 추출
+C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
+  data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
+  data/SSTK/10K/feats_c3_v2_strict.jsonl \
+  --component c3 --priority quality_first --server_mode 1
+
+# (C) C3 enrich
+python src/scripts/enrich_c3_pose_jsonl.py \
+  --input_c3_jsonl data/SSTK/10K/feats_c3_v2_strict.jsonl \
+  --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
+  --output_jsonl data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl
+
+# (D) C5 추출
+bash src/scripts/run_extract_component.sh \
+  data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
+  data/SSTK/10K/feats_c5.jsonl \
+  --component c5 --priority high_efficiency --server_mode 1
+
+# (E) 최종 병합
+python src/scripts/merge_feature_jsonl.py \
+  --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
+  --inputs data/SSTK/10K/feats_c2.jsonl \
+           data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl \
+           data/SSTK/10K/feats_c5.jsonl \
+  --output_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_enriched.jsonl
+
+==============================================
+GUIDE
+exit 0
+fi
 
 export HUGGINGFACEHUB_API_TOKEN=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
 export HF_TOKEN="$HUGGINGFACEHUB_API_TOKEN"

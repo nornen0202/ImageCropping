@@ -40,6 +40,7 @@ class FeatureWorker:
         run_c2: bool = True,
         run_c3: bool = True,
         run_c4: bool = True,
+        run_c5: bool = True,
         weights_dir: str = "",   # C2(SAM2.1 ckpt) + C3(SCRFD/ViTPose ckpt) 가중치 디렉토리
         c4_lang: str = "en",
         priority: str = "high_efficiency",
@@ -49,6 +50,7 @@ class FeatureWorker:
         self.run_c2 = run_c2
         self.run_c3 = run_c3
         self.run_c4 = run_c4
+        self.run_c5 = run_c5
         self.priority = priority
 
         print(f"[FeatureWorker] Initializing models with priority='{priority}' ...")
@@ -74,10 +76,16 @@ class FeatureWorker:
             from c3_weights import resolve_c3_paths
             c3_paths = resolve_c3_paths(weights_dir)
             if c3_paths is not None:
+                c3_verify_strict = os.environ.get("C3_PERSON_VERIFY_STRICT", "1").strip().lower() not in {
+                    "0",
+                    "false",
+                    "no",
+                }
                 self.c3 = PoseFeatureExtractor(
                     c3_paths["det_cfg"], c3_paths["det_w"],
                     c3_paths["pose_cfg"], c3_paths["pose_w"],
                     priority=priority,
+                    person_verify_strict=c3_verify_strict,
                 )
             else:
                 print(f"[FeatureWorker] C3 setup failed (see above). Skipping C3.")
@@ -91,6 +99,13 @@ class FeatureWorker:
             self.c4 = OcrFeatureExtractor(lang=c4_lang, priority=priority)
         else:
             self.c4 = None
+
+        # ---- C5 Geometry (horizon/roll + symmetry) -------------------------------
+        if run_c5:
+            from c5_geom import GeoFeatureExtractor
+            self.c5 = GeoFeatureExtractor()
+        else:
+            self.c5 = None
 
     # ------------------------------------------------------------------
     def process_batch(
@@ -127,6 +142,9 @@ class FeatureWorker:
 
             if self.c4:
                 res["c4_ocr"] = self.c4.process_image(img, tags=tags)
+
+            if self.c5:
+                res["c5_geom"] = self.c5.process_image(img)
 
             results.append(res)
 

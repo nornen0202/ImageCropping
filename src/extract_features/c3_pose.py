@@ -57,10 +57,17 @@ class PoseFeatureExtractor:
             return results_out
             
         # 메타데이터 Gating (tags에 사람 관련 키워드가 없으면 bypass)
-        PERSON_WORDS = {'person', 'people', 'man', 'woman', 'boy', 'girl', 'face', 'portrait', 'selfie', 'couple', 'family', 'crowd', 'team'}
+        PERSON_WORDS = {
+            'person', 'people', 'man', 'woman', 'boy', 'girl', 'face', 'portrait', 'selfie',
+            'couple', 'family', 'crowd', 'team', 'group', 'friends', 'meeting', 'audience',
+            'twins', 'two', 'three', 'four', 'men', 'women', 'girls', 'boys', 'kids',
+            'children', 'adults', 'males', 'females', 'parents', 'one person', 'alone',
+            'single', 'solo', 'only female', 'only male', 'one man', 'one woman',
+            'headshot', 'child', 'baby', 'gentleman', 'lady', 'guy', 'female', 'male', 'adult'
+        }
         if not run_anyway and tags is not None:
-            if not any(t in PERSON_WORDS for t in tags):
-                return results_out # Skip costly pose estimation
+           if not any(t.lower() in PERSON_WORDS for t in tags):
+               return results_out # Skip costly pose estimation
                 
         # Convert PIL to BGR for MMCV/OpenCV
         img_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -69,20 +76,31 @@ class PoseFeatureExtractor:
         det_result = inference_detector(self.detector, img_bgr)
         pred_instances = det_result.pred_instances.cpu().numpy()
         
-        # Filter class 0 (person usually in COCO), and apply score threshold
-        person_indices = (pred_instances.labels == 0) & (pred_instances.scores > 0.3)
+        # Filter person class, and apply score threshold
+        # For person-only detector, person is label 0.
+        scores = pred_instances.scores
+        labels = pred_instances.labels if 'labels' in pred_instances else np.zeros_like(scores)
+        
+        # Lower threshold to 0.2 for better recall
+        person_indices = (scores > 0.2)
+        if 'labels' in pred_instances:
+             person_indices &= (labels == 0)
+             
         bboxes = pred_instances.bboxes[person_indices]
-        scores = pred_instances.scores[person_indices]
+        # scores = scores[person_indices] # Not used for pose
         
         if len(bboxes) == 0:
             return results_out
             
         # 2. Run Top-Down Pose Estimation
-        # inference_topdown takes list of bboxes: [np.array([x1,y1,x2,y2]), ...]
         pose_results = inference_topdown(self.pose_estimator, img_bgr, bboxes, bbox_format='xyxy')
         
         for p_res in pose_results:
             p_inst = p_res.pred_instances
+            # Ensure we have valid keypoints
+            if 'keypoints' not in p_inst or len(p_inst.keypoints) == 0:
+                continue
+                
             kb = p_inst.keypoints[0] # (17, 2)
             ks = p_inst.keypoint_scores[0] # (17,)
             bb = p_inst.bboxes[0] # (4,)

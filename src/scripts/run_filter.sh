@@ -36,8 +36,8 @@ SERVER_MODE=${5:-1}
 
 # 가상환경 활성화 (서버 모드가 아닐 경우에만)
 if [ "$SERVER_MODE" -ne 1 ]; then
-    if [ -f "/home/jyju25/Venvs/py310_gcf/bin/activate" ]; then
-        source /home/jyju25/Venvs/py310_gcf/bin/activate
+    if [ -f "/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate" ]; then
+        source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
     fi
 fi
 

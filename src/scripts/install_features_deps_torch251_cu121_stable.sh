@@ -172,7 +172,7 @@ fi
 
 # sentence-transformers, timm, webdataset, pyarrow, pandas, opencv
 pip_install sentence-transformers timm webdataset pyarrow pandas
-pip_install "opencv-python-headless>=4.6.0"
+pip_install "opencv-python-headless>=4.6.0" "opencv-contrib-python-headless>=4.6.0"
 pip_install -U "${NUMPY_CONSTRAINT}"  # re-enforce after opencv
 
 # -----------------------------

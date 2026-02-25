@@ -49,15 +49,12 @@ C3_REGISTRY = {
     "pose": {
         # ViTPose-Base : COCO 17-keypoint, top-down
         "weight_filenames": [
-            "vitpose-b-coco.pth",
             "td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth"
         ],
         "urls": [
             "https://download.openmmlab.com/mmpose/v1/body_2d_keypoint/"
             "topdown_heatmap/coco/"
             "td-hm_ViTPose-base_8xb64-210e_coco-256x192-216eae50_20230314.pth",
-            "https://huggingface.co/JunkyByte/easy_ViTPose/resolve/main/"
-            "torch/COCO/vitpose-b-coco.pth",
         ],
         # config 은 mmpose 소스에서 참조 (git clone 필요)
         "config_relpath": os.path.join(

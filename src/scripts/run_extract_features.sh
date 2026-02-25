@@ -60,10 +60,10 @@ fi
 
 # 가상환경 활성화 (서버 모드가 아닐 경우에만)
 if [ "$SERVER_MODE" -ne 1 ]; then
-    if [ -f "/home/jyju25/Venvs/py310_gcf/bin/activate" ]; then
-        source /home/jyju25/Venvs/py310_gcf/bin/activate
+    if [ -f "/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate" ]; then
+        source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
     else
-        echo "Warning: Virtual environment not found at /home/jyju25/Venvs/py310_gcf/bin/activate. Using default python."
+        echo "Warning: Virtual environment not found at /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate. Using default python."
     fi
 fi
 

@@ -35,7 +35,7 @@ fi
 #   bash src/scripts/install_features_deps_torch251_cu121.sh
 #
 # [기존 venv 활용]:
-#   source /home/jyju25/Venvs/py310_gcf/bin/activate
+#   source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 #   bash src/scripts/install_features_deps_torch251_cu121.sh
 #
 # PyTorch/CUDA 버전 확인:

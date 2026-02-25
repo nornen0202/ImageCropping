@@ -66,7 +66,13 @@ bash src/scripts/run_extract_component.sh \
    data/SSTK/10K_local/feats_c3.jsonl \
    --component c3 --priority quality_first --server_mode 1
 
-# [서버 — C2+C3만, quality_first]
+# [로컬 — C3만 추출]
+bash src/scripts/run_extract_component.sh \
+   data/SSTK/10K_local/filtered_sstk_100.parquet sstk_100 \
+   data/SSTK/10K_local/feats_c3.jsonl \
+   --component c3 --priority quality_first --server_mode 0
+
+# [서버 — C1+C2+C3만, quality_first]
 bash src/scripts/run_extract_component.sh \
    data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
    data/SSTK/10K/feats_c1c2c3.jsonl \
@@ -145,7 +151,7 @@ fi
 
 # ── 가상환경 활성화 (로컬 모드만) ────────────────────────────────────────────
 if [ "$SERVER_MODE" -ne 1 ]; then
-    VENV="/home/jyju25/Venvs/py310_gcf/bin/activate"
+    VENV="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
     if [ -f "$VENV" ]; then
         # shellcheck disable=SC1090
         source "$VENV"

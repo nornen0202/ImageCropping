@@ -220,6 +220,76 @@ def extract_and_save_samples(df_curated, df_rejected, args):
         f.write("\n".join(html_lines))
     print(f"5) Qualitative HTML comparison report generated: {html_path}")
 
+
+def export_curated_images(df_curated, args):
+    import tarfile
+
+    image_dir = (args.save_curated_images_dir or "").strip()
+    if not image_dir:
+        return
+
+    os.makedirs(image_dir, exist_ok=True)
+    skip_existing = bool(int(args.save_curated_images_skip_existing))
+    print(f"Exporting curated images to local dir: {image_dir}")
+
+    if "tar_name" not in df_curated.columns:
+        print("[export_curated_images] Missing tar_name column. Skipping.")
+        return
+
+    by_tar = {}
+    for _, row in df_curated.iterrows():
+        tar_name = str(row["tar_name"])
+        image_id = str(row["image_id"])
+        by_tar.setdefault(tar_name, set()).add(image_id)
+
+    saved = 0
+    skipped = 0
+    missing = 0
+    for tar_name, id_set in tqdm(by_tar.items(), desc="Export curated images"):
+        if not id_set:
+            continue
+        tar_path = os.path.join(args.tar_dir, tar_name)
+        if not os.path.exists(tar_path):
+            tar_path = os.path.join(args.tar_dir, args.bucket, tar_name)
+        if not os.path.exists(tar_path):
+            missing += len(id_set)
+            continue
+
+        targets = set(id_set)
+        try:
+            with tarfile.open(tar_path, "r|") as tf:
+                for member in tf:
+                    if not member.isfile():
+                        continue
+                    base = os.path.basename(member.name)
+                    stem, ext = os.path.splitext(base)
+                    if stem not in targets:
+                        continue
+                    ext = ext.lower() if ext else ".jpg"
+                    out_path = os.path.join(image_dir, f"{stem}{ext}")
+                    if skip_existing and os.path.exists(out_path):
+                        skipped += 1
+                    else:
+                        fobj = tf.extractfile(member)
+                        if fobj is None:
+                            continue
+                        with open(out_path, "wb") as wf:
+                            wf.write(fobj.read())
+                        saved += 1
+                    targets.remove(stem)
+                    if not targets:
+                        break
+            if targets:
+                missing += len(targets)
+        except Exception as e:
+            print(f"[export_curated_images] Failed to export from {tar_name}: {e}")
+            missing += len(targets)
+
+    print(
+        f"[export_curated_images] done. saved={saved} skipped={skipped} "
+        f"missing={missing} total_targets={len(df_curated)}"
+    )
+
 def main():
     parser = argparse.ArgumentParser(description="Filter Shutterstock Dataset")
     parser.add_argument('--sdp_dir', type=str, default="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/sdp-sstk", help="Path to sdp metadata dir")
@@ -230,6 +300,8 @@ def main():
     parser.add_argument('--curated_pool_size', type=int, default=1000000, help="Target size for the curated pool")
     parser.add_argument('--top_percentile', type=float, default=0.5, help="Top percentile to keep per category (e.g. 0.5 for top 50%)")
     parser.add_argument('--server_mode', type=int, default=1, help="If 1, no limits are applied. If not 1, limits the processed tar count for local debugging.")
+    parser.add_argument('--save_curated_images_dir', type=str, default="", help="Optional local image export dir for curated pool")
+    parser.add_argument('--save_curated_images_skip_existing', type=int, default=1, help="1=skip existing files while exporting curated images")
 
     args = parser.parse_args()
 
@@ -531,6 +603,13 @@ def main():
         except Exception as e:
             print(f"Failed to generate qualitative samples: {e}")
             raise e
+
+        if str(args.save_curated_images_dir).strip():
+            try:
+                export_curated_images(df, args)
+            except Exception as e:
+                print(f"Failed to export curated images: {e}")
+                raise e
             
         print("Generating summary CSV and visualization...")
         try:

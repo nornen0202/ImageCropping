@@ -51,6 +51,7 @@
 #   --server_mode     : 0=로컬(venv 활성화+로컬 경로), 1=서버 [기본: 1]
 #   --venv_path       : 로컬 모드에서 사용할 가상환경 activate 경로
 #   --tar_dir         : tar 파일 디렉토리 (미지정 시 server_mode에서 자동 설정)
+#   --image_dir       : optional 로컬 이미지 디렉토리(<image_id>.<ext>) 우선 로드
 #   --weights_dir     : C3 가중치 디렉토리 (기본: PROJECT_ROOT/weights)
 # ==============================================================================
 
@@ -211,6 +212,7 @@ GPU_IDS=""
 BATCH_SIZE=16
 SERVER_MODE=1
 TAR_DIR=""
+IMAGE_DIR=""
 WEIGHTS_DIR=""
 C4_LANG="en"
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
@@ -236,6 +238,7 @@ while [ "$#" -gt 0 ]; do
         --server_mode) SERVER_MODE="$2"; shift 2 ;;
         --venv_path)   VENV_PATH="$2";  shift 2 ;;
         --tar_dir)     TAR_DIR="$2";     shift 2 ;;
+        --image_dir)   IMAGE_DIR="$2";   shift 2 ;;
         --weights_dir) WEIGHTS_DIR="$2"; shift 2 ;;
         --c4_lang)     C4_LANG="$2";     shift 2 ;;
         *) echo "Unknown option: $1"; exit 1 ;;
@@ -308,8 +311,14 @@ echo "  Component: $COMPONENT"
 echo "  Priority : $PRIORITY"
 echo "  Mode     : $MODE  (Detected GPUs: $NUM_GPUS)"
 echo "  Tar Dir  : $TAR_DIR"
+echo "  Image Dir: ${IMAGE_DIR:-<none>}"
 echo "  WeightsDir: $WEIGHTS_DIR"
 echo "=============================================="
+
+IMAGE_DIR_ARGS=()
+if [ -n "$IMAGE_DIR" ]; then
+    IMAGE_DIR_ARGS=(--image_dir "$IMAGE_DIR")
+fi
 
 # ── 실행 ─────────────────────────────────────────────────────────────────────
 if [ "$MODE" = "single" ]; then
@@ -323,7 +332,8 @@ if [ "$MODE" = "single" ]; then
         --priority       "$PRIORITY" \
         --batch_size     "$BATCH_SIZE" \
         --weights_dir    "$WEIGHTS_DIR" \
-        --c4_lang        "$C4_LANG"
+        --c4_lang        "$C4_LANG" \
+        "${IMAGE_DIR_ARGS[@]}"
 elif [ "$MODE" = "multi" ]; then
     echo "[MODE] Multi-GPU (No Ray, sharded single-process workers)"
 
@@ -372,7 +382,8 @@ elif [ "$MODE" = "multi" ]; then
             --priority       "$PRIORITY" \
             --batch_size     "$BATCH_SIZE" \
             --weights_dir    "$WEIGHTS_DIR" \
-            --c4_lang        "$C4_LANG"
+            --c4_lang        "$C4_LANG" \
+            "${IMAGE_DIR_ARGS[@]}"
     else
         TMP_DIR="${OUTPUT_JSONL}.shards.$$"
         mkdir -p "$TMP_DIR"
@@ -397,6 +408,7 @@ elif [ "$MODE" = "multi" ]; then
                 --batch_size     "$BATCH_SIZE" \
                 --weights_dir    "$WEIGHTS_DIR" \
                 --c4_lang        "$C4_LANG" \
+                "${IMAGE_DIR_ARGS[@]}" \
                 --num_shards     "$WORKERS" \
                 --shard_index    "$i" \
                 >"$SHARD_LOG" 2>&1 &
@@ -440,6 +452,7 @@ else
         --batch_size     "$BATCH_SIZE" \
         --weights_dir    "$WEIGHTS_DIR" \
         --c4_lang        "$C4_LANG" \
+        "${IMAGE_DIR_ARGS[@]}" \
         $WORKERS_ARG
 fi
 

@@ -3,7 +3,7 @@
 # ==============================================================================
 # Filter Shutterstock Dataset 
 # ==============================================================================
-# Usage: ./run_filter.sh [BUCKET] [OUTPUT_FILE] [POOL_SIZE] [TOP_PERCENTILE] [SERVER_MODE]
+# Usage: ./run_filter.sh [BUCKET] [OUTPUT_FILE] [POOL_SIZE] [TOP_PERCENTILE] [SERVER_MODE] [CURATED_IMAGE_DIR] [CURATED_IMAGE_SKIP_EXISTING]
 # Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/10K_local/filtered_sstk_100.parquet 10000 0.2 0 2>&1 | tee data/SSTK/10K_local/filter_debug.log
 # Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/10K/filtered_sstk_100.parquet 10000 0.2 1 2>&1 | tee data/SSTK/10K/filter_debug.log
 # Ex) bash ./src/scripts/run_filter.sh sstk_100 data/SSTK/100K/filtered_sstk_100.parquet 1000000 0.5 1 2>&1 | tee data/SSTK/100K/filter_debug.log
@@ -15,6 +15,8 @@
 #   POOL_SIZE      : 최종 선별할 curated pool 사이즈. 0일 경우 샘플링 안함. (기본값: 1000000)
 #   TOP_PERCENTILE : 각 카테고리별 Aesthetic 점수 상위 비율 (e.g. 0.5 = 상위 50%) (기본값: 0.5)
 #   SERVER_MODE    : 서버 환경 여부 (1일 경우 로컬 가상환경 비활성화) (기본값: 1)
+#   CURATED_IMAGE_DIR : curated 이미지를 추출 저장할 디렉토리 (기본값: 비활성)
+#   CURATED_IMAGE_SKIP_EXISTING : curated 이미지 저장 시 기존 파일 skip 여부 (기본값: 1)
 #   2>&1 | tee data/SSTK/filter_debug.log : 로그를 파일로 저장하고 싶을 때 사용
 # ==============================================================================
 
@@ -33,6 +35,8 @@ OUTPUT_FILE=${2:-"${OUTPUT_DIR}/filtered_${BUCKET}.parquet"}
 POOL_SIZE=${3:-1000000}
 TOP_PERCENTILE=${4:-0.5}
 SERVER_MODE=${5:-1}
+CURATED_IMAGE_DIR=${6:-""}
+CURATED_IMAGE_SKIP_EXISTING=${7:-1}
 
 # 가상환경 활성화 (서버 모드가 아닐 경우에만)
 if [ "$SERVER_MODE" -ne 1 ]; then
@@ -68,7 +72,19 @@ echo "Curated Pool Size : $POOL_SIZE"
 # bash bc 활용 (혹은 awk)
 PCT=$(awk -v pr="$TOP_PERCENTILE" 'BEGIN {print (pr * 100)}')
 echo "Top Percentile    : ${PCT}%"
+if [ -n "$CURATED_IMAGE_DIR" ]; then
+  echo "Curated Image Dir : $CURATED_IMAGE_DIR"
+  echo "Curated Img Skip  : $CURATED_IMAGE_SKIP_EXISTING"
+fi
 echo "========================================="
+
+EXTRA_ARGS=()
+if [ -n "$CURATED_IMAGE_DIR" ]; then
+  EXTRA_ARGS+=(
+    --save_curated_images_dir "$CURATED_IMAGE_DIR"
+    --save_curated_images_skip_existing "$CURATED_IMAGE_SKIP_EXISTING"
+  )
+fi
 
 # 필터링 스크립트 실행
 python3 -u "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
@@ -79,7 +95,8 @@ python3 -u "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
     --output "$OUTPUT_FILE" \
     --curated_pool_size "$POOL_SIZE" \
     --top_percentile "$TOP_PERCENTILE" \
-    --server_mode "$SERVER_MODE"
+    --server_mode "$SERVER_MODE" \
+    "${EXTRA_ARGS[@]}"
 
 echo "Filtering completed."
 

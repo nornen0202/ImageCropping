@@ -30,6 +30,7 @@ from tqdm import tqdm
 from worker_core import (
     FeatureWorker,
     _get_tags,
+    iter_local_images,
     iter_tar_images,
     resolve_tar_path,
     resolve_weights_dir,
@@ -69,6 +70,7 @@ def parse_args():
                         help="Number of Ray workers (= GPUs to use). Default: auto-detect.")
     parser.add_argument("--weights_dir",  default="")
     parser.add_argument("--c4_lang",      default="en")
+    parser.add_argument("--image_dir",    default="", help="optional local curated image dir (<image_id>.<ext>)")
     return parser.parse_args()
 
 
@@ -92,6 +94,8 @@ def main():
 
     num_workers = args.num_workers or max(avail_gpus, 1)
     print(f"[Ray] Launching {num_workers} worker(s). Components: {comps}  Priority: {args.priority}")
+    if str(args.image_dir).strip():
+        print(f"[Ray] Image dir: {args.image_dir}")
 
     workers = [
         RayFeatureWorker.remote(
@@ -132,13 +136,21 @@ def main():
 
         grouped = df.groupby("tar_name")
         for tar_name, group in tqdm(grouped, desc="Tars"):
-            tar_path = resolve_tar_path(args.tar_dir, args.bucket, tar_name)
-            if tar_path is None:
-                print(f"  [SKIP] tar not found: {tar_name}")
-                continue
-
             id_to_row = {str(r["image_id"]): r for _, r in group.iterrows()}
-            id_to_img = dict(iter_tar_images(tar_path, list(id_to_row.keys())))
+            wanted_ids = list(id_to_row.keys())
+            id_to_img = {}
+            if str(args.image_dir).strip():
+                id_to_img = dict(iter_local_images(str(args.image_dir), wanted_ids))
+
+            missing_ids = [iid for iid in wanted_ids if iid not in id_to_img]
+            if missing_ids:
+                tar_path = resolve_tar_path(args.tar_dir, args.bucket, tar_name)
+                if tar_path is None:
+                    if not id_to_img:
+                        print(f"  [SKIP] tar not found: {tar_name}")
+                        continue
+                else:
+                    id_to_img.update(dict(iter_tar_images(tar_path, missing_ids)))
 
             batch_all = []
             for img_id, img in id_to_img.items():

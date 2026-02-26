@@ -241,6 +241,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--c1_jsonl", default="")
     p.add_argument("--parquet", default="", help="filtered parquet with tar_name/bucket for crop loading")
     p.add_argument("--tar_dir", default="", help="SSTK tar root directory")
+    p.add_argument("--image_dir", default="", help="optional local curated image dir (<image_id>.<ext>)")
     p.add_argument("--output_jsonl", required=True)
     p.add_argument("--output_overview_json", required=True)
     p.add_argument("--output_overview_by_ar_csv", default="")
@@ -434,6 +435,53 @@ def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
         if p and os.path.exists(p):
             return p
     return None
+
+
+def build_local_image_index(image_dir: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    if not image_dir or not os.path.isdir(image_dir):
+        return out
+    try:
+        for name in os.listdir(image_dir):
+            p = os.path.join(image_dir, name)
+            if not os.path.isfile(p):
+                continue
+            stem, ext = os.path.splitext(name)
+            if not stem:
+                continue
+            if ext.lower().lstrip(".") not in DEFAULT_IMAGE_EXTS:
+                continue
+            if stem not in out:
+                out[stem] = p
+    except Exception:
+        return {}
+    return out
+
+
+class LocalImageLoader:
+    """
+    Local image loader for curated image cache directory.
+    """
+
+    def __init__(self, image_dir: str):
+        self.image_dir = image_dir
+        self._index = build_local_image_index(image_dir)
+
+    def close(self) -> None:
+        return
+
+    def load(self, image_id: str) -> Optional["Image.Image"]:
+        try:
+            from PIL import Image
+        except Exception:
+            return None
+        p = self._index.get(str(image_id))
+        if p is None:
+            return None
+        try:
+            return Image.open(p).convert("RGB")
+        except Exception:
+            return None
 
 
 class TarImageLoader:
@@ -2542,10 +2590,14 @@ def run(args: argparse.Namespace) -> None:
     if cfg.use_real_expensive:
         if c1_path is None or not c1_path.exists():
             raise FileNotFoundError("use_real_expensive=1 requires valid --c1_jsonl")
-        if parquet_path is None or not parquet_path.exists():
-            raise FileNotFoundError("use_real_expensive=1 requires valid --parquet")
-        if not str(args.tar_dir).strip():
-            raise ValueError("use_real_expensive=1 requires --tar_dir")
+        if str(args.image_dir).strip():
+            if not os.path.isdir(str(args.image_dir)):
+                raise FileNotFoundError(f"use_real_expensive=1 image_dir not found: {args.image_dir}")
+        else:
+            if parquet_path is None or not parquet_path.exists():
+                raise FileNotFoundError("use_real_expensive=1 requires valid --parquet (tar mode)")
+            if not str(args.tar_dir).strip():
+                raise ValueError("use_real_expensive=1 requires --tar_dir or --image_dir")
 
     out_jsonl.parent.mkdir(parents=True, exist_ok=True)
     out_overview_json.parent.mkdir(parents=True, exist_ok=True)
@@ -2555,7 +2607,7 @@ def run(args: argparse.Namespace) -> None:
     feat_map = load_feature_map(feat_path)
     c1_map: Dict[str, Dict[str, np.ndarray]] = {}
     tar_mapping: Dict[str, Dict[str, Any]] = {}
-    image_loader: Optional[TarImageLoader] = None
+    image_loader: Optional[Any] = None
     expensive_models: Optional[ExpensiveModels] = None
     expensive_ready = False
 
@@ -2566,8 +2618,11 @@ def run(args: argparse.Namespace) -> None:
 
         first_text = next(iter(c1_map.values()))["c1_txt_embed"]
         text_dim = int(first_text.shape[0])
-        tar_mapping = load_tar_mapping(parquet_path)
-        image_loader = TarImageLoader(mapping=tar_mapping, tar_dir=str(args.tar_dir))
+        if str(args.image_dir).strip():
+            image_loader = LocalImageLoader(image_dir=str(args.image_dir))
+        else:
+            tar_mapping = load_tar_mapping(parquet_path)
+            image_loader = TarImageLoader(mapping=tar_mapping, tar_dir=str(args.tar_dir))
         expensive_models = ExpensiveModels(
             text_dim=text_dim,
             align_model_name=str(args.align_model_name).strip(),
@@ -2703,6 +2758,7 @@ def run(args: argparse.Namespace) -> None:
             "c1_jsonl": str(c1_path) if c1_path is not None else None,
             "parquet": str(parquet_path) if parquet_path is not None else None,
             "tar_dir": str(args.tar_dir) if str(args.tar_dir).strip() else None,
+            "image_dir": str(args.image_dir) if str(args.image_dir).strip() else None,
             "num_shards": int(args.num_shards),
             "shard_index": int(args.shard_index),
         },

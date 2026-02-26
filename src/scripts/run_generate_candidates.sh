@@ -21,6 +21,7 @@
 #   --server_mode 0|1   (default: 0; 0 means local and venv activation)
 #   --venv_path PATH    (default: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate)
 #   --tar_dir PATH      (default: server_mode에 따라 자동 설정)
+#   --image_dir PATH    (optional) 로컬 curated 이미지 디렉토리(<image_id>.<ext>)
 #   --use_actual_image_size 0|1 (default: 1)
 #   --strict_actual_size 0|1    (default: 1)
 #
@@ -45,6 +46,7 @@ VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activ
 LOCAL_TAR_DIR="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"
 SERVER_TAR_DIR="/sstk/20230916/sstk_100"
 TAR_DIR=""
+IMAGE_DIR=""
 USE_ACTUAL_IMAGE_SIZE=1
 STRICT_ACTUAL_SIZE=1
 PASS_ARGS=()
@@ -61,6 +63,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --tar_dir)
       TAR_DIR="$2"
+      shift 2
+      ;;
+    --image_dir)
+      IMAGE_DIR="$2"
       shift 2
       ;;
     --use_actual_image_size)
@@ -107,6 +113,7 @@ echo "  Feats C3      : $FEATS_C3_JSONL"
 echo "  Output JSONL  : $OUTPUT_JSONL"
 echo "  Server Mode   : $SERVER_MODE"
 echo "  TAR_DIR       : $TAR_DIR"
+echo "  IMAGE_DIR     : ${IMAGE_DIR:-<none>}"
 echo "  use_actual    : $USE_ACTUAL_IMAGE_SIZE"
 echo "  strict_actual : $STRICT_ACTUAL_SIZE"
 if [ "${#PASS_ARGS[@]}" -gt 0 ]; then
@@ -122,6 +129,7 @@ python "$PY_SCRIPT" \
   --use_actual_image_size "$USE_ACTUAL_IMAGE_SIZE" \
   --strict_actual_size "$STRICT_ACTUAL_SIZE" \
   --tar_dir "$TAR_DIR" \
+  --image_dir "$IMAGE_DIR" \
   "${PASS_ARGS[@]}"
 
 echo "=============================================="

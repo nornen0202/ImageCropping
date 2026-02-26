@@ -39,6 +39,7 @@ from tqdm import tqdm
 from worker_core import (
     FeatureWorker,
     _get_tags,
+    iter_local_images,
     iter_tar_images,
     resolve_tar_path,
     resolve_weights_dir,
@@ -68,6 +69,7 @@ def parse_args():
     parser.add_argument("--batch_size",   type=int, default=16)
     parser.add_argument("--weights_dir",  default="", help="Directory containing C3 weights")
     parser.add_argument("--c4_lang",      default="en")
+    parser.add_argument("--image_dir",    default="", help="optional local curated image dir (<image_id>.<ext>)")
     parser.add_argument("--num_shards",   type=int, default=1, help="Dataset shard count for no-ray multi-gpu")
     parser.add_argument("--shard_index",  type=int, default=0, help="Current shard index [0, num_shards)")
     return parser.parse_args()
@@ -93,6 +95,8 @@ def main():
     weights_dir = resolve_weights_dir(args.weights_dir, __file__)
     print(f"[Single-GPU] Components: {comps}  Priority: {args.priority}")
     print(f"[Single-GPU] Weights dir: {weights_dir}")
+    if str(args.image_dir).strip():
+        print(f"[Single-GPU] Image dir: {args.image_dir}")
 
     # ── 모델 초기화 ────────────────────────────────────────────────────
     worker = FeatureWorker(
@@ -140,14 +144,21 @@ def main():
     with open(args.output_jsonl, "w") as out_f:
         grouped = df.groupby("tar_name")
         for tar_name, group in tqdm(grouped, desc="Tars"):
-            tar_path = resolve_tar_path(args.tar_dir, args.bucket, tar_name)
-            if tar_path is None:
-                print(f"  [SKIP] tar not found: {tar_name}")
-                continue
-
-            # tar에서 이미지 로드
             id_to_row = {str(r["image_id"]): r for _, r in group.iterrows()}
-            id_to_img  = dict(iter_tar_images(tar_path, list(id_to_row.keys())))
+            wanted_ids = list(id_to_row.keys())
+            id_to_img = {}
+            if str(args.image_dir).strip():
+                id_to_img = dict(iter_local_images(str(args.image_dir), wanted_ids))
+
+            missing_ids = [iid for iid in wanted_ids if iid not in id_to_img]
+            if missing_ids:
+                tar_path = resolve_tar_path(args.tar_dir, args.bucket, tar_name)
+                if tar_path is None:
+                    if not id_to_img:
+                        print(f"  [SKIP] tar not found: {tar_name}")
+                        continue
+                else:
+                    id_to_img.update(dict(iter_tar_images(tar_path, missing_ids)))
 
             # (image_id, PIL.Image, tags) 목록 구성
             batch_all = []

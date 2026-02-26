@@ -13,6 +13,8 @@ from typing import List, Optional, Tuple
 import pandas as pd
 from PIL import Image
 
+DEFAULT_IMAGE_EXTS = ("jpg", "jpeg", "png", "webp")
+
 
 def _get_tags(row) -> List[str]:
     """parquet 컬럼에서 태그 목록을 안전하게 추출."""
@@ -216,6 +218,37 @@ def iter_tar_images(tar_path: str, image_ids) -> List[Tuple]:
                         break
     except Exception as e:
         print(f"  [iter_tar_images] Error reading {tar_path}: {e}")
+    return result
+
+
+def iter_local_images(image_dir: str, image_ids) -> List[Tuple]:
+    """
+    로컬 이미지 디렉토리에서 image_id 목록의 PIL.Image를 읽어 반환.
+    파일명 규칙: <image_id>.<ext> (ext in DEFAULT_IMAGE_EXTS)
+    Returns list of (image_id, PIL.Image)
+    """
+    result = []
+    if not image_dir:
+        return result
+    if not os.path.isdir(image_dir):
+        print(f"  [iter_local_images] image_dir not found: {image_dir}")
+        return result
+
+    for iid in image_ids:
+        image_id = str(iid)
+        path = None
+        for ext in DEFAULT_IMAGE_EXTS:
+            cand = os.path.join(image_dir, f"{image_id}.{ext}")
+            if os.path.exists(cand):
+                path = cand
+                break
+        if path is None:
+            continue
+        try:
+            img = Image.open(path).convert("RGB")
+            result.append((image_id, img))
+        except Exception:
+            continue
     return result
 
 

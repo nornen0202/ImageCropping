@@ -26,6 +26,8 @@ import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 
+DEFAULT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
+
 
 def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
     if not tar_name:
@@ -40,9 +42,31 @@ def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
     return None
 
 
+def build_local_image_index(image_dir: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    if not image_dir or not os.path.isdir(image_dir):
+        return out
+    try:
+        for name in os.listdir(image_dir):
+            p = os.path.join(image_dir, name)
+            if not os.path.isfile(p):
+                continue
+            stem, ext = os.path.splitext(name)
+            if not stem:
+                continue
+            if ext.lower() not in DEFAULT_IMAGE_EXTS:
+                continue
+            if stem not in out:
+                out[stem] = p
+    except Exception:
+        return {}
+    return out
+
+
 def build_actual_size_map(
     df: pd.DataFrame,
     tar_dir: str,
+    image_dir: str = "",
     cache_json: Optional[Path] = None,
     use_cache_if_available: bool = True,
 ) -> Dict[str, Tuple[int, int]]:
@@ -56,18 +80,44 @@ def build_actual_size_map(
         if out:
             return out
 
+    out: Dict[str, Tuple[int, int]] = {}
+    remaining = {str(x) for x in df["image_id"].astype(str).tolist()}
+
+    local_index = build_local_image_index(image_dir)
+    if local_index:
+        for img_id in list(remaining):
+            p = local_index.get(img_id)
+            if p is None:
+                continue
+            try:
+                with Image.open(p) as im:
+                    out[img_id] = (int(im.width), int(im.height))
+                remaining.remove(img_id)
+            except Exception:
+                continue
+
+    if not remaining:
+        if cache_json is not None:
+            cache_json.parent.mkdir(parents=True, exist_ok=True)
+            with cache_json.open("w", encoding="utf-8") as f:
+                json.dump({k: [int(v[0]), int(v[1])] for k, v in out.items()}, f, ensure_ascii=False)
+        return out
+
+    if not str(tar_dir).strip():
+        return out
     if "tar_name" not in df.columns:
-        return {}
+        return out
 
     by_tar: Dict[str, list[Tuple[str, str]]] = defaultdict(list)
     has_bucket = "bucket" in df.columns
     for _, row in df.iterrows():
         img_id = str(row["image_id"])
+        if img_id not in remaining:
+            continue
         tar_name = str(row["tar_name"])
         bucket = str(row["bucket"]) if has_bucket else ""
         by_tar[tar_name].append((img_id, bucket))
 
-    out: Dict[str, Tuple[int, int]] = {}
     for tar_name, items in tqdm(by_tar.items(), total=len(by_tar), desc="size-map"):
         bucket = items[0][1] if items else ""
         tar_path = resolve_tar_path(tar_dir=tar_dir, bucket=bucket, tar_name=tar_name)
@@ -111,6 +161,7 @@ def _load_hw_map(
     *,
     use_actual_image_size: bool,
     tar_dir: str,
+    image_dir: str,
     actual_size_cache_json: Optional[Path],
 ) -> Dict[str, Tuple[int, int]]:
     cols = ["image_id", "width", "height"]
@@ -127,14 +178,15 @@ def _load_hw_map(
 
     if not use_actual_image_size:
         return out
-    if not tar_dir.strip():
-        raise ValueError("use_actual_image_size=1 requires --tar_dir")
-    if "tar_name" not in df.columns:
-        raise ValueError("use_actual_image_size=1 requires parquet columns: tar_name")
+    if not tar_dir.strip() and not image_dir.strip():
+        raise ValueError("use_actual_image_size=1 requires --tar_dir or --image_dir")
+    if not image_dir.strip() and "tar_name" not in df.columns:
+        raise ValueError("use_actual_image_size=1 with tar mode requires parquet columns: tar_name")
 
     actual_map = build_actual_size_map(
         df=df,
         tar_dir=tar_dir,
+        image_dir=image_dir,
         cache_json=actual_size_cache_json,
         use_cache_if_available=True,
     )
@@ -151,6 +203,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output_jsonl", required=True)
     p.add_argument("--use_actual_image_size", type=int, default=1, help="1=use TAR actual image size")
     p.add_argument("--tar_dir", default="", help="required when use_actual_image_size=1")
+    p.add_argument("--image_dir", default="", help="optional local curated image dir (<image_id>.<ext>)")
     p.add_argument("--actual_size_cache_json", default="", help="optional image_id->(w,h) cache json")
     return p.parse_args()
 
@@ -330,6 +383,7 @@ def main() -> None:
         parquet_path=pq_path,
         use_actual_image_size=bool(int(args.use_actual_image_size)),
         tar_dir=str(args.tar_dir),
+        image_dir=str(args.image_dir),
         actual_size_cache_json=Path(args.actual_size_cache_json) if args.actual_size_cache_json else None,
     )
 

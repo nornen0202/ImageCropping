@@ -78,6 +78,7 @@ FEATURES_JSONL="data/SSTK/10K_local/feats_c2c3c5_v2_strict_enriched.jsonl"
 C1_JSONL="data/SSTK/10K_local/feats_c1.jsonl"
 PARQUET="data/SSTK/10K_local/filtered_sstk_100.parquet"
 TAR_DIR=""
+IMAGE_DIR=""
 SERVER_MODE=0
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
 LOCAL_TAR_DIR="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"
@@ -122,6 +123,7 @@ while [ "$#" -gt 0 ]; do
     --c1_jsonl) C1_JSONL="$2"; shift 2 ;;
     --parquet) PARQUET="$2"; shift 2 ;;
     --tar_dir) TAR_DIR="$2"; shift 2 ;;
+    --image_dir) IMAGE_DIR="$2"; shift 2 ;;
     --server_mode) SERVER_MODE="$2"; shift 2 ;;
     --venv_path) VENV_PATH="$2"; shift 2 ;;
 
@@ -184,7 +186,7 @@ if [ "$SERVER_MODE" -ne 1 ]; then
   fi
 fi
 
-echo "[config] server_mode=$SERVER_MODE tar_dir=$TAR_DIR"
+echo "[config] server_mode=$SERVER_MODE tar_dir=$TAR_DIR image_dir=${IMAGE_DIR:-<none>}"
 
 echo "[1/3] Running teacher scorer..."
 run_teacher_one() {
@@ -201,6 +203,7 @@ run_teacher_one() {
     --c1_jsonl "$C1_JSONL" \
     --parquet "$PARQUET" \
     --tar_dir "$TAR_DIR" \
+    --image_dir "$IMAGE_DIR" \
     --output_jsonl "$out_jsonl" \
     --output_overview_json "$out_over_json" \
     --output_overview_by_ar_csv "$out_over_csv" \

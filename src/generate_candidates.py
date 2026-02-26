@@ -41,6 +41,8 @@ DEFAULT_JITTER_FRACS = (0.0, 0.03, 0.06)
 DEFAULT_JITTER_SCALES = (0.45, 0.55, 0.65)
 DEFAULT_PHI_SCALES = (0.35, 0.55, 0.75)
 DEFAULT_OBJ_TEMPLATE_SCALES = (1.1, 1.25, 1.45)
+DEFAULT_TEACHER_JITTER_SHIFT_FRACS = (0.03,)
+DEFAULT_TEACHER_JITTER_SCALES = (0.92, 1.00, 1.08)
 
 COPYSPACE_HINT_WORDS = (
     "copy space",
@@ -52,6 +54,7 @@ COPYSPACE_HINT_WORDS = (
     "banner",
     "template",
 )
+DEFAULT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 
 
 @dataclass
@@ -73,6 +76,13 @@ class CandidateGenConfig:
     phi_scales: Tuple[float, ...] = DEFAULT_PHI_SCALES
     object_template_scales: Tuple[float, ...] = DEFAULT_OBJ_TEMPLATE_SCALES
     min_subject_size: float = 0.08
+    teacher_nms_iou: float = 0.95
+    teacher_max_seeds_per_teacher: int = 1
+    teacher_prefer_expand: bool = True
+    teacher_jitter_shift_fracs: Tuple[float, ...] = DEFAULT_TEACHER_JITTER_SHIFT_FRACS
+    teacher_jitter_scales: Tuple[float, ...] = DEFAULT_TEACHER_JITTER_SCALES
+    teacher_seed_priority: float = 6.5
+    teacher_jitter_priority: float = 6.2
 
 
 def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
@@ -88,9 +98,31 @@ def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
     return None
 
 
+def build_local_image_index(image_dir: str) -> Dict[str, str]:
+    out: Dict[str, str] = {}
+    if not image_dir or not os.path.isdir(image_dir):
+        return out
+    try:
+        for name in os.listdir(image_dir):
+            p = os.path.join(image_dir, name)
+            if not os.path.isfile(p):
+                continue
+            stem, ext = os.path.splitext(name)
+            if not stem:
+                continue
+            if ext.lower() not in DEFAULT_IMAGE_EXTS:
+                continue
+            if stem not in out:
+                out[stem] = p
+    except Exception:
+        return {}
+    return out
+
+
 def build_actual_size_map(
     df: pd.DataFrame,
     tar_dir: str,
+    image_dir: str = "",
     cache_json: Optional[Path] = None,
     use_cache_if_available: bool = True,
 ) -> Dict[str, Tuple[int, int]]:
@@ -111,18 +143,44 @@ def build_actual_size_map(
         if out:
             return out
 
+    out: Dict[str, Tuple[int, int]] = {}
+    remaining = {str(x) for x in df["image_id"].astype(str).tolist()}
+
+    local_index = build_local_image_index(image_dir)
+    if local_index:
+        for img_id in list(remaining):
+            p = local_index.get(img_id)
+            if p is None:
+                continue
+            try:
+                with Image.open(p) as im:
+                    out[img_id] = (int(im.width), int(im.height))
+                remaining.remove(img_id)
+            except Exception:
+                continue
+
+    if not remaining:
+        if cache_json is not None:
+            cache_json.parent.mkdir(parents=True, exist_ok=True)
+            with cache_json.open("w", encoding="utf-8") as f:
+                json.dump({k: [int(v[0]), int(v[1])] for k, v in out.items()}, f, ensure_ascii=False)
+        return out
+
+    if not str(tar_dir).strip():
+        return out
     if "tar_name" not in df.columns:
-        raise ValueError("use_actual_image_size=1 requires parquet column 'tar_name'")
+        raise ValueError("use_actual_image_size=1 with tar mode requires parquet column 'tar_name'")
 
     by_tar: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
     has_bucket = "bucket" in df.columns
     for _, row in df.iterrows():
         img_id = str(row["image_id"])
+        if img_id not in remaining:
+            continue
         tar_name = str(row["tar_name"])
         bucket = str(row["bucket"]) if has_bucket else ""
         by_tar[tar_name].append((img_id, bucket))
 
-    out: Dict[str, Tuple[int, int]] = {}
     for tar_name, items in tqdm(by_tar.items(), total=len(by_tar), desc="size-map"):
         bucket = items[0][1] if items else ""
         tar_path = resolve_tar_path(tar_dir=tar_dir, bucket=bucket, tar_name=tar_name)
@@ -168,12 +226,27 @@ def parse_ar(ar_text: str) -> float:
     return float(t)
 
 
+def parse_ar_loose(ar_text: str) -> float:
+    t = str(ar_text).strip().lower().replace("x", ":")
+    return parse_ar(t)
+
+
 def ar_token(ar_text: str) -> str:
     return ar_text.strip().replace(":", "x")
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
     return max(lo, min(v, hi))
+
+
+def safe_float(v: Any, default: float = 0.0) -> float:
+    try:
+        x = float(v)
+    except Exception:
+        return float(default)
+    if not math.isfinite(x):
+        return float(default)
+    return x
 
 
 def norm_box_xyxy(box: Sequence[float], width: float, height: float) -> List[float]:
@@ -246,6 +319,262 @@ def iou_xyxy(a: Sequence[float], b: Sequence[float]) -> float:
     if ua <= 0:
         return 0.0
     return inter / ua
+
+
+def clip_box01(box: Sequence[float]) -> List[float]:
+    x1, y1, x2, y2 = [safe_float(v) for v in box]
+    x1 = clamp(x1, 0.0, 1.0)
+    y1 = clamp(y1, 0.0, 1.0)
+    x2 = clamp(x2, 0.0, 1.0)
+    y2 = clamp(y2, 0.0, 1.0)
+    if x2 < x1:
+        x1, x2 = x2, x1
+    if y2 < y1:
+        y1, y2 = y2, y1
+    return [x1, y1, x2, y2]
+
+
+def normalize_teacher_box(item: Any) -> Optional[List[float]]:
+    box = None
+    if isinstance(item, (list, tuple)) and len(item) == 4:
+        box = [safe_float(v) for v in item]
+    elif isinstance(item, dict):
+        for k in (
+            "bbox_norm_xyxy",
+            "bbox_norm",
+            "bbox",
+            "box_norm_xyxy",
+            "box_norm",
+            "box",
+        ):
+            v = item.get(k)
+            if isinstance(v, (list, tuple)) and len(v) == 4:
+                box = [safe_float(x) for x in v]
+                break
+    if box is None:
+        return None
+    box = clip_box01(box)
+    if box_area(box) <= 1e-8:
+        return None
+    return [round(v, 6) for v in box]
+
+
+def extract_teacher_score(item: Any) -> Optional[float]:
+    if not isinstance(item, dict):
+        return None
+    for k in ("teacher_score", "score", "conf", "confidence"):
+        if k in item:
+            return safe_float(item.get(k), 0.0)
+    return None
+
+
+def normalize_teacher_id(v: Any) -> str:
+    t = str(v).strip().lower()
+    if not t:
+        return "unknown"
+    return t.replace(" ", "_")
+
+
+def parse_teacher_proposal_list(payload: Any) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    if not isinstance(payload, (list, tuple)):
+        return out
+    for item in payload:
+        box = normalize_teacher_box(item)
+        if box is None:
+            continue
+        out.append(
+            {
+                "bbox_norm_xyxy": box,
+                "teacher_score": extract_teacher_score(item),
+            }
+        )
+    return out
+
+
+def parse_teacher_payload(payload: Any) -> Dict[str, Any]:
+    out = {
+        "free_form": [],
+        "by_ar": {},
+    }
+
+    if isinstance(payload, (list, tuple)):
+        out["free_form"] = parse_teacher_proposal_list(payload)
+        return out
+
+    if not isinstance(payload, dict):
+        return out
+
+    free_form = []
+    for k in ("free_form", "freeform", "seed", "seeds", "proposals"):
+        if k in payload:
+            free_form.extend(parse_teacher_proposal_list(payload.get(k)))
+    out["free_form"] = free_form
+
+    by_ar_raw = (
+        payload.get("by_ar")
+        or payload.get("proposals_by_ar")
+        or payload.get("target_ar")
+        or payload.get("ar_specific")
+        or {}
+    )
+    by_ar: Dict[str, List[Dict[str, Any]]] = {}
+    if isinstance(by_ar_raw, dict):
+        for ar_key, arr in by_ar_raw.items():
+            items = parse_teacher_proposal_list(arr)
+            if items:
+                by_ar[str(ar_key)] = items
+    out["by_ar"] = by_ar
+    return out
+
+
+def load_teacher_proposals_map(paths: Sequence[Path]) -> Dict[str, Dict[str, Dict[str, Any]]]:
+    """
+    Parse teacher proposal jsonl(s).
+
+    Canonical output:
+    {
+      image_id: {
+        teacher_id: {
+          "free_form": [{"bbox_norm_xyxy":[...], "teacher_score":...}, ...],
+          "by_ar": {"1:1": [...], ...}
+        }
+      }
+    }
+    """
+    out: Dict[str, Dict[str, Dict[str, Any]]] = defaultdict(dict)
+
+    def _merge_teacher_payload(
+        image_id: str,
+        teacher_id: str,
+        parsed: Dict[str, Any],
+    ) -> None:
+        if not parsed["free_form"] and not parsed["by_ar"]:
+            return
+        t_map = out[image_id].setdefault(teacher_id, {"free_form": [], "by_ar": {}})
+        t_map["free_form"].extend(parsed["free_form"])
+        for ar_text, arr in parsed["by_ar"].items():
+            t_map["by_ar"].setdefault(ar_text, [])
+            t_map["by_ar"][ar_text].extend(arr)
+
+    for path in paths:
+        if not path.exists():
+            continue
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    d = json.loads(line)
+                except Exception:
+                    continue
+                image_id = str(d.get("image_id", "")).strip()
+                if not image_id:
+                    continue
+
+                # Format A: {"teacher_proposals": {"gaic": {...}, ...}}
+                block = d.get("teacher_proposals") or d.get("proposals_by_teacher")
+                if isinstance(block, dict):
+                    for teacher_id, payload in block.items():
+                        _merge_teacher_payload(
+                            image_id=image_id,
+                            teacher_id=normalize_teacher_id(teacher_id),
+                            parsed=parse_teacher_payload(payload),
+                        )
+                    continue
+
+                # Format B: {"teachers":[{"teacher_id":"gaic", ...}, ...]}
+                teachers = d.get("teachers")
+                if isinstance(teachers, list):
+                    for t in teachers:
+                        if not isinstance(t, dict):
+                            continue
+                        teacher_id = normalize_teacher_id(t.get("teacher_id", "unknown"))
+                        _merge_teacher_payload(
+                            image_id=image_id,
+                            teacher_id=teacher_id,
+                            parsed=parse_teacher_payload(t),
+                        )
+                    continue
+
+                # Format C: single-teacher line.
+                teacher_id = d.get("teacher_id")
+                if teacher_id is not None:
+                    _merge_teacher_payload(
+                        image_id=image_id,
+                        teacher_id=normalize_teacher_id(teacher_id),
+                        parsed=parse_teacher_payload(d),
+                    )
+    return {k: v for k, v in out.items()}
+
+
+def project_box_to_ar(
+    box: Sequence[float],
+    target_ar: float,
+    prefer_expand: bool = True,
+) -> List[float]:
+    """
+    Project a normalized box to target AR while keeping center as stable as possible.
+    """
+    x1, y1, x2, y2 = clip_box01(box)
+    cx, cy = box_center([x1, y1, x2, y2])
+    w, h = box_wh([x1, y1, x2, y2])
+    w = max(w, 1e-6)
+    h = max(h, 1e-6)
+    ar = w / h
+    ar_t = max(target_ar, 1e-6)
+
+    if abs(ar - ar_t) <= 1e-6:
+        return [x1, y1, x2, y2]
+
+    if ar < ar_t:
+        # box is too tall.
+        if prefer_expand:
+            w2 = min(h * ar_t, 1.0)
+            h2 = w2 / ar_t
+        else:
+            h2 = min(w / ar_t, 1.0)
+            w2 = h2 * ar_t
+    else:
+        # box is too wide.
+        if prefer_expand:
+            h2 = min(w / ar_t, 1.0)
+            w2 = h2 * ar_t
+        else:
+            w2 = min(h * ar_t, 1.0)
+            h2 = w2 / ar_t
+
+    # Ensure inside [0,1] bounds while preserving AR.
+    if w2 > 1.0:
+        w2 = 1.0
+        h2 = w2 / ar_t
+    if h2 > 1.0:
+        h2 = 1.0
+        w2 = h2 * ar_t
+
+    x1n = cx - 0.5 * w2
+    x2n = cx + 0.5 * w2
+    y1n = cy - 0.5 * h2
+    y2n = cy + 0.5 * h2
+
+    dx = 0.0
+    if x1n < 0.0:
+        dx = -x1n
+    elif x2n > 1.0:
+        dx = 1.0 - x2n
+    x1n += dx
+    x2n += dx
+
+    dy = 0.0
+    if y1n < 0.0:
+        dy = -y1n
+    elif y2n > 1.0:
+        dy = 1.0 - y2n
+    y1n += dy
+    y2n += dy
+
+    return clip_box01([x1n, y1n, x2n, y2n])
 
 
 def dedupe_by_rounded_box(
@@ -456,30 +785,34 @@ def add_candidate(
     scale_idx: str,
     must_keep: bool = False,
     priority: float = 0.0,
-) -> None:
+    source_types: Optional[Sequence[str]] = None,
+    extra: Optional[Dict[str, Any]] = None,
+) -> Optional[Dict[str, Any]]:
     x1, y1, x2, y2 = [float(v) for v in box]
     if x1 < 0 or y1 < 0 or x2 > 1 or y2 > 1:
-        return
+        return None
     if x2 <= x1 or y2 <= y1:
-        return
+        return None
     b = [x1, y1, x2, y2]
     area = box_area(b)
     if area < a_min or area > a_max:
-        return
+        return None
     ar_val = actual_ar(b, image_ar)
     if abs(ar_val - target_ar) > ar_tol:
-        return
-    out.append(
-        {
-            "bbox_norm_xyxy": [round(x1, 6), round(y1, 6), round(x2, 6), round(y2, 6)],
-            "area_ratio": round(area, 6),
-            "source_types": [source],
-            "source": source,
-            "scale_idx": str(scale_idx),
-            "must_keep": bool(must_keep),
-            "priority": float(priority),
-        }
-    )
+        return None
+    cand = {
+        "bbox_norm_xyxy": [round(x1, 6), round(y1, 6), round(x2, 6), round(y2, 6)],
+        "area_ratio": round(area, 6),
+        "source_types": list(source_types) if source_types else [source],
+        "source": source,
+        "scale_idx": str(scale_idx),
+        "must_keep": bool(must_keep),
+        "priority": float(priority),
+    }
+    if extra:
+        cand.update(extra)
+    out.append(cand)
+    return cand
 
 
 def add_center_area_box(
@@ -494,7 +827,7 @@ def add_center_area_box(
     scale_idx: str,
     must_keep: bool = False,
     priority: float = 0.0,
-) -> None:
+) -> Optional[Dict[str, Any]]:
     w_norm = math.sqrt(max(area_t, 1e-12) * target_ar / image_ar)
     h_norm = math.sqrt(max(area_t, 1e-12) * image_ar / target_ar)
     x1 = cx - w_norm * 0.5
@@ -502,7 +835,7 @@ def add_center_area_box(
     x2 = cx + w_norm * 0.5
     y2 = cy + h_norm * 0.5
 
-    add_candidate(
+    return add_candidate(
         out=out,
         box=[x1, y1, x2, y2],
         image_ar=image_ar,
@@ -654,6 +987,233 @@ def generate_baseline_candidates(
     return cands
 
 
+def _teacher_ar_match(
+    by_ar: Dict[str, List[Dict[str, Any]]],
+    target_ar: float,
+    ar_tol: float,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    for ar_text, arr in by_ar.items():
+        try:
+            ar_val = parse_ar_loose(ar_text)
+        except Exception:
+            continue
+        if abs(ar_val - target_ar) <= max(1e-4, ar_tol):
+            out.extend(arr)
+    return out
+
+
+def _teacher_jitter_boxes(
+    seed_box: Sequence[float],
+    target_norm_ar: float,
+    cfg: CandidateGenConfig,
+) -> List[List[float]]:
+    cx, cy = box_center(seed_box)
+    sw, sh = box_wh(seed_box)
+    sw = max(sw, 1e-6)
+    sh = max(sh, 1e-6)
+
+    shift_vals = [0.0]
+    for frac in cfg.teacher_jitter_shift_fracs:
+        f = abs(float(frac))
+        if f <= 0:
+            continue
+        shift_vals.extend([-f, f])
+    shift_vals = sorted(set(round(v, 6) for v in shift_vals))
+
+    out: List[List[float]] = []
+    for s in cfg.teacher_jitter_scales:
+        s = float(s)
+        if s <= 0:
+            continue
+        w2 = sw * s
+        h2 = sh * s
+        for dx in shift_vals:
+            for dy in shift_vals:
+                if abs(dx) <= 1e-12 and abs(dy) <= 1e-12 and abs(s - 1.0) <= 1e-12:
+                    continue
+                cx2 = cx + dx * sw
+                cy2 = cy + dy * sh
+                box0 = clip_box01(
+                    [
+                        cx2 - 0.5 * w2,
+                        cy2 - 0.5 * h2,
+                        cx2 + 0.5 * w2,
+                        cy2 + 0.5 * h2,
+                    ]
+                )
+                box1 = project_box_to_ar(
+                    box0,
+                    target_ar=target_norm_ar,
+                    prefer_expand=False,
+                )
+                if box_area(box1) <= 1e-8:
+                    continue
+                out.append([round(v, 6) for v in box1])
+    return out
+
+
+def inject_teacher_proposals(
+    out: List[Dict[str, Any]],
+    *,
+    target_ar: float,
+    target_ar_text: str,
+    image_ar: float,
+    teacher_proposals: Optional[Dict[str, Dict[str, Any]]],
+    cfg: CandidateGenConfig,
+    teacher_meta_out: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    """
+    Inject proposal-teacher seeds/projections/jitters into candidate pool.
+
+    Candidate-level source tags follow v1.9 design:
+    - "teacher:{teacher_id}" for seed/proj candidates
+    - "teacher:jitter" for local-neighborhood candidates
+    """
+    if not teacher_proposals:
+        return
+    target_norm_ar = max(float(target_ar) / max(float(image_ar), 1e-6), 1e-6)
+
+    for teacher_id in sorted(teacher_proposals.keys()):
+        payload = teacher_proposals.get(teacher_id, {})
+        if not isinstance(payload, dict):
+            continue
+        free_form = payload.get("free_form", [])
+        by_ar = payload.get("by_ar", {})
+        if not isinstance(by_ar, dict):
+            by_ar = {}
+
+        seed_budget = max(0, int(cfg.teacher_max_seeds_per_teacher))
+        if seed_budget <= 0:
+            continue
+
+        ar_specific = _teacher_ar_match(
+            by_ar=by_ar,
+            target_ar=target_ar,
+            ar_tol=max(cfg.ar_tol, 0.02),
+        )
+
+        used = 0
+
+        def _append_meta(
+            *,
+            stage: str,
+            box: Sequence[float],
+            score: Optional[float],
+        ) -> None:
+            if teacher_meta_out is None:
+                return
+            teacher_meta_out.append(
+                {
+                    "teacher_id": teacher_id,
+                    "target_ar": target_ar_text,
+                    "stage": stage,
+                    "bbox_norm_xyxy": [round(float(v), 6) for v in box],
+                    "bbox_norm": [round(float(v), 6) for v in box],
+                    "teacher_score": score,
+                }
+            )
+
+        def _add_seed_and_jitter(
+            *,
+            seed_box: Sequence[float],
+            seed_stage: str,
+            teacher_score: Optional[float],
+            seed_idx: int,
+        ) -> None:
+            scale_idx_seed = f"teach_{teacher_id}_{seed_stage}{seed_idx}"
+            seed_cand = add_candidate(
+                out=out,
+                box=seed_box,
+                image_ar=image_ar,
+                target_ar=target_ar,
+                ar_tol=cfg.ar_tol,
+                a_min=cfg.a_min,
+                a_max=cfg.a_max,
+                source=f"teacher:{teacher_id}",
+                source_types=[f"teacher:{teacher_id}"],
+                scale_idx=scale_idx_seed,
+                must_keep=False,
+                priority=cfg.teacher_seed_priority,
+                extra={
+                    "teacher_id": teacher_id,
+                    "teacher_score": teacher_score,
+                    "teacher_stage": seed_stage,
+                },
+            )
+            if seed_cand is not None:
+                _append_meta(stage=seed_stage, box=seed_cand["bbox_norm_xyxy"], score=teacher_score)
+
+            jitter_boxes = _teacher_jitter_boxes(
+                seed_box=seed_box,
+                target_norm_ar=target_norm_ar,
+                cfg=cfg,
+            )
+            for j_idx, jb in enumerate(jitter_boxes):
+                jitter_cand = add_candidate(
+                    out=out,
+                    box=jb,
+                    image_ar=image_ar,
+                    target_ar=target_ar,
+                    ar_tol=cfg.ar_tol,
+                    a_min=cfg.a_min,
+                    a_max=cfg.a_max,
+                    source="teacher:jitter",
+                    source_types=["teacher:jitter", f"teacher:{teacher_id}"],
+                    scale_idx=f"teach_{teacher_id}_jit{seed_idx}_{j_idx}",
+                    must_keep=False,
+                    priority=cfg.teacher_jitter_priority,
+                    extra={
+                        "teacher_id": teacher_id,
+                        "teacher_score": teacher_score,
+                        "teacher_stage": "jitter",
+                    },
+                )
+                if jitter_cand is not None:
+                    _append_meta(
+                        stage="jitter",
+                        box=jitter_cand["bbox_norm_xyxy"],
+                        score=teacher_score,
+                    )
+
+        for item in ar_specific:
+            if used >= seed_budget:
+                break
+            box = normalize_teacher_box(item)
+            if box is None:
+                continue
+            score = extract_teacher_score(item)
+            _add_seed_and_jitter(
+                seed_box=box,
+                seed_stage="seed",
+                teacher_score=score,
+                seed_idx=used,
+            )
+            used += 1
+
+        for item in free_form:
+            if used >= seed_budget:
+                break
+            seed_box = normalize_teacher_box(item)
+            if seed_box is None:
+                continue
+            score = extract_teacher_score(item)
+            _append_meta(stage="seed", box=seed_box, score=score)
+
+            proj_box = project_box_to_ar(
+                seed_box,
+                target_ar=target_norm_ar,
+                prefer_expand=cfg.teacher_prefer_expand,
+            )
+            _add_seed_and_jitter(
+                seed_box=proj_box,
+                seed_stage="proj",
+                teacher_score=score,
+                seed_idx=used,
+            )
+            used += 1
+
+
 def generate_candidates_for_ar(
     target_ar: float,
     target_ar_text: str,
@@ -662,6 +1222,8 @@ def generate_candidates_for_ar(
     subject_size: Tuple[float, float],
     has_copy_hint: bool,
     cfg: CandidateGenConfig,
+    teacher_proposals: Optional[Dict[str, Dict[str, Any]]] = None,
+    teacher_meta_out: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     # Core generation pipeline (design doc section 8):
     # baseline -> global grid -> subject templates -> saliency jitter -> phi/thirds
@@ -771,16 +1333,48 @@ def generate_candidates_for_ar(
                     priority=4.0,
                 )
 
-    # (E) Deduplicate and apply two-stage NMS:
+    # (E) v1.9: optional teacher proposal injection (free-form seed -> AR projection
+    # + local jitter neighborhood). This complements grid/rule blind spots.
+    inject_teacher_proposals(
+        out=all_cands,
+        target_ar=target_ar,
+        target_ar_text=target_ar_text,
+        image_ar=image_ar,
+        teacher_proposals=teacher_proposals,
+        cfg=cfg,
+        teacher_meta_out=teacher_meta_out,
+    )
+
+    # (F) Deduplicate and apply staged NMS:
     # keep critical baselines first, then suppress non-keep candidates against them.
     all_cands = dedupe_by_rounded_box(all_cands, ndigits=6)
     must_keep = [c for c in all_cands if c.get("must_keep", False)]
     non_keep = [c for c in all_cands if not c.get("must_keep", False)]
+    teacher_non_keep = [
+        c
+        for c in non_keep
+        if str(c.get("source", "")).startswith("teacher:")
+        or "teacher:jitter" in set(c.get("source_types", []))
+    ]
+    other_non_keep = [
+        c
+        for c in non_keep
+        if not (
+            str(c.get("source", "")).startswith("teacher:")
+            or "teacher:jitter" in set(c.get("source_types", []))
+        )
+    ]
 
     must_keep = nms_candidates(must_keep, iou_thr=0.98)
-    non_keep = nms_candidates(non_keep, iou_thr=cfg.nms_iou, existing=must_keep)
+    teacher_non_keep = nms_candidates(
+        teacher_non_keep,
+        iou_thr=cfg.teacher_nms_iou,
+        existing=must_keep,
+    )
+    other_non_keep = nms_candidates(other_non_keep, iou_thr=cfg.nms_iou, existing=must_keep)
+    non_keep = teacher_non_keep + other_non_keep
 
-    # (F) Respect candidate cap while preserving baselines:
+    # (G) Respect candidate cap while preserving baselines:
     # must-keep are never dropped by diversity sampling.
     if len(must_keep) >= cfg.max_candidates_per_ar:
         final_cands = sorted(
@@ -793,7 +1387,7 @@ def generate_candidates_for_ar(
         sampled_non_keep = diversity_sample(non_keep, k=rem)
         final_cands = must_keep + sampled_non_keep
 
-    # (G) Final deterministic ordering + AR-specific candidate ID assignment.
+    # (H) Final deterministic ordering + AR-specific candidate ID assignment.
     final_cands = sorted(
         final_cands,
         key=lambda c: (
@@ -829,7 +1423,7 @@ def load_jsonl_map(path: Path, value_key: str) -> Dict[str, Any]:
 
 def config_hash(cfg: CandidateGenConfig) -> str:
     payload = asdict(cfg)
-    payload["impl_version"] = "candidate_gen_v1_8"
+    payload["impl_version"] = "candidate_gen_v1_9"
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(blob).hexdigest()[:16]
 
@@ -843,6 +1437,7 @@ def build_output_record(
     cfg_hash: str,
     actual_size_map: Optional[Dict[str, Tuple[int, int]]] = None,
     strict_actual_size: bool = True,
+    teacher_proposals_map: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     img_id = str(row["image_id"])
     width_pq = int(row["width"])
@@ -875,12 +1470,17 @@ def build_output_record(
     cx, cy = float(subj["centroid"][0]), float(subj["centroid"][1])
     ws, hs = float(subj["size"][0]), float(subj["size"][1])
     copy_hint = has_copy_space_hint(tags)
+    teacher_payload = teacher_proposals_map.get(img_id, {}) if teacher_proposals_map else {}
 
     candidates_by_ar: Dict[str, List[Dict[str, Any]]] = {}
     per_ar_count: Dict[str, int] = {}
+    per_ar_teacher_count: Dict[str, int] = {}
+    iou_to_teacher_top1_by_ar: Dict[str, float] = {}
+    teacher_candidates: List[Dict[str, Any]] = []
     total_candidates = 0
     for ar_text in cfg.ar_list:
         ar_t = parse_ar(ar_text)
+        teacher_meta_ar: List[Dict[str, Any]] = []
         cands = generate_candidates_for_ar(
             target_ar=ar_t,
             target_ar_text=ar_text,
@@ -889,10 +1489,28 @@ def build_output_record(
             subject_size=(ws, hs),
             has_copy_hint=copy_hint,
             cfg=cfg,
+            teacher_proposals=teacher_payload,
+            teacher_meta_out=teacher_meta_ar,
         )
         candidates_by_ar[ar_text] = cands
         per_ar_count[ar_text] = len(cands)
         total_candidates += len(cands)
+        if teacher_meta_ar:
+            teacher_candidates.extend(teacher_meta_ar)
+            per_ar_teacher_count[ar_text] = len(teacher_meta_ar)
+            seed_boxes = [
+                m["bbox_norm_xyxy"]
+                for m in teacher_meta_ar
+                if str(m.get("stage", "")) in {"seed", "proj"}
+            ]
+            if seed_boxes and cands:
+                top1_box = cands[0]["bbox_norm_xyxy"]
+                iou_to_teacher_top1_by_ar[ar_text] = round(
+                    max(iou_xyxy(top1_box, b) for b in seed_boxes),
+                    6,
+                )
+            else:
+                iou_to_teacher_top1_by_ar[ar_text] = 0.0
 
     return {
         "image_id": img_id,
@@ -913,10 +1531,15 @@ def build_output_record(
         "tags": tags,
         "subject_prior": subj,
         "candidate_gen_hash": cfg_hash,
+        "proposal_injected": bool(teacher_candidates),
+        "teacher_candidates": teacher_candidates,
+        "iou_to_teacher_top1_by_ar": iou_to_teacher_top1_by_ar,
         "candidates_by_ar": candidates_by_ar,
         "stats": {
             "num_candidates_total": int(total_candidates),
             "num_candidates_by_ar": per_ar_count,
+            "num_teacher_candidates_total": int(len(teacher_candidates)),
+            "num_teacher_candidates_by_ar": per_ar_teacher_count,
         },
     }
 
@@ -941,6 +1564,9 @@ def summarize_candidates_jsonl(
     subject_source_counter: Counter[str] = Counter()
     source_counter: Counter[str] = Counter()
     has_people_count = 0
+    proposal_injected_count = 0
+    teacher_stage_counter: Counter[str] = Counter()
+    teacher_id_counter: Counter[str] = Counter()
 
     per_ar_counts: Dict[str, List[int]] = defaultdict(list)
     source_by_ar: Dict[str, Counter[str]] = defaultdict(Counter)
@@ -981,6 +1607,14 @@ def summarize_candidates_jsonl(
                     source_counter[src] += 1
                     source_by_ar[ar_text][src] += 1
 
+            if bool(rec.get("proposal_injected", False)):
+                proposal_injected_count += 1
+            for tc in rec.get("teacher_candidates", []) or []:
+                if not isinstance(tc, dict):
+                    continue
+                teacher_stage_counter[str(tc.get("stage", "unknown"))] += 1
+                teacher_id_counter[str(tc.get("teacher_id", "unknown"))] += 1
+
     per_ar_summary: Dict[str, Dict[str, float]] = {}
     for ar_text in sorted(per_ar_counts.keys()):
         vals = per_ar_counts[ar_text]
@@ -1004,6 +1638,9 @@ def summarize_candidates_jsonl(
         "avg_image_ar": float(np.mean(image_ar_list)) if image_ar_list else 0.0,
         "subject_source_counts": dict(subject_source_counter),
         "has_people_rate": float(has_people_count / rows) if rows > 0 else 0.0,
+        "proposal_injected_rate": float(proposal_injected_count / rows) if rows > 0 else 0.0,
+        "teacher_stage_counts": dict(teacher_stage_counter),
+        "teacher_id_counts": dict(teacher_id_counter),
         "source_counts_overall": dict(source_counter),
         "per_ar_summary": per_ar_summary,
     }
@@ -1254,7 +1891,29 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--use_actual_image_size", type=int, default=1, help="1=use tar actual size for normalization")
     p.add_argument("--strict_actual_size", type=int, default=1, help="1=error when any image lacks actual TAR size")
     p.add_argument("--tar_dir", default="", help="required when use_actual_image_size=1")
+    p.add_argument("--image_dir", default="", help="optional local curated image dir (<image_id>.<ext>)")
     p.add_argument("--actual_size_cache_json", default="", help="optional cache for image_id->(w,h)")
+    p.add_argument(
+        "--teacher_proposals_jsonl",
+        nargs="+",
+        default=[],
+        help="optional proposal-teacher jsonl path(s) for v1.9 seed injection",
+    )
+    p.add_argument("--teacher_nms_iou", type=float, default=0.95)
+    p.add_argument("--teacher_max_seeds_per_teacher", type=int, default=1)
+    p.add_argument("--teacher_prefer_expand", type=int, default=1, help="1=expand-first AR projection")
+    p.add_argument(
+        "--teacher_jitter_shift_fracs",
+        nargs="+",
+        type=float,
+        default=list(DEFAULT_TEACHER_JITTER_SHIFT_FRACS),
+    )
+    p.add_argument(
+        "--teacher_jitter_scales",
+        nargs="+",
+        type=float,
+        default=list(DEFAULT_TEACHER_JITTER_SCALES),
+    )
 
     # Post-processing outputs: overview tables + visualization images.
     p.add_argument("--save_overview", type=int, default=1, help="1=save overview files")
@@ -1287,6 +1946,11 @@ def main() -> None:
         jitter_scales=tuple(float(x) for x in args.jitter_scales),
         use_phi_thirds=bool(args.use_phi_thirds),
         phi_scales=tuple(float(x) for x in args.phi_scales),
+        teacher_nms_iou=float(args.teacher_nms_iou),
+        teacher_max_seeds_per_teacher=int(args.teacher_max_seeds_per_teacher),
+        teacher_prefer_expand=bool(int(args.teacher_prefer_expand)),
+        teacher_jitter_shift_fracs=tuple(float(x) for x in args.teacher_jitter_shift_fracs),
+        teacher_jitter_scales=tuple(float(x) for x in args.teacher_jitter_scales),
     )
     cfg_hash = config_hash(cfg)
 
@@ -1306,12 +1970,18 @@ def main() -> None:
     c2_seg_map = load_jsonl_map(c2_path, value_key="c2_seg")
     c2_det_map = load_jsonl_map(c2_path, value_key="c2_det")
     c3_map = load_jsonl_map(c3_path, value_key="c3_pose")
+    teacher_proposal_paths = [Path(x) for x in args.teacher_proposals_jsonl if str(x).strip()]
+    teacher_proposals_map: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    if teacher_proposal_paths:
+        teacher_proposals_map = load_teacher_proposals_map(teacher_proposal_paths)
+
     c2_det_nonempty = sum(1 for v in c2_det_map.values() if isinstance(v, list) and len(v) > 0)
     c3_nonempty = sum(1 for v in c3_map.values() if isinstance(v, list) and len(v) > 0)
     print(
         f"[CandidateGen] rows={len(df)} c2_seg={len(c2_seg_map)} "
         f"c2_det={len(c2_det_map)}(nonempty={c2_det_nonempty}) "
-        f"c3={len(c3_map)}(nonempty={c3_nonempty}) cfg_hash={cfg_hash}"
+        f"c3={len(c3_map)}(nonempty={c3_nonempty}) "
+        f"teacher_proposals={len(teacher_proposals_map)} cfg_hash={cfg_hash}"
     )
 
     if args.max_images > 0:
@@ -1322,13 +1992,14 @@ def main() -> None:
 
     actual_size_map: Optional[Dict[str, Tuple[int, int]]] = None
     if bool(int(args.use_actual_image_size)):
-        if not str(args.tar_dir).strip():
-            raise ValueError("use_actual_image_size=1 requires --tar_dir")
+        if not str(args.tar_dir).strip() and not str(args.image_dir).strip():
+            raise ValueError("use_actual_image_size=1 requires --tar_dir or --image_dir")
         cache_path = Path(args.actual_size_cache_json) if args.actual_size_cache_json else None
         print("[CandidateGen] Building/loading actual TAR image-size map...")
         actual_size_map = build_actual_size_map(
             df=df,
             tar_dir=str(args.tar_dir),
+            image_dir=str(args.image_dir),
             cache_json=cache_path,
             use_cache_if_available=True,
         )
@@ -1350,6 +2021,7 @@ def main() -> None:
                 cfg_hash=cfg_hash,
                 actual_size_map=actual_size_map,
                 strict_actual_size=bool(int(args.strict_actual_size)),
+                teacher_proposals_map=teacher_proposals_map,
             )
             out_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             num_written += 1

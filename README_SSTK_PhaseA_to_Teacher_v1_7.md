@@ -65,6 +65,9 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --data_dir data/SSTK/10K_local \
   --bucket sstk_100 \
   --precompute_mode unified \
+  --export_curated_images 1 \
+  --curated_image_dir data/SSTK/10K_local/images \
+  --prefer_curated_images 1 \
   --run_tag v17_local
 ```
 
@@ -75,6 +78,9 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --data_dir data/SSTK/10K \
   --bucket sstk_100 \
   --precompute_mode unified \
+  --export_curated_images 1 \
+  --curated_image_dir data/SSTK/10K/images \
+  --prefer_curated_images 1 \
   --run_tag v17_server
 ```
 
@@ -86,19 +92,21 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --data_dir data/SSTK/10K_local \
   --run_filter 0 \
   --precompute_mode unified \
+  --curated_image_dir data/SSTK/10K_local/images \
+  --prefer_curated_images 1 \
   --extract_mode auto \
-  --extract_gpu_ids 0,1 \
-  --num_workers 2 \
+  --extract_gpu_ids 0,1,2,3 \
+  --num_workers 4 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1 \
-  --teacher_num_workers 2 \
+  --teacher_gpu_ids 0,1,2,3 \
+  --teacher_num_workers 4 \
   --align_device cuda \
   --aesthetic_device cuda \
-  --exp_batch_size 12 \
+  --exp_batch_size 128 \
   --skip_existing 0 \
-  --run_tag real_exp \
-   | tee src/scripts/logs/run_phaseA_to_teacher_e2e.log
+  --run_tag real_exp_4gpu \
+   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_4gpu.log
 
 ```
 # 필터 결과가 이미 있을 때 10K w/ 4-gpu
@@ -108,19 +116,22 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --data_dir data/SSTK/10K \
   --run_filter 0 \
   --precompute_mode unified \
+  --curated_image_dir data/SSTK/10K_local/images \
+  --prefer_curated_images 1 \
   --extract_mode auto \
-  --extract_gpu_ids 0,1,2,3 \
+  --extract_gpu_ids 0,1 \
   --num_workers 4 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3 \
+  --teacher_gpu_ids 0,1 \
   --teacher_num_workers 4 \
-  --use_real_expensive 1 \
   --align_device cuda \
   --aesthetic_device cuda \
-  --exp_batch_size 12 \
-  --run_tag real_exp \
-   | tee src/scripts/logs/run_phaseA_to_teacher_e2e.log
+  --exp_batch_size 128 \
+  --skip_existing 0 \
+  --max_images 500 \
+  --run_tag real_exp_500  
+   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_10K_real_exp_500.log
 ```
 
 ### 3.3 필터 결과가 이미 있을 때(재실행 시간 단축)
@@ -177,6 +188,9 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_filter 1 \
   --curated_pool_size 10000 \
   --top_percentile 0.2 \
+  --export_curated_images 1 \
+  --curated_image_dir data/SSTK/10K/images \
+  --prefer_curated_images 1 \
   --skip_existing 1 \
   --precompute_mode unified \
   --run_c1 -1 \
@@ -202,6 +216,52 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_tag full_v17
 ```
 
+### 3.7 filtered parquet만 있고 images가 없을 때: images만 생성 후 4.2 실행
+
+1) `filtered parquet`에서 curated images만 별도 추출:
+```bash
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python \
+  src/scripts/export_curated_images_from_parquet.py \
+  --input_parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
+  --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
+  --output_dir data/SSTK/10K_local/images \
+  --bucket sstk_100 \
+  --skip_existing 1
+```
+Space
+```bash
+python3 src/scripts/export_curated_images_from_parquet.py \
+  --input_parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --output_dir data/SSTK/10K_local/images \
+  --bucket sstk_100 \
+  --skip_existing 1
+```
+```bash
+python3 src/scripts/export_curated_images_from_parquet.py \
+  --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --output_dir data/SSTK/10K/images \
+  --bucket sstk_100 \
+  --skip_existing 1
+```
+
+
+2) 4.2(Perception Precompute)만 실행:
+```bash
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 0 \
+  --data_dir data/SSTK/10K_local \
+  --run_filter 0 \
+  --precompute_mode unified \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/10K_local/images \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --skip_existing 0 \
+  --run_tag precompute_only
+```
+
 ---
 
 ## 4. 단계별 로직/코드 설명
@@ -221,6 +281,10 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 핵심 컬럼:
 - `image_id`, `width`, `height`, `tags`, `tar_name`, `bucket`(환경에 따라)
+
+선택 최적화(반복 실험용):
+- `run_filter.sh`에 `CURATED_IMAGE_DIR`를 추가로 넘기면 curated pool 이미지를 `<data_dir>/images` 등에 추출 저장할 수 있습니다.
+- 이후 `run_phaseA_to_teacher_e2e.sh`에서 `--prefer_curated_images 1`이면 4.2~ 단계가 해당 디렉토리를 우선 사용하고, 누락 이미지에만 tar fallback 합니다.
 
 ---
 
@@ -325,6 +389,10 @@ C3 enrich:
 - `--server_mode 0|1`: 로컬/서버 모드
 - `--data_dir`: 출력 루트
 - `--run_filter 0|1`: Filter 수행 여부
+- `--export_curated_images 0|1`: Filter 후 curated 이미지를 로컬 디렉토리로 추출
+- `--curated_image_dir`: curated 이미지 디렉토리 (예: `data/SSTK/10K_local/images`)
+- `--curated_image_skip_existing 0|1`: 이미지 추출 시 기존 파일 skip
+- `--prefer_curated_images 0|1`: 4.2~ 단계에서 curated image dir 우선 로드
 - `--precompute_mode unified|split`:
   - `unified` 권장 (C1/C2/C3/C5를 조건부 1-pass)
   - `run_c1=1`이면 C1 포함, `run_c1=0`이면 C2/C3/C5만 수행
@@ -359,6 +427,14 @@ C3 enrich:
 - `--strict_actual_size 1`
 - `--max_images`, `--max_candidates_per_ar`, `--ar_list ...`
 
+v1.9 proposal 주입 관련:
+- `--teacher_proposals_jsonl <jsonl...>`
+- `--teacher_nms_iou` (default `0.95`)
+- `--teacher_max_seeds_per_teacher` (default `1`)
+- `--teacher_prefer_expand` (default `1`)
+- `--teacher_jitter_shift_fracs` (default `0.03`)
+- `--teacher_jitter_scales` (default `0.92 1.0 1.08`)
+
 ### 5.4 `run_teacher_scorer.sh` 핵심 옵션
 
 - `--candidates_jsonl`, `--features_jsonl`, `--c1_jsonl`
@@ -371,6 +447,55 @@ C3 enrich:
   - `--gpu_ids 0,1,2,3`
   - `--num_workers 4`
 - `--run_qa 1`, `--run_viz 1`, `--num_viz`
+
+### 5.5 공개 Teacher 추론/변환(v1.9 8.2.0a)
+
+1) 공개 teacher 레포/가중치 준비:
+```bash
+bash src/scripts/run_setup_public_cropping_teachers.sh \
+  --teacher_root_dir third_party/public_cropping_teachers \
+  --weights_dir weights/public_cropping_teachers \
+  --download_weights 1
+```
+
+2) GAIC/CACNet/CGS raw 추론(JSONL):
+```bash
+bash src/scripts/run_infer_public_cropping_teachers.sh \
+  data/SSTK/10K_local/filtered_sstk_100.parquet \
+  /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
+  data/SSTK/10K_local/teacher_raw_public.jsonl \
+  --teachers gaic cacnet cgs \
+  --max_images 100
+```
+space
+```bash
+bash src/scripts/run_infer_public_cropping_teachers.sh \
+  data/SSTK/10K_local/filtered_sstk_100.parquet \
+  /sstk/20230916/sstk_100 \
+  data/SSTK/10K_local/teacher_raw_public.jsonl \
+  --teachers gaic cacnet cgs
+```
+```bash
+bash src/scripts/run_infer_public_cropping_teachers.sh \
+  data/SSTK/10K/filtered_sstk_100.parquet \
+  /sstk/20230916/sstk_100 \
+  data/SSTK/10K/teacher_raw_public.jsonl \
+  --teachers gaic cacnet cgs
+```
+
+3) raw -> `teacher_proposals_jsonl` 변환:
+```bash
+bash src/scripts/run_build_teacher_proposals.sh \
+  data/SSTK/10K_local/teacher_proposals_public.jsonl \
+  data/SSTK/10K_local/teacher_raw_public.jsonl
+```
+
+4) Candidate 단계 주입:
+```bash
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --run_filter 0 \
+  --teacher_proposals_jsonl data/SSTK/10K_local/teacher_proposals_public.jsonl
+```
 
 ---
 

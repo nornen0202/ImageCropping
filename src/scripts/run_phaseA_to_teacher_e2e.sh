@@ -44,9 +44,14 @@ Core options
 --run_filter 0|1                Phase A filter 실행 여부 (default: 1)
 --curated_pool_size INT         filter curated pool size (default: 10000)
 --top_percentile FLOAT          filter top percentile per category (default: 0.2)
+--export_curated_images 0|1     filter 후 curated 이미지를 로컬 dir로 추출 (default: 0)
+--curated_image_dir PATH        curated 이미지 디렉토리 (default: <data_dir>/images)
+--curated_image_skip_existing 0|1  이미지 추출 시 기존 파일 skip (default: 1)
+--prefer_curated_images 0|1     후속 단계에서 curated image dir 우선 사용 (default: 1)
 --skip_existing 0|1             output 파일이 있으면 단계 skip (default: 1)
 --run_tag TAG                   candidates/teacher 출력 suffix (default: "")
 --max_images INT                0=all, >0=앞에서 n장(candidate/teacher) (default: 0)
+--teacher_proposals_jsonl CSV   candidate 단계 teacher proposal jsonl(쉼표로 다중 경로)
 --precompute_mode MODE          unified|split (default: unified)
 --extract_gpu_ids CSV           precompute에서 사용할 GPU 목록 (예: 0,1,2,3)
 
@@ -95,6 +100,10 @@ PRECOMPUTE_MODE="unified"
 RUN_FILTER=1
 CURATED_POOL_SIZE=10000
 TOP_PERCENTILE=0.2
+EXPORT_CURATED_IMAGES=0
+CURATED_IMAGE_DIR=""
+CURATED_IMAGE_SKIP_EXISTING=1
+PREFER_CURATED_IMAGES=1
 
 # Extract/merge
 RUN_C1=-1
@@ -117,6 +126,12 @@ USE_ACTUAL_IMAGE_SIZE=1
 STRICT_ACTUAL_SIZE=1
 ACTUAL_SIZE_CACHE_JSON=""
 MAX_IMAGES=0
+TEACHER_PROPOSALS_JSONL=""
+TEACHER_NMS_IOU=0.95
+TEACHER_MAX_SEEDS_PER_TEACHER=1
+TEACHER_PREFER_EXPAND=1
+TEACHER_JITTER_SHIFT_FRACS="0.03"
+TEACHER_JITTER_SCALES="0.92,1.0,1.08"
 
 # Teacher
 RUN_TEACHER=1
@@ -161,6 +176,10 @@ while [ "$#" -gt 0 ]; do
     --run_filter) RUN_FILTER="$2"; shift 2 ;;
     --curated_pool_size) CURATED_POOL_SIZE="$2"; shift 2 ;;
     --top_percentile) TOP_PERCENTILE="$2"; shift 2 ;;
+    --export_curated_images) EXPORT_CURATED_IMAGES="$2"; shift 2 ;;
+    --curated_image_dir) CURATED_IMAGE_DIR="$2"; shift 2 ;;
+    --curated_image_skip_existing) CURATED_IMAGE_SKIP_EXISTING="$2"; shift 2 ;;
+    --prefer_curated_images) PREFER_CURATED_IMAGES="$2"; shift 2 ;;
 
     --run_c1) RUN_C1="$2"; shift 2 ;;
     --run_c2) RUN_C2="$2"; shift 2 ;;
@@ -180,6 +199,12 @@ while [ "$#" -gt 0 ]; do
     --strict_actual_size) STRICT_ACTUAL_SIZE="$2"; shift 2 ;;
     --actual_size_cache_json) ACTUAL_SIZE_CACHE_JSON="$2"; shift 2 ;;
     --max_images) MAX_IMAGES="$2"; shift 2 ;;
+    --teacher_proposals_jsonl) TEACHER_PROPOSALS_JSONL="$2"; shift 2 ;;
+    --teacher_nms_iou) TEACHER_NMS_IOU="$2"; shift 2 ;;
+    --teacher_max_seeds_per_teacher) TEACHER_MAX_SEEDS_PER_TEACHER="$2"; shift 2 ;;
+    --teacher_prefer_expand) TEACHER_PREFER_EXPAND="$2"; shift 2 ;;
+    --teacher_jitter_shift_fracs) TEACHER_JITTER_SHIFT_FRACS="$2"; shift 2 ;;
+    --teacher_jitter_scales) TEACHER_JITTER_SCALES="$2"; shift 2 ;;
 
     --run_teacher) RUN_TEACHER="$2"; shift 2 ;;
     --use_real_expensive) USE_REAL_EXPENSIVE="$2"; shift 2 ;;
@@ -250,6 +275,10 @@ fi
 
 mkdir -p "$DATA_DIR"
 
+if [ -z "$CURATED_IMAGE_DIR" ]; then
+  CURATED_IMAGE_DIR="${DATA_DIR}/images"
+fi
+
 if [ -z "$LOG_DIR" ]; then
   if [ -n "$RUN_TAG" ]; then
     LOG_DIR="${DATA_DIR}/logs/e2e_${RUN_TAG}"
@@ -295,6 +324,11 @@ if [ -z "$ACTUAL_SIZE_CACHE_JSON" ]; then
   ACTUAL_SIZE_CACHE_JSON="${DATA_DIR}/actual_image_size_map.json"
 fi
 
+EFFECTIVE_IMAGE_DIR=""
+if [ "$PREFER_CURATED_IMAGES" -eq 1 ] && [ -d "$CURATED_IMAGE_DIR" ]; then
+  EFFECTIVE_IMAGE_DIR="$CURATED_IMAGE_DIR"
+fi
+
 run_with_log() {
   local name="$1"; shift
   local log_path="${LOG_DIR}/${name}.log"
@@ -317,6 +351,11 @@ should_skip_file() {
   fi
   return 1
 }
+
+filter_extra_args=()
+if [ "$EXPORT_CURATED_IMAGES" -eq 1 ]; then
+  filter_extra_args+=("$CURATED_IMAGE_DIR" "$CURATED_IMAGE_SKIP_EXISTING")
+fi
 
 jsonl_has_c1_embeddings() {
   local f="$1"
@@ -371,10 +410,13 @@ echo " run_tag             : ${RUN_TAG:-<none>}"
 echo " skip_existing       : $SKIP_EXISTING"
 echo " precompute_mode     : $PRECOMPUTE_MODE"
 echo " run_filter          : $RUN_FILTER"
+echo " export_curated_img  : $EXPORT_CURATED_IMAGES (dir=$CURATED_IMAGE_DIR, skip_existing=$CURATED_IMAGE_SKIP_EXISTING)"
+echo " prefer_curated_img  : $PREFER_CURATED_IMAGES (effective=${EFFECTIVE_IMAGE_DIR:-<none>})"
 echo " extract_mode        : $EXTRACT_MODE (gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
 echo " run_c1/c2/c3/c5    : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C5"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
 echo " run_candidates      : $RUN_CANDIDATES"
+echo " teacher proposals   : ${TEACHER_PROPOSALS_JSONL:-<none>}"
 echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
 echo "========================================================"
@@ -393,13 +435,28 @@ if [ "$RUN_FILTER" -eq 1 ]; then
         "$FILTERED_PARQUET" \
         "$CURATED_POOL_SIZE" \
         "$TOP_PERCENTILE" \
-        "$SERVER_MODE"
+        "$SERVER_MODE" \
+        "${filter_extra_args[@]}"
   fi
 fi
 
 if [ ! -f "$FILTERED_PARQUET" ]; then
   echo "[error] filtered parquet not found: $FILTERED_PARQUET"
   exit 1
+fi
+
+if [ "$PREFER_CURATED_IMAGES" -eq 1 ] && [ -d "$CURATED_IMAGE_DIR" ]; then
+  EFFECTIVE_IMAGE_DIR="$CURATED_IMAGE_DIR"
+else
+  EFFECTIVE_IMAGE_DIR=""
+fi
+if [ -n "$EFFECTIVE_IMAGE_DIR" ]; then
+  extract_common_args+=(--image_dir "$EFFECTIVE_IMAGE_DIR")
+  echo "[info] using curated image cache dir: $EFFECTIVE_IMAGE_DIR"
+fi
+image_dir_args=()
+if [ -n "$EFFECTIVE_IMAGE_DIR" ]; then
+  image_dir_args=(--image_dir "$EFFECTIVE_IMAGE_DIR")
 fi
 
 # ------------------------------------------------------------------------------
@@ -445,6 +502,7 @@ if [ "$PRECOMPUTE_MODE" = "unified" ]; then
           --input_parquet "$FILTERED_PARQUET" \
           --use_actual_image_size "$USE_ACTUAL_IMAGE_SIZE" \
           --tar_dir "$TAR_DIR" \
+          "${image_dir_args[@]}" \
           --actual_size_cache_json "$ACTUAL_SIZE_CACHE_JSON" \
           --output_jsonl "$MERGED_FEATS"
     fi
@@ -519,6 +577,7 @@ else
           --input_parquet "$FILTERED_PARQUET" \
           --use_actual_image_size "$USE_ACTUAL_IMAGE_SIZE" \
           --tar_dir "$TAR_DIR" \
+          "${image_dir_args[@]}" \
           --actual_size_cache_json "$ACTUAL_SIZE_CACHE_JSON" \
           --output_jsonl "$FEATS_C3_ENRICHED"
     fi
@@ -533,6 +592,9 @@ else
         --server_mode "$SERVER_MODE"
         --tar_dir "$TAR_DIR"
       )
+      if [ -n "$EFFECTIVE_IMAGE_DIR" ]; then
+        c5_args+=(--image_dir "$EFFECTIVE_IMAGE_DIR")
+      fi
       if [ -n "$NUM_WORKERS" ]; then
         c5_args+=(--num_workers "$NUM_WORKERS")
       fi
@@ -579,6 +641,53 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
     exit 1
   fi
   if ! should_skip_file "$CANDIDATES_JSONL"; then
+    cand_extra_args=()
+    if [ -n "$TEACHER_PROPOSALS_JSONL" ]; then
+      IFS_OLD="$IFS"
+      IFS=',' read -r -a teacher_paths <<< "$TEACHER_PROPOSALS_JSONL"
+      IFS="$IFS_OLD"
+      if [ "${#teacher_paths[@]}" -gt 0 ]; then
+        valid_teacher_paths=()
+        for tp in "${teacher_paths[@]}"; do
+          if [ -n "$tp" ]; then
+            valid_teacher_paths+=("$tp")
+          fi
+        done
+        if [ "${#valid_teacher_paths[@]}" -eq 0 ]; then
+          valid_teacher_paths=()
+        else
+          cand_extra_args+=(--teacher_proposals_jsonl)
+          for tp in "${valid_teacher_paths[@]}"; do
+            cand_extra_args+=("$tp")
+          done
+        fi
+      fi
+      if [ "${#cand_extra_args[@]}" -gt 0 ]; then
+        cand_extra_args+=(
+          --teacher_nms_iou "$TEACHER_NMS_IOU"
+          --teacher_max_seeds_per_teacher "$TEACHER_MAX_SEEDS_PER_TEACHER"
+          --teacher_prefer_expand "$TEACHER_PREFER_EXPAND"
+          --teacher_jitter_shift_fracs
+        )
+        IFS_OLD="$IFS"
+        IFS=',' read -r -a tshift_arr <<< "$TEACHER_JITTER_SHIFT_FRACS"
+        IFS="$IFS_OLD"
+        for v in "${tshift_arr[@]}"; do
+          if [ -n "$v" ]; then
+            cand_extra_args+=("$v")
+          fi
+        done
+        cand_extra_args+=(--teacher_jitter_scales)
+        IFS_OLD="$IFS"
+        IFS=',' read -r -a tscale_arr <<< "$TEACHER_JITTER_SCALES"
+        IFS="$IFS_OLD"
+        for v in "${tscale_arr[@]}"; do
+          if [ -n "$v" ]; then
+            cand_extra_args+=("$v")
+          fi
+        done
+      fi
+    fi
     run_with_log "08_generate_candidates" \
       bash src/scripts/run_generate_candidates.sh \
         "$FILTERED_PARQUET" \
@@ -587,10 +696,12 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
         "$CANDIDATES_JSONL" \
         --server_mode "$SERVER_MODE" \
         --tar_dir "$TAR_DIR" \
+        "${image_dir_args[@]}" \
         --use_actual_image_size "$USE_ACTUAL_IMAGE_SIZE" \
         --strict_actual_size "$STRICT_ACTUAL_SIZE" \
         --actual_size_cache_json "$ACTUAL_SIZE_CACHE_JSON" \
-        --max_images "$MAX_IMAGES"
+        --max_images "$MAX_IMAGES" \
+        "${cand_extra_args[@]}"
   fi
 fi
 
@@ -627,6 +738,7 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --c1_jsonl "$FEATS_C1" \
         --parquet "$FILTERED_PARQUET" \
         --tar_dir "$TAR_DIR" \
+        "${image_dir_args[@]}" \
         --output_jsonl "$TEACHER_JSONL" \
         --output_overview_json "$TEACHER_OVERVIEW_JSON" \
         --output_overview_csv "$TEACHER_OVERVIEW_CSV" \

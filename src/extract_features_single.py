@@ -26,6 +26,7 @@ Usage 예시:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -67,7 +68,14 @@ def parse_args():
     parser.add_argument("--batch_size",   type=int, default=16)
     parser.add_argument("--weights_dir",  default="", help="Directory containing C3 weights")
     parser.add_argument("--c4_lang",      default="en")
+    parser.add_argument("--num_shards",   type=int, default=1, help="Dataset shard count for no-ray multi-gpu")
+    parser.add_argument("--shard_index",  type=int, default=0, help="Current shard index [0, num_shards)")
     return parser.parse_args()
+
+
+def stable_shard_of(image_id: str, num_shards: int) -> int:
+    h = hashlib.sha1(str(image_id).encode("utf-8")).hexdigest()
+    return int(h[:8], 16) % max(1, int(num_shards))
 
 
 def main():
@@ -105,6 +113,25 @@ def main():
     if not required.issubset(df.columns):
         raise ValueError(f"Input parquet missing columns: {required - set(df.columns)}")
     print(f"[Single-GPU] Total images: {len(df)}")
+
+    if int(args.num_shards) < 1:
+        raise ValueError(f"--num_shards must be >= 1 (got {args.num_shards})")
+    if int(args.shard_index) < 0 or int(args.shard_index) >= int(args.num_shards):
+        raise ValueError(
+            f"--shard_index must satisfy 0 <= shard_index < num_shards "
+            f"(got shard_index={args.shard_index}, num_shards={args.num_shards})"
+        )
+
+    if int(args.num_shards) > 1:
+        all_rows = len(df)
+        sid = int(args.shard_index)
+        nsh = int(args.num_shards)
+        mask = df["image_id"].astype(str).map(lambda x: stable_shard_of(x, nsh) == sid)
+        df = df[mask].copy()
+        print(
+            f"[Single-GPU] Shard mode: shard_index={sid}/{nsh} "
+            f"rows={len(df)} (from total={all_rows})"
+        )
 
     # ── 처리 ──────────────────────────────────────────────────────────
     os.makedirs(os.path.dirname(args.output_jsonl) or ".", exist_ok=True)

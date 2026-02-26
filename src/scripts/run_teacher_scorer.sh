@@ -9,6 +9,9 @@
 # 기본 실행 (10K_local 데이터)
 bash src/scripts/run_teacher_scorer.sh
 
+# 서버 경로 기본값 사용
+bash src/scripts/run_teacher_scorer.sh --server_mode 1
+
 # 출력 경로 지정
 bash src/scripts/run_teacher_scorer.sh \
   --output_jsonl data/SSTK/10K_local/teacher_scores_ar.jsonl \
@@ -24,6 +27,13 @@ bash src/scripts/run_teacher_scorer.sh \
   --use_real_expensive 1 \
   --c1_jsonl data/SSTK/10K_local/feats_c1.jsonl \
   --align_device auto --aesthetic_device auto
+
+# 멀티 GPU 샤딩 실행 (No-Ray)
+bash src/scripts/run_teacher_scorer.sh \
+  --use_real_expensive 1 \
+  --multi_gpu 1 \
+  --gpu_ids 0,1,2,3 \
+  --num_workers 4
 
 # 시각화 설정 조정
 bash src/scripts/run_teacher_scorer.sh \
@@ -67,7 +77,11 @@ CANDIDATES_JSONL="data/SSTK/10K_local/candidates_ar.jsonl"
 FEATURES_JSONL="data/SSTK/10K_local/feats_c2c3c5_v2_strict_enriched.jsonl"
 C1_JSONL="data/SSTK/10K_local/feats_c1.jsonl"
 PARQUET="data/SSTK/10K_local/filtered_sstk_100.parquet"
-TAR_DIR="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"
+TAR_DIR=""
+SERVER_MODE=0
+VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
+LOCAL_TAR_DIR="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"
+SERVER_TAR_DIR="/sstk/20230916/sstk_100"
 
 OUTPUT_JSONL="data/SSTK/10K_local/teacher_scores_ar.jsonl"
 OUTPUT_OVERVIEW_JSON="data/SSTK/10K_local/teacher_scores_overview.json"
@@ -96,6 +110,10 @@ SEED=42
 
 QA_OUT_JSON="data/SSTK/10K_local/teacher_scores_qa_report.json"
 QA_OUT_CSV="data/SSTK/10K_local/teacher_scores_qa_report_by_ar.csv"
+MULTI_GPU=0
+GPU_IDS=""
+NUM_WORKERS=""
+SHARD_TMP_DIR=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -104,6 +122,8 @@ while [ "$#" -gt 0 ]; do
     --c1_jsonl) C1_JSONL="$2"; shift 2 ;;
     --parquet) PARQUET="$2"; shift 2 ;;
     --tar_dir) TAR_DIR="$2"; shift 2 ;;
+    --server_mode) SERVER_MODE="$2"; shift 2 ;;
+    --venv_path) VENV_PATH="$2"; shift 2 ;;
 
     --output_jsonl) OUTPUT_JSONL="$2"; shift 2 ;;
     --output_overview_json) OUTPUT_OVERVIEW_JSON="$2"; shift 2 ;;
@@ -131,6 +151,10 @@ while [ "$#" -gt 0 ]; do
     --seed) SEED="$2"; shift 2 ;;
     --qa_out_json) QA_OUT_JSON="$2"; shift 2 ;;
     --qa_out_csv) QA_OUT_CSV="$2"; shift 2 ;;
+    --multi_gpu) MULTI_GPU="$2"; shift 2 ;;
+    --gpu_ids) GPU_IDS="$2"; shift 2 ;;
+    --num_workers) NUM_WORKERS="$2"; shift 2 ;;
+    --shard_tmp_dir) SHARD_TMP_DIR="$2"; shift 2 ;;
 
     -h|--help)
       sed -n '1,120p' "$0"
@@ -143,37 +167,153 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-VENV="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
-if [ -f "$VENV" ]; then
-  # shellcheck disable=SC1090
-  source "$VENV"
-else
-  echo "[warn] venv not found: $VENV (using current python)"
+if [ -z "$TAR_DIR" ]; then
+  if [ "$SERVER_MODE" -eq 1 ]; then
+    TAR_DIR="$SERVER_TAR_DIR"
+  else
+    TAR_DIR="$LOCAL_TAR_DIR"
+  fi
 fi
 
+if [ "$SERVER_MODE" -ne 1 ]; then
+  if [ -f "$VENV_PATH" ]; then
+    # shellcheck disable=SC1090
+    source "$VENV_PATH"
+  else
+    echo "[warn] venv not found: $VENV_PATH (using current python)"
+  fi
+fi
+
+echo "[config] server_mode=$SERVER_MODE tar_dir=$TAR_DIR"
+
 echo "[1/3] Running teacher scorer..."
-python src/score_teacher.py \
-  --candidates_jsonl "$CANDIDATES_JSONL" \
-  --features_jsonl "$FEATURES_JSONL" \
-  --c1_jsonl "$C1_JSONL" \
-  --parquet "$PARQUET" \
-  --tar_dir "$TAR_DIR" \
-  --output_jsonl "$OUTPUT_JSONL" \
-  --output_overview_json "$OUTPUT_OVERVIEW_JSON" \
-  --output_overview_by_ar_csv "$OUTPUT_OVERVIEW_CSV" \
-  --cheap_top_m "$CHEAP_TOP_M" \
-  --top_k "$TOP_K" \
-  --tau_div "$TAU_DIV" \
-  --use_real_expensive "$USE_REAL_EXPENSIVE" \
-  --align_model_name "$ALIGN_MODEL_NAME" \
-  --align_pretrained "$ALIGN_PRETRAINED" \
-  --align_device "$ALIGN_DEVICE" \
-  --aesthetic_device "$AESTHETIC_DEVICE" \
-  --exp_batch_size "$EXP_BATCH_SIZE" \
-  --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \
-  --aesthetic_mlp_url "$AESTHETIC_MLP_URL" \
-  --max_images "$MAX_IMAGES" \
-  --seed "$SEED"
+run_teacher_one() {
+  local out_jsonl="$1"
+  local out_over_json="$2"
+  local out_over_csv="$3"
+  local shard_index="$4"
+  local num_shards="$5"
+  local progress="$6"
+
+  python src/score_teacher.py \
+    --candidates_jsonl "$CANDIDATES_JSONL" \
+    --features_jsonl "$FEATURES_JSONL" \
+    --c1_jsonl "$C1_JSONL" \
+    --parquet "$PARQUET" \
+    --tar_dir "$TAR_DIR" \
+    --output_jsonl "$out_jsonl" \
+    --output_overview_json "$out_over_json" \
+    --output_overview_by_ar_csv "$out_over_csv" \
+    --cheap_top_m "$CHEAP_TOP_M" \
+    --top_k "$TOP_K" \
+    --tau_div "$TAU_DIV" \
+    --use_real_expensive "$USE_REAL_EXPENSIVE" \
+    --align_model_name "$ALIGN_MODEL_NAME" \
+    --align_pretrained "$ALIGN_PRETRAINED" \
+    --align_device "$ALIGN_DEVICE" \
+    --aesthetic_device "$AESTHETIC_DEVICE" \
+    --exp_batch_size "$EXP_BATCH_SIZE" \
+    --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \
+    --aesthetic_mlp_url "$AESTHETIC_MLP_URL" \
+    --max_images "$MAX_IMAGES" \
+    --seed "$SEED" \
+    --num_shards "$num_shards" \
+    --shard_index "$shard_index" \
+    --progress "$progress"
+}
+
+if [ "$MULTI_GPU" -ne 0 ]; then
+  resolve_gpu_ids() {
+    local csv="$GPU_IDS"
+    if [ -z "$csv" ] && [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
+      csv="$CUDA_VISIBLE_DEVICES"
+    fi
+    if [ -z "$csv" ]; then
+      local n
+      n=$(nvidia-smi -L 2>/dev/null | wc -l || echo 0)
+      local arr=()
+      local i
+      for ((i=0; i<n; i++)); do
+        arr+=("$i")
+      done
+      (IFS=,; echo "${arr[*]}")
+      return
+    fi
+    csv="${csv// /}"
+    echo "$csv"
+  }
+
+  GPU_CSV="$(resolve_gpu_ids)"
+  IFS=',' read -r -a GPU_ARR <<< "$GPU_CSV"
+  WORKERS="${#GPU_ARR[@]}"
+  if [ -n "$NUM_WORKERS" ]; then
+    WORKERS="$NUM_WORKERS"
+  fi
+  if [ "$WORKERS" -gt "${#GPU_ARR[@]}" ]; then
+    echo "[warn] num_workers($WORKERS) > gpu_ids(${#GPU_ARR[@]}). clipping."
+    WORKERS="${#GPU_ARR[@]}"
+  fi
+
+  if [ "$WORKERS" -le 1 ]; then
+    echo "[warn] multi_gpu=1 but effective workers<=1. falling back to single."
+    run_teacher_one "$OUTPUT_JSONL" "$OUTPUT_OVERVIEW_JSON" "$OUTPUT_OVERVIEW_CSV" 0 1 1
+  else
+    if [ -z "$SHARD_TMP_DIR" ]; then
+      SHARD_TMP_DIR="${OUTPUT_JSONL}.shards.$$"
+    fi
+    mkdir -p "$SHARD_TMP_DIR"
+    echo "[multi] teacher shard mode enabled: gpu_ids=${GPU_CSV} workers=${WORKERS}"
+    PIDS=()
+    SHARD_JSONL=()
+    i=0
+    while [ "$i" -lt "$WORKERS" ]; do
+      GPU_ID="${GPU_ARR[$i]}"
+      SH_OUT_JSONL="${SHARD_TMP_DIR}/teacher_scores_shard_${i}.jsonl"
+      SH_OUT_OV_JSON="${SHARD_TMP_DIR}/teacher_overview_shard_${i}.json"
+      SH_OUT_OV_CSV="${SHARD_TMP_DIR}/teacher_overview_by_ar_shard_${i}.csv"
+      SH_LOG="${SHARD_TMP_DIR}/teacher_shard_${i}.log"
+      SHARD_JSONL+=("$SH_OUT_JSONL")
+      SH_PROGRESS=0
+      if [ "$i" -eq 0 ]; then
+        SH_PROGRESS=1
+      fi
+      echo "[multi] launch shard=$i/$WORKERS gpu=$GPU_ID -> $SH_OUT_JSONL"
+      (
+        export CUDA_VISIBLE_DEVICES="$GPU_ID"
+        run_teacher_one "$SH_OUT_JSONL" "$SH_OUT_OV_JSON" "$SH_OUT_OV_CSV" "$i" "$WORKERS" "$SH_PROGRESS"
+      ) >"$SH_LOG" 2>&1 &
+      PIDS+=("$!")
+      i=$((i + 1))
+    done
+
+    FAIL=0
+    for pid in "${PIDS[@]}"; do
+      if ! wait "$pid"; then
+        FAIL=1
+      fi
+    done
+    if [ "$FAIL" -ne 0 ]; then
+      echo "[error] one or more teacher shards failed. logs under: $SHARD_TMP_DIR"
+      exit 1
+    fi
+
+    : > "$OUTPUT_JSONL"
+    for f in "${SHARD_JSONL[@]}"; do
+      if [ -f "$f" ]; then
+        cat "$f" >> "$OUTPUT_JSONL"
+      fi
+    done
+    echo "[multi] merged teacher jsonl -> $OUTPUT_JSONL"
+
+    python src/scripts/rebuild_teacher_overview.py \
+      --teacher_scores_jsonl "$OUTPUT_JSONL" \
+      --output_json "$OUTPUT_OVERVIEW_JSON" \
+      --output_by_ar_csv "$OUTPUT_OVERVIEW_CSV"
+    echo "[multi] rebuilt overview -> $OUTPUT_OVERVIEW_JSON"
+  fi
+else
+  run_teacher_one "$OUTPUT_JSONL" "$OUTPUT_OVERVIEW_JSON" "$OUTPUT_OVERVIEW_CSV" 0 1 1
+fi
 
 if [ "$RUN_QA" -eq 1 ]; then
   echo "[2/3] Building QA report..."

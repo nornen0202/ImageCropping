@@ -467,7 +467,13 @@ class PoseFeatureExtractor:
         except Exception:
             return []
 
-    def process_image(self, image: Image.Image, run_anyway=False, tags: list = None):
+    def process_image(
+        self,
+        image: Image.Image,
+        run_anyway: bool = False,
+        tags: Optional[Sequence[Any]] = None,
+        person_prior_boxes: Optional[Sequence[Sequence[float]]] = None,
+    ):
         """
         Returns list of pose dicts. Empty list means C3 skipped/no reliable person.
         """
@@ -475,7 +481,8 @@ class PoseFeatureExtractor:
         if self.detector is None or self.pose_estimator is None:
             return results_out
 
-        if not run_anyway and not should_run_pose_by_tags(tags):
+        has_person_prior_hint = bool(person_prior_boxes)
+        if not run_anyway and (not has_person_prior_hint) and (not should_run_pose_by_tags(tags)):
             return results_out
 
         img_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -496,17 +503,27 @@ class PoseFeatureExtractor:
             return results_out
 
         # Additional person prior verification to suppress non-human detections.
-        person_prior_boxes = self._run_person_verifier(img_bgr)
-        if self.person_verifier is not None:
-            if not person_prior_boxes and self.person_verify_strict:
+        prior_boxes: List[List[float]] = []
+        if person_prior_boxes is not None:
+            for pb in person_prior_boxes:
+                if not isinstance(pb, (list, tuple)) or len(pb) != 4:
+                    continue
+                prior_boxes.append(_clamp_box_xyxy([float(v) for v in pb], w, h))
+        else:
+            prior_boxes = self._run_person_verifier(img_bgr)
+
+        verify_enabled = (person_prior_boxes is not None) or (self.person_verifier is not None)
+        if verify_enabled:
+            if not prior_boxes and self.person_verify_strict:
                 return results_out
-            bboxes = filter_candidate_boxes_with_person_prior(
-                det_boxes=np.asarray(bboxes, dtype=np.float32),
-                person_boxes=person_prior_boxes,
-                min_iou=self.person_verify_iou,
-            )
-            if len(bboxes) == 0 and self.person_verify_strict:
-                return results_out
+            if prior_boxes:
+                bboxes = filter_candidate_boxes_with_person_prior(
+                    det_boxes=np.asarray(bboxes, dtype=np.float32),
+                    person_boxes=prior_boxes,
+                    min_iou=self.person_verify_iou,
+                )
+                if len(bboxes) == 0 and self.person_verify_strict:
+                    return results_out
 
         if len(bboxes) == 0:
             return results_out

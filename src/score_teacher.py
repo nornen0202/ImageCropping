@@ -14,6 +14,7 @@ Notes
 from __future__ import annotations
 
 import argparse
+import copy
 import io
 import json
 import math
@@ -21,6 +22,7 @@ import os
 import random
 import tarfile
 import urllib.request
+from collections import Counter
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean
@@ -214,6 +216,9 @@ class ARStats:
     copyspace_subset_count: int = 0
     copyspace_preserve_count: int = 0
 
+    fallback_activated_count: int = 0
+    fallback_mode_counts: Dict[str, int] = None
+
     delta_improve: List[float] = None
     top1_top2_iou: List[float] = None
     horizon_third_dist: List[float] = None
@@ -225,6 +230,8 @@ class ARStats:
             self.top1_top2_iou = []
         if self.horizon_third_dist is None:
             self.horizon_third_dist = []
+        if self.fallback_mode_counts is None:
+            self.fallback_mode_counts = {}
 
 
 def parse_args() -> argparse.Namespace:
@@ -255,6 +262,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--aesthetic_mlp_url", type=str, default=AESTHETIC_DEFAULT_URL)
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--max_images", type=int, default=0, help="0 means all")
+    p.add_argument("--num_shards", type=int, default=1, help="Shard count for multi-GPU/process execution")
+    p.add_argument("--shard_index", type=int, default=0, help="Current shard index [0, num_shards)")
     p.add_argument("--progress", type=int, default=1)
     return p.parse_args()
 
@@ -985,7 +994,7 @@ def safe_first(items: Sequence[Any]) -> Any:
 
 
 def count_c2_person_instances(feat_rec: Dict[str, Any], min_score: float = 0.15) -> int:
-    c2 = feat_rec.get("c2_seg", []) or []
+    c2 = feat_rec.get("c2_det", []) or feat_rec.get("c2_seg", []) or []
     cnt = 0
     for d in c2:
         if not isinstance(d, dict):
@@ -1016,6 +1025,13 @@ def build_subject_bbox(
             return clip_box01(b)
 
     boxes: List[List[float]] = []
+    # Prefer explicit C2 detections when available (e.g., person detector output).
+    for d in feat_rec.get("c2_det", []) or []:
+        if not isinstance(d, dict):
+            continue
+        b = d.get("box")
+        if isinstance(b, (list, tuple)) and len(b) == 4:
+            boxes.append(norm_box_xyxy(b, width, height))
     for d in feat_rec.get("c2_seg", []) or []:
         b = d.get("box")
         if isinstance(b, (list, tuple)) and len(b) == 4:
@@ -1539,6 +1555,42 @@ def apply_expensive_score(
     comps["expensive_source"] = source
 
 
+def _has_hard_tag(candidate: Dict[str, Any], tag: str) -> bool:
+    return str(tag) in set(str(x) for x in (candidate.get("hard_reject_tags") or []))
+
+
+def _is_structural_valid(candidate: Dict[str, Any]) -> bool:
+    return (not _has_hard_tag(candidate, "area_violation")) and (not _has_hard_tag(candidate, "ar_violation"))
+
+
+def _is_face_safe(candidate: Dict[str, Any]) -> bool:
+    return not _has_hard_tag(candidate, "face_cut")
+
+
+def _relax_joint_only_hard_reject(candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """
+    Relax strict hard reject only for candidates blocked solely by `joint_cutoff`.
+
+    Structural violations (area/ar) and face cut remain hard.
+    """
+    if not bool(candidate.get("hard_reject", False)):
+        return candidate
+
+    hard_tags = set(str(x) for x in (candidate.get("hard_reject_tags") or []))
+    if any(t in hard_tags for t in ("area_violation", "ar_violation", "face_cut")):
+        return None
+    if "joint_cutoff" not in hard_tags:
+        return None
+
+    c = copy.deepcopy(candidate)
+    c["hard_reject"] = False
+    c["fallback"] = {
+        "joint_relaxed": True,
+        "hard_reject_tags_strict": sorted(list(hard_tags)),
+    }
+    return c
+
+
 def compute_candidate_scores(
     candidate: Dict[str, Any],
     target_ar: float,
@@ -1717,6 +1769,7 @@ def compute_candidate_scores(
         "must_keep": bool(candidate.get("must_keep", False)),
         "priority": safe_float(candidate.get("priority", 0.0)),
         "hard_reject": len(hard_reject_tags) > 0,
+        "hard_reject_strict": len(hard_reject_tags) > 0,
         "hard_reject_tags": hard_reject_tags,
         "scores": {
             "cheap": float(cheap),
@@ -1934,6 +1987,8 @@ def candidate_brief(c: Dict[str, Any], rank: Optional[int] = None) -> Dict[str, 
         "area_ratio": round(safe_float(c.get("area_ratio", 0.0)), 6),
         "source": c.get("source"),
         "must_keep": bool(c.get("must_keep", False)),
+        "hard_reject": bool(c.get("hard_reject", False)),
+        "hard_reject_strict": bool(c.get("hard_reject_strict", c.get("hard_reject", False))),
         "scores": {
             "cheap": round(safe_float(c["scores"].get("cheap", 0.0)), 6),
             "expensive": round(safe_float(c["scores"].get("expensive", 0.0)), 6),
@@ -1960,10 +2015,16 @@ def update_stats(
     topk: Sequence[Dict[str, Any]],
     ref_center_area: float,
     route: Dict[str, Any],
+    fallback: Optional[Dict[str, Any]],
     cfg: TeacherScorerConfig,
 ) -> None:
     stats.images += 1
     stats.delta_improve.append(float(delta_improve))
+
+    if isinstance(fallback, dict) and bool(fallback.get("activated", False)):
+        stats.fallback_activated_count += 1
+        mode = str(fallback.get("mode", "unknown"))
+        stats.fallback_mode_counts[mode] = int(stats.fallback_mode_counts.get(mode, 0)) + 1
 
     if decision_type == "keep_full":
         stats.keep_full_count += 1
@@ -2061,6 +2122,8 @@ def summarize_stats(stats: ARStats) -> Dict[str, Any]:
         "horizon_third_dist_p90": percentile(stats.horizon_third_dist, 0.90),
         "roll_violation_rate": stats.roll_violation_count / max(1, stats.roll_subset_count),
         "copyspace_preserve_rate": stats.copyspace_preserve_count / max(1, stats.copyspace_subset_count),
+        "fallback_rate": stats.fallback_activated_count / n,
+        "fallback_mode_counts": dict(stats.fallback_mode_counts),
         "topk_mean_iou_top1_top2": mean(stats.top1_top2_iou) if stats.top1_top2_iou else 0.0,
         "denominators": {
             "portrait_subset": stats.portrait_subset_count,
@@ -2096,9 +2159,38 @@ def process_one_image(
     image_pil: Optional["Image.Image"] = None,
     c1_text_embed: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
-    width = int(cand_rec.get("width", 1))
-    height = int(cand_rec.get("height", 1))
-    image_ar = safe_float(cand_rec.get("image_ar", float(width) / max(1.0, float(height))))
+    # Prefer explicit normalization metadata to keep all geometry on the same
+    # reference image size (actual TAR image size when available).
+    meta_norm = cand_rec.get("meta_norm", {})
+    if not isinstance(meta_norm, dict):
+        meta_norm = {}
+
+    width = int(
+        safe_float(
+            meta_norm.get("width_norm_ref", meta_norm.get("width", cand_rec.get("width", 1))),
+            1.0,
+        )
+    )
+    height = int(
+        safe_float(
+            meta_norm.get("height_norm_ref", meta_norm.get("height", cand_rec.get("height", 1))),
+            1.0,
+        )
+    )
+    width = max(1, width)
+    height = max(1, height)
+    image_ar = safe_float(
+        meta_norm.get(
+            "image_ar_norm_ref",
+            cand_rec.get("image_ar", float(width) / max(1.0, float(height))),
+        )
+    )
+    norm_size_source = str(
+        meta_norm.get(
+            "size_source",
+            cand_rec.get("size_source", "unknown"),
+        )
+    )
 
     tags = tags_to_tokens(cand_rec.get("tags", []))
 
@@ -2122,6 +2214,7 @@ def process_one_image(
         "num_people": num_people,
         "c2_person_count": c2_person_count,
         "has_human_evidence": bool(has_human_evidence),
+        "norm_size_source": norm_size_source,
         "headroom_range": headroom_prior(shot_type, portrait_category, flags),
         "lookroom_range": lookroom_prior(shot_type, flags),
         "context_range": context_target_range(
@@ -2165,12 +2258,80 @@ def process_one_image(
 
         baseline, ref_center = pick_baseline_candidates(scored)
 
-        valid = [c for c in scored if not bool(c.get("hard_reject", False))]
-        valid.sort(key=lambda x: safe_float(x["scores"].get("cheap", -1e9)), reverse=True)
+        strict_valid = [c for c in scored if not bool(c.get("hard_reject", False))]
+        fallback_info: Dict[str, Any] = {
+            "activated": False,
+            "mode": "none",
+            "strict_valid_count": int(len(strict_valid)),
+            "effective_valid_count": int(len(strict_valid)),
+            "joint_relaxed_count": 0,
+        }
 
-        cheap_top_m = valid[: max(1, int(cfg.cheap_top_m))]
+        valid_effective: List[Dict[str, Any]] = list(strict_valid)
+        if not valid_effective:
+            relaxed_joint: List[Dict[str, Any]] = []
+            for c in scored:
+                if (not _is_structural_valid(c)) or (not _is_face_safe(c)):
+                    continue
+                cc = _relax_joint_only_hard_reject(c)
+                if cc is not None and not bool(cc.get("hard_reject", False)):
+                    relaxed_joint.append(cc)
 
-        # Force baseline inclusion in cheap M for keep-vs-crop gating stability.
+            if relaxed_joint:
+                valid_effective = relaxed_joint
+                fallback_info.update(
+                    {
+                        "activated": True,
+                        "mode": "relaxed_joint_only",
+                        "effective_valid_count": int(len(relaxed_joint)),
+                        "joint_relaxed_count": int(len(relaxed_joint)),
+                    }
+                )
+            else:
+                face_safe_non_struct = [
+                    c for c in scored if _is_structural_valid(c) and _is_face_safe(c)
+                ]
+                if face_safe_non_struct:
+                    valid_effective = face_safe_non_struct
+                    fallback_info.update(
+                        {
+                            "activated": True,
+                            "mode": "non_structural_face_safe",
+                            "effective_valid_count": int(len(face_safe_non_struct)),
+                        }
+                    )
+                else:
+                    non_struct = [c for c in scored if _is_structural_valid(c)]
+                    if non_struct:
+                        valid_effective = non_struct
+                        fallback_info.update(
+                            {
+                                "activated": True,
+                                "mode": "non_structural_only",
+                                "effective_valid_count": int(len(non_struct)),
+                            }
+                        )
+                    else:
+                        valid_effective = list(scored)
+                        fallback_info.update(
+                            {
+                                "activated": True,
+                                "mode": "all_structural_invalid",
+                                "effective_valid_count": int(len(scored)),
+                            }
+                        )
+
+        valid_effective.sort(key=lambda x: safe_float(x["scores"].get("cheap", -1e9)), reverse=True)
+        cheap_top_m = valid_effective[: max(1, int(cfg.cheap_top_m))]
+
+        # Baseline is included only when it is not hard-invalid,
+        # except for fully-failed fallback modes where no clean option exists.
+        if baseline is not None:
+            baseline_hard = bool(baseline.get("hard_reject", False))
+            allow_hard_baseline = fallback_info["mode"] in {"all_structural_invalid", "non_structural_only"}
+            if baseline_hard and not allow_hard_baseline:
+                baseline = None
+
         if baseline is not None:
             b_id = str(baseline.get("candidate_id"))
             if all(str(c.get("candidate_id")) != b_id for c in cheap_top_m):
@@ -2182,6 +2343,7 @@ def process_one_image(
             "baseline": baseline,
             "ref_center": ref_center,
             "cheap_top_m": cheap_top_m,
+            "fallback_info": fallback_info,
         }
 
     # Real expensive stage on union(M candidates across AR), if resources are ready.
@@ -2214,31 +2376,56 @@ def process_one_image(
         baseline = tmp["baseline"]
         ref_center = tmp["ref_center"]
         cheap_top_m = tmp["cheap_top_m"]
+        fallback_info = tmp["fallback_info"]
         target_ar = float(tmp["target_ar"])
 
         normalize_final_scores(cheap_top_m)
         exp_sorted = sorted(cheap_top_m, key=lambda x: safe_float(x["scores"].get("final", -1e9)), reverse=True)
+        non_hard_sorted = [c for c in exp_sorted if not bool(c.get("hard_reject", False))]
+        rank_pool = non_hard_sorted if non_hard_sorted else exp_sorted
 
-        if exp_sorted:
-            best = exp_sorted[0]
+        if rank_pool:
+            best = rank_pool[0]
         else:
             best = baseline if baseline is not None else scored[0]
             exp_sorted = [best]
+            rank_pool = exp_sorted
             normalize_final_scores(exp_sorted)
 
-        if baseline is None:
-            baseline = best
-        decision = decide_keep_vs_crop(best=best, baseline=baseline, tau_improve=route["tau_improve"])
+        baseline_effective = baseline
+        if baseline_effective is None or bool(baseline_effective.get("hard_reject", False)):
+            baseline_effective = non_hard_sorted[0] if non_hard_sorted else best
+        if baseline_effective is None:
+            baseline_effective = best
 
-        force_ids = [decision["chosen_candidate_id"], baseline.get("candidate_id")]
+        decision = decide_keep_vs_crop(
+            best=best,
+            baseline=baseline_effective,
+            tau_improve=route["tau_improve"],
+        )
+
+        force_ids = [decision["chosen_candidate_id"], baseline_effective.get("candidate_id")]
         selected_topk = select_topk_diverse(
-            sorted_cands=exp_sorted,
+            sorted_cands=rank_pool,
             k=cfg.top_k,
             tau_div=cfg.tau_div,
             force_ids=force_ids,
         )
+        if len(selected_topk) < cfg.top_k and rank_pool is not exp_sorted:
+            already = {str(x.get("candidate_id", "")) for x in selected_topk}
+            tail = [c for c in exp_sorted if str(c.get("candidate_id", "")) not in already]
+            if tail:
+                fill = select_topk_diverse(
+                    sorted_cands=tail,
+                    k=cfg.top_k - len(selected_topk),
+                    tau_div=cfg.tau_div,
+                    force_ids=None,
+                )
+                selected_topk.extend(fill)
+        selected_topk = selected_topk[: cfg.top_k]
 
-        normalize_final_scores(selected_topk)
+        if selected_topk:
+            normalize_final_scores(selected_topk)
         hard_negs = select_hard_negatives(exp_sorted, max_n=5)
 
         rejected_sorted = sorted(
@@ -2251,15 +2438,17 @@ def process_one_image(
             "target_ar": ar_text,
             "target_ar_value": target_ar,
             "num_input_candidates": len(scored),
-            "num_valid_candidates": len([c for c in scored if not bool(c.get("hard_reject", False))]),
+            "num_valid_candidates": int(fallback_info.get("strict_valid_count", 0)),
+            "num_effective_candidates": int(fallback_info.get("effective_valid_count", 0)),
             "num_cheap_kept": len(cheap_top_m),
-            "baseline_candidate": candidate_brief(baseline),
+            "baseline_candidate": candidate_brief(baseline_effective),
             "best_candidate": candidate_brief(best),
             "keep_policy": {
                 "tau_improve": route["tau_improve"],
                 "w_area": route["w_area"],
                 "force_include_baseline_in_topm": True,
             },
+            "fallback": fallback_info,
             "decision": decision,
             "cheap_top_m": [candidate_brief(c) for c in cheap_top_m],
             "selected_topk": [candidate_brief(c, rank=i + 1) for i, c in enumerate(selected_topk)],
@@ -2272,6 +2461,7 @@ def process_one_image(
                 "num_people": int(num_people),
                 "c2_person_count": int(c2_person_count),
                 "has_human_evidence": bool(has_human_evidence),
+                "norm_size_source": norm_size_source,
                 "headroom_range": route["headroom_range"],
                 "lookroom_range": route["lookroom_range"],
                 "context_range": route["context_range"],
@@ -2298,6 +2488,7 @@ def process_one_image(
         "width": width,
         "height": height,
         "image_ar": image_ar,
+        "meta_norm": meta_norm,
         "tags": tags,
         "subject_prior": cand_rec.get("subject_prior", {}),
         "route_global": {
@@ -2307,6 +2498,7 @@ def process_one_image(
             "num_people": num_people,
             "c2_person_count": int(c2_person_count),
             "has_human_evidence": bool(has_human_evidence),
+            "norm_size_source": norm_size_source,
         },
         "teacher_scorer": {
             "config": asdict(cfg),
@@ -2319,6 +2511,14 @@ def process_one_image(
 
 def run(args: argparse.Namespace) -> None:
     random.seed(args.seed)
+
+    if int(args.num_shards) < 1:
+        raise ValueError(f"--num_shards must be >= 1 (got {args.num_shards})")
+    if int(args.shard_index) < 0 or int(args.shard_index) >= int(args.num_shards):
+        raise ValueError(
+            f"--shard_index must satisfy 0 <= shard_index < num_shards "
+            f"(got shard_index={args.shard_index}, num_shards={args.num_shards})"
+        )
 
     cfg = TeacherScorerConfig(
         cheap_top_m=max(1, int(args.cheap_top_m)),
@@ -2393,13 +2593,17 @@ def run(args: argparse.Namespace) -> None:
             if int(args.progress) != 0:
                 iterable = tqdm(iterable, desc="teacher-score")
 
+            line_idx = -1
             for line in iterable:
-                if args.max_images > 0 and written >= args.max_images:
-                    break
-
                 line = line.strip()
                 if not line:
                     continue
+                line_idx += 1
+                if args.max_images > 0 and line_idx >= args.max_images:
+                    break
+                if int(args.num_shards) > 1:
+                    if (line_idx % int(args.num_shards)) != int(args.shard_index):
+                        continue
                 cand_rec = json.loads(line)
                 image_id = str(cand_rec.get("image_id", ""))
                 if not image_id:
@@ -2458,6 +2662,7 @@ def run(args: argparse.Namespace) -> None:
                         topk=selected_topk,
                         ref_center_area=float(st["ref_center_area"]),
                         route=route_for_stats,
+                        fallback=one["teacher_scorer"]["results_by_ar"][ar_text].get("fallback", {}),
                         cfg=cfg,
                     )
 
@@ -2473,6 +2678,7 @@ def run(args: argparse.Namespace) -> None:
                         topk=selected_topk,
                         ref_center_area=float(st["ref_center_area"]),
                         route=route_for_stats,
+                        fallback=one["teacher_scorer"]["results_by_ar"][ar_text].get("fallback", {}),
                         cfg=cfg,
                     )
 
@@ -2497,6 +2703,8 @@ def run(args: argparse.Namespace) -> None:
             "c1_jsonl": str(c1_path) if c1_path is not None else None,
             "parquet": str(parquet_path) if parquet_path is not None else None,
             "tar_dir": str(args.tar_dir) if str(args.tar_dir).strip() else None,
+            "num_shards": int(args.num_shards),
+            "shard_index": int(args.shard_index),
         },
         "outputs": {
             "teacher_scores_jsonl": str(out_jsonl),

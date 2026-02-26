@@ -72,6 +72,9 @@ def make_bucket() -> Dict[str, Any]:
         "portrait_no_human_count": 0,
         "group_no_human_count": 0,
         "expensive_source": Counter(),
+        "fallback_activated_count": 0,
+        "fallback_mode": Counter(),
+        "norm_size_source": Counter(),
     }
 
 
@@ -125,6 +128,19 @@ def update_bucket(
     routing = ar_res.get("routing", {}) if isinstance(ar_res.get("routing"), dict) else {}
     flags_route = routing.get("flags", {}) if isinstance(routing.get("flags"), dict) else {}
     shot_type = str(routing.get("shot_type", "unknown"))
+    norm_size_source = str(
+        routing.get(
+            "norm_size_source",
+            route_global.get("norm_size_source", "unknown"),
+        )
+    )
+    bucket["norm_size_source"][norm_size_source] += 1
+
+    fallback = ar_res.get("fallback", {}) if isinstance(ar_res.get("fallback"), dict) else {}
+    if bool(fallback.get("activated", False)):
+        bucket["fallback_activated_count"] += 1
+        bucket["fallback_mode"][str(fallback.get("mode", "unknown"))] += 1
+
     has_copyspace = bool(flags_route.get("has_copy_space", False))
     has_human_evidence = bool(route_global.get("has_human_evidence", False))
     if not has_human_evidence:
@@ -191,6 +207,11 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
             ),
         },
         "expensive_source_counts": dict(bucket["expensive_source"]),
+        "fallback": {
+            "activated_rate": float(bucket["fallback_activated_count"]) / n,
+            "mode_counts": dict(bucket["fallback_mode"]),
+        },
+        "norm_size_source_counts": dict(bucket["norm_size_source"]),
     }
 
 
@@ -219,6 +240,7 @@ def flatten_for_csv(ar: str, summary: Dict[str, Any]) -> Dict[str, Any]:
         ),
         "copyspace_subset_count": summary.get("copyspace", {}).get("subset_count", 0),
         "copyspace_preserve_rate": summary.get("copyspace", {}).get("preserve_rate", 0.0),
+        "fallback_activated_rate": summary.get("fallback", {}).get("activated_rate", 0.0),
     }
     return out
 

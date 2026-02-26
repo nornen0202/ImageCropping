@@ -4,9 +4,9 @@
 # 특징 추출 파이프라인 통합 실행 스크립트
 #
 # GPU 수에 따라 자동으로 모드를 선택:
-#   GPU 1장  →  extract_features_single.py  (No-Ray, 낮은 오버헤드)
-#   GPU 2장+ →  extract_features_pipeline.py (Ray Multi-GPU)
-# --mode 옵션으로 강제 지정도 가능.
+#   GPU 1장  →  extract_features_single.py (single)
+#   GPU 2장+ →  extract_features_single.py 샤딩 병렬 (multi, No-Ray)
+# Ray는 --mode ray로 명시적으로 요청한 경우에만 사용.
 #
 # ==============================================================================
 # USAGE
@@ -27,7 +27,7 @@
 #     data/SSTK/10K/feats_c2c3.jsonl \
 #     --component c2 c3 --priority quality_first --server_mode 1
 #
-# [서버 — 전체, 멀티 GPU 강제]
+# [서버 — 전체, 멀티 GPU 강제(기본: No-Ray 샤딩)]
 # bash src/scripts/run_extract_component.sh \
 #     data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
 #     data/SSTK/10K/feats_all.jsonl \
@@ -42,10 +42,14 @@
 #   (3) OUTPUT_JSONL  : 결과 저장 경로
 #   --component       : 실행할 컴포넌트 목록 (c1 c2 c3 c4 c5 all) [기본: all]
 #   --priority        : high_efficiency | quality_first  [기본: high_efficiency]
-#   --mode            : auto | single | multi            [기본: auto]
-#   --num_workers     : Ray worker 수 (multi 모드; 기본: GPU 수 자동 감지)
+#   --mode            : auto | single | multi | ray      [기본: auto]
+#                       * multi = No-Ray 멀티 GPU 샤딩
+#                       * ray   = 레거시 Ray 모드(명시적 요청 시)
+#   --num_workers     : 멀티 모드 worker 수(기본: GPU 수 자동 감지)
+#   --gpu_ids         : 사용할 GPU id CSV (예: 0,1,2,3)
 #   --batch_size      : 배치 크기 [기본: 16]
 #   --server_mode     : 0=로컬(venv 활성화+로컬 경로), 1=서버 [기본: 1]
+#   --venv_path       : 로컬 모드에서 사용할 가상환경 activate 경로
 #   --tar_dir         : tar 파일 디렉토리 (미지정 시 server_mode에서 자동 설정)
 #   --weights_dir     : C3 가중치 디렉토리 (기본: PROJECT_ROOT/weights)
 # ==============================================================================
@@ -97,6 +101,21 @@ bash src/scripts/run_extract_component.sh \
    --component c1 c2 c3 --priority quality_first --server_mode 1
 
 # [서버 — 10K 전체에서 C2+C3(strict)+C5 추출 후 병합 피처 생성]
+# 0) 권장: C2+C3(strict)+C5를 1-pass로 추출(가장 효율적)
+C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
+   data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
+   data/SSTK/10K/feats_c2c3c5_v2_strict_raw.jsonl \
+   --component c2 c3 c5 --priority quality_first --server_mode 1
+
+# 1) C3 enrich (face/gaze proxy 보강) -> 최종 병합 피처
+python src/scripts/enrich_c3_pose_jsonl.py \
+   --input_c3_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_raw.jsonl \
+   --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
+   --use_actual_image_size 1 \
+   --tar_dir /sstk/20230916/sstk_100 \
+   --output_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_enriched.jsonl
+
+# [레거시 분리 모드 예시]
 # 1) C2
 bash src/scripts/run_extract_component.sh \
    data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
@@ -136,57 +155,41 @@ set -euo pipefail
 
 if [ "${1:-}" = "--guide_10k" ]; then
 cat <<'GUIDE'
-==============================================
- 10K Full Guide (C2 + C3 strict + C5 + merge)
-==============================================
+===========================================================
+ 10K Full Guide (권장: C2+C3 strict+C5 1-pass + C3 enrich)
+===========================================================
 # export CUDA_VISIBLE_DEVICES=0
 
-# (A) C2 추출
-bash src/scripts/run_extract_component.sh \
-  data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
-  data/SSTK/10K/feats_c2.jsonl \
-  --component c2 --priority quality_first --server_mode 1 \
-   2>&1  | tee src/scripts/logs/run_extract_component_10K_c2.log
-
-# (B) C3 strict 추출
+# (A) 1-pass precompute: C2 + C3(strict) + C5
 C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
   data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
-  data/SSTK/10K/feats_c3_v2_strict.jsonl \
-  --component c3 --priority quality_first --server_mode 1 \
-   2>&1  | tee src/scripts/logs/run_extract_component_10K_c3_strict.log
+  data/SSTK/10K/feats_c2c3c5_v2_strict_raw.jsonl \
+  --component c2 c3 c5 --priority quality_first --server_mode 1 \
+   2>&1  | tee src/scripts/logs/run_extract_component_10K_c2c3c5_unified.log
 
-# (C) C3 enrich
+# (B) C3 enrich(face/gaze proxy 포함) -> 최종 병합 피처
 python src/scripts/enrich_c3_pose_jsonl.py \
-  --input_c3_jsonl data/SSTK/10K/feats_c3_v2_strict.jsonl \
+  --input_c3_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_raw.jsonl \
   --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
   --use_actual_image_size 1 \
   --tar_dir /sstk/20230916/sstk_100 \
-  --output_jsonl data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl \
+  --output_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_enriched.jsonl \
    2>&1  | tee src/scripts/logs/enrich_c3_pose_jsonl_10K.log
 
-# (D) C5 추출
-bash src/scripts/run_extract_component.sh \
-  data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
-  data/SSTK/10K/feats_c5.jsonl \
-  --component c5 --priority quality_first --server_mode 1 \
-   2>&1  | tee src/scripts/logs/run_extract_component_10K_c5.log
+# (참고) 레거시 분리 모드가 필요한 경우에만 C2/C3/C5를 별도 실행 후 merge_feature_jsonl.py 사용
 
-# (E) 최종 병합
-python src/scripts/merge_feature_jsonl.py \
-  --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
-  --inputs data/SSTK/10K/feats_c2.jsonl \
-           data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl \
-           data/SSTK/10K/feats_c5.jsonl \
-  --output_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_enriched.jsonl \
-   2>&1  | tee src/scripts/logs/merge_feature_jsonl_10K.log
-
-==============================================
+===========================================================
 GUIDE
 exit 0
 fi
 
-export HUGGINGFACEHUB_API_TOKEN=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
-export HF_TOKEN="$HUGGINGFACEHUB_API_TOKEN"
+# Optional HuggingFace auth propagation (for private/gated resources).
+# Public weights should still work without tokens.
+if [ -n "${HUGGINGFACEHUB_API_TOKEN:-}" ]; then
+  export HF_TOKEN="${HF_TOKEN:-$HUGGINGFACEHUB_API_TOKEN}"
+elif [ -n "${HF_TOKEN:-}" ]; then
+  export HUGGINGFACEHUB_API_TOKEN="${HUGGINGFACEHUB_API_TOKEN:-$HF_TOKEN}"
+fi
 
 # ── 위치 인자 ─────────────────────────────────────────────────────────────────
 if [ "$#" -lt 3 ]; then
@@ -202,13 +205,15 @@ shift 3
 # ── 옵션 기본값 ───────────────────────────────────────────────────────────────
 COMPONENT="all"        # 'all' or space-separated list passed as single string
 PRIORITY="high_efficiency"
-MODE="auto"            # auto | single | multi
+MODE="auto"            # auto | single | multi | ray
 NUM_WORKERS=""
+GPU_IDS=""
 BATCH_SIZE=16
 SERVER_MODE=1
 TAR_DIR=""
 WEIGHTS_DIR=""
 C4_LANG="en"
+VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
 
 # ── 옵션 파싱 ─────────────────────────────────────────────────────────────────
 while [ "$#" -gt 0 ]; do
@@ -226,8 +231,10 @@ while [ "$#" -gt 0 ]; do
         --priority)    PRIORITY="$2";    shift 2 ;;
         --mode)        MODE="$2";        shift 2 ;;
         --num_workers) NUM_WORKERS="$2"; shift 2 ;;
+        --gpu_ids)     GPU_IDS="$2";     shift 2 ;;
         --batch_size)  BATCH_SIZE="$2";  shift 2 ;;
         --server_mode) SERVER_MODE="$2"; shift 2 ;;
+        --venv_path)   VENV_PATH="$2";  shift 2 ;;
         --tar_dir)     TAR_DIR="$2";     shift 2 ;;
         --weights_dir) WEIGHTS_DIR="$2"; shift 2 ;;
         --c4_lang)     C4_LANG="$2";     shift 2 ;;
@@ -255,12 +262,11 @@ fi
 
 # ── 가상환경 활성화 (로컬 모드만) ────────────────────────────────────────────
 if [ "$SERVER_MODE" -ne 1 ]; then
-    VENV="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
-    if [ -f "$VENV" ]; then
+    if [ -f "$VENV_PATH" ]; then
         # shellcheck disable=SC1090
-        source "$VENV"
+        source "$VENV_PATH"
     else
-        echo "Warning: venv not found at $VENV, using system python."
+        echo "Warning: venv not found at $VENV_PATH, using system python."
     fi
 fi
 
@@ -285,6 +291,11 @@ if [ "$MODE" = "auto" ]; then
     else
         MODE="multi"
     fi
+fi
+
+if [ "$MODE" != "single" ] && [ "$MODE" != "multi" ] && [ "$MODE" != "ray" ]; then
+    echo "Error: --mode must be one of auto|single|multi|ray"
+    exit 1
 fi
 
 echo "=============================================="
@@ -313,8 +324,108 @@ if [ "$MODE" = "single" ]; then
         --batch_size     "$BATCH_SIZE" \
         --weights_dir    "$WEIGHTS_DIR" \
         --c4_lang        "$C4_LANG"
+elif [ "$MODE" = "multi" ]; then
+    echo "[MODE] Multi-GPU (No Ray, sharded single-process workers)"
+
+    resolve_gpu_ids() {
+        local csv="$GPU_IDS"
+        if [ -z "$csv" ] && [ -n "${CUDA_VISIBLE_DEVICES:-}" ]; then
+            csv="$CUDA_VISIBLE_DEVICES"
+        fi
+        if [ -z "$csv" ]; then
+            local n="$NUM_GPUS"
+            local arr=()
+            local i
+            for ((i=0; i<n; i++)); do
+                arr+=("$i")
+            done
+            (IFS=,; echo "${arr[*]}")
+            return
+        fi
+        # normalize spaces
+        csv="${csv// /}"
+        echo "$csv"
+    }
+
+    GPU_CSV="$(resolve_gpu_ids)"
+    IFS=',' read -r -a GPU_ARR <<< "$GPU_CSV"
+    WORKERS="${#GPU_ARR[@]}"
+    if [ -n "$NUM_WORKERS" ]; then
+        WORKERS="$NUM_WORKERS"
+    fi
+    if [ "$WORKERS" -lt 1 ]; then
+        echo "Error: invalid worker count: $WORKERS"
+        exit 1
+    fi
+    if [ "$WORKERS" -gt "${#GPU_ARR[@]}" ]; then
+        echo "Warning: requested workers($WORKERS) > available gpu_ids(${#GPU_ARR[@]}). clipping."
+        WORKERS="${#GPU_ARR[@]}"
+    fi
+    if [ "$WORKERS" -le 1 ]; then
+        echo "Warning: effective workers <= 1. falling back to single mode."
+        python3 "${SRC_DIR}/extract_features_single.py" \
+            --input_parquet  "$INPUT_PARQUET" \
+            --bucket         "$BUCKET" \
+            --tar_dir        "$TAR_DIR" \
+            --output_jsonl   "$OUTPUT_JSONL" \
+            --component      $COMPONENT \
+            --priority       "$PRIORITY" \
+            --batch_size     "$BATCH_SIZE" \
+            --weights_dir    "$WEIGHTS_DIR" \
+            --c4_lang        "$C4_LANG"
+    else
+        TMP_DIR="${OUTPUT_JSONL}.shards.$$"
+        mkdir -p "$TMP_DIR"
+        PIDS=()
+        SHARD_FILES=()
+        echo "[multi] gpu_ids=${GPU_CSV} workers=${WORKERS}"
+
+        i=0
+        while [ "$i" -lt "$WORKERS" ]; do
+            GPU_ID="${GPU_ARR[$i]}"
+            SHARD_OUT="${TMP_DIR}/part_${i}.jsonl"
+            SHARD_LOG="${TMP_DIR}/part_${i}.log"
+            SHARD_FILES+=("$SHARD_OUT")
+            echo "[multi] launch shard=$i/$WORKERS gpu=$GPU_ID -> $SHARD_OUT"
+            CUDA_VISIBLE_DEVICES="$GPU_ID" python3 "${SRC_DIR}/extract_features_single.py" \
+                --input_parquet  "$INPUT_PARQUET" \
+                --bucket         "$BUCKET" \
+                --tar_dir        "$TAR_DIR" \
+                --output_jsonl   "$SHARD_OUT" \
+                --component      $COMPONENT \
+                --priority       "$PRIORITY" \
+                --batch_size     "$BATCH_SIZE" \
+                --weights_dir    "$WEIGHTS_DIR" \
+                --c4_lang        "$C4_LANG" \
+                --num_shards     "$WORKERS" \
+                --shard_index    "$i" \
+                >"$SHARD_LOG" 2>&1 &
+            PIDS+=("$!")
+            i=$((i + 1))
+        done
+
+        FAIL=0
+        for pid in "${PIDS[@]}"; do
+            if ! wait "$pid"; then
+                FAIL=1
+            fi
+        done
+        if [ "$FAIL" -ne 0 ]; then
+            echo "Error: one or more shard workers failed. logs under: $TMP_DIR"
+            exit 1
+        fi
+
+        : > "$OUTPUT_JSONL"
+        for f in "${SHARD_FILES[@]}"; do
+            if [ -f "$f" ]; then
+                cat "$f" >> "$OUTPUT_JSONL"
+            fi
+        done
+        echo "[multi] merged output -> $OUTPUT_JSONL"
+        echo "[multi] shard logs -> $TMP_DIR"
+    fi
 else
-    echo "[MODE] Multi-GPU (Ray)"
+    echo "[MODE] Multi-GPU (Ray, explicit)"
     WORKERS_ARG=""
     if [ -n "$NUM_WORKERS" ]; then
         WORKERS_ARG="--num_workers $NUM_WORKERS"

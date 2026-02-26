@@ -533,8 +533,43 @@ class SegFeatureExtractor:
             covers.append(inter / (_bbox_area_xyxy(db) + 1e-6))
         return float(max(covers)) if covers else 0.0
 
-    def process_image(self, image: Image.Image, conf_threshold: float = 0.25) -> List[Dict[str, Any]]:
+    def _to_det_records(
+        self,
+        det_boxes: np.ndarray,
+        det_cls: np.ndarray,
+        det_scores: np.ndarray,
+        w: int,
+        h: int,
+        min_area_ratio: float = 0.0,
+    ) -> List[Dict[str, Any]]:
+        out: List[Dict[str, Any]] = []
+        img_area = float(max(1, w * h))
+        for i in range(det_boxes.shape[0]):
+            b = _clamp_xyxy([float(x) for x in det_boxes[i].tolist()], w, h)
+            if _bbox_area_xyxy(b) / img_area < float(min_area_ratio):
+                continue
+            out.append(
+                {
+                    "box": [float(v) for v in b],
+                    "class_id": int(det_cls[i]) if i < len(det_cls) else -1,
+                    "score": float(det_scores[i]) if i < len(det_scores) else 0.0,
+                }
+            )
+        return out
+
+    def process_image(
+        self,
+        image: Image.Image,
+        conf_threshold: float = 0.25,
+        return_det: bool = False,
+    ) -> Any:
         results_out: List[Dict[str, Any]] = []
+        det_records: List[Dict[str, Any]] = []
+
+        def _ret(seg: List[Dict[str, Any]]) -> Any:
+            if return_det:
+                return seg, det_records
+            return seg
 
         img_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
@@ -543,15 +578,23 @@ class SegFeatureExtractor:
 
         if self.priority == "high_efficiency":
             if self.yolo is None or self.predictor is None:
-                return results_out
+                return _ret(results_out)
 
             yolo_res = self.yolo(img_bgr, conf=conf_threshold, verbose=False)[0]
             boxes = yolo_res.boxes.xyxy.cpu().numpy().astype(np.float32)
             scores = yolo_res.boxes.conf.cpu().numpy().astype(np.float32)
             class_ids = yolo_res.boxes.cls.cpu().numpy().astype(np.int32)
+            det_records = self._to_det_records(
+                det_boxes=boxes,
+                det_cls=class_ids,
+                det_scores=scores,
+                w=w,
+                h=h,
+                min_area_ratio=0.0,
+            )
 
             if len(boxes) == 0:
-                return results_out
+                return _ret(results_out)
 
             self.predictor.set_image(img_rgb)
             for i, box in enumerate(boxes):
@@ -572,10 +615,10 @@ class SegFeatureExtractor:
                     }
                 )
             self.predictor.reset_image()
-            return results_out
+            return _ret(results_out)
 
         if self.priority != "quality_first":
-            return results_out
+            return _ret(results_out)
 
         # 1) YOLO detections (for semantic prior and semantic fallback)
         yolo_conf = float(self.qf_cfg.get("yolo_conf", conf_threshold))
@@ -590,6 +633,14 @@ class SegFeatureExtractor:
         det_boxes_v = det_boxes[valid_det_idx] if valid_det_idx else np.zeros((0, 4), dtype=np.float32)
         det_cls_v = det_cls[valid_det_idx] if valid_det_idx else np.zeros((0,), dtype=np.int32)
         det_scores_v = det_scores[valid_det_idx] if valid_det_idx else np.zeros((0,), dtype=np.float32)
+        det_records = self._to_det_records(
+            det_boxes=det_boxes_v,
+            det_cls=det_cls_v,
+            det_scores=det_scores_v,
+            w=w,
+            h=h,
+            min_area_ratio=0.0,
+        )
 
         # 2) Preferred-class semantic prior (person-first by default)
         preferred_ids = set(int(x) for x in self.qf_cfg.get("preferred_class_ids", [0]))
@@ -621,7 +672,7 @@ class SegFeatureExtractor:
                 )
                 if out is not None:
                     results_out.append(out)
-                    return results_out
+                    return _ret(results_out)
 
         # 3) Any-class semantic fallback to reduce background picks
         if det_boxes_v.shape[0] > 0 and self.sam2_predictor is not None:
@@ -654,7 +705,7 @@ class SegFeatureExtractor:
                 )
                 if out is not None:
                     results_out.append(out)
-                    return results_out
+                    return _ret(results_out)
 
         # 4) AMG fallback
         masks = self._safe_generate_masks(self.mask_generator, img_rgb)
@@ -671,7 +722,7 @@ class SegFeatureExtractor:
                 )
                 if out is not None:
                     results_out.append(out)
-            return results_out
+            return _ret(results_out)
 
         masks_f = self._filter_amg_masks(masks, img_area)
         if not masks_f:
@@ -687,7 +738,7 @@ class SegFeatureExtractor:
                 )
                 if out is not None:
                     results_out.append(out)
-            return results_out
+            return _ret(results_out)
 
         part_flags = self._compute_containment_flags(masks_f, w, h)
         saliency_fg = self._build_saliency_foreground(img_bgr)
@@ -762,7 +813,7 @@ class SegFeatureExtractor:
                 )
                 if out is not None:
                     results_out.append(out)
-            return results_out
+            return _ret(results_out)
 
         mask_2d = best_mask_info["segmentation"].astype(bool)
         out = self._build_output_from_mask(
@@ -776,4 +827,4 @@ class SegFeatureExtractor:
         if out is not None:
             results_out.append(out)
 
-        return results_out
+        return _ret(results_out)

@@ -365,11 +365,36 @@ def resolve_subject_prior(
     width: int,
     height: int,
     c2_seg: Optional[List[Dict[str, Any]]],
+    c2_det: Optional[List[Dict[str, Any]]],
     c3_pose: Optional[List[Dict[str, Any]]],
     cfg: CandidateGenConfig,
 ) -> Dict[str, Any]:
     boxes: List[List[float]] = []
     source_parts: List[str] = []
+
+    # Prefer explicit person detections when available.
+    det_person_boxes: List[List[float]] = []
+    if c2_det:
+        for d in c2_det:
+            if not isinstance(d, dict):
+                continue
+            try:
+                cid = int(d.get("class_id", -1))
+            except Exception:
+                cid = -1
+            if cid != 0:
+                continue
+            if float(d.get("score", 0.0)) < 0.15:
+                continue
+            b = d.get("box")
+            if not isinstance(b, (list, tuple)) or len(b) != 4:
+                continue
+            det_person_boxes.append(norm_box_xyxy(b, float(width), float(height)))
+    if det_person_boxes:
+        pb = union_boxes(det_person_boxes)
+        if pb is not None:
+            boxes.append(pb)
+            source_parts.append("c2det_person")
 
     if c2_seg:
         def c2_rank(seg: Dict[str, Any]) -> float:
@@ -382,7 +407,7 @@ def resolve_subject_prior(
             boxes.append(norm_box_xyxy(best["box"], float(width), float(height)))
             source_parts.append("c2")
 
-    num_people = 0
+    num_people = len(det_person_boxes)
     if c3_pose:
         pose_boxes = []
         for p in c3_pose:
@@ -390,7 +415,7 @@ def resolve_subject_prior(
             if not b:
                 continue
             pose_boxes.append(norm_box_xyxy(b, float(width), float(height)))
-        num_people = len(pose_boxes)
+        num_people = max(num_people, len(pose_boxes))
         if pose_boxes:
             pb = union_boxes(pose_boxes)
             if pb is not None:
@@ -811,7 +836,8 @@ def config_hash(cfg: CandidateGenConfig) -> str:
 
 def build_output_record(
     row: pd.Series,
-    c2_map: Dict[str, Any],
+    c2_seg_map: Dict[str, Any],
+    c2_det_map: Dict[str, Any],
     c3_map: Dict[str, Any],
     cfg: CandidateGenConfig,
     cfg_hash: str,
@@ -834,12 +860,14 @@ def build_output_record(
     image_ar = float(width) / float(max(1, height))
     tags = ensure_jsonable_tags(row.get("tags"))
 
-    c2_seg = c2_map.get(img_id, [])
+    c2_seg = c2_seg_map.get(img_id, [])
+    c2_det = c2_det_map.get(img_id, [])
     c3_pose = c3_map.get(img_id, [])
     subj = resolve_subject_prior(
         width=width,
         height=height,
         c2_seg=c2_seg,
+        c2_det=c2_det,
         c3_pose=c3_pose,
         cfg=cfg,
     )
@@ -874,6 +902,14 @@ def build_output_record(
         "height_parquet": height_pq,
         "size_source": size_source,
         "image_ar": round(image_ar, 6),
+        "meta_norm": {
+            "width_norm_ref": int(width),
+            "height_norm_ref": int(height),
+            "image_ar_norm_ref": round(image_ar, 6),
+            "size_source": size_source,
+            "width_parquet": int(width_pq),
+            "height_parquet": int(height_pq),
+        },
         "tags": tags,
         "subject_prior": subj,
         "candidate_gen_hash": cfg_hash,
@@ -1267,10 +1303,15 @@ def main() -> None:
         missing = sorted(needed - set(df.columns))
         raise ValueError(f"Input parquet missing required columns: {missing}")
 
-    c2_map = load_jsonl_map(c2_path, value_key="c2_seg")
+    c2_seg_map = load_jsonl_map(c2_path, value_key="c2_seg")
+    c2_det_map = load_jsonl_map(c2_path, value_key="c2_det")
     c3_map = load_jsonl_map(c3_path, value_key="c3_pose")
+    c2_det_nonempty = sum(1 for v in c2_det_map.values() if isinstance(v, list) and len(v) > 0)
+    c3_nonempty = sum(1 for v in c3_map.values() if isinstance(v, list) and len(v) > 0)
     print(
-        f"[CandidateGen] rows={len(df)} c2={len(c2_map)} c3={len(c3_map)} cfg_hash={cfg_hash}"
+        f"[CandidateGen] rows={len(df)} c2_seg={len(c2_seg_map)} "
+        f"c2_det={len(c2_det_map)}(nonempty={c2_det_nonempty}) "
+        f"c3={len(c3_map)}(nonempty={c3_nonempty}) cfg_hash={cfg_hash}"
     )
 
     if args.max_images > 0:
@@ -1302,7 +1343,8 @@ def main() -> None:
         for _, row in tqdm(df.iterrows(), total=len(df), desc="CandidateGen"):
             rec = build_output_record(
                 row=row,
-                c2_map=c2_map,
+                c2_seg_map=c2_seg_map,
+                c2_det_map=c2_det_map,
                 c3_map=c3_map,
                 cfg=cfg,
                 cfg_hash=cfg_hash,

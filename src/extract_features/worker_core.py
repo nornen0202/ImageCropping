@@ -129,16 +129,54 @@ class FeatureWorker:
 
         for i, (img_id, img, tags) in enumerate(batch_data):
             res: dict = {"image_id": img_id}
+            c2_seg = []
+            c2_det = []
 
             if self.c1 and c1_img_feats is not None:
                 res["c1_img_embed"] = c1_img_feats[i].tolist()
                 res["c1_txt_embed"] = c1_txt_feats[i].tolist()
 
             if self.c2:
-                res["c2_seg"] = self.c2.process_image(img)
+                c2_out = self.c2.process_image(img, return_det=True)
+                if isinstance(c2_out, tuple) and len(c2_out) == 2:
+                    c2_seg, c2_det = c2_out
+                elif isinstance(c2_out, list):
+                    c2_seg = c2_out
+                if not isinstance(c2_seg, list):
+                    c2_seg = []
+                if not isinstance(c2_det, list):
+                    c2_det = []
+                res["c2_seg"] = c2_seg
+                if c2_det:
+                    res["c2_det"] = c2_det
 
             if self.c3:
-                res["c3_pose"] = self.c3.process_image(img, tags=tags)
+                person_hint_boxes = []
+                for d in c2_det:
+                    if not isinstance(d, dict):
+                        continue
+                    try:
+                        cid = int(d.get("class_id", -1))
+                    except Exception:
+                        cid = -1
+                    if cid != 0:
+                        continue
+                    if float(d.get("score", 0.0)) < 0.20:
+                        continue
+                    box = d.get("box")
+                    if isinstance(box, (list, tuple)) and len(box) == 4:
+                        person_hint_boxes.append([float(v) for v in box])
+                run_anyway = len(person_hint_boxes) > 0
+                try:
+                    res["c3_pose"] = self.c3.process_image(
+                        img,
+                        run_anyway=run_anyway,
+                        tags=tags,
+                        person_prior_boxes=person_hint_boxes if person_hint_boxes else None,
+                    )
+                except TypeError:
+                    # Backward-compatible path if extractor does not expose person priors.
+                    res["c3_pose"] = self.c3.process_image(img, run_anyway=run_anyway, tags=tags)
 
             if self.c4:
                 res["c4_ocr"] = self.c4.process_image(img, tags=tags)

@@ -113,6 +113,8 @@ C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
 python src/scripts/enrich_c3_pose_jsonl.py \
    --input_c3_jsonl data/SSTK/10K/feats_c3_v2_strict.jsonl \
    --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
+   --use_actual_image_size 1 \
+   --tar_dir /sstk/20230916/sstk_100 \
    --output_jsonl data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl
 
 # 4) C5 (horizon/roll/symmetry)
@@ -137,30 +139,37 @@ cat <<'GUIDE'
 ==============================================
  10K Full Guide (C2 + C3 strict + C5 + merge)
 ==============================================
+# export CUDA_VISIBLE_DEVICES=0
 
 # (A) C2 추출
 bash src/scripts/run_extract_component.sh \
   data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
   data/SSTK/10K/feats_c2.jsonl \
-  --component c2 --priority quality_first --server_mode 1
+  --component c2 --priority quality_first --server_mode 1 \
+   2>&1  | tee src/scripts/logs/run_extract_component_10K_c2.log
 
 # (B) C3 strict 추출
 C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
   data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
   data/SSTK/10K/feats_c3_v2_strict.jsonl \
-  --component c3 --priority quality_first --server_mode 1
+  --component c3 --priority quality_first --server_mode 1 \
+   2>&1  | tee src/scripts/logs/run_extract_component_10K_c3_strict.log
 
 # (C) C3 enrich
 python src/scripts/enrich_c3_pose_jsonl.py \
   --input_c3_jsonl data/SSTK/10K/feats_c3_v2_strict.jsonl \
   --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
-  --output_jsonl data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl
+  --use_actual_image_size 1 \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --output_jsonl data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl \
+   2>&1  | tee src/scripts/logs/enrich_c3_pose_jsonl_10K.log
 
 # (D) C5 추출
 bash src/scripts/run_extract_component.sh \
   data/SSTK/10K/filtered_sstk_100.parquet sstk_100 \
   data/SSTK/10K/feats_c5.jsonl \
-  --component c5 --priority high_efficiency --server_mode 1
+  --component c5 --priority quality_first --server_mode 1 \
+   2>&1  | tee src/scripts/logs/run_extract_component_10K_c5.log
 
 # (E) 최종 병합
 python src/scripts/merge_feature_jsonl.py \
@@ -168,7 +177,8 @@ python src/scripts/merge_feature_jsonl.py \
   --inputs data/SSTK/10K/feats_c2.jsonl \
            data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl \
            data/SSTK/10K/feats_c5.jsonl \
-  --output_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_enriched.jsonl
+  --output_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_enriched.jsonl \
+   2>&1  | tee src/scripts/logs/merge_feature_jsonl_10K.log
 
 ==============================================
 GUIDE

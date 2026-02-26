@@ -20,14 +20,18 @@ from __future__ import annotations
 import argparse
 from collections import Counter, defaultdict
 import hashlib
+import io
 import json
 import math
+import os
+import tarfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
+from PIL import Image
 from tqdm import tqdm
 
 
@@ -69,6 +73,91 @@ class CandidateGenConfig:
     phi_scales: Tuple[float, ...] = DEFAULT_PHI_SCALES
     object_template_scales: Tuple[float, ...] = DEFAULT_OBJ_TEMPLATE_SCALES
     min_subject_size: float = 0.08
+
+
+def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
+    if not tar_name:
+        return None
+    cand = [
+        os.path.join(tar_dir, tar_name),
+        os.path.join(tar_dir, str(bucket), tar_name) if bucket else None,
+    ]
+    for p in cand:
+        if p and os.path.exists(p):
+            return p
+    return None
+
+
+def build_actual_size_map(
+    df: pd.DataFrame,
+    tar_dir: str,
+    cache_json: Optional[Path] = None,
+    use_cache_if_available: bool = True,
+) -> Dict[str, Tuple[int, int]]:
+    """
+    Build image_id -> (actual_width, actual_height) by probing images in TARs.
+
+    The filtered parquet width/height are original source sizes and often differ
+    from TAR-resized images; C2/C3 pixel boxes are on TAR image scale, so
+    candidate normalization must use these actual TAR sizes.
+    """
+    if cache_json is not None and use_cache_if_available and cache_json.exists():
+        out: Dict[str, Tuple[int, int]] = {}
+        with cache_json.open("r", encoding="utf-8") as f:
+            payload = json.load(f)
+        for k, v in payload.items():
+            if isinstance(v, (list, tuple)) and len(v) == 2:
+                out[str(k)] = (int(v[0]), int(v[1]))
+        if out:
+            return out
+
+    if "tar_name" not in df.columns:
+        raise ValueError("use_actual_image_size=1 requires parquet column 'tar_name'")
+
+    by_tar: Dict[str, List[Tuple[str, str]]] = defaultdict(list)
+    has_bucket = "bucket" in df.columns
+    for _, row in df.iterrows():
+        img_id = str(row["image_id"])
+        tar_name = str(row["tar_name"])
+        bucket = str(row["bucket"]) if has_bucket else ""
+        by_tar[tar_name].append((img_id, bucket))
+
+    out: Dict[str, Tuple[int, int]] = {}
+    for tar_name, items in tqdm(by_tar.items(), total=len(by_tar), desc="size-map"):
+        bucket = items[0][1] if items else ""
+        tar_path = resolve_tar_path(tar_dir=tar_dir, bucket=bucket, tar_name=tar_name)
+        if tar_path is None:
+            continue
+        wanted = {f"{img_id}.jpg": img_id for img_id, _ in items}
+        wanted.update({f"{img_id}.jpeg": img_id for img_id, _ in items})
+        wanted.update({f"{img_id}.png": img_id for img_id, _ in items})
+        wanted.update({f"{img_id}.webp": img_id for img_id, _ in items})
+
+        try:
+            with tarfile.open(tar_path, "r") as tf:
+                members = {os.path.basename(m.name): m for m in tf.getmembers() if m.isfile()}
+                for fname, img_id in wanted.items():
+                    m = members.get(fname)
+                    if m is None:
+                        continue
+                    fobj = tf.extractfile(m)
+                    if fobj is None:
+                        continue
+                    data = fobj.read()
+                    try:
+                        im = Image.open(io.BytesIO(data))
+                        out[img_id] = (int(im.width), int(im.height))
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+
+    if cache_json is not None:
+        cache_json.parent.mkdir(parents=True, exist_ok=True)
+        with cache_json.open("w", encoding="utf-8") as f:
+            json.dump({k: [int(v[0]), int(v[1])] for k, v in out.items()}, f, ensure_ascii=False)
+
+    return out
 
 
 def parse_ar(ar_text: str) -> float:
@@ -726,10 +815,22 @@ def build_output_record(
     c3_map: Dict[str, Any],
     cfg: CandidateGenConfig,
     cfg_hash: str,
+    actual_size_map: Optional[Dict[str, Tuple[int, int]]] = None,
+    strict_actual_size: bool = True,
 ) -> Dict[str, Any]:
     img_id = str(row["image_id"])
-    width = int(row["width"])
-    height = int(row["height"])
+    width_pq = int(row["width"])
+    height_pq = int(row["height"])
+    width = width_pq
+    height = height_pq
+    size_source = "parquet"
+    if actual_size_map is not None:
+        wh = actual_size_map.get(img_id)
+        if wh is not None and wh[0] > 0 and wh[1] > 0:
+            width, height = int(wh[0]), int(wh[1])
+            size_source = "tar_actual"
+        elif strict_actual_size:
+            raise ValueError(f"missing actual image size for image_id={img_id}")
     image_ar = float(width) / float(max(1, height))
     tags = ensure_jsonable_tags(row.get("tags"))
 
@@ -769,6 +870,9 @@ def build_output_record(
         "image_id": img_id,
         "width": width,
         "height": height,
+        "width_parquet": width_pq,
+        "height_parquet": height_pq,
+        "size_source": size_source,
         "image_ar": round(image_ar, 6),
         "tags": tags,
         "subject_prior": subj,
@@ -1111,6 +1215,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--use_phi_thirds", type=int, default=1, help="1=use, 0=disable")
     p.add_argument("--phi_scales", nargs="+", type=float, default=list(DEFAULT_PHI_SCALES))
     p.add_argument("--max_images", type=int, default=0, help="0 means all")
+    p.add_argument("--use_actual_image_size", type=int, default=1, help="1=use tar actual size for normalization")
+    p.add_argument("--strict_actual_size", type=int, default=1, help="1=error when any image lacks actual TAR size")
+    p.add_argument("--tar_dir", default="", help="required when use_actual_image_size=1")
+    p.add_argument("--actual_size_cache_json", default="", help="optional cache for image_id->(w,h)")
 
     # Post-processing outputs: overview tables + visualization images.
     p.add_argument("--save_overview", type=int, default=1, help="1=save overview files")
@@ -1171,8 +1279,25 @@ def main() -> None:
             f"[CandidateGen] max_images={args.max_images} -> processing rows={len(df)}"
         )
 
+    actual_size_map: Optional[Dict[str, Tuple[int, int]]] = None
+    if bool(int(args.use_actual_image_size)):
+        if not str(args.tar_dir).strip():
+            raise ValueError("use_actual_image_size=1 requires --tar_dir")
+        cache_path = Path(args.actual_size_cache_json) if args.actual_size_cache_json else None
+        print("[CandidateGen] Building/loading actual TAR image-size map...")
+        actual_size_map = build_actual_size_map(
+            df=df,
+            tar_dir=str(args.tar_dir),
+            cache_json=cache_path,
+            use_cache_if_available=True,
+        )
+        if not actual_size_map:
+            raise RuntimeError("Failed to build actual_size_map (empty result)")
+        print(f"[CandidateGen] actual_size_map loaded: {len(actual_size_map)} images")
+
     num_written = 0
     avg_total = 0.0
+    size_source_counter = Counter()
     with output_path.open("w", encoding="utf-8") as out_f:
         for _, row in tqdm(df.iterrows(), total=len(df), desc="CandidateGen"):
             rec = build_output_record(
@@ -1181,15 +1306,20 @@ def main() -> None:
                 c3_map=c3_map,
                 cfg=cfg,
                 cfg_hash=cfg_hash,
+                actual_size_map=actual_size_map,
+                strict_actual_size=bool(int(args.strict_actual_size)),
             )
             out_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             num_written += 1
             avg_total += rec["stats"]["num_candidates_total"]
+            size_source_counter[str(rec.get("size_source", "unknown"))] += 1
 
     avg_total = avg_total / max(1, num_written)
     print(
         f"[CandidateGen] Done. written={num_written} avg_total_candidates={avg_total:.2f}"
     )
+    if size_source_counter:
+        print(f"[CandidateGen] size_source_counts={dict(size_source_counter)}")
     print(f"[CandidateGen] output={output_path}")
 
     save_overview = bool(args.save_overview)

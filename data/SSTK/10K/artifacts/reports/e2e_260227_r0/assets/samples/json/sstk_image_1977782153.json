@@ -1,0 +1,166 @@
+{
+  "super_cat": "transportation",
+  "image_id": "sstk_image_1977782153",
+  "phaseA": {
+    "image_id": "sstk_image_1977782153",
+    "super_cat": "transportation",
+    "tar_name": "SSTK_001721.tar",
+    "width": 750,
+    "height": 1000,
+    "aes_score": 6.341640472412109,
+    "sstk_type": "Photo",
+    "tags": "travel|truck|bluff|pickup|yard|historic|background|badge|outdoor|aged|scenery|stylish|old car|view|countryside|machinery|house|old|transport|vintage|red rock|car|rusty|grunge|desert|industry|western|cow canyon|classic|wheel|diggings|retro|abandoned|sky|rustic|utah|vehicle|rustic car|san juan|automobile|antique|dodge|parked|no people|rural|junk|landscape"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 0,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.020459,
+            0.015473,
+            0.976585,
+            0.903545
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.009239673614502
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 3.762300491333008
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 3.3258509635925293
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 1.911586880683899
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 1.282025694847107
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 1.009742259979248
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 128,
+      "9:16": 122,
+      "16:9": 72,
+      "3:4": 165,
+      "4:3": 108
+    },
+    "total_candidates": 595
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "crop",
+        "delta_improve": 0.5380919672495303,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "crop",
+        "delta_improve": 0.418195837147022,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "3x4_g12x12_steach_cgs_jit0_18_i0003",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      }
+    }
+  }
+}

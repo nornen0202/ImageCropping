@@ -64,6 +64,31 @@
   - 최종 출력은 `selected_topk`의 상위 5개(`K_actual=5`)
   - 즉, 110개 중 Teacher Scorer가 점수/다양성 제약으로 상위 5개를 선택한 결과
 
+### 2.6 Teacher Score 계산식 (코드 기준)
+- 1) Cheap score
+  - `cheap = λ_cov*cov - λ_cut*p_cut - λ_text*p_text + λ_comp*r_comp + λ_hr*r_headroom + λ_lr*r_lookroom + λ_sym*r_sym + λ_ctx*r_context + λ_cs*r_copyspace`
+  - `r_comp = w_third*r_third + w_phi*r_phi + w_center*r_center + w_horizon*r_horizon`
+  - 기본 가중치(`TeacherScorerConfig`): `lambda_cov=1.20, lambda_cut=1.80, lambda_comp=1.00, lambda_hr=0.65, lambda_lr=0.55, lambda_sym=0.25, lambda_ctx=0.45, lambda_cs=0.35`
+  - 라우팅(shot_type/flags)에 따라 `effective_lambdas`로 재가중됨(예: copy-space면 `ctx/cs` 강화)
+- 2) Expensive prior/proxy (real 모델 미사용 시)
+  - `aesthetic_proxy = 0.45*r_comp + 0.20*sym + 0.20*cov + 0.15*context_fit - 0.30*min(1,p_cut)`
+  - `ca_proxy = 0.65*cov + 0.35*context_fit`
+- 3) Expensive + Final score
+  - `expensive = w_a*A_norm + w_ca*cos + w_cov*cov - w_cut*p_cut - w_text*p_text + w_edge*r_edge`
+  - `final = expensive + w_area*log(area_ratio)`
+  - 기본 가중치: `w_a=1.0, w_ca=0.3, w_cov=0.5, w_cut=2.0, w_text=0.0, w_edge=0.5`
+  - `A_norm = clamp((A_raw - aesthetic_score_min) / (aesthetic_score_max - aesthetic_score_min), 0, 1)` (`min=1, max=10`)
+  - `w_area`는 라우팅 기반: copy-space/landscape `0.12`, product `0.06`, 기본 `0.10`
+- 4) Keep-vs-Crop decision
+  - `delta = best_final - baseline_final`
+  - `delta < tau_improve`이면 baseline 유지 경로(`baseline_full`이면 `keep_full`, 아니면 `minimal_crop`)
+  - `delta >= tau_improve`이면 `crop`
+  - `tau_improve`는 라우팅 기반: copy-space/landscape `0.055`, group(또는 인물 2+) `0.045`, portrait `0.03`, product `0.015`, 기본 `0.035`
+- 5) Top-K 선택
+  - `cheap_top_m`(기본 30) 후보를 expensive 재평가 후 정렬
+  - `select_topk_diverse(k=5, tau_div=0.75)`로 IoU 다양성 제약을 적용해 선택
+  - 다양성 제약으로 모자라면 남은 상위 후보로 fill하여 최대 `top_k`까지 채움
+
 ## 3) 단계별 입출력 포맷 정의 (예시 샘플: `sstk_image_1772011034`)
 
 - Phase A row 예시: [`assets/samples/json/sstk_image_1772011034.json`](assets/samples/json/sstk_image_1772011034.json) 의 `phaseA`

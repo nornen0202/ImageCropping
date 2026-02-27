@@ -1,0 +1,14 @@
+|super_cat|image_id|aes_score|tar_name|dims|
+|---|---|---:|---|---|
+|animals|sstk_image_2257975789|6.4181|SSTK_002698.tar|1000x666|
+|architecture_exterior|sstk_image_1165522843|6.3914|SSTK_004658.tar|770x1000|
+|documents_text|sstk_image_2129282159|6.1853|SSTK_004811.tar|1000x667|
+|food|sstk_image_2024012429|6.3696|SSTK_003419.tar|1000x667|
+|indoor_interior|sstk_image_629195588|6.2116|SSTK_004477.tar|1000x667|
+|landscape_nature|sstk_image_1104016514|6.6514|SSTK_001072.tar|1000x667|
+|other_ambiguous|sstk_image_174059567|6.2555|SSTK_001159.tar|1000x825|
+|people_multi|pond5_image_99604568|6.4188|SSTK_003610.tar|1000x667|
+|people_single|sstk_image_2190537205|6.8549|SSTK_003116.tar|789x1000|
+|product_object|sstk_image_1955755765|6.2194|SSTK_002939.tar|985x1000|
+|sports|sstk_image_1178976352|6.6088|SSTK_000656.tar|699x1000|
+|transportation|sstk_image_1977782153|6.3416|SSTK_001721.tar|750x1000|

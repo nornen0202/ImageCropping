@@ -1,0 +1,166 @@
+{
+  "super_cat": "documents_text",
+  "image_id": "sstk_image_2129282159",
+  "phaseA": {
+    "image_id": "sstk_image_2129282159",
+    "super_cat": "documents_text",
+    "tar_name": "SSTK_004811.tar",
+    "width": 1000,
+    "height": 667,
+    "aes_score": 6.185339450836182,
+    "sstk_type": "Photo",
+    "tags": "lamp|being creative|older person|gray hair|making progress|wooden easel|pencil set|vase|retirement home|focused man|creative mind|60 60s|pencil sketch|retired teacher|professional tools|adult|artist table|feeling inspired|drawing instrument|graphite pencil|caucasian man|paper canvas|paper|art lesson|shirt|drawing tools|professional instrument|drawing lesson|art artist|elederly man|easel|still object|pencil|elderly man|living room|leisure centre|art|black white|plaster vase|older grandfather|charcoal sketch|having inspiration|freehand drawing|art studio|leisure activity|coffee table|creative artist|tool|art teacher|artist concept|table|sitting down|chair|old person|senior citizen"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 2,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.060636,
+            0.034074,
+            0.935928,
+            0.97928
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.791667,
+            0.791667
+          ],
+          "score": 3.846360206604004
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 3.742033004760742
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.791667,
+            0.875
+          ],
+          "score": 3.740962028503418
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.468470335006714
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 2.387718677520752
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.791667
+          ],
+          "score": 2.146970510482788
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 128,
+      "9:16": 69,
+      "16:9": 160,
+      "3:4": 76,
+      "4:3": 165
+    },
+    "total_candidates": 598
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "1x1_g12x12_smx2_i0003",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "9x16_g12x12_steach_gaic_jit0_15_i0008",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "16x9_g12x12_smy1_i0003",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "3x4_g12x12_smx1_i0003",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "4x3_g12x12_smx0_i0002",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      }
+    }
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "super_cat": "product_object",
+  "image_id": "sstk_image_1955755765",
+  "phaseA": {
+    "image_id": "sstk_image_1955755765",
+    "super_cat": "product_object",
+    "tar_name": "SSTK_002939.tar",
+    "width": 985,
+    "height": 1000,
+    "aes_score": 6.219361305236816,
+    "sstk_type": "Photo",
+    "tags": "exposure|job|boss|future|mobile|search|horizon|background|app|clothing|businessman|smartphone|manage|business|leadership|adult|view|multi exposure|building|gentleman|electronic|blurred|idea|man|office|panoramic|research|tomorrow|digital|wide|bokeh|portrait|success|career|classic|looking|executive|pen|technology|creative|finance|object|style|high|suit|city|market|photography|concept|marketing|modern|professional|double|skyscraper"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 1,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.095262,
+            0.057134,
+            0.891228,
+            0.96128
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.791667,
+            0.875
+          ],
+          "score": 3.541663646697998
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.875
+          ],
+          "score": 3.5380468368530273
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 3.5332651138305664
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.516950845718384
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 2.475553035736084
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 2.410884380340576
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 182,
+      "9:16": 109,
+      "16:9": 94,
+      "3:4": 138,
+      "4:3": 118
+    },
+    "total_candidates": 641
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "1x1_g12x12_steach_gaic_jit0_22_i0004",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "crop",
+        "delta_improve": 2.2583823353305794,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "16x9_g12x12_s2_i0046",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "crop",
+        "delta_improve": 0.13757216248684645,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "3x4_g12x12_smx0_i0002",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "4x3_g12x12_s3_i0055",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      }
+    }
+  }
+}

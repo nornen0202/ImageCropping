@@ -1,0 +1,166 @@
+{
+  "super_cat": "indoor_interior",
+  "image_id": "sstk_image_629195588",
+  "phaseA": {
+    "image_id": "sstk_image_629195588",
+    "super_cat": "indoor_interior",
+    "tar_name": "SSTK_004477.tar",
+    "width": 1000,
+    "height": 667,
+    "aes_score": 6.211565017700195,
+    "sstk_type": "Photo",
+    "tags": "3d render|interior|box|model|adult|inside|business|building|idea|room|office|apartment|woman|person|decoration|abstract|peak|architecture|real|container|top|rock|sky|cloud|estate|creative|high|mountain|businesswoman|furniture|concept|creativity|pattern|chair|design"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 2,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.043251,
+            0.08128,
+            0.967722,
+            0.929585
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.024662971496582
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 3.8966753482818604
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.875
+          ],
+          "score": 3.889925479888916
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.1770167350769043
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 2.1116576194763184
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 2.0595288276672363
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 109,
+      "9:16": 57,
+      "16:9": 126,
+      "3:4": 60,
+      "4:3": 127
+    },
+    "total_candidates": 479
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.004144442081451372,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.027888481217280048,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.004875561299181763,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 1.2397766111504893e-06,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      }
+    }
+  }
+}

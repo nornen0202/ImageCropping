@@ -1,0 +1,166 @@
+{
+  "super_cat": "animals",
+  "image_id": "sstk_image_2257975789",
+  "phaseA": {
+    "image_id": "sstk_image_2257975789",
+    "super_cat": "animals",
+    "tar_name": "SSTK_002698.tar",
+    "width": 1000,
+    "height": 666,
+    "aes_score": 6.418116569519043,
+    "sstk_type": "Photo",
+    "tags": "crested hawk-eagle|feather|outdoor|background|changeable|india|wild|hawk-eagle|eagle|birding|natural|falcon|portrait|hunter|asia|brown|eye|white|tree|beak|raptor|sky|branch|changeable hawk-eagle|prey|predator|bird|animal|beautiful|nature|wildlife|crested|park"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 0,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.060147,
+            0.00646,
+            0.934821,
+            0.888471
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.3903961181640625
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 4.310765266418457
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.273248672485352
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.7650904655456543
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 2.5290017127990723
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.4925661087036133
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 125,
+      "9:16": 73,
+      "16:9": 139,
+      "3:4": 74,
+      "4:3": 155
+    },
+    "total_candidates": 566
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0007700423349754626,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "9:16": {
+        "decision_type": "crop",
+        "delta_improve": 2.785042582926172,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "3:4": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.016460568271162712,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.003908127054134791,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      }
+    }
+  }
+}

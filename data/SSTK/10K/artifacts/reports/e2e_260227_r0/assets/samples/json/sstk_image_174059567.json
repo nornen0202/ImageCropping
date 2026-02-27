@@ -1,0 +1,166 @@
+{
+  "super_cat": "other_ambiguous",
+  "image_id": "sstk_image_174059567",
+  "phaseA": {
+    "image_id": "sstk_image_174059567",
+    "super_cat": "other_ambiguous",
+    "tar_name": "SSTK_001159.tar",
+    "width": 1000,
+    "height": 825,
+    "aes_score": 6.255481243133545,
+    "sstk_type": "Photo",
+    "tags": "stump|startled|lapland|strix|owl|cinereous|falling|phantom|perched|nebulosa|north|bearded|yellow|snow|grey|spruce|great|w|of|stare|the|tree|branch|gray|prey|sooty|spectral|snowstorm|predator|bird|look|eyes|winter|sno|raptor|wildlife"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 0,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.088905,
+            0.107952,
+            0.949849,
+            0.979345
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 4.509383201599121
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.791667
+          ],
+          "score": 4.423574924468994
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.334192752838135
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 2.8632116317749023
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.829149007797241
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 2.6529700756073
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 123,
+      "9:16": 59,
+      "16:9": 120,
+      "3:4": 103,
+      "4:3": 146
+    },
+    "total_candidates": 551
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "crop",
+        "delta_improve": 0.2174956166826698,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "1x1_g12x12_steach_cgs_jit0_10_i0004",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "9:16": {
+        "decision_type": "crop",
+        "delta_improve": 7.077147526634372,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "crop",
+        "delta_improve": 1.037877441431625,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "16x9_g12x12_steach_cacnet_proj0_i0005",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "3:4": {
+        "decision_type": "crop",
+        "delta_improve": 3.1899096048812896,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "3x4_g12x12_smx0_i0002",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "4:3": {
+        "decision_type": "crop",
+        "delta_improve": 0.7559501913822579,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "4x3_g12x12_smy0_i0002",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      }
+    }
+  }
+}

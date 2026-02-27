@@ -1,0 +1,166 @@
+{
+  "super_cat": "people_single",
+  "image_id": "sstk_image_2190537205",
+  "phaseA": {
+    "image_id": "sstk_image_2190537205",
+    "super_cat": "people_single",
+    "tar_name": "SSTK_003116.tar",
+    "width": 789,
+    "height": 1000,
+    "aes_score": 6.854852676391602,
+    "sstk_type": "Photo",
+    "tags": "girl|spring|elegant|female|natural beauty|background|african girl|makeup|black model|model|adult|african model|bride|lady|flower|dandelion hat|woman|natural|fashion|love|white and black|charm|save nature|portrait|white girl|glamour|summer|floristic|dandelions|lifestyle|white|dandelion|beauty|elegance|grace|romantic|skin|flying dandelions|girl with dandelions|pretty|daisy|tenderness|white swans|wedding|look|young|eyes|bouquet|dandelion flight|beautiful|face|nature|design"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 1,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.024164,
+            0.053658,
+            0.983768,
+            0.957023
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 3.691448450088501
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.125,
+            0.958333,
+            0.958333
+          ],
+          "score": 3.5084457397460938
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.125,
+            0.958333,
+            0.791667
+          ],
+          "score": 3.501101016998291
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 3.7046797275543213
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 3.596035957336426
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.125,
+            0.958333,
+            0.875
+          ],
+          "score": 3.2520530223846436
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 136,
+      "9:16": 122,
+      "16:9": 54,
+      "3:4": 163,
+      "4:3": 96
+    },
+    "total_candidates": 571
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.03,
+        "top1_candidate_id": "1x1_g12x12_steach_cacnet_jit0_13_i0004",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.03,
+        "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.03,
+        "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.03,
+        "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.03,
+        "top1_candidate_id": "4x3_g12x12_steach_cacnet_jit0_13_i0004",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      }
+    }
+  }
+}

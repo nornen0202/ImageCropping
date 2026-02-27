@@ -1,0 +1,166 @@
+{
+  "super_cat": "architecture_exterior",
+  "image_id": "sstk_image_1165522843",
+  "phaseA": {
+    "image_id": "sstk_image_1165522843",
+    "super_cat": "architecture_exterior",
+    "tar_name": "SSTK_004658.tar",
+    "width": 770,
+    "height": 1000,
+    "aes_score": 6.391430854797363,
+    "sstk_type": "Photo",
+    "tags": "travel|lake garda|arch|historic|italian|outdoor|building|italia|alley|tunnel|house|old|person|vintage|path|wall|brescia|ancient|architecture|summer|italy|window|stone|medieval|road|tourism|urban|exterior|town|street scene|history|tremosine|street|city|europe|residential|narrow|lago di garda"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 2,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.035349,
+            0.101137,
+            0.955278,
+            0.855396
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 4.109962463378906
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 4.091686248779297
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.039119720458984
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.5849666595458984
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.125,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.0014395713806152
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 1.9693760871887207
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 103,
+      "9:16": 96,
+      "16:9": 62,
+      "3:4": 155,
+      "4:3": 93
+    },
+    "total_candidates": 509
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "crop",
+        "delta_improve": 2.588369299376328,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "1x1_g12x12_smy0_i0002",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "crop",
+        "delta_improve": 4.7853640604888,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "16x9_g12x12_smy0_i0002",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "crop",
+        "delta_improve": 0.9683819020941965,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "3x4_g12x12_steach_cgs_jit0_22_i0007",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "crop",
+        "delta_improve": 6.275228971706314,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "4x3_g12x12_smy1_i0003",
+        "headroom_pass": true,
+        "lookroom_pass": false,
+        "horizon_pass": false,
+        "context_pass": false
+      }
+    }
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "super_cat": "people_multi",
+  "image_id": "pond5_image_99604568",
+  "phaseA": {
+    "image_id": "pond5_image_99604568",
+    "super_cat": "people_multi",
+    "tar_name": "SSTK_003610.tar",
+    "width": 1000,
+    "height": 667,
+    "aes_score": 6.418779373168945,
+    "sstk_type": "Photo",
+    "tags": "three|grass|outdoor|love triangle|adult|desire|boyfriend|stairs|man|triangle|relationship|flower|bearded|person|love|attractive|sexi|women|dandelion|guy|sexy|stair|pretty|girls|flowers|young|beautiful|floor"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 5,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.064767,
+            0.117097,
+            0.927767,
+            0.936197
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.557250022888184
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 4.478557586669922
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.125,
+            0.958333,
+            0.875
+          ],
+          "score": 4.315705299377441
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.98162841796875
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 2.512119770050049
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.125,
+            0.958333,
+            0.875
+          ],
+          "score": 2.3969738483428955
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 108,
+      "9:16": 51,
+      "16:9": 164,
+      "3:4": 55,
+      "4:3": 149
+    },
+    "total_candidates": 527
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "16x9_g12x12_smy1_i0003",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.045,
+        "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      }
+    }
+  }
+}

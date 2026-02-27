@@ -1,0 +1,1998 @@
+{
+  "dataset": "10K",
+  "run_tag": "e2e_260227_r0",
+  "samples": [
+    {
+      "super_cat": "animals",
+      "image_id": "sstk_image_2257975789",
+      "phaseA": {
+        "image_id": "sstk_image_2257975789",
+        "super_cat": "animals",
+        "tar_name": "SSTK_002698.tar",
+        "width": 1000,
+        "height": 666,
+        "aes_score": 6.418116569519043,
+        "sstk_type": "Photo",
+        "tags": "crested hawk-eagle|feather|outdoor|background|changeable|india|wild|hawk-eagle|eagle|birding|natural|falcon|portrait|hunter|asia|brown|eye|white|tree|beak|raptor|sky|branch|changeable hawk-eagle|prey|predator|bird|animal|beautiful|nature|wildlife|crested|park"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 0,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.060147,
+                0.00646,
+                0.934821,
+                0.888471
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.3903961181640625
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 4.310765266418457
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.273248672485352
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.7650904655456543
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 2.5290017127990723
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.4925661087036133
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 125,
+          "9:16": 73,
+          "16:9": 139,
+          "3:4": 74,
+          "4:3": 155
+        },
+        "total_candidates": 566
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0007700423349754626,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "9:16": {
+            "decision_type": "crop",
+            "delta_improve": 2.785042582926172,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "3:4": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.016460568271162712,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.003908127054134791,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "architecture_exterior",
+      "image_id": "sstk_image_1165522843",
+      "phaseA": {
+        "image_id": "sstk_image_1165522843",
+        "super_cat": "architecture_exterior",
+        "tar_name": "SSTK_004658.tar",
+        "width": 770,
+        "height": 1000,
+        "aes_score": 6.391430854797363,
+        "sstk_type": "Photo",
+        "tags": "travel|lake garda|arch|historic|italian|outdoor|building|italia|alley|tunnel|house|old|person|vintage|path|wall|brescia|ancient|architecture|summer|italy|window|stone|medieval|road|tourism|urban|exterior|town|street scene|history|tremosine|street|city|europe|residential|narrow|lago di garda"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 2,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.035349,
+                0.101137,
+                0.955278,
+                0.855396
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 4.109962463378906
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 4.091686248779297
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.039119720458984
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.5849666595458984
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.0014395713806152
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 1.9693760871887207
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 103,
+          "9:16": 96,
+          "16:9": 62,
+          "3:4": 155,
+          "4:3": 93
+        },
+        "total_candidates": 509
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "crop",
+            "delta_improve": 2.588369299376328,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "1x1_g12x12_smy0_i0002",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "crop",
+            "delta_improve": 4.7853640604888,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "16x9_g12x12_smy0_i0002",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "3:4": {
+            "decision_type": "crop",
+            "delta_improve": 0.9683819020941965,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "3x4_g12x12_steach_cgs_jit0_22_i0007",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "crop",
+            "delta_improve": 6.275228971706314,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "4x3_g12x12_smy1_i0003",
+            "headroom_pass": true,
+            "lookroom_pass": false,
+            "horizon_pass": false,
+            "context_pass": false
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "documents_text",
+      "image_id": "sstk_image_2129282159",
+      "phaseA": {
+        "image_id": "sstk_image_2129282159",
+        "super_cat": "documents_text",
+        "tar_name": "SSTK_004811.tar",
+        "width": 1000,
+        "height": 667,
+        "aes_score": 6.185339450836182,
+        "sstk_type": "Photo",
+        "tags": "lamp|being creative|older person|gray hair|making progress|wooden easel|pencil set|vase|retirement home|focused man|creative mind|60 60s|pencil sketch|retired teacher|professional tools|adult|artist table|feeling inspired|drawing instrument|graphite pencil|caucasian man|paper canvas|paper|art lesson|shirt|drawing tools|professional instrument|drawing lesson|art artist|elederly man|easel|still object|pencil|elderly man|living room|leisure centre|art|black white|plaster vase|older grandfather|charcoal sketch|having inspiration|freehand drawing|art studio|leisure activity|coffee table|creative artist|tool|art teacher|artist concept|table|sitting down|chair|old person|senior citizen"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 2,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.060636,
+                0.034074,
+                0.935928,
+                0.97928
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.791667,
+                0.791667
+              ],
+              "score": 3.846360206604004
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 3.742033004760742
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.791667,
+                0.875
+              ],
+              "score": 3.740962028503418
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.468470335006714
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 2.387718677520752
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.791667
+              ],
+              "score": 2.146970510482788
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 128,
+          "9:16": 69,
+          "16:9": 160,
+          "3:4": 76,
+          "4:3": 165
+        },
+        "total_candidates": 598
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "1x1_g12x12_smx2_i0003",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "9x16_g12x12_steach_gaic_jit0_15_i0008",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "16x9_g12x12_smy1_i0003",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "3:4": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "3x4_g12x12_smx1_i0003",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "4x3_g12x12_smx0_i0002",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "food",
+      "image_id": "sstk_image_2024012429",
+      "phaseA": {
+        "image_id": "sstk_image_2024012429",
+        "super_cat": "food",
+        "tar_name": "SSTK_003419.tar",
+        "width": 1000,
+        "height": 667,
+        "aes_score": 6.369629859924316,
+        "sstk_type": "Photo",
+        "tags": "tasty|rosemary|guacamole|organic|gourmet|burger|background|onion|cheese|tomato|vegan burger|bacon|pepper|dinner|hamburger|sandwich|meal|fresh|snack|lunch|rustic|cuisine|healthy|ingredients|bread|homemade|restaurant|food|meat|avocado|vegetable|delicious|vegetables|lettuce"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 0,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.043645,
+                0.066384,
+                0.948288,
+                0.900784
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.624967098236084
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.184736728668213
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 4.127374649047852
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.8753323554992676
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 2.3060500621795654
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 2.290116786956787
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 104,
+          "9:16": 52,
+          "16:9": 139,
+          "3:4": 55,
+          "4:3": 130
+        },
+        "total_candidates": 480
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.00907838940620409,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "9:16": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.025826099514961287,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "3:4": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.005043500206248552,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "indoor_interior",
+      "image_id": "sstk_image_629195588",
+      "phaseA": {
+        "image_id": "sstk_image_629195588",
+        "super_cat": "indoor_interior",
+        "tar_name": "SSTK_004477.tar",
+        "width": 1000,
+        "height": 667,
+        "aes_score": 6.211565017700195,
+        "sstk_type": "Photo",
+        "tags": "3d render|interior|box|model|adult|inside|business|building|idea|room|office|apartment|woman|person|decoration|abstract|peak|architecture|real|container|top|rock|sky|cloud|estate|creative|high|mountain|businesswoman|furniture|concept|creativity|pattern|chair|design"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 2,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.043251,
+                0.08128,
+                0.967722,
+                0.929585
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.024662971496582
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 3.8966753482818604
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.875
+              ],
+              "score": 3.889925479888916
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.1770167350769043
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 2.1116576194763184
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 2.0595288276672363
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 109,
+          "9:16": 57,
+          "16:9": 126,
+          "3:4": 60,
+          "4:3": 127
+        },
+        "total_candidates": 479
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.004144442081451372,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.027888481217280048,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "3:4": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.004875561299181763,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 1.2397766111504893e-06,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "landscape_nature",
+      "image_id": "sstk_image_1104016514",
+      "phaseA": {
+        "image_id": "sstk_image_1104016514",
+        "super_cat": "landscape_nature",
+        "tar_name": "SSTK_001072.tar",
+        "width": 1000,
+        "height": 667,
+        "aes_score": 6.651422023773193,
+        "sstk_type": "Photo",
+        "tags": "travel|sonnenuntergang|atacama|gebirge|biking outdoors|wüste|active|biking family|bizarrely shaped|cycling|adult|vulkan|volcano|abendstimmung|person|san pedro de atacama|mountains|bikes|mountain bike|andes mountains|desert|red rocks|road|dirt road|sunset|tourism|sky|felsen|hot|mountain climbing|mountain biking|red skyline|mondtal|valle de la luna|moon valley|extreme|bizarr|mountain landscape|bicycle|red sky clouds|chile|biker|adventure|nature|landscape|bike|evening atmosphere"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 2,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.011966,
+                0.0795,
+                0.992178,
+                0.811352
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 4.630845069885254
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.958333,
+                0.875
+              ],
+              "score": 4.437787055969238
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.40095329284668
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.875,
+                0.875
+              ],
+              "score": 3.108689069747925
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 3.0879838466644287
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.875
+              ],
+              "score": 3.0650365352630615
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 114,
+          "9:16": 69,
+          "16:9": 157,
+          "3:4": 73,
+          "4:3": 141
+        },
+        "total_candidates": 554
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "9x16_g12x12_smx0_i0002",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "crop",
+            "delta_improve": 1.6127602576734865,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "16x9_g12x12_smy0_i0002",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "3:4": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "3x4_g12x12_steach_gaic_jit0_15_i0008",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "other_ambiguous",
+      "image_id": "sstk_image_174059567",
+      "phaseA": {
+        "image_id": "sstk_image_174059567",
+        "super_cat": "other_ambiguous",
+        "tar_name": "SSTK_001159.tar",
+        "width": 1000,
+        "height": 825,
+        "aes_score": 6.255481243133545,
+        "sstk_type": "Photo",
+        "tags": "stump|startled|lapland|strix|owl|cinereous|falling|phantom|perched|nebulosa|north|bearded|yellow|snow|grey|spruce|great|w|of|stare|the|tree|branch|gray|prey|sooty|spectral|snowstorm|predator|bird|look|eyes|winter|sno|raptor|wildlife"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 0,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.088905,
+                0.107952,
+                0.949849,
+                0.979345
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 4.509383201599121
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.791667
+              ],
+              "score": 4.423574924468994
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.334192752838135
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 2.8632116317749023
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.829149007797241
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 2.6529700756073
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 123,
+          "9:16": 59,
+          "16:9": 120,
+          "3:4": 103,
+          "4:3": 146
+        },
+        "total_candidates": 551
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "crop",
+            "delta_improve": 0.2174956166826698,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "1x1_g12x12_steach_cgs_jit0_10_i0004",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "9:16": {
+            "decision_type": "crop",
+            "delta_improve": 7.077147526634372,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "crop",
+            "delta_improve": 1.037877441431625,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "16x9_g12x12_steach_cacnet_proj0_i0005",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "3:4": {
+            "decision_type": "crop",
+            "delta_improve": 3.1899096048812896,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "3x4_g12x12_smx0_i0002",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "4:3": {
+            "decision_type": "crop",
+            "delta_improve": 0.7559501913822579,
+            "tau_improve": 0.035,
+            "top1_candidate_id": "4x3_g12x12_smy0_i0002",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": true
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "people_multi",
+      "image_id": "pond5_image_99604568",
+      "phaseA": {
+        "image_id": "pond5_image_99604568",
+        "super_cat": "people_multi",
+        "tar_name": "SSTK_003610.tar",
+        "width": 1000,
+        "height": 667,
+        "aes_score": 6.418779373168945,
+        "sstk_type": "Photo",
+        "tags": "three|grass|outdoor|love triangle|adult|desire|boyfriend|stairs|man|triangle|relationship|flower|bearded|person|love|attractive|sexi|women|dandelion|guy|sexy|stair|pretty|girls|flowers|young|beautiful|floor"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 5,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.064767,
+                0.117097,
+                0.927767,
+                0.936197
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.557250022888184
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 4.478557586669922
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.958333,
+                0.875
+              ],
+              "score": 4.315705299377441
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.98162841796875
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 2.512119770050049
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.958333,
+                0.875
+              ],
+              "score": 2.3969738483428955
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 108,
+          "9:16": 51,
+          "16:9": 164,
+          "3:4": 55,
+          "4:3": 149
+        },
+        "total_candidates": 527
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "16x9_g12x12_smy1_i0003",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "3:4": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "people_single",
+      "image_id": "sstk_image_2190537205",
+      "phaseA": {
+        "image_id": "sstk_image_2190537205",
+        "super_cat": "people_single",
+        "tar_name": "SSTK_003116.tar",
+        "width": 789,
+        "height": 1000,
+        "aes_score": 6.854852676391602,
+        "sstk_type": "Photo",
+        "tags": "girl|spring|elegant|female|natural beauty|background|african girl|makeup|black model|model|adult|african model|bride|lady|flower|dandelion hat|woman|natural|fashion|love|white and black|charm|save nature|portrait|white girl|glamour|summer|floristic|dandelions|lifestyle|white|dandelion|beauty|elegance|grace|romantic|skin|flying dandelions|girl with dandelions|pretty|daisy|tenderness|white swans|wedding|look|young|eyes|bouquet|dandelion flight|beautiful|face|nature|design"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 1,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.024164,
+                0.053658,
+                0.983768,
+                0.957023
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 3.691448450088501
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.958333,
+                0.958333
+              ],
+              "score": 3.5084457397460938
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.958333,
+                0.791667
+              ],
+              "score": 3.501101016998291
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 3.7046797275543213
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 3.596035957336426
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.958333,
+                0.875
+              ],
+              "score": 3.2520530223846436
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 136,
+          "9:16": 122,
+          "16:9": 54,
+          "3:4": 163,
+          "4:3": 96
+        },
+        "total_candidates": 571
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "1x1_g12x12_steach_cacnet_jit0_13_i0004",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "3:4": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "4x3_g12x12_steach_cacnet_jit0_13_i0004",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "product_object",
+      "image_id": "sstk_image_1955755765",
+      "phaseA": {
+        "image_id": "sstk_image_1955755765",
+        "super_cat": "product_object",
+        "tar_name": "SSTK_002939.tar",
+        "width": 985,
+        "height": 1000,
+        "aes_score": 6.219361305236816,
+        "sstk_type": "Photo",
+        "tags": "exposure|job|boss|future|mobile|search|horizon|background|app|clothing|businessman|smartphone|manage|business|leadership|adult|view|multi exposure|building|gentleman|electronic|blurred|idea|man|office|panoramic|research|tomorrow|digital|wide|bokeh|portrait|success|career|classic|looking|executive|pen|technology|creative|finance|object|style|high|suit|city|market|photography|concept|marketing|modern|professional|double|skyscraper"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 1,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.095262,
+                0.057134,
+                0.891228,
+                0.96128
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.791667,
+                0.875
+              ],
+              "score": 3.541663646697998
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.875
+              ],
+              "score": 3.5380468368530273
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 3.5332651138305664
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.516950845718384
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.875
+              ],
+              "score": 2.475553035736084
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 2.410884380340576
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 182,
+          "9:16": 109,
+          "16:9": 94,
+          "3:4": 138,
+          "4:3": 118
+        },
+        "total_candidates": 641
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "1x1_g12x12_steach_gaic_jit0_22_i0004",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "crop",
+            "delta_improve": 2.2583823353305794,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "16x9_g12x12_s2_i0046",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "3:4": {
+            "decision_type": "crop",
+            "delta_improve": 0.13757216248684645,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "3x4_g12x12_smx0_i0002",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "4x3_g12x12_s3_i0055",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "sports",
+      "image_id": "sstk_image_1178976352",
+      "phaseA": {
+        "image_id": "sstk_image_1178976352",
+        "super_cat": "sports",
+        "tar_name": "SSTK_000656.tar",
+        "width": 699,
+        "height": 1000,
+        "aes_score": 6.608759880065918,
+        "sstk_type": "Photo",
+        "tags": "dance|underwear|artistic|sporty|dancer|gymnastic|strong|active|dark|elastic|gracefully|naked|indoors|adult|stretch|slender|exercise|blonde|ballet dancer|cute|training|arms|rearview|slim|portrait|nude|powder|gymnastics|white|lifestyle|body|emotional|athletic|harmony|stretching|bright|jumping|european|dust|sportswear|gymnast|healthy|graceful|young|caucasian|lingerie|floor|fantasy|acrobat|flexible"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 1,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.099726,
+                0.170736,
+                0.899951,
+                0.938165
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 3.9477946758270264
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 3.939260959625244
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 3.933763027191162
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 3.3576574325561523
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.125,
+                0.958333,
+                0.958333
+              ],
+              "score": 2.6640689373016357
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 2.624760627746582
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 122,
+          "9:16": 126,
+          "16:9": 74,
+          "3:4": 152,
+          "4:3": 90
+        },
+        "total_candidates": 564
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "crop",
+            "delta_improve": 3.61718022647438,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "1x1_g12x12_smy2_i0004",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": true,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "16x9_g12x12_steach_cacnet_jit0_13_i0007",
+            "headroom_pass": true,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": true
+          },
+          "3:4": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+            "headroom_pass": false,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.03,
+            "top1_candidate_id": "4x3_g12x12_smy1_i0002",
+            "headroom_pass": true,
+            "lookroom_pass": false,
+            "horizon_pass": true,
+            "context_pass": true
+          }
+        }
+      }
+    },
+    {
+      "super_cat": "transportation",
+      "image_id": "sstk_image_1977782153",
+      "phaseA": {
+        "image_id": "sstk_image_1977782153",
+        "super_cat": "transportation",
+        "tar_name": "SSTK_001721.tar",
+        "width": 750,
+        "height": 1000,
+        "aes_score": 6.341640472412109,
+        "sstk_type": "Photo",
+        "tags": "travel|truck|bluff|pickup|yard|historic|background|badge|outdoor|aged|scenery|stylish|old car|view|countryside|machinery|house|old|transport|vintage|red rock|car|rusty|grunge|desert|industry|western|cow canyon|classic|wheel|diggings|retro|abandoned|sky|rustic|utah|vehicle|rustic car|san juan|automobile|antique|dodge|parked|no people|rural|junk|landscape"
+      },
+      "precompute": {
+        "c2_instances": 1,
+        "c3_persons": 0,
+        "c5_has_horizon_roll": true,
+        "c5_has_symmetry": true
+      },
+      "public_teacher": {
+        "cacnet": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.020459,
+                0.015473,
+                0.976585,
+                0.903545
+              ],
+              "score": 1.0
+            }
+          ],
+          "by_ar": {}
+        },
+        "cgs": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 4.009239673614502
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 3.762300491333008
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 3.3258509635925293
+            }
+          ],
+          "by_ar": {}
+        },
+        "gaic": {
+          "free_form": [
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 1.911586880683899
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.041667,
+                0.041667,
+                0.875,
+                0.958333
+              ],
+              "score": 1.282025694847107
+            },
+            {
+              "bbox_norm_xyxy": [
+                0.125,
+                0.041667,
+                0.958333,
+                0.958333
+              ],
+              "score": 1.009742259979248
+            }
+          ],
+          "by_ar": {}
+        }
+      },
+      "candidate": {
+        "proposal_injected": true,
+        "candidate_counts_by_ar": {
+          "1:1": 128,
+          "9:16": 122,
+          "16:9": 72,
+          "3:4": 165,
+          "4:3": 108
+        },
+        "total_candidates": 595
+      },
+      "teacher": {
+        "expensive_real_applied": true,
+        "by_ar": {
+          "1:1": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "9:16": {
+            "decision_type": "crop",
+            "delta_improve": 0.5380919672495303,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "16:9": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "3:4": {
+            "decision_type": "crop",
+            "delta_improve": 0.418195837147022,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "3x4_g12x12_steach_cgs_jit0_18_i0003",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          },
+          "4:3": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.055,
+            "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+            "headroom_pass": true,
+            "lookroom_pass": true,
+            "horizon_pass": false,
+            "context_pass": false
+          }
+        }
+      }
+    }
+  ]
+}

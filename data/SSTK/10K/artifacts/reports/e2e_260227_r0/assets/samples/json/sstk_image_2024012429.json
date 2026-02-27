@@ -1,0 +1,166 @@
+{
+  "super_cat": "food",
+  "image_id": "sstk_image_2024012429",
+  "phaseA": {
+    "image_id": "sstk_image_2024012429",
+    "super_cat": "food",
+    "tar_name": "SSTK_003419.tar",
+    "width": 1000,
+    "height": 667,
+    "aes_score": 6.369629859924316,
+    "sstk_type": "Photo",
+    "tags": "tasty|rosemary|guacamole|organic|gourmet|burger|background|onion|cheese|tomato|vegan burger|bacon|pepper|dinner|hamburger|sandwich|meal|fresh|snack|lunch|rustic|cuisine|healthy|ingredients|bread|homemade|restaurant|food|meat|avocado|vegetable|delicious|vegetables|lettuce"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 0,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.043645,
+            0.066384,
+            0.948288,
+            0.900784
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.624967098236084
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.184736728668213
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 4.127374649047852
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.8753323554992676
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 2.3060500621795654
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 2.290116786956787
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 104,
+      "9:16": 52,
+      "16:9": 139,
+      "3:4": 55,
+      "4:3": 130
+    },
+    "total_candidates": 480
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.00907838940620409,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "9:16": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "9x16_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.025826099514961287,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "3:4": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "3x4_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.005043500206248552,
+        "tau_improve": 0.035,
+        "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": true
+      }
+    }
+  }
+}

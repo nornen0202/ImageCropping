@@ -1,0 +1,166 @@
+{
+  "super_cat": "landscape_nature",
+  "image_id": "sstk_image_1104016514",
+  "phaseA": {
+    "image_id": "sstk_image_1104016514",
+    "super_cat": "landscape_nature",
+    "tar_name": "SSTK_001072.tar",
+    "width": 1000,
+    "height": 667,
+    "aes_score": 6.651422023773193,
+    "sstk_type": "Photo",
+    "tags": "travel|sonnenuntergang|atacama|gebirge|biking outdoors|wüste|active|biking family|bizarrely shaped|cycling|adult|vulkan|volcano|abendstimmung|person|san pedro de atacama|mountains|bikes|mountain bike|andes mountains|desert|red rocks|road|dirt road|sunset|tourism|sky|felsen|hot|mountain climbing|mountain biking|red skyline|mondtal|valle de la luna|moon valley|extreme|bizarr|mountain landscape|bicycle|red sky clouds|chile|biker|adventure|nature|landscape|bike|evening atmosphere"
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 2,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.011966,
+            0.0795,
+            0.992178,
+            0.811352
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 4.630845069885254
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.125,
+            0.958333,
+            0.875
+          ],
+          "score": 4.437787055969238
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.40095329284668
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.125,
+            0.875,
+            0.875
+          ],
+          "score": 3.108689069747925
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 3.0879838466644287
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.875
+          ],
+          "score": 3.0650365352630615
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 114,
+      "9:16": 69,
+      "16:9": 157,
+      "3:4": 73,
+      "4:3": 141
+    },
+    "total_candidates": 554
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "1x1_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "9x16_g12x12_smx0_i0002",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "crop",
+        "delta_improve": 1.6127602576734865,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "16x9_g12x12_smy0_i0002",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "3x4_g12x12_steach_gaic_jit0_15_i0008",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "4x3_g12x12_smaxc_i0001",
+        "headroom_pass": false,
+        "lookroom_pass": false,
+        "horizon_pass": true,
+        "context_pass": false
+      }
+    }
+  }
+}

@@ -40,6 +40,29 @@
 - 역할: 후보를 점수화하고 최종 crop decision(`crop|minimal_crop|keep_full`) 도출
 - 현재 산출물 기준: `use_real_expensive=true` (real expensive 경로, `expensive_source_counts={'real': 2500}`)
 - 출력: `artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e.jsonl` + overview/qa/viz
+- Top-K 해석(핵심):
+  - `candidate.candidate_counts_by_ar`는 Teacher 입력 후보 수(`num_input_candidates`)이며, 최종 K가 아님
+  - Teacher 내부 흐름: `num_input_candidates -> num_valid_candidates -> num_effective_candidates -> cheap_top_m(<=30) -> selected_topk(<=top_k)`
+  - 설정값 `top_k=5`는 **상한(upper bound)** 이며, 항상 5개가 보장되지는 않음
+  - 실제 최종 K는 `selected_topk` 길이(`K_actual`)로 판단해야 함
+- Top-K 전체 분포(500장 x 5 AR = 2,500 task):
+  - `K_actual` 분포: `{1:88, 2:37, 3:48, 4:26, 5:2301}`
+  - 평균 `K_actual=4.766`, `p50=5`, `p90=5`, `K<5` 비율 `7.96%`(199/2500)
+  - `K<5` 199건은 모두 `num_effective_candidates < 5`에서 발생(유효 풀 부족)
+  - 집계 자산:
+    - `assets/analytics/teacher_topk/teacher_topk_distribution_summary.json`
+    - `assets/analytics/teacher_topk/teacher_task_level_summary.csv`
+    - `assets/analytics/teacher_topk/teacher_selected_topk_rows.csv`
+- 최종 Top-K score 분포(`selected_topk` 전 행, 총 11,915개):
+  - `final score` min/mean/p50/p90/max = `-77.998 / -5.625 / -2.617 / 1.022 / 1.176`
+  - AR별 `final score` 평균: `16:9=-5.914`, `1:1=-3.945`, `3:4=-5.520`, `4:3=-3.575`, `9:16=-9.177`
+- rank별 source 혼합(Top-K 구성 origin):
+  - 전체 Top-K source 상위: `grid(4615)`, `baseline_maxarea_slide(2180)`, `teacher:jitter(1981)`, `baseline_maxarea_center(1979)`, `jitter(562)` ...
+  - rank 1은 baseline 비중이 높고(rank1 상위: `baseline_maxarea_slide`, `baseline_maxarea_center`), rank 3~5로 갈수록 `grid`/`teacher:jitter` 비중이 증가
+- 사용자 질문 예시(`bigstock_image_149147297`) 해석:
+  - `candidate_counts_by_ar['1:1']=110`은 1:1 AR의 입력 후보 수
+  - 최종 출력은 `selected_topk`의 상위 5개(`K_actual=5`)
+  - 즉, 110개 중 Teacher Scorer가 점수/다양성 제약으로 상위 5개를 선택한 결과
 
 ## 3) 단계별 입출력 포맷 정의 (예시 샘플: `sstk_image_1772011034`)
 
@@ -116,6 +139,15 @@
 - `selected_tasks=60`: `(선택 이미지 12장) x (AR 5종)`으로 생성된 teacher 시각화 task 수
 - `rendered=60`: 실제 오버레이 저장 완료 task 수
 - `missing=0`: task는 있었지만 원본 이미지 로딩 실패로 렌더링하지 못한 건수(`missing_images`)
+
+Top-K 분포 시각화(전체 2,500 task 기준):
+![teacher_selected_k_distribution.png](./assets/analytics/teacher_topk/teacher_selected_k_distribution.png)
+![teacher_topk_final_score_hist.png](./assets/analytics/teacher_topk/teacher_topk_final_score_hist.png)
+![teacher_topk_source_mix_by_rank.png](./assets/analytics/teacher_topk/teacher_topk_source_mix_by_rank.png)
+
+- `teacher_selected_k_distribution.png`: `(image, AR)` task별 `selected_k` 분포. `top_k=5`가 상한이며 일부 task는 유효 후보 부족으로 5 미만
+- `teacher_topk_final_score_hist.png`: 최종 선택된 Top-K row들의 `final score` 분포
+- `teacher_topk_source_mix_by_rank.png`: rank(1~5)별 source 비율. rank1은 baseline 성향, 하위 rank는 `grid`/`teacher:jitter` 혼합 증가
 
 대표 샘플(`sstk_image_1772011034`, AR=1:1)
 ![teacher_1x1](../../teacher/visualizations/teacher_scorer_rerun1_public_e2e_report12/by_ar/1x1/sstk_image_1772011034.jpg)

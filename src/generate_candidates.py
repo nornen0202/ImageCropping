@@ -18,16 +18,19 @@ Output:
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ProcessPoolExecutor
 from collections import Counter, defaultdict
 import hashlib
 import io
 import json
 import math
+import multiprocessing as mp
 import os
 import tarfile
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -57,6 +60,16 @@ COPYSPACE_HINT_WORDS = (
 DEFAULT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 
 
+_WORKER_C2_SEG_MAP: Optional[Dict[str, Any]] = None
+_WORKER_C2_DET_MAP: Optional[Dict[str, Any]] = None
+_WORKER_C3_MAP: Optional[Dict[str, Any]] = None
+_WORKER_CFG: Optional["CandidateGenConfig"] = None
+_WORKER_CFG_HASH: str = ""
+_WORKER_ACTUAL_SIZE_MAP: Optional[Dict[str, Tuple[int, int]]] = None
+_WORKER_STRICT_ACTUAL_SIZE: bool = True
+_WORKER_TEACHER_PROPOSALS_MAP: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
+
+
 @dataclass
 class CandidateGenConfig:
     ar_list: Tuple[str, ...] = DEFAULT_AR_LIST
@@ -83,6 +96,132 @@ class CandidateGenConfig:
     teacher_jitter_scales: Tuple[float, ...] = DEFAULT_TEACHER_JITTER_SCALES
     teacher_seed_priority: float = 6.5
     teacher_jitter_priority: float = 6.2
+
+
+def _init_build_worker(
+    c2_seg_map: Dict[str, Any],
+    c2_det_map: Dict[str, Any],
+    c3_map: Dict[str, Any],
+    cfg: CandidateGenConfig,
+    cfg_hash: str,
+    actual_size_map: Optional[Dict[str, Tuple[int, int]]],
+    strict_actual_size: bool,
+    teacher_proposals_map: Optional[Dict[str, Dict[str, Dict[str, Any]]]],
+) -> None:
+    global _WORKER_C2_SEG_MAP
+    global _WORKER_C2_DET_MAP
+    global _WORKER_C3_MAP
+    global _WORKER_CFG
+    global _WORKER_CFG_HASH
+    global _WORKER_ACTUAL_SIZE_MAP
+    global _WORKER_STRICT_ACTUAL_SIZE
+    global _WORKER_TEACHER_PROPOSALS_MAP
+
+    _WORKER_C2_SEG_MAP = c2_seg_map
+    _WORKER_C2_DET_MAP = c2_det_map
+    _WORKER_C3_MAP = c3_map
+    _WORKER_CFG = cfg
+    _WORKER_CFG_HASH = cfg_hash
+    _WORKER_ACTUAL_SIZE_MAP = actual_size_map
+    _WORKER_STRICT_ACTUAL_SIZE = bool(strict_actual_size)
+    _WORKER_TEACHER_PROPOSALS_MAP = teacher_proposals_map
+
+
+def _build_output_record_worker(row: Dict[str, Any]) -> Dict[str, Any]:
+    if _WORKER_C2_SEG_MAP is None or _WORKER_C2_DET_MAP is None or _WORKER_C3_MAP is None or _WORKER_CFG is None:
+        raise RuntimeError("candidate worker state is not initialized")
+    return build_output_record(
+        row=row,
+        c2_seg_map=_WORKER_C2_SEG_MAP,
+        c2_det_map=_WORKER_C2_DET_MAP,
+        c3_map=_WORKER_C3_MAP,
+        cfg=_WORKER_CFG,
+        cfg_hash=_WORKER_CFG_HASH,
+        actual_size_map=_WORKER_ACTUAL_SIZE_MAP,
+        strict_actual_size=_WORKER_STRICT_ACTUAL_SIZE,
+        teacher_proposals_map=_WORKER_TEACHER_PROPOSALS_MAP,
+    )
+
+
+def resolve_num_workers(requested_workers: int, num_items: int) -> int:
+    if num_items <= 1:
+        return 1
+    req = int(requested_workers)
+    if req == 1:
+        return 1
+    if req <= 0:
+        cpu = int(os.cpu_count() or 1)
+        # Keep one core for IO/OS and avoid excessive process fan-out by default.
+        req = max(1, min(16, cpu - 1))
+        if num_items < 256:
+            req = 1
+    return max(1, min(req, num_items))
+
+
+def resolve_mp_context(start_method: str) -> Optional[Any]:
+    method = str(start_method).strip().lower()
+    if method in {"", "auto"}:
+        for cand in ("fork", "forkserver", "spawn"):
+            try:
+                return mp.get_context(cand)
+            except Exception:
+                continue
+        return None
+    try:
+        return mp.get_context(method)
+    except Exception as e:
+        raise ValueError(f"invalid mp start method: {start_method}") from e
+
+
+def iter_build_output_records(
+    *,
+    rows: Sequence[Dict[str, Any]],
+    num_workers: int,
+    mp_chunksize: int,
+    mp_start_method: str,
+    c2_seg_map: Dict[str, Any],
+    c2_det_map: Dict[str, Any],
+    c3_map: Dict[str, Any],
+    cfg: CandidateGenConfig,
+    cfg_hash: str,
+    actual_size_map: Optional[Dict[str, Tuple[int, int]]],
+    strict_actual_size: bool,
+    teacher_proposals_map: Optional[Dict[str, Dict[str, Dict[str, Any]]]],
+) -> Iterable[Dict[str, Any]]:
+    if int(num_workers) <= 1:
+        for row in rows:
+            yield build_output_record(
+                row=row,
+                c2_seg_map=c2_seg_map,
+                c2_det_map=c2_det_map,
+                c3_map=c3_map,
+                cfg=cfg,
+                cfg_hash=cfg_hash,
+                actual_size_map=actual_size_map,
+                strict_actual_size=bool(strict_actual_size),
+                teacher_proposals_map=teacher_proposals_map,
+            )
+        return
+
+    chunk = max(1, int(mp_chunksize))
+    mp_ctx = resolve_mp_context(mp_start_method)
+    with ProcessPoolExecutor(
+        max_workers=int(num_workers),
+        mp_context=mp_ctx,
+        initializer=_init_build_worker,
+        initargs=(
+            c2_seg_map,
+            c2_det_map,
+            c3_map,
+            cfg,
+            cfg_hash,
+            actual_size_map,
+            bool(strict_actual_size),
+            teacher_proposals_map,
+        ),
+    ) as executor:
+        for rec in executor.map(_build_output_record_worker, rows, chunksize=chunk):
+            yield rec
 
 
 def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
@@ -1926,6 +2065,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--viz_ar", default="1:1", help="AR to draw in sample box visualization")
     p.add_argument("--viz_max_images", type=int, default=16, help="num sample images for box visualization")
     p.add_argument("--viz_max_boxes", type=int, default=80, help="max boxes per sample image")
+    p.add_argument("--num_workers", type=int, default=0, help="candidate build workers (0=auto, 1=single)")
+    p.add_argument("--mp_chunksize", type=int, default=64, help="chunksize for multiprocessing map")
+    p.add_argument(
+        "--mp_start_method",
+        type=str,
+        default="auto",
+        choices=("auto", "fork", "forkserver", "spawn"),
+        help="multiprocessing start method",
+    )
     return p.parse_args()
 
 
@@ -1990,6 +2138,25 @@ def main() -> None:
             f"[CandidateGen] max_images={args.max_images} -> processing rows={len(df)}"
         )
 
+    row_df = df[["image_id", "width", "height"]].copy()
+    if "tags" in df.columns:
+        row_df["tags"] = df["tags"]
+    else:
+        row_df["tags"] = None
+    rows: List[Dict[str, Any]] = row_df.to_dict(orient="records")
+
+    num_workers = resolve_num_workers(
+        requested_workers=int(args.num_workers),
+        num_items=len(rows),
+    )
+    if num_workers <= 1:
+        print("[CandidateGen] worker mode: single-process")
+    else:
+        print(
+            f"[CandidateGen] worker mode: multiprocess workers={num_workers} "
+            f"chunksize={max(1, int(args.mp_chunksize))} start={args.mp_start_method}"
+        )
+
     actual_size_map: Optional[Dict[str, Tuple[int, int]]] = None
     if bool(int(args.use_actual_image_size)):
         if not str(args.tar_dir).strip() and not str(args.image_dir).strip():
@@ -2010,27 +2177,34 @@ def main() -> None:
     num_written = 0
     avg_total = 0.0
     size_source_counter = Counter()
+    t0 = time.perf_counter()
     with output_path.open("w", encoding="utf-8") as out_f:
-        for _, row in tqdm(df.iterrows(), total=len(df), desc="CandidateGen"):
-            rec = build_output_record(
-                row=row,
-                c2_seg_map=c2_seg_map,
-                c2_det_map=c2_det_map,
-                c3_map=c3_map,
-                cfg=cfg,
-                cfg_hash=cfg_hash,
-                actual_size_map=actual_size_map,
-                strict_actual_size=bool(int(args.strict_actual_size)),
-                teacher_proposals_map=teacher_proposals_map,
-            )
+        desc = "CandidateGen-MP" if num_workers > 1 else "CandidateGen"
+        iter_rec = iter_build_output_records(
+            rows=rows,
+            num_workers=num_workers,
+            mp_chunksize=max(1, int(args.mp_chunksize)),
+            mp_start_method=str(args.mp_start_method),
+            c2_seg_map=c2_seg_map,
+            c2_det_map=c2_det_map,
+            c3_map=c3_map,
+            cfg=cfg,
+            cfg_hash=cfg_hash,
+            actual_size_map=actual_size_map,
+            strict_actual_size=bool(int(args.strict_actual_size)),
+            teacher_proposals_map=teacher_proposals_map,
+        )
+        for rec in tqdm(iter_rec, total=len(rows), desc=desc):
             out_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
             num_written += 1
             avg_total += rec["stats"]["num_candidates_total"]
             size_source_counter[str(rec.get("size_source", "unknown"))] += 1
 
+    elapsed = max(1e-8, time.perf_counter() - t0)
     avg_total = avg_total / max(1, num_written)
     print(
-        f"[CandidateGen] Done. written={num_written} avg_total_candidates={avg_total:.2f}"
+        f"[CandidateGen] Done. written={num_written} avg_total_candidates={avg_total:.2f} "
+        f"elapsed={elapsed:.2f}s throughput={num_written/elapsed:.2f} img/s"
     )
     if size_source_counter:
         print(f"[CandidateGen] size_source_counts={dict(size_source_counter)}")

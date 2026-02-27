@@ -63,6 +63,9 @@ Core options
 --skip_existing 0|1             output 파일이 있으면 단계 skip (default: 1)
 --run_tag TAG                   candidates/teacher 출력 suffix (default: "")
 --max_images INT                0=all, >0=앞에서 n장(candidate/teacher) (default: 0)
+--cand_num_workers INT          candidate 생성 멀티프로세스 worker 수 (0=auto, 1=single)
+--cand_mp_chunksize INT         candidate 멀티프로세스 map chunksize (default: 64)
+--cand_mp_start_method STR      candidate mp 시작 방식(auto|fork|forkserver|spawn)
 --teacher_proposals_jsonl CSV   candidate 단계 teacher proposal jsonl(쉼표로 다중 경로)
 --enable_public_teacher_proposals 0|1   공개 teacher(5.5) setup+infer+build 자동 수행 (default: 0)
 --public_teacher_setup 0|1      공개 teacher setup 수행 여부 (default: 1)
@@ -157,6 +160,9 @@ USE_ACTUAL_IMAGE_SIZE=1
 STRICT_ACTUAL_SIZE=1
 ACTUAL_SIZE_CACHE_JSON=""
 MAX_IMAGES=0
+CAND_NUM_WORKERS=0
+CAND_MP_CHUNKSIZE=64
+CAND_MP_START_METHOD="auto"
 TEACHER_PROPOSALS_JSONL=""
 TEACHER_NMS_IOU=0.95
 TEACHER_MAX_SEEDS_PER_TEACHER=1
@@ -251,6 +257,9 @@ while [ "$#" -gt 0 ]; do
     --strict_actual_size) STRICT_ACTUAL_SIZE="$2"; shift 2 ;;
     --actual_size_cache_json) ACTUAL_SIZE_CACHE_JSON="$2"; shift 2 ;;
     --max_images) MAX_IMAGES="$2"; shift 2 ;;
+    --cand_num_workers) CAND_NUM_WORKERS="$2"; shift 2 ;;
+    --cand_mp_chunksize) CAND_MP_CHUNKSIZE="$2"; shift 2 ;;
+    --cand_mp_start_method) CAND_MP_START_METHOD="$2"; shift 2 ;;
     --teacher_proposals_jsonl) TEACHER_PROPOSALS_JSONL="$2"; shift 2 ;;
     --teacher_nms_iou) TEACHER_NMS_IOU="$2"; shift 2 ;;
     --teacher_max_seeds_per_teacher) TEACHER_MAX_SEEDS_PER_TEACHER="$2"; shift 2 ;;
@@ -606,6 +615,7 @@ echo " public proposals    : enable=$ENABLE_PUBLIC_TEACHER_PROPOSALS setup=$PUBL
 echo " public raw/proposal : $PUBLIC_TEACHER_RAW_JSONL | $PUBLIC_TEACHER_PROPOSALS_JSONL"
 echo " public infer multi  : multi_gpu=$PUBLIC_INFER_MULTI_GPU gpu_ids=${PUBLIC_INFER_GPU_IDS:-auto} workers=${PUBLIC_INFER_NUM_WORKERS:-auto}"
 echo " run_candidates      : $RUN_CANDIDATES"
+echo " candidate_mp       : workers=$CAND_NUM_WORKERS chunksize=$CAND_MP_CHUNKSIZE start=$CAND_MP_START_METHOD"
 echo " teacher proposals   : ${TEACHER_PROPOSALS_JSONL:-<none>}"
 echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
@@ -987,6 +997,9 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
         --strict_actual_size "$STRICT_ACTUAL_SIZE" \
         --actual_size_cache_json "$ACTUAL_SIZE_CACHE_JSON" \
         --max_images "$MAX_IMAGES" \
+        --num_workers "$CAND_NUM_WORKERS" \
+        --mp_chunksize "$CAND_MP_CHUNKSIZE" \
+        --mp_start_method "$CAND_MP_START_METHOD" \
         "${cand_extra_args[@]}"
   fi
 fi

@@ -9,7 +9,8 @@
 #     data/SSTK/10K_local/feats_c2.jsonl \
 #     data/SSTK/10K_local/feats_c3_v2_strict_enriched.jsonl \
 #     data/SSTK/10K_local/candidates_ar.jsonl \
-#     --max_images 0 --max_candidates_per_ar 240
+#     --max_images 0 --max_candidates_per_ar 240 \
+#     --num_workers 8 --mp_chunksize 64 --mp_start_method fork
 #
 # Positional args:
 #   (1) INPUT_PARQUET
@@ -26,6 +27,7 @@
 #   --strict_actual_size 0|1    (default: 1)
 #
 # Other options are passed through to src/generate_candidates.py.
+#   - 예) --num_workers 0|1|N, --mp_chunksize, --mp_start_method
 # ==============================================================================
 
 set -euo pipefail

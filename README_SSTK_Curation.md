@@ -94,28 +94,31 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
+  --run_candidates 0 \
+  --run_c1 1 --run_c2 1 --run_c3 1 --run_c3_enrich 1 --run_c5 1 --run_merge 1 \
+  --run_teacher 1 \
   --precompute_mode unified \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
   --extract_mode auto \
-  --extract_gpu_ids 0,1,2 \
-  --num_workers 4 \
+  --extract_gpu_ids 0,1,2,3,4,5,6 \
+  --num_workers 7 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2 \
-  --teacher_num_workers 4 \
+  --teacher_gpu_ids 0,1,2,3,4,5,6 \
+  --teacher_num_workers 7 \
   --align_device cuda \
   --aesthetic_device cuda \
-  --exp_batch_size 128 \
+  --exp_batch_size 512 \
   --enable_public_teacher_proposals 1 \
   --public_teacher_setup 1 \
   --public_teacher_download_weights 1 \
   --public_teachers gaic,cacnet,cgs \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --public_teacher_max_images -1 \
-  --skip_existing 0 \
-  --run_tag e2e_0227_r0 \
-   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_0227_r0.log
+  --skip_existing 1 \
+  --run_tag e2e_260227_r0 \
+   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_260227_r0.log
 ```
 
 
@@ -159,7 +162,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --exp_batch_size 128 \
   --skip_existing 0 \
   --run_tag e2e_260227_r0 \
-   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_0227_r0.log
+   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_260227_r0.log
 ```
 주의: `--public_infer_multi_gpu`는 `-1|0|1`만 유효하며, GPU 개수는 `--public_infer_gpu_ids`/`--public_infer_num_workers`로 지정합니다.
 
@@ -476,6 +479,11 @@ C3 enrich:
   - `ray` = 명시적 레거시 Ray 모드
 - `--extract_gpu_ids`: precompute에 사용할 GPU 목록 CSV
 - `--run_c1 --run_c2 --run_c3 --run_c3_enrich --run_c5 --run_merge`
+- `--run_component_viz 0|1`: precompute(C2/C3/C5) 시각화 자동 생성
+- `--component_viz_num_samples`: precompute 시각화 샘플 수
+- `--component_viz_out_dir`: precompute 시각화 출력 경로
+- `--component_viz_image_ids`: precompute 시각화 대상 image_id CSV
+- `--component_viz_image_ids_file`: precompute 시각화 대상 image_id 파일(한 줄 1개)
 - `--run_candidates --run_teacher`
 - `--teacher_proposals_jsonl`: Candidate 단계에 수동 proposal jsonl 주입(CSV)
 - `--enable_public_teacher_proposals 0|1`: 5.5(공개 Teacher setup+infer+build) 자동 수행 후 Candidate에 자동 주입
@@ -498,6 +506,8 @@ C3 enrich:
 - `--teacher_multi_gpu -1|0|1`: -1이면 auto(real-expensive + multi-gpu 환경에서 자동 on), `>0` 입력도 on으로 처리
 - `--teacher_gpu_ids`: teacher 멀티 GPU 목록 CSV
 - `--teacher_num_workers`: teacher shard worker 수
+- `--teacher_auto_repair 0|1`: teacher 완료 후 shard 병합/검증 자동 복구 (기본 1)
+- `--teacher_auto_repair_strict 0|1`: expected rows 불일치 시 shard promote 금지 (기본 1)
 - `--max_images`: candidate/teacher 단계 처리 수 제한
 - `--skip_existing 0|1`: 산출물 존재 시 skip
 - `--run_tag`: 결과 파일 suffix
@@ -538,6 +548,11 @@ v1.9 proposal 주입 관련:
   - `--gpu_ids 0,1,2,3`
   - `--num_workers 4`
 - `--run_qa 1`, `--run_viz 1`, `--num_viz`
+- `--viz_image_ids`, `--viz_image_ids_file`: teacher viz 대상 image_id 고정(보고서/디버그용)
+- 자동 복구: `src/scripts/repair_teacher_outputs.py`
+  - teacher shard 출력과 최종 jsonl 불일치 시 자동 병합(promote)
+  - overview/QA를 최종 jsonl 기준으로 재생성
+  - `expected rows`(candidates + max_images) 검증으로 stale shard 오인 promote 방지
 
 ### 5.5 공개 Teacher 추론/변환(v1.9 8.2.0a)
 
@@ -695,6 +710,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   - `data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl` (최종)
   - `data/SSTK/10K_local/artifacts/precompute/feats_c1.jsonl` (split 모드 또는 별도 C1 추출 시)
   - `precompute_mode=unified` + `run_c1=1`이면 C1은 위 unified jsonl에 함께 저장됨
+  - (선택) `data/SSTK/10K_local/artifacts/precompute/visualizations/components_<run_tag>/` (`--run_component_viz 1`)
 - Candidate
   - `data/SSTK/10K_local/artifacts/candidates/candidates_ar_v17_local.jsonl`
   - `data/SSTK/10K_local/artifacts/candidates/candidates_ar_v17_local_overview*.{json,csv}`

@@ -1,0 +1,167 @@
+{
+  "super_cat": "people_single",
+  "image_id": "sstk_image_1772011034",
+  "phaseA": {
+    "image_id": "sstk_image_1772011034",
+    "super_cat": "people_single",
+    "tar_name": "SSTK_000005.tar",
+    "width": 730,
+    "height": 1000,
+    "aes_score": 5.693238258361816,
+    "sstk_type": "Photo",
+    "rarest_freq": 1.0,
+    "sampling_weight": 1.0
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 1,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.070436,
+            0.08849,
+            0.915086,
+            0.917604
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.461336135864258
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 4.450680732727051
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.875
+          ],
+          "score": 4.414846420288086
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 3.078237771987915
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 2.7038350105285645
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 2.6479153633117676
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 114,
+      "9:16": 118,
+      "16:9": 55,
+      "3:4": 167,
+      "4:3": 73
+    },
+    "total_candidates": 527
+  },
+  "teacher": {
+    "expensive_real_applied": false,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "crop",
+        "delta_improve": 1.7099050934767395,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "1x1_g12x12_smy1_i0003",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "9:16": {
+        "decision_type": "crop",
+        "delta_improve": 1.8186976594276987,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "16x9_g12x12_s1_i0023",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "3:4": {
+        "decision_type": "crop",
+        "delta_improve": 1.8759118422542915,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "3x4_g12x12_steach_cgs_jit0_11_i0010",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "4:3": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.0,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "4x3_g12x12_smy0_i0002",
+        "headroom_pass": false,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      }
+    }
+  }
+}

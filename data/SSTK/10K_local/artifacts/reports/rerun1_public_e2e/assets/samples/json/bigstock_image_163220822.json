@@ -1,0 +1,167 @@
+{
+  "super_cat": "architecture_exterior",
+  "image_id": "bigstock_image_163220822",
+  "phaseA": {
+    "image_id": "bigstock_image_163220822",
+    "super_cat": "architecture_exterior",
+    "tar_name": "SSTK_000001.tar",
+    "width": 1000,
+    "height": 667,
+    "aes_score": 5.632922649383545,
+    "sstk_type": "Photo",
+    "rarest_freq": 1.0,
+    "sampling_weight": 1.0
+  },
+  "precompute": {
+    "c2_instances": 1,
+    "c3_persons": 0,
+    "c5_has_horizon_roll": true,
+    "c5_has_symmetry": true
+  },
+  "public_teacher": {
+    "cacnet": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.0,
+            0.039395,
+            1.0,
+            0.900058
+          ],
+          "score": 1.0
+        }
+      ],
+      "by_ar": {}
+    },
+    "cgs": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.572798252105713
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.125,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 4.273143291473389
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 4.137742519378662
+        }
+      ],
+      "by_ar": {}
+    },
+    "gaic": {
+      "free_form": [
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.958333
+          ],
+          "score": 2.639458656311035
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.958333,
+            0.875
+          ],
+          "score": 2.099825382232666
+        },
+        {
+          "bbox_norm_xyxy": [
+            0.041667,
+            0.041667,
+            0.875,
+            0.958333
+          ],
+          "score": 1.976597547531128
+        }
+      ],
+      "by_ar": {}
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 106,
+      "9:16": 56,
+      "16:9": 130,
+      "3:4": 59,
+      "4:3": 125
+    },
+    "total_candidates": 476
+  },
+  "teacher": {
+    "expensive_real_applied": false,
+    "by_ar": {
+      "1:1": {
+        "decision_type": "crop",
+        "delta_improve": 2.047574496255603,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "1x1_g12x12_smx0_i0002",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": true
+      },
+      "9:16": {
+        "decision_type": "crop",
+        "delta_improve": 8.73606242780818,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "9x16_g12x12_smx1_i0003",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": false
+      },
+      "16:9": {
+        "decision_type": "minimal_crop",
+        "delta_improve": 0.031246644454788308,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "16x9_g12x12_smaxc_i0001",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": true
+      },
+      "3:4": {
+        "decision_type": "crop",
+        "delta_improve": 4.953834887264698,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "3x4_g12x12_smx0_i0002",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": true
+      },
+      "4:3": {
+        "decision_type": "crop",
+        "delta_improve": 0.06239563117921465,
+        "tau_improve": 0.055,
+        "top1_candidate_id": "4x3_g12x12_s5_i0037",
+        "headroom_pass": true,
+        "lookroom_pass": true,
+        "horizon_pass": false,
+        "context_pass": true
+      }
+    }
+  }
+}

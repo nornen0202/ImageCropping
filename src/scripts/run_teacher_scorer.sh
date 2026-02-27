@@ -42,6 +42,12 @@ bash src/scripts/run_teacher_scorer.sh \
 bash src/scripts/run_teacher_scorer.sh \
   --num_viz 120 --target_ar 1:1 --decision_filter crop
 
+# 특정 image_id만 teacher 시각화(보고서/디버그용)
+bash src/scripts/run_teacher_scorer.sh \
+  --run_viz 1 \
+  --viz_image_ids_file data/SSTK/10K_local/artifacts/reports/rerun1_public_e2e/sample_ids_supercat12.txt \
+  --image_dir data/SSTK/10K_local/images
+
 # 시각화 생략 (스코어/통계만)
 bash src/scripts/run_teacher_scorer.sh --run_viz 0
 
@@ -98,6 +104,8 @@ DECISION_FILTER="all"
 NUM_VIZ=120
 RUN_VIZ=1
 RUN_QA=1
+VIZ_IMAGE_IDS=""
+VIZ_IMAGE_IDS_FILE=""
 
 CHEAP_TOP_M=30
 TOP_K=5
@@ -144,6 +152,8 @@ while [ "$#" -gt 0 ]; do
     --num_viz) NUM_VIZ="$2"; shift 2 ;;
     --run_viz) RUN_VIZ="$2"; shift 2 ;;
     --run_qa) RUN_QA="$2"; shift 2 ;;
+    --viz_image_ids) VIZ_IMAGE_IDS="$2"; shift 2 ;;
+    --viz_image_ids_file) VIZ_IMAGE_IDS_FILE="$2"; shift 2 ;;
 
     --cheap_top_m) CHEAP_TOP_M="$2"; shift 2 ;;
     --top_k) TOP_K="$2"; shift 2 ;;
@@ -272,6 +282,7 @@ echo "[config] c1=$C1_JSONL"
 echo "[config] parquet=$PARQUET"
 echo "[config] output_jsonl=$OUTPUT_JSONL"
 echo "[config] expensive_accel: batch=$EXP_BATCH_SIZE eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo "[config] viz_image_ids=${VIZ_IMAGE_IDS:-<none>} viz_image_ids_file=${VIZ_IMAGE_IDS_FILE:-<none>}"
 
 echo "[1/3] Running teacher scorer..."
 run_teacher_one() {
@@ -419,6 +430,16 @@ fi
 
 if [ "$RUN_VIZ" -eq 1 ]; then
   echo "[3/3] Rendering teacher scorer visualizations..."
+  viz_args=()
+  if [ -n "$IMAGE_DIR" ]; then
+    viz_args+=(--image_dir "$IMAGE_DIR")
+  fi
+  if [ -n "$VIZ_IMAGE_IDS" ]; then
+    viz_args+=(--image_ids "$VIZ_IMAGE_IDS")
+  fi
+  if [ -n "$VIZ_IMAGE_IDS_FILE" ]; then
+    viz_args+=(--image_ids_file "$VIZ_IMAGE_IDS_FILE")
+  fi
   python src/visualize_teacher_scores.py \
     --teacher_scores_jsonl "$OUTPUT_JSONL" \
     --parquet "$PARQUET" \
@@ -427,7 +448,8 @@ if [ "$RUN_VIZ" -eq 1 ]; then
     --target_ar "$TARGET_AR" \
     --decision_filter "$DECISION_FILTER" \
     --num_samples "$NUM_VIZ" \
-    --seed "$SEED"
+    --seed "$SEED" \
+    "${viz_args[@]}"
 else
   echo "[3/3] Visualization skipped (--run_viz 0)."
 fi

@@ -32,6 +32,7 @@ TOPK_COLORS_BGR: List[Tuple[int, int, int]] = [
 ]
 BASELINE_COLOR = (255, 80, 30)
 SUBJECT_COLOR = (255, 255, 0)
+IMAGE_EXTS: Tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,13 +40,71 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--teacher_scores_jsonl", required=True)
     p.add_argument("--parquet", required=True, help="filtered parquet with tar_name/bucket")
     p.add_argument("--tar_dir", required=True)
+    p.add_argument("--image_dir", default="", help="optional local curated image dir (<image_id>.<ext>)")
     p.add_argument("--out_dir", required=True)
     p.add_argument("--target_ar", default="all", help="e.g. 1:1 or all")
     p.add_argument("--decision_filter", default="all", help="all|keep_full|minimal_crop|crop")
     p.add_argument("--num_samples", type=int, default=100)
+    p.add_argument(
+        "--image_ids",
+        nargs="*",
+        default=[],
+        help="explicit image ids (space/comma separated). if set, tasks are filtered by these ids",
+    )
+    p.add_argument("--image_ids_file", default="", help="text file with image_id entries (1 per line)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--draw_subject_box", type=int, default=1)
     return p.parse_args()
+
+
+def parse_image_ids_arg(values: Sequence[str]) -> List[str]:
+    out: List[str] = []
+    for raw in values:
+        if raw is None:
+            continue
+        toks = [tok.strip() for tok in str(raw).split(",")]
+        for tok in toks:
+            if tok:
+                out.append(tok)
+    return out
+
+
+def parse_image_ids_file(path: str) -> List[str]:
+    if not path:
+        return []
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"image_ids_file not found: {path}")
+    out: List[str] = []
+    with p.open("r", encoding="utf-8") as f:
+        for line in f:
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            out.extend([tok.strip() for tok in s.split(",") if tok.strip()])
+    return out
+
+
+def unique_keep_order(ids: Sequence[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for x in ids:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
+
+
+def find_image_in_dir(image_dir: str, image_id: str) -> Optional[Path]:
+    if not image_dir:
+        return None
+    root = Path(image_dir)
+    for ext in IMAGE_EXTS:
+        p = root / f"{image_id}{ext}"
+        if p.exists():
+            return p
+    return None
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -243,11 +302,22 @@ def load_images_from_tars(
     ids: Sequence[str],
     mapping: Dict[str, Dict[str, Any]],
     tar_dir: str,
+    image_dir: str = "",
 ) -> Dict[str, np.ndarray]:
     out: Dict[str, np.ndarray] = {}
 
-    tar_to_ids: Dict[str, List[str]] = defaultdict(list)
+    pending: List[str] = []
     for image_id in ids:
+        p = find_image_in_dir(image_dir, image_id)
+        if p is not None:
+            raw = cv2.imread(str(p))
+            if raw is not None:
+                out[image_id] = raw
+                continue
+        pending.append(image_id)
+
+    tar_to_ids: Dict[str, List[str]] = defaultdict(list)
+    for image_id in pending:
         info = mapping.get(image_id)
         if not info:
             continue
@@ -264,7 +334,7 @@ def load_images_from_tars(
                 for member in tf:
                     name = os.path.basename(member.name)
                     base, ext = os.path.splitext(name)
-                    if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+                    if ext.lower() not in IMAGE_EXTS:
                         continue
                     if base not in wanted:
                         continue
@@ -306,6 +376,13 @@ def main() -> None:
     if not tasks:
         raise RuntimeError("No tasks selected. Check --target_ar / --decision_filter")
 
+    explicit_ids = unique_keep_order(parse_image_ids_arg(args.image_ids) + parse_image_ids_file(args.image_ids_file))
+    if explicit_ids:
+        allowed = set(explicit_ids)
+        tasks = [t for t in tasks if str(t.get("image_id", "")) in allowed]
+        if not tasks:
+            raise RuntimeError("No tasks selected after --image_ids filter")
+
     if args.num_samples > 0 and len(tasks) > args.num_samples:
         tasks = random.sample(tasks, args.num_samples)
 
@@ -316,7 +393,7 @@ def main() -> None:
         mapping = df.set_index("image_id")[["tar_name"]].to_dict("index")
 
     image_ids = sorted(set(t["image_id"] for t in tasks))
-    img_map = load_images_from_tars(ids=image_ids, mapping=mapping, tar_dir=args.tar_dir)
+    img_map = load_images_from_tars(ids=image_ids, mapping=mapping, tar_dir=args.tar_dir, image_dir=args.image_dir)
 
     rendered = 0
     by_ar_count: Dict[str, int] = defaultdict(int)
@@ -348,11 +425,13 @@ def main() -> None:
             "teacher_scores_jsonl": str(score_jsonl),
             "parquet": str(parquet_path),
             "tar_dir": str(args.tar_dir),
+            "image_dir": str(args.image_dir),
         },
         "filters": {
             "target_ar": args.target_ar,
             "decision_filter": args.decision_filter,
             "num_samples": args.num_samples,
+            "explicit_image_ids": explicit_ids,
         },
         "summary": {
             "tasks_selected": len(tasks),

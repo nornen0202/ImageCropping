@@ -16,6 +16,9 @@
 #   --c2_jsonl PATH       : c2 jsonl
 #   --c3_jsonl PATH       : c3 jsonl
 #   --c5_jsonl PATH       : c5 jsonl
+#   --image_dir PATH      : curated 이미지 디렉토리(<image_id>.<ext>) 우선 로드
+#   --image_ids ...       : 시각화할 image_id 목록 (space/comma 혼합 가능)
+#   --image_ids_file PATH : 시각화할 image_id 파일(한 줄당 1개)
 #   --num_samples N       : 샘플 수
 #   --draw_c2 0|1         : c2 개별 이미지 저장 여부
 #   --draw_c3 0|1         : c3 개별 이미지 저장 여부
@@ -32,7 +35,7 @@
    bash src/scripts/run_visualize_components.sh \
      data/SSTK/10K_local/filtered_sstk_100.parquet \
      /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
-     data/SSTK/10K_local/artifacts/visualizations/components_v2_local \
+     data/SSTK/10K_local/artifacts/precompute/visualizations/components_v2_local \
      --merged_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl \
      --draw_combined 1 --num_samples 200 --server_mode 0
 #
@@ -40,7 +43,7 @@
    bash src/scripts/run_visualize_components.sh \
      data/SSTK/10K/filtered_sstk_100.parquet \
      /sstk/20230916/sstk_100 \
-     data/SSTK/10K/artifacts/visualizations/components_v2_server \
+     data/SSTK/10K/artifacts/precompute/visualizations/components_v2_server \
      --c2_jsonl data/SSTK/10K/artifacts/precompute/feats_c2.jsonl \
      --c3_jsonl data/SSTK/10K/artifacts/precompute/feats_c3_v2_strict_enriched.jsonl \
      --c5_jsonl data/SSTK/10K/artifacts/precompute/feats_c5.jsonl \
@@ -121,7 +124,7 @@ fi
 echo "=============================================="
 
 run_main_cmd=(
-python3 "$PY_SCRIPT" \
+python "$PY_SCRIPT" \
   --parquet "$PARQUET" \
   --tar_dir "$TAR_DIR" \
   --out_dir "$OUT_DIR" \
@@ -175,7 +178,7 @@ for ((i=0; i<${#PASS_ARGS[@]}; i++)); do
 done
 
 set +e
-CUDA_VISIBLE_DEVICES="" python3 "$PY_SCRIPT" \
+CUDA_VISIBLE_DEVICES="" python "$PY_SCRIPT" \
   --parquet "$PARQUET" \
   --tar_dir "$TAR_DIR" \
   --out_dir "$OUT_DIR" \

@@ -10,7 +10,7 @@ Local (separate jsonl):
       --c3_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c3_v2_strict_enriched.jsonl \
       --c5_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c5.jsonl \
       --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
-      --out_dir data/SSTK/10K_local/artifacts/visualizations/components_v2_local \
+      --out_dir data/SSTK/10K_local/artifacts/precompute/visualizations/components_v2_local \
       --num_samples 100 \
       --draw_combined 1
 
@@ -19,7 +19,7 @@ Local (merged jsonl):
       --parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
       --merged_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl \
       --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
-      --out_dir data/SSTK/10K_local/artifacts/visualizations/components_v2_local \
+      --out_dir data/SSTK/10K_local/artifacts/precompute/visualizations/components_v2_local \
       --num_samples 100 \
       --draw_combined 1
 """
@@ -58,6 +58,7 @@ COCO_SKELETON_EDGES: List[Tuple[int, int]] = [
     (1, 3),
     (2, 4),
 ]
+IMAGE_EXTS: Tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def as_bool_flag(v: int) -> bool:
@@ -102,6 +103,56 @@ def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
         if p and os.path.exists(p):
             return p
     return None
+
+
+def find_image_in_dir(image_dir: str, image_id: str) -> Optional[Path]:
+    if not image_dir:
+        return None
+    root = Path(image_dir)
+    for ext in IMAGE_EXTS:
+        p = root / f"{image_id}{ext}"
+        if p.exists():
+            return p
+    return None
+
+
+def parse_image_ids_arg(values: Sequence[str]) -> List[str]:
+    out: List[str] = []
+    for raw in values:
+        if raw is None:
+            continue
+        toks = [tok.strip() for tok in str(raw).split(",")]
+        for tok in toks:
+            if tok:
+                out.append(tok)
+    return out
+
+
+def parse_image_ids_file(path: str) -> List[str]:
+    if not path:
+        return []
+    p = Path(path)
+    if not p.exists():
+        raise FileNotFoundError(f"image_ids_file not found: {path}")
+    out: List[str] = []
+    with p.open("r", encoding="utf-8") as f:
+        for line in f:
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            out.extend([tok.strip() for tok in s.split(",") if tok.strip()])
+    return out
+
+
+def unique_keep_order(ids: Sequence[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for x in ids:
+        if x in seen:
+            continue
+        seen.add(x)
+        out.append(x)
+    return out
 
 
 def color_for_index(i: int) -> Tuple[int, int, int]:
@@ -462,8 +513,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--c3_jsonl", type=str, default="")
     parser.add_argument("--c5_jsonl", type=str, default="")
     parser.add_argument("--tar_dir", type=str, required=True)
-    parser.add_argument("--out_dir", type=str, default="data/SSTK/10K_local/artifacts/visualizations/components_v2_local")
+    parser.add_argument("--image_dir", type=str, default="", help="optional local curated image dir (<image_id>.<ext>)")
+    parser.add_argument(
+        "--out_dir",
+        type=str,
+        default="data/SSTK/10K_local/artifacts/precompute/visualizations/components_v2_local",
+    )
     parser.add_argument("--num_samples", type=int, default=50)
+    parser.add_argument(
+        "--image_ids",
+        nargs="*",
+        default=[],
+        help="explicit image ids (space/comma separated). if set, this list is prioritized over auto sampling",
+    )
+    parser.add_argument("--image_ids_file", type=str, default="", help="text file with image_id entries (1 per line)")
 
     parser.add_argument("--draw_c2", type=int, default=1, help="1=save c2 layer, 0=skip")
     parser.add_argument("--draw_c3", type=int, default=1, help="1=save c3 layer, 0=skip")
@@ -506,24 +569,41 @@ def main() -> None:
 
     print("Selecting samples...")
     ordered_ids = [str(x) for x in df["image_id"].tolist()]
+    ordered_id_set = set(ordered_ids)
+
+    explicit_ids = unique_keep_order(parse_image_ids_arg(args.image_ids) + parse_image_ids_file(args.image_ids_file))
     selected_ids: List[str] = []
-    for image_id in ordered_ids:
-        if should_use_image(
-            image_id=image_id,
-            c2_map=c2_map,
-            c3_map=c3_map,
-            c5_map=c5_map,
-            draw_c2=as_bool_flag(args.draw_c2),
-            draw_c3=as_bool_flag(args.draw_c3),
-            draw_c5=as_bool_flag(args.draw_c5),
-        ):
-            selected_ids.append(image_id)
-            if args.num_samples > 0 and len(selected_ids) >= args.num_samples:
-                break
+    missing_explicit: List[str] = []
+    if explicit_ids:
+        for image_id in explicit_ids:
+            if image_id in ordered_id_set:
+                selected_ids.append(image_id)
+            else:
+                missing_explicit.append(image_id)
+        if missing_explicit:
+            print(f"[warn] {len(missing_explicit)} explicit image_ids not found in parquet")
+        if args.num_samples > 0:
+            selected_ids = selected_ids[: int(args.num_samples)]
+    else:
+        for image_id in ordered_ids:
+            if should_use_image(
+                image_id=image_id,
+                c2_map=c2_map,
+                c3_map=c3_map,
+                c5_map=c5_map,
+                draw_c2=as_bool_flag(args.draw_c2),
+                draw_c3=as_bool_flag(args.draw_c3),
+                draw_c5=as_bool_flag(args.draw_c5),
+            ):
+                selected_ids.append(image_id)
+                if args.num_samples > 0 and len(selected_ids) >= args.num_samples:
+                    break
 
     print(f"Processing {len(selected_ids)} sample(s)...")
 
     tar_to_ids: Dict[str, List[str]] = defaultdict(list)
+    rendered_ids: List[str] = []
+    missing_ids: List[str] = []
 
     for image_id in selected_ids:
         orig_path = out_dir / "original" / f"{image_id}.jpg"
@@ -531,9 +611,20 @@ def main() -> None:
             raw = cv2.imread(str(orig_path))
             if raw is not None:
                 save_visualizations_for_image(image_id, raw, c2_map, c3_map, c5_map, args)
-            continue
+                rendered_ids.append(image_id)
+                continue
+
+        local_img_path = find_image_in_dir(args.image_dir, image_id)
+        if local_img_path is not None:
+            raw = cv2.imread(str(local_img_path))
+            if raw is not None:
+                cv2.imwrite(str(orig_path), raw)
+                save_visualizations_for_image(image_id, raw, c2_map, c3_map, c5_map, args)
+                rendered_ids.append(image_id)
+                continue
 
         if image_id not in mapping:
+            missing_ids.append(image_id)
             continue
         info = mapping[image_id]
         tar_name = info.get("tar_name", "")
@@ -551,7 +642,7 @@ def main() -> None:
                 for member in tf:
                     name = os.path.basename(member.name)
                     base, ext = os.path.splitext(name)
-                    if ext.lower() not in {".jpg", ".jpeg", ".png", ".webp"}:
+                    if ext.lower() not in IMAGE_EXTS:
                         continue
                     if base not in id_set:
                         continue
@@ -568,14 +659,38 @@ def main() -> None:
                     cv2.imwrite(str(out_dir / "original" / f"{base}.jpg"), raw_bgr)
 
                     save_visualizations_for_image(base, raw_bgr, c2_map, c3_map, c5_map, args)
+                    rendered_ids.append(base)
 
                     id_set.remove(base)
                     if not id_set:
                         break
+            if id_set:
+                missing_ids.extend(sorted(id_set))
         except Exception as e:
             print(f"Error reading tar {tar_path}: {e}")
+            missing_ids.extend(sorted(id_set))
+
+    summary = {
+        "inputs": {
+            "parquet": str(args.parquet),
+            "merged_jsonl": str(args.merged_jsonl),
+            "c2_jsonl": str(args.c2_jsonl),
+            "c3_jsonl": str(args.c3_jsonl),
+            "c5_jsonl": str(args.c5_jsonl),
+            "tar_dir": str(args.tar_dir),
+            "image_dir": str(args.image_dir),
+        },
+        "selected_count": len(selected_ids),
+        "rendered_count": len(rendered_ids),
+        "missing_count": len(missing_ids),
+        "selected_ids": selected_ids,
+        "missing_ids": missing_ids,
+    }
+    with (out_dir / "viz_overview.json").open("w", encoding="utf-8") as f:
+        json.dump(summary, f, ensure_ascii=False, indent=2)
 
     print("Visualization complete.")
+    print(f"[done] rendered={len(rendered_ids)} missing={len(missing_ids)} out_dir={out_dir}")
 
 
 if __name__ == "__main__":

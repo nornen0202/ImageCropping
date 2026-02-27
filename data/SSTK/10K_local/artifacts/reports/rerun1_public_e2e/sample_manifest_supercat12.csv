@@ -1,0 +1,13 @@
+super_cat,image_id,tar_name,bucket,width,height
+animals,bigstock_image_149147297,SSTK_000000.tar,,1000,667
+architecture_exterior,bigstock_image_163220822,SSTK_000001.tar,,1000,667
+documents_text,bigstock_image_129575693,SSTK_000000.tar,,1000,667
+food,bigstock_image_165044747,SSTK_000008.tar,,1000,667
+indoor_interior,bigstock_image_112983323,SSTK_000008.tar,,1000,669
+landscape_nature,bigstock_image_218991439,SSTK_000002.tar,,1000,676
+other_ambiguous,bigstock_image_207940879,SSTK_000005.tar,,1000,667
+people_multi,bigstock_image_122199020,SSTK_000003.tar,,770,1000
+people_single,sstk_image_1772011034,SSTK_000005.tar,,730,1000
+product_object,bigstock_image_141430643,SSTK_000005.tar,,667,1000
+sports,bigstock_image_134277740,SSTK_000001.tar,,667,1000
+transportation,bigstock_image_109682993,SSTK_000003.tar,,1000,667

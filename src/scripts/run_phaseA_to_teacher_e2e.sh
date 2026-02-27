@@ -32,8 +32,19 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --aesthetic_device cuda \
   --exp_batch_size 12
 
+# Teacher 산출물 자동 복구/검증(기본 on)
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --run_filter 0 --run_candidates 0 --run_teacher 1 \
+  --teacher_auto_repair 1 --teacher_auto_repair_strict 1
+
 # 스모크 테스트(앞 200장)
 bash src/scripts/run_phaseA_to_teacher_e2e.sh --max_images 200 --run_tag smoke200
+
+# precompute 컴포넌트 시각화 동시 생성
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --run_component_viz 1 \
+  --component_viz_num_samples 120 \
+  --run_tag with_comp_viz
 
 # 공개 Teacher proposal 주입(5.5 설치/추론/변환 자동 포함)
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
@@ -66,6 +77,11 @@ Core options
 --cand_num_workers INT          candidate 생성 멀티프로세스 worker 수 (0=auto, 1=single)
 --cand_mp_chunksize INT         candidate 멀티프로세스 map chunksize (default: 64)
 --cand_mp_start_method STR      candidate mp 시작 방식(auto|fork|forkserver|spawn)
+--run_component_viz 0|1         precompute(C2/C3/C5) 시각화 자동 생성 여부 (default: 0)
+--component_viz_num_samples INT precompute 시각화 샘플 수 (default: 120)
+--component_viz_out_dir PATH    precompute 시각화 출력 경로 (default: <data_dir>/artifacts/precompute/visualizations/components<suffix>)
+--component_viz_image_ids CSV   precompute 시각화 대상 image_id CSV(명시 시 우선)
+--component_viz_image_ids_file PATH precompute 시각화 대상 image_id 파일(한 줄 1개)
 --teacher_proposals_jsonl CSV   candidate 단계 teacher proposal jsonl(쉼표로 다중 경로)
 --enable_public_teacher_proposals 0|1   공개 teacher(5.5) setup+infer+build 자동 수행 (default: 0)
 --public_teacher_setup 0|1      공개 teacher setup 수행 여부 (default: 1)
@@ -92,6 +108,8 @@ Core options
 --teacher_multi_gpu -1|0|1      -1=auto(use_real_expensive && multi-gpu면 on), default -1
 --teacher_gpu_ids CSV           teacher multi-gpu에서 사용할 GPU 목록
 --teacher_num_workers INT       teacher multi-gpu shard worker 수
+--teacher_auto_repair 0|1       teacher shard 병합/검증 자동 복구 실행 (default: 1)
+--teacher_auto_repair_strict 0|1 expected rows 불일치 시 shard promote 금지 (default: 1)
 --expensive_eval_top_m INT      expensive stage에서 AR별 평가 상한(0=cheap_top_m 전체)
 --exp_preprocess_workers INT    expensive clip preprocess thread 수(0=auto)
 --exp_pin_memory 0|1            expensive batch H2D pin_memory 사용 여부 (default: 1)
@@ -112,6 +130,7 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$PROJECT_ROOT"
+SCRIPT_VERSION="2026-02-27.3"
 
 # ------------------------------------------------------------------------------
 # Defaults
@@ -163,6 +182,11 @@ MAX_IMAGES=0
 CAND_NUM_WORKERS=0
 CAND_MP_CHUNKSIZE=64
 CAND_MP_START_METHOD="auto"
+RUN_COMPONENT_VIZ=0
+COMPONENT_VIZ_NUM_SAMPLES=120
+COMPONENT_VIZ_OUT_DIR=""
+COMPONENT_VIZ_IMAGE_IDS=""
+COMPONENT_VIZ_IMAGE_IDS_FILE=""
 TEACHER_PROPOSALS_JSONL=""
 TEACHER_NMS_IOU=0.95
 TEACHER_MAX_SEEDS_PER_TEACHER=1
@@ -212,6 +236,8 @@ AESTHETIC_MLP_URL="https://raw.githubusercontent.com/christophschuhmann/improved
 TEACHER_MULTI_GPU=-1
 TEACHER_GPU_IDS=""
 TEACHER_NUM_WORKERS=""
+TEACHER_AUTO_REPAIR=1
+TEACHER_AUTO_REPAIR_STRICT=1
 
 # ------------------------------------------------------------------------------
 # Option parse
@@ -253,6 +279,11 @@ while [ "$#" -gt 0 ]; do
     --c3_person_verify_strict) C3_PERSON_VERIFY_STRICT="$2"; shift 2 ;;
 
     --run_candidates) RUN_CANDIDATES="$2"; shift 2 ;;
+    --run_component_viz) RUN_COMPONENT_VIZ="$2"; shift 2 ;;
+    --component_viz_num_samples) COMPONENT_VIZ_NUM_SAMPLES="$2"; shift 2 ;;
+    --component_viz_out_dir) COMPONENT_VIZ_OUT_DIR="$2"; shift 2 ;;
+    --component_viz_image_ids) COMPONENT_VIZ_IMAGE_IDS="$2"; shift 2 ;;
+    --component_viz_image_ids_file) COMPONENT_VIZ_IMAGE_IDS_FILE="$2"; shift 2 ;;
     --use_actual_image_size) USE_ACTUAL_IMAGE_SIZE="$2"; shift 2 ;;
     --strict_actual_size) STRICT_ACTUAL_SIZE="$2"; shift 2 ;;
     --actual_size_cache_json) ACTUAL_SIZE_CACHE_JSON="$2"; shift 2 ;;
@@ -308,6 +339,8 @@ while [ "$#" -gt 0 ]; do
     --teacher_multi_gpu) TEACHER_MULTI_GPU="$2"; shift 2 ;;
     --teacher_gpu_ids) TEACHER_GPU_IDS="$2"; shift 2 ;;
     --teacher_num_workers) TEACHER_NUM_WORKERS="$2"; shift 2 ;;
+    --teacher_auto_repair) TEACHER_AUTO_REPAIR="$2"; shift 2 ;;
+    --teacher_auto_repair_strict) TEACHER_AUTO_REPAIR_STRICT="$2"; shift 2 ;;
 
     -h|--help)
       sed -n '1,220p' "$0"
@@ -388,6 +421,7 @@ fi
 FILTERED_PARQUET="${DATA_DIR}/filtered_${BUCKET}.parquet"
 ARTIFACTS_DIR="${DATA_DIR}/artifacts"
 PRECOMPUTE_DIR="${ARTIFACTS_DIR}/precompute"
+PRECOMPUTE_VIZ_BASE_DIR="${PRECOMPUTE_DIR}/visualizations"
 CANDIDATES_DIR="${ARTIFACTS_DIR}/candidates"
 PUBLIC_TEACHERS_DIR="${ARTIFACTS_DIR}/public_teachers"
 PUBLIC_RAW_DIR="${PUBLIC_TEACHERS_DIR}/raw"
@@ -429,8 +463,13 @@ if [ -z "$ACTUAL_SIZE_CACHE_JSON" ]; then
   ACTUAL_SIZE_CACHE_JSON="${CACHE_DIR}/actual_image_size_map.json"
 fi
 
+if [ -z "$COMPONENT_VIZ_OUT_DIR" ]; then
+  COMPONENT_VIZ_OUT_DIR="${PRECOMPUTE_VIZ_BASE_DIR}/components${SUFFIX}"
+fi
+
 mkdir -p \
   "$PRECOMPUTE_DIR" \
+  "$PRECOMPUTE_VIZ_BASE_DIR" \
   "$CANDIDATES_DIR" \
   "$PUBLIC_RAW_DIR" \
   "$PUBLIC_PROPOSALS_DIR" \
@@ -598,6 +637,7 @@ fi
 echo "========================================================"
 echo " E2E Config"
 echo "========================================================"
+echo " script_version      : $SCRIPT_VERSION"
 echo " bucket              : $BUCKET"
 echo " data_dir            : $DATA_DIR"
 echo " server_mode         : $SERVER_MODE"
@@ -611,6 +651,7 @@ echo " prefer_curated_img  : $PREFER_CURATED_IMAGES (effective=${EFFECTIVE_IMAGE
 echo " extract_mode        : $EXTRACT_MODE (gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
 echo " run_c1/c2/c3/c5    : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C5"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
+echo " run_component_viz   : $RUN_COMPONENT_VIZ (out=$COMPONENT_VIZ_OUT_DIR, num_samples=$COMPONENT_VIZ_NUM_SAMPLES)"
 echo " public proposals    : enable=$ENABLE_PUBLIC_TEACHER_PROPOSALS setup=$PUBLIC_TEACHER_SETUP teachers=$PUBLIC_TEACHERS max_images=$PUBLIC_TEACHER_MAX_IMAGES"
 echo " public raw/proposal : $PUBLIC_TEACHER_RAW_JSONL | $PUBLIC_TEACHER_PROPOSALS_JSONL"
 echo " public infer multi  : multi_gpu=$PUBLIC_INFER_MULTI_GPU gpu_ids=${PUBLIC_INFER_GPU_IDS:-auto} workers=${PUBLIC_INFER_NUM_WORKERS:-auto}"
@@ -619,6 +660,7 @@ echo " candidate_mp       : workers=$CAND_NUM_WORKERS chunksize=$CAND_MP_CHUNKSI
 echo " teacher proposals   : ${TEACHER_PROPOSALS_JSONL:-<none>}"
 echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
+echo " teacher_auto_repair : $TEACHER_AUTO_REPAIR (strict=$TEACHER_AUTO_REPAIR_STRICT)"
 echo " teacher_accel       : exp_batch=$EXP_BATCH_SIZE exp_eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
 echo "========================================================"
 
@@ -830,6 +872,48 @@ else
           --inputs "$FEATS_C2" "$FEATS_C3_ENRICHED" "$FEATS_C5" \
           --output_jsonl "$MERGED_FEATS"
     fi
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 2.5) Precompute Visualization (optional)
+# ------------------------------------------------------------------------------
+if [ "$RUN_COMPONENT_VIZ" -eq 1 ]; then
+  if [ ! -f "$MERGED_FEATS" ]; then
+    echo "[error] component visualization requires merged features jsonl: $MERGED_FEATS"
+    exit 1
+  fi
+  if [ "$SKIP_EXISTING" -eq 1 ] && [ -f "${COMPONENT_VIZ_OUT_DIR}/viz_overview.json" ]; then
+    echo "[skip] exists: ${COMPONENT_VIZ_OUT_DIR}/viz_overview.json"
+  else
+    comp_viz_args=(
+      --merged_jsonl "$MERGED_FEATS"
+      --num_samples "$COMPONENT_VIZ_NUM_SAMPLES"
+      --draw_c2 1
+      --draw_c3 1
+      --draw_c5 1
+      --draw_combined 1
+      --server_mode "$SERVER_MODE"
+      --venv_path "$VENV_PATH"
+      --oom_cpu_fallback 1
+      --oom_fallback_num_samples 3
+      --skip_on_oom_fail 1
+    )
+    if [ -n "$EFFECTIVE_IMAGE_DIR" ]; then
+      comp_viz_args+=(--image_dir "$EFFECTIVE_IMAGE_DIR")
+    fi
+    if [ -n "$COMPONENT_VIZ_IMAGE_IDS" ]; then
+      comp_viz_args+=(--image_ids "$COMPONENT_VIZ_IMAGE_IDS")
+    fi
+    if [ -n "$COMPONENT_VIZ_IMAGE_IDS_FILE" ]; then
+      comp_viz_args+=(--image_ids_file "$COMPONENT_VIZ_IMAGE_IDS_FILE")
+    fi
+    run_with_log "07b_visualize_components" \
+      bash src/scripts/run_visualize_components.sh \
+        "$FILTERED_PARQUET" \
+        "$TAR_DIR" \
+        "$COMPONENT_VIZ_OUT_DIR" \
+        "${comp_viz_args[@]}"
   fi
 fi
 
@@ -1068,6 +1152,21 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --gpu_ids "$TEACHER_GPU_IDS" \
         --num_workers "$TEACHER_NUM_WORKERS"
   fi
+
+  if [ "$TEACHER_AUTO_REPAIR" -eq 1 ]; then
+    run_with_log "10b_teacher_repair_outputs" \
+      python src/scripts/repair_teacher_outputs.py \
+        --teacher_scores_jsonl "$TEACHER_JSONL" \
+        --overview_json "$TEACHER_OVERVIEW_JSON" \
+        --overview_csv "$TEACHER_OVERVIEW_CSV" \
+        --qa_json "$TEACHER_QA_JSON" \
+        --qa_csv "$TEACHER_QA_CSV" \
+        --candidates_jsonl "$CANDIDATES_JSONL" \
+        --max_images "$MAX_IMAGES" \
+        --prefer_real_expensive "$USE_REAL_EXPENSIVE" \
+        --strict_expected_match "$TEACHER_AUTO_REPAIR_STRICT" \
+        --verbose 1
+  fi
 fi
 
 echo "========================================================"
@@ -1083,6 +1182,9 @@ echo " merged feats     : $MERGED_FEATS"
 if [ "$ENABLE_PUBLIC_TEACHER_PROPOSALS" -eq 1 ]; then
   echo " public raw       : $PUBLIC_TEACHER_RAW_JSONL"
   echo " public proposals : $PUBLIC_TEACHER_PROPOSALS_JSONL"
+fi
+if [ "$RUN_COMPONENT_VIZ" -eq 1 ]; then
+  echo " component viz    : $COMPONENT_VIZ_OUT_DIR"
 fi
 echo " candidates       : $CANDIDATES_JSONL"
 echo " teacher jsonl    : $TEACHER_JSONL"

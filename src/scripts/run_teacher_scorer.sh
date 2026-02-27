@@ -14,9 +14,9 @@ bash src/scripts/run_teacher_scorer.sh --server_mode 1
 
 # 출력 경로 지정
 bash src/scripts/run_teacher_scorer.sh \
-  --output_jsonl data/SSTK/10K_local/teacher_scores_ar.jsonl \
-  --output_overview_json data/SSTK/10K_local/teacher_scores_overview.json \
-  --output_overview_csv data/SSTK/10K_local/teacher_scores_overview_by_ar.csv
+  --output_jsonl data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar.jsonl \
+  --output_overview_json data/SSTK/10K_local/artifacts/teacher/overview/teacher_scores_overview.json \
+  --output_overview_csv data/SSTK/10K_local/artifacts/teacher/overview/teacher_scores_overview_by_ar.csv
 
 # Top-K / Cheap M / Diversity IoU 조정
 bash src/scripts/run_teacher_scorer.sh \
@@ -25,8 +25,11 @@ bash src/scripts/run_teacher_scorer.sh \
 # 실모델 Expensive 강제 (Aesthetic + cos(E_I,E_T))
 bash src/scripts/run_teacher_scorer.sh \
   --use_real_expensive 1 \
-  --c1_jsonl data/SSTK/10K_local/feats_c1.jsonl \
-  --align_device auto --aesthetic_device auto
+  --c1_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c1.jsonl \
+  --align_device auto --aesthetic_device auto \
+  --exp_batch_size 128 \
+  --exp_preprocess_workers 8 \
+  --expensive_eval_top_m 16
 
 # 멀티 GPU 샤딩 실행 (No-Ray)
 bash src/scripts/run_teacher_scorer.sh \
@@ -49,17 +52,17 @@ bash src/scripts/run_teacher_scorer.sh --run_viz 0 --run_qa 1
 export CUDA_VISIBLE_DEVICES=0
 
 bash src/scripts/run_teacher_scorer.sh \
-  --candidates_jsonl data/SSTK/10K_local/candidates_ar.jsonl \
-  --features_jsonl data/SSTK/10K_local/feats_c2c3c5_v2_strict_enriched.jsonl \
-  --c1_jsonl data/SSTK/10K_local/feats_c1.jsonl \
+  --candidates_jsonl data/SSTK/10K_local/artifacts/candidates/candidates_ar.jsonl \
+  --features_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl \
+  --c1_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c1.jsonl \
   --parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
   --tar_dir /sstk/20230916/sstk_100 \
-  --output_jsonl data/SSTK/10K_local/teacher_scores_ar_p0_real.jsonl \
-  --output_overview_json data/SSTK/10K_local/teacher_scores_overview_p0_real.json \
-  --output_overview_csv data/SSTK/10K_local/teacher_scores_overview_by_ar_p0_real.csv \
-  --qa_out_json data/SSTK/10K_local/teacher_scores_qa_report_p0_real.json \
-  --qa_out_csv data/SSTK/10K_local/teacher_scores_qa_report_by_ar_p0_real.csv \
-  --viz_out_dir data/SSTK/10K_local/visualizations/teacher_scorer_p0_real \
+  --output_jsonl data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_p0_real.jsonl \
+  --output_overview_json data/SSTK/10K_local/artifacts/teacher/overview/teacher_scores_overview_p0_real.json \
+  --output_overview_csv data/SSTK/10K_local/artifacts/teacher/overview/teacher_scores_overview_by_ar_p0_real.csv \
+  --qa_out_json data/SSTK/10K_local/artifacts/teacher/qa/teacher_scores_qa_report_p0_real.json \
+  --qa_out_csv data/SSTK/10K_local/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_p0_real.csv \
+  --viz_out_dir data/SSTK/10K_local/artifacts/teacher/visualizations/teacher_scorer_p0_real \
   --use_real_expensive 1 \
   --align_device cuda \
   --aesthetic_device cuda \
@@ -73,10 +76,11 @@ set -euo pipefail
 PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$PROJECT_ROOT"
 
-CANDIDATES_JSONL="data/SSTK/10K_local/candidates_ar.jsonl"
-FEATURES_JSONL="data/SSTK/10K_local/feats_c2c3c5_v2_strict_enriched.jsonl"
-C1_JSONL="data/SSTK/10K_local/feats_c1.jsonl"
-PARQUET="data/SSTK/10K_local/filtered_sstk_100.parquet"
+DATA_ROOT="data/SSTK/10K_local"
+CANDIDATES_JSONL="${DATA_ROOT}/artifacts/candidates/candidates_ar.jsonl"
+FEATURES_JSONL="${DATA_ROOT}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl"
+C1_JSONL="${DATA_ROOT}/artifacts/precompute/feats_c1.jsonl"
+PARQUET="${DATA_ROOT}/filtered_sstk_100.parquet"
 TAR_DIR=""
 IMAGE_DIR=""
 SERVER_MODE=0
@@ -84,11 +88,11 @@ VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activ
 LOCAL_TAR_DIR="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"
 SERVER_TAR_DIR="/sstk/20230916/sstk_100"
 
-OUTPUT_JSONL="data/SSTK/10K_local/teacher_scores_ar.jsonl"
-OUTPUT_OVERVIEW_JSON="data/SSTK/10K_local/teacher_scores_overview.json"
-OUTPUT_OVERVIEW_CSV="data/SSTK/10K_local/teacher_scores_overview_by_ar.csv"
+OUTPUT_JSONL="${DATA_ROOT}/artifacts/teacher/scores/teacher_scores_ar.jsonl"
+OUTPUT_OVERVIEW_JSON="${DATA_ROOT}/artifacts/teacher/overview/teacher_scores_overview.json"
+OUTPUT_OVERVIEW_CSV="${DATA_ROOT}/artifacts/teacher/overview/teacher_scores_overview_by_ar.csv"
 
-VIZ_OUT_DIR="data/SSTK/10K_local/visualizations/teacher_scorer_v1"
+VIZ_OUT_DIR="${DATA_ROOT}/artifacts/teacher/visualizations/teacher_scorer_v1"
 TARGET_AR="all"
 DECISION_FILTER="all"
 NUM_VIZ=120
@@ -104,13 +108,16 @@ ALIGN_PRETRAINED=""
 ALIGN_DEVICE="auto"
 AESTHETIC_DEVICE="auto"
 EXP_BATCH_SIZE=24
+EXPENSIVE_EVAL_TOP_M=0
+EXP_PREPROCESS_WORKERS=0
+EXP_PIN_MEMORY=1
 AESTHETIC_MLP_PATH="weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth"
 AESTHETIC_MLP_URL="https://raw.githubusercontent.com/christophschuhmann/improved-aesthetic-predictor/main/sac+logos+ava1-l14-linearMSE.pth"
 MAX_IMAGES=0
 SEED=42
 
-QA_OUT_JSON="data/SSTK/10K_local/teacher_scores_qa_report.json"
-QA_OUT_CSV="data/SSTK/10K_local/teacher_scores_qa_report_by_ar.csv"
+QA_OUT_JSON="${DATA_ROOT}/artifacts/teacher/qa/teacher_scores_qa_report.json"
+QA_OUT_CSV="${DATA_ROOT}/artifacts/teacher/qa/teacher_scores_qa_report_by_ar.csv"
 MULTI_GPU=0
 GPU_IDS=""
 NUM_WORKERS=""
@@ -147,6 +154,9 @@ while [ "$#" -gt 0 ]; do
     --align_device) ALIGN_DEVICE="$2"; shift 2 ;;
     --aesthetic_device) AESTHETIC_DEVICE="$2"; shift 2 ;;
     --exp_batch_size) EXP_BATCH_SIZE="$2"; shift 2 ;;
+    --expensive_eval_top_m) EXPENSIVE_EVAL_TOP_M="$2"; shift 2 ;;
+    --exp_preprocess_workers) EXP_PREPROCESS_WORKERS="$2"; shift 2 ;;
+    --exp_pin_memory) EXP_PIN_MEMORY="$2"; shift 2 ;;
     --aesthetic_mlp_path) AESTHETIC_MLP_PATH="$2"; shift 2 ;;
     --aesthetic_mlp_url) AESTHETIC_MLP_URL="$2"; shift 2 ;;
     --max_images) MAX_IMAGES="$2"; shift 2 ;;
@@ -169,6 +179,57 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+pick_latest_match() {
+  local pattern="$1"
+  local found
+  found=$(ls -1t $pattern 2>/dev/null | head -n 1 || true)
+  echo "$found"
+}
+
+resolve_input_path() {
+  local primary="$1"
+  shift || true
+  if [ -n "$primary" ] && [ -f "$primary" ]; then
+    echo "$primary"
+    return
+  fi
+  local cand
+  for cand in "$@"; do
+    if [ -n "$cand" ] && [ -f "$cand" ]; then
+      echo "$cand"
+      return
+    fi
+  done
+  echo "$primary"
+}
+
+LATEST_CANDIDATES_ARTIFACT="$(pick_latest_match "${DATA_ROOT}/artifacts/candidates/candidates_ar*.jsonl")"
+LATEST_CANDIDATES_LEGACY="$(pick_latest_match "${DATA_ROOT}/candidates_ar*.jsonl")"
+LATEST_CANDIDATES_TEMP="$(pick_latest_match "${DATA_ROOT}/Temp/candidates_ar*.jsonl")"
+CANDIDATES_JSONL="$(resolve_input_path \
+  "$CANDIDATES_JSONL" \
+  "$LATEST_CANDIDATES_ARTIFACT" \
+  "$LATEST_CANDIDATES_LEGACY" \
+  "$LATEST_CANDIDATES_TEMP")"
+
+FEATURES_JSONL="$(resolve_input_path \
+  "$FEATURES_JSONL" \
+  "${DATA_ROOT}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl" \
+  "${DATA_ROOT}/feats_c2c3c5_v2_strict_enriched.jsonl" \
+  "${DATA_ROOT}/Temp/feats_c2c3c5_v2_strict_enriched.jsonl")"
+
+C1_JSONL="$(resolve_input_path \
+  "$C1_JSONL" \
+  "${DATA_ROOT}/artifacts/precompute/feats_c1.jsonl" \
+  "${DATA_ROOT}/feats_c1.jsonl" \
+  "${DATA_ROOT}/Temp/feats_c1.jsonl")"
+
+LATEST_FILTERED_BACKUP="$(pick_latest_match "${DATA_ROOT}/Temp/filtered_sstk_100*.parquet")"
+PARQUET="$(resolve_input_path \
+  "$PARQUET" \
+  "${DATA_ROOT}/filtered_sstk_100.parquet" \
+  "$LATEST_FILTERED_BACKUP")"
+
 if [ -z "$TAR_DIR" ]; then
   if [ "$SERVER_MODE" -eq 1 ]; then
     TAR_DIR="$SERVER_TAR_DIR"
@@ -186,7 +247,31 @@ if [ "$SERVER_MODE" -ne 1 ]; then
   fi
 fi
 
+mkdir -p "$(dirname "$OUTPUT_JSONL")"
+mkdir -p "$(dirname "$OUTPUT_OVERVIEW_JSON")"
+mkdir -p "$(dirname "$OUTPUT_OVERVIEW_CSV")"
+mkdir -p "$(dirname "$QA_OUT_JSON")"
+mkdir -p "$(dirname "$QA_OUT_CSV")"
+mkdir -p "$VIZ_OUT_DIR"
+
+REQUIRED_INPUTS=("$CANDIDATES_JSONL" "$FEATURES_JSONL" "$PARQUET")
+if [ "$USE_REAL_EXPENSIVE" -ne 0 ]; then
+  REQUIRED_INPUTS+=("$C1_JSONL")
+fi
+for req in "${REQUIRED_INPUTS[@]}"; do
+  if [ ! -f "$req" ]; then
+    echo "[error] required input not found: $req"
+    exit 1
+  fi
+done
+
 echo "[config] server_mode=$SERVER_MODE tar_dir=$TAR_DIR image_dir=${IMAGE_DIR:-<none>}"
+echo "[config] candidates=$CANDIDATES_JSONL"
+echo "[config] features=$FEATURES_JSONL"
+echo "[config] c1=$C1_JSONL"
+echo "[config] parquet=$PARQUET"
+echo "[config] output_jsonl=$OUTPUT_JSONL"
+echo "[config] expensive_accel: batch=$EXP_BATCH_SIZE eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
 
 echo "[1/3] Running teacher scorer..."
 run_teacher_one() {
@@ -216,6 +301,9 @@ run_teacher_one() {
     --align_device "$ALIGN_DEVICE" \
     --aesthetic_device "$AESTHETIC_DEVICE" \
     --exp_batch_size "$EXP_BATCH_SIZE" \
+    --expensive_eval_top_m "$EXPENSIVE_EVAL_TOP_M" \
+    --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
+    --exp_pin_memory "$EXP_PIN_MEMORY" \
     --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \
     --aesthetic_mlp_url "$AESTHETIC_MLP_URL" \
     --max_images "$MAX_IMAGES" \
@@ -248,13 +336,13 @@ if [ "$MULTI_GPU" -ne 0 ]; then
 
   GPU_CSV="$(resolve_gpu_ids)"
   IFS=',' read -r -a GPU_ARR <<< "$GPU_CSV"
+  GPU_COUNT="${#GPU_ARR[@]}"
   WORKERS="${#GPU_ARR[@]}"
   if [ -n "$NUM_WORKERS" ]; then
     WORKERS="$NUM_WORKERS"
   fi
-  if [ "$WORKERS" -gt "${#GPU_ARR[@]}" ]; then
-    echo "[warn] num_workers($WORKERS) > gpu_ids(${#GPU_ARR[@]}). clipping."
-    WORKERS="${#GPU_ARR[@]}"
+  if [ "$WORKERS" -gt "$GPU_COUNT" ]; then
+    echo "[warn] num_workers($WORKERS) > gpu_ids($GPU_COUNT). enabling round-robin GPU oversubscribe."
   fi
 
   if [ "$WORKERS" -le 1 ]; then
@@ -270,7 +358,8 @@ if [ "$MULTI_GPU" -ne 0 ]; then
     SHARD_JSONL=()
     i=0
     while [ "$i" -lt "$WORKERS" ]; do
-      GPU_ID="${GPU_ARR[$i]}"
+      GPU_IDX=$((i % GPU_COUNT))
+      GPU_ID="${GPU_ARR[$GPU_IDX]}"
       SH_OUT_JSONL="${SHARD_TMP_DIR}/teacher_scores_shard_${i}.jsonl"
       SH_OUT_OV_JSON="${SHARD_TMP_DIR}/teacher_overview_shard_${i}.json"
       SH_OUT_OV_CSV="${SHARD_TMP_DIR}/teacher_overview_by_ar_shard_${i}.csv"

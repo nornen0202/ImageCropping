@@ -23,10 +23,11 @@ import random
 import tarfile
 import urllib.request
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from statistics import mean
-from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -177,6 +178,9 @@ class TeacherScorerConfig:
     w_edge: float = 0.5
     aesthetic_score_min: float = 1.0
     aesthetic_score_max: float = 10.0
+    expensive_eval_top_m: int = 0  # 0 means evaluate all cheap_top_m in expensive stage
+    exp_preprocess_workers: int = 0  # 0 means auto (bounded by CPU count)
+    exp_pin_memory: bool = True
 
     # Keep-vs-crop
     w_area_default: float = 0.10
@@ -255,6 +259,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--align_device", type=str, default="auto", help="auto|cpu|cuda")
     p.add_argument("--aesthetic_device", type=str, default="auto", help="auto|cpu|cuda")
     p.add_argument("--exp_batch_size", type=int, default=24)
+    p.add_argument("--expensive_eval_top_m", type=int, default=0, help="0=all cheap_top_m, >0=capped expensive eval")
+    p.add_argument("--exp_preprocess_workers", type=int, default=0, help="0=auto, >0=thread workers for clip preprocess")
+    p.add_argument("--exp_pin_memory", type=int, default=1, help="1=pin CPU batch tensor before H2D copy")
     p.add_argument(
         "--aesthetic_mlp_path",
         type=str,
@@ -558,6 +565,45 @@ class TarImageLoader:
         return None
 
 
+class HybridImageLoader:
+    """
+    Prefer local curated images, fallback to TAR when local cache is missing/corrupt.
+    """
+
+    def __init__(
+        self,
+        *,
+        local_loader: Optional[LocalImageLoader],
+        tar_loader: Optional[TarImageLoader],
+    ):
+        self.local_loader = local_loader
+        self.tar_loader = tar_loader
+        self.local_hits = 0
+        self.tar_hits = 0
+        self.misses = 0
+
+    def close(self) -> None:
+        if self.local_loader is not None:
+            self.local_loader.close()
+        if self.tar_loader is not None:
+            self.tar_loader.close()
+
+    def load(self, image_id: str) -> Optional["Image.Image"]:
+        img = None
+        if self.local_loader is not None:
+            img = self.local_loader.load(image_id)
+            if img is not None:
+                self.local_hits += 1
+                return img
+        if self.tar_loader is not None:
+            img = self.tar_loader.load(image_id)
+            if img is not None:
+                self.tar_hits += 1
+                return img
+        self.misses += 1
+        return None
+
+
 def load_tar_mapping(parquet_path: Path) -> Dict[str, Dict[str, Any]]:
     df = pd.read_parquet(parquet_path)
     if "image_id" not in df.columns or "tar_name" not in df.columns:
@@ -643,6 +689,8 @@ class ExpensiveModels:
         align_device: str,
         aesthetic_device: str,
         batch_size: int,
+        preprocess_workers: int,
+        pin_memory: bool,
         aesthetic_mlp_path: Path,
         aesthetic_mlp_url: str,
     ):
@@ -652,6 +700,14 @@ class ExpensiveModels:
         self.torch = torch
         self.open_clip = open_clip
         self.batch_size = max(1, int(batch_size))
+        req_workers = int(preprocess_workers)
+        if req_workers <= 0:
+            req_workers = min(8, max(1, int(os.cpu_count() or 1)))
+        self.preprocess_workers = max(1, req_workers)
+        self.pin_memory = bool(pin_memory)
+        self._preprocess_pool: Optional[ThreadPoolExecutor] = None
+        if self.preprocess_workers > 1:
+            self._preprocess_pool = ThreadPoolExecutor(max_workers=self.preprocess_workers)
 
         self.align_device = pick_device(align_device)
         self.aes_device = pick_device(aesthetic_device)
@@ -706,6 +762,33 @@ class ExpensiveModels:
         mlp.model.eval()
         self.aes_mlp = mlp.model
 
+    def close(self) -> None:
+        if self._preprocess_pool is not None:
+            self._preprocess_pool.shutdown(wait=True, cancel_futures=False)
+            self._preprocess_pool = None
+
+    def _preprocess_batch(
+        self,
+        *,
+        batch_imgs: Sequence["Image.Image"],
+        preprocess_fn: Callable[[Any], Any],
+        device: str,
+    ) -> Any:
+        if self._preprocess_pool is not None and len(batch_imgs) > 1:
+            tensors = list(self._preprocess_pool.map(preprocess_fn, batch_imgs))
+        else:
+            tensors = [preprocess_fn(img) for img in batch_imgs]
+
+        batch = self.torch.stack(tensors, dim=0)
+        if device != "cpu":
+            if self.pin_memory:
+                batch = batch.pin_memory()
+            batch = batch.to(device, non_blocking=True)
+            batch = batch.half()
+        else:
+            batch = batch.to(device)
+        return batch
+
     def _create_clip_with_fallback(
         self,
         *,
@@ -741,19 +824,24 @@ class ExpensiveModels:
 
         all_out: List[np.ndarray] = []
         try:
-            with self.torch.no_grad():
+            with self.torch.inference_mode():
                 for i in range(0, len(crops), self.batch_size):
                     batch_imgs = crops[i : i + self.batch_size]
-                    tensors = [self.align_preprocess(img.convert("RGB")).unsqueeze(0) for img in batch_imgs]
-                    batch = self.torch.cat(tensors, dim=0).to(self.align_device)
-                    if self.align_device != "cpu":
-                        batch = batch.half()
+                    batch = self._preprocess_batch(
+                        batch_imgs=batch_imgs,
+                        preprocess_fn=self.align_preprocess,
+                        device=self.align_device,
+                    )
                     emb = self.align_model.encode_image(batch)
                     emb = emb / emb.norm(dim=-1, keepdim=True)
                     all_out.append(emb.detach().cpu().float().numpy())
         except Exception as e:
             if self.align_device != "cpu" and "out of memory" in str(e).lower():
                 print("[expensive][warn] align batch OOM on GPU -> switching align model to CPU")
+                try:
+                    self.torch.cuda.empty_cache()
+                except Exception:
+                    pass
                 self.align_model.to("cpu")
                 self.align_device = "cpu"
                 return self._batched_encode_align(crops)
@@ -766,13 +854,14 @@ class ExpensiveModels:
 
         all_out: List[np.ndarray] = []
         try:
-            with self.torch.no_grad():
+            with self.torch.inference_mode():
                 for i in range(0, len(crops), self.batch_size):
                     batch_imgs = crops[i : i + self.batch_size]
-                    tensors = [self.aes_preprocess(img.convert("RGB")).unsqueeze(0) for img in batch_imgs]
-                    batch = self.torch.cat(tensors, dim=0).to(self.aes_device)
-                    if self.aes_device != "cpu":
-                        batch = batch.half()
+                    batch = self._preprocess_batch(
+                        batch_imgs=batch_imgs,
+                        preprocess_fn=self.aes_preprocess,
+                        device=self.aes_device,
+                    )
                     emb = self.aes_clip.encode_image(batch)
                     emb = emb.float()
                     emb = emb / emb.norm(dim=-1, keepdim=True)
@@ -781,6 +870,10 @@ class ExpensiveModels:
         except Exception as e:
             if self.aes_device != "cpu" and "out of memory" in str(e).lower():
                 print("[expensive][warn] aesthetic batch OOM on GPU -> switching aesthetic model to CPU")
+                try:
+                    self.torch.cuda.empty_cache()
+                except Exception:
+                    pass
                 self.aes_clip.to("cpu")
                 self.aes_mlp.to("cpu")
                 self.aes_device = "cpu"
@@ -820,6 +913,9 @@ class ExpensiveModels:
         """
         if not candidates:
             return {}
+
+        if getattr(image, "mode", "RGB") != "RGB":
+            image = image.convert("RGB")
 
         text_vec = normalize_vec(np.asarray(text_embed, dtype=np.float32)) if text_embed is not None else None
 
@@ -2385,12 +2481,23 @@ def process_one_image(
             if all(str(c.get("candidate_id")) != b_id for c in cheap_top_m):
                 cheap_top_m.append(baseline)
 
+        expensive_eval_pool = cheap_top_m
+        exp_cap = int(cfg.expensive_eval_top_m)
+        if exp_cap > 0 and len(expensive_eval_pool) > exp_cap:
+            narrowed = list(expensive_eval_pool[:exp_cap])
+            if baseline is not None:
+                b_id = str(baseline.get("candidate_id", ""))
+                if b_id and all(str(c.get("candidate_id", "")) != b_id for c in narrowed):
+                    narrowed.append(baseline)
+            expensive_eval_pool = narrowed
+
         per_ar_tmp[ar_text] = {
             "target_ar": target_ar,
             "scored": scored,
             "baseline": baseline,
             "ref_center": ref_center,
             "cheap_top_m": cheap_top_m,
+            "expensive_eval_pool": expensive_eval_pool,
             "fallback_info": fallback_info,
         }
 
@@ -2399,7 +2506,7 @@ def process_one_image(
     if expensive_models is not None and image_pil is not None and c1_text_embed is not None:
         union: Dict[str, Dict[str, Any]] = {}
         for tmp in per_ar_tmp.values():
-            for c in tmp["cheap_top_m"]:
+            for c in tmp.get("expensive_eval_pool", tmp["cheap_top_m"]):
                 cid = str(c.get("candidate_id", ""))
                 if cid:
                     union[cid] = c
@@ -2424,6 +2531,7 @@ def process_one_image(
         baseline = tmp["baseline"]
         ref_center = tmp["ref_center"]
         cheap_top_m = tmp["cheap_top_m"]
+        expensive_eval_pool = tmp.get("expensive_eval_pool", cheap_top_m)
         fallback_info = tmp["fallback_info"]
         target_ar = float(tmp["target_ar"])
 
@@ -2489,6 +2597,7 @@ def process_one_image(
             "num_valid_candidates": int(fallback_info.get("strict_valid_count", 0)),
             "num_effective_candidates": int(fallback_info.get("effective_valid_count", 0)),
             "num_cheap_kept": len(cheap_top_m),
+            "num_expensive_eval": len(expensive_eval_pool),
             "baseline_candidate": candidate_brief(baseline_effective),
             "best_candidate": candidate_brief(best),
             "keep_policy": {
@@ -2573,6 +2682,9 @@ def run(args: argparse.Namespace) -> None:
         top_k=max(1, int(args.top_k)),
         tau_div=float(args.tau_div),
         use_real_expensive=bool(int(args.use_real_expensive)),
+        expensive_eval_top_m=max(0, int(args.expensive_eval_top_m)),
+        exp_preprocess_workers=max(0, int(args.exp_preprocess_workers)),
+        exp_pin_memory=bool(int(args.exp_pin_memory)),
     )
 
     cand_path = Path(args.candidates_jsonl)
@@ -2618,11 +2730,22 @@ def run(args: argparse.Namespace) -> None:
 
         first_text = next(iter(c1_map.values()))["c1_txt_embed"]
         text_dim = int(first_text.shape[0])
+        local_loader: Optional[LocalImageLoader] = None
+        tar_loader: Optional[TarImageLoader] = None
         if str(args.image_dir).strip():
-            image_loader = LocalImageLoader(image_dir=str(args.image_dir))
-        else:
+            local_loader = LocalImageLoader(image_dir=str(args.image_dir))
+        if str(args.tar_dir).strip() and parquet_path is not None and parquet_path.exists():
             tar_mapping = load_tar_mapping(parquet_path)
-            image_loader = TarImageLoader(mapping=tar_mapping, tar_dir=str(args.tar_dir))
+            tar_loader = TarImageLoader(mapping=tar_mapping, tar_dir=str(args.tar_dir))
+
+        if local_loader is not None and tar_loader is not None:
+            image_loader = HybridImageLoader(local_loader=local_loader, tar_loader=tar_loader)
+        elif local_loader is not None:
+            image_loader = local_loader
+        elif tar_loader is not None:
+            image_loader = tar_loader
+        else:
+            raise ValueError("use_real_expensive=1 requires --image_dir and/or (--tar_dir + --parquet)")
         expensive_models = ExpensiveModels(
             text_dim=text_dim,
             align_model_name=str(args.align_model_name).strip(),
@@ -2630,6 +2753,8 @@ def run(args: argparse.Namespace) -> None:
             align_device=str(args.align_device),
             aesthetic_device=str(args.aesthetic_device),
             batch_size=int(args.exp_batch_size),
+            preprocess_workers=int(args.exp_preprocess_workers),
+            pin_memory=bool(int(args.exp_pin_memory)),
             aesthetic_mlp_path=Path(args.aesthetic_mlp_path),
             aesthetic_mlp_url=str(args.aesthetic_mlp_url),
         )
@@ -2742,6 +2867,8 @@ def run(args: argparse.Namespace) -> None:
     finally:
         if image_loader is not None:
             image_loader.close()
+        if expensive_models is not None:
+            expensive_models.close()
 
     # Finalize means.
     for s in list(stats_by_ar.values()) + [stats_all]:
@@ -2790,6 +2917,14 @@ def run(args: argparse.Namespace) -> None:
                 else None
             ),
             "aesthetic_mlp_path": str(args.aesthetic_mlp_path),
+            "image_loader_type": (type(image_loader).__name__ if image_loader is not None else None),
+            "local_hits": int(getattr(image_loader, "local_hits", 0)) if image_loader is not None else 0,
+            "tar_hits": int(getattr(image_loader, "tar_hits", 0)) if image_loader is not None else 0,
+            "loader_misses": int(getattr(image_loader, "misses", 0)) if image_loader is not None else 0,
+            "exp_batch_size": int(args.exp_batch_size),
+            "exp_preprocess_workers": int(cfg.exp_preprocess_workers),
+            "exp_pin_memory": bool(cfg.exp_pin_memory),
+            "expensive_eval_top_m": int(cfg.expensive_eval_top_m),
         },
         "summary": {
             "images_written": written,

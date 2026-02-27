@@ -35,6 +35,18 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 # 스모크 테스트(앞 200장)
 bash src/scripts/run_phaseA_to_teacher_e2e.sh --max_images 200 --run_tag smoke200
 
+# 공개 Teacher proposal 주입(5.5 설치/추론/변환 자동 포함)
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/10K \
+  --run_filter 0 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --run_tag public_seeded
+
 Core options
 ------------
 --data_dir PATH                 output root (default: data/SSTK/10K_local)
@@ -52,6 +64,22 @@ Core options
 --run_tag TAG                   candidates/teacher 출력 suffix (default: "")
 --max_images INT                0=all, >0=앞에서 n장(candidate/teacher) (default: 0)
 --teacher_proposals_jsonl CSV   candidate 단계 teacher proposal jsonl(쉼표로 다중 경로)
+--enable_public_teacher_proposals 0|1   공개 teacher(5.5) setup+infer+build 자동 수행 (default: 0)
+--public_teacher_setup 0|1      공개 teacher setup 수행 여부 (default: 1)
+--public_teacher_download_weights 0|1    setup 시 가중치 다운로드 (default: 1)
+--public_teachers CSV           추론 teacher 목록 (default: gaic,cacnet,cgs)
+--public_teacher_max_images INT 공개 teacher 추론 이미지 수 (-1이면 --max_images 상속, default: -1)
+--public_teacher_raw_jsonl PATH 공개 teacher raw 결과 경로 (default: <data_dir>/artifacts/public_teachers/raw/teacher_raw_public<suffix>.jsonl)
+--public_teacher_proposals_jsonl PATH    변환된 proposals 경로 (default: <data_dir>/artifacts/public_teachers/proposals/teacher_proposals_public<suffix>.jsonl)
+--public_teacher_device DEVICE 공개 teacher 추론 장치 (auto|cuda|cpu, default: auto)
+--public_gaic_weight_path PATH GAIC 가중치 경로 (default: shufflenet .pth)
+--public_infer_skip_on_oom 0|1 공개 teacher 추론 중 OOM skip (default: 1)
+--public_infer_fallback_cpu_on_oom 0|1 GPU OOM 시 CPU 재시도 (default: 1)
+--public_infer_fallback_cpu_max_images INT CPU fallback 샘플 수 (default: 3)
+--public_infer_skip_if_fallback_failed 0|1 CPU fallback 실패 시 전체 진행 지속 (default: 1)
+--public_infer_multi_gpu -1|0|1 공개 teacher 추론 multi-gpu (default: -1, auto)
+--public_infer_gpu_ids CSV 공개 teacher multi-gpu 대상 GPU 목록 (예: 0,1)
+--public_infer_num_workers INT 공개 teacher shard worker 수 (default: gpu 개수)
 --precompute_mode MODE          unified|split (default: unified)
 --extract_gpu_ids CSV           precompute에서 사용할 GPU 목록 (예: 0,1,2,3)
 
@@ -61,6 +89,9 @@ Core options
 --teacher_multi_gpu -1|0|1      -1=auto(use_real_expensive && multi-gpu면 on), default -1
 --teacher_gpu_ids CSV           teacher multi-gpu에서 사용할 GPU 목록
 --teacher_num_workers INT       teacher multi-gpu shard worker 수
+--expensive_eval_top_m INT      expensive stage에서 AR별 평가 상한(0=cheap_top_m 전체)
+--exp_preprocess_workers INT    expensive clip preprocess thread 수(0=auto)
+--exp_pin_memory 0|1            expensive batch H2D pin_memory 사용 여부 (default: 1)
 
 Advanced stage toggles
 ----------------------
@@ -132,6 +163,24 @@ TEACHER_MAX_SEEDS_PER_TEACHER=1
 TEACHER_PREFER_EXPAND=1
 TEACHER_JITTER_SHIFT_FRACS="0.03"
 TEACHER_JITTER_SCALES="0.92,1.0,1.08"
+ENABLE_PUBLIC_TEACHER_PROPOSALS=0
+PUBLIC_TEACHER_SETUP=1
+PUBLIC_TEACHER_DOWNLOAD_WEIGHTS=1
+PUBLIC_TEACHERS="gaic,cacnet,cgs"
+PUBLIC_TEACHER_MAX_IMAGES=-1
+PUBLIC_TEACHER_DEVICE="auto"
+PUBLIC_TEACHER_ROOT_DIR="third_party/public_cropping_teachers"
+PUBLIC_TEACHER_WEIGHTS_DIR="weights/public_cropping_teachers"
+PUBLIC_GAIC_WEIGHT_PATH="weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth"
+PUBLIC_TEACHER_RAW_JSONL=""
+PUBLIC_TEACHER_PROPOSALS_JSONL=""
+PUBLIC_INFER_SKIP_ON_OOM=1
+PUBLIC_INFER_FALLBACK_CPU_ON_OOM=1
+PUBLIC_INFER_FALLBACK_CPU_MAX_IMAGES=3
+PUBLIC_INFER_SKIP_IF_FALLBACK_FAILED=1
+PUBLIC_INFER_MULTI_GPU=-1
+PUBLIC_INFER_GPU_IDS=""
+PUBLIC_INFER_NUM_WORKERS=""
 
 # Teacher
 RUN_TEACHER=1
@@ -149,6 +198,9 @@ ALIGN_PRETRAINED=""
 ALIGN_DEVICE="auto"
 AESTHETIC_DEVICE="auto"
 EXP_BATCH_SIZE=24
+EXPENSIVE_EVAL_TOP_M=0
+EXP_PREPROCESS_WORKERS=0
+EXP_PIN_MEMORY=1
 AESTHETIC_MLP_PATH="weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth"
 AESTHETIC_MLP_URL="https://raw.githubusercontent.com/christophschuhmann/improved-aesthetic-predictor/main/sac+logos+ava1-l14-linearMSE.pth"
 TEACHER_MULTI_GPU=-1
@@ -205,6 +257,24 @@ while [ "$#" -gt 0 ]; do
     --teacher_prefer_expand) TEACHER_PREFER_EXPAND="$2"; shift 2 ;;
     --teacher_jitter_shift_fracs) TEACHER_JITTER_SHIFT_FRACS="$2"; shift 2 ;;
     --teacher_jitter_scales) TEACHER_JITTER_SCALES="$2"; shift 2 ;;
+    --enable_public_teacher_proposals) ENABLE_PUBLIC_TEACHER_PROPOSALS="$2"; shift 2 ;;
+    --public_teacher_setup) PUBLIC_TEACHER_SETUP="$2"; shift 2 ;;
+    --public_teacher_download_weights) PUBLIC_TEACHER_DOWNLOAD_WEIGHTS="$2"; shift 2 ;;
+    --public_teachers) PUBLIC_TEACHERS="$2"; shift 2 ;;
+    --public_teacher_max_images) PUBLIC_TEACHER_MAX_IMAGES="$2"; shift 2 ;;
+    --public_teacher_device) PUBLIC_TEACHER_DEVICE="$2"; shift 2 ;;
+    --public_teacher_root_dir) PUBLIC_TEACHER_ROOT_DIR="$2"; shift 2 ;;
+    --public_teacher_weights_dir) PUBLIC_TEACHER_WEIGHTS_DIR="$2"; shift 2 ;;
+    --public_gaic_weight_path) PUBLIC_GAIC_WEIGHT_PATH="$2"; shift 2 ;;
+    --public_teacher_raw_jsonl) PUBLIC_TEACHER_RAW_JSONL="$2"; shift 2 ;;
+    --public_teacher_proposals_jsonl) PUBLIC_TEACHER_PROPOSALS_JSONL="$2"; shift 2 ;;
+    --public_infer_skip_on_oom) PUBLIC_INFER_SKIP_ON_OOM="$2"; shift 2 ;;
+    --public_infer_fallback_cpu_on_oom) PUBLIC_INFER_FALLBACK_CPU_ON_OOM="$2"; shift 2 ;;
+    --public_infer_fallback_cpu_max_images) PUBLIC_INFER_FALLBACK_CPU_MAX_IMAGES="$2"; shift 2 ;;
+    --public_infer_skip_if_fallback_failed) PUBLIC_INFER_SKIP_IF_FALLBACK_FAILED="$2"; shift 2 ;;
+    --public_infer_multi_gpu) PUBLIC_INFER_MULTI_GPU="$2"; shift 2 ;;
+    --public_infer_gpu_ids) PUBLIC_INFER_GPU_IDS="$2"; shift 2 ;;
+    --public_infer_num_workers) PUBLIC_INFER_NUM_WORKERS="$2"; shift 2 ;;
 
     --run_teacher) RUN_TEACHER="$2"; shift 2 ;;
     --use_real_expensive) USE_REAL_EXPENSIVE="$2"; shift 2 ;;
@@ -221,6 +291,9 @@ while [ "$#" -gt 0 ]; do
     --align_device) ALIGN_DEVICE="$2"; shift 2 ;;
     --aesthetic_device) AESTHETIC_DEVICE="$2"; shift 2 ;;
     --exp_batch_size) EXP_BATCH_SIZE="$2"; shift 2 ;;
+    --expensive_eval_top_m) EXPENSIVE_EVAL_TOP_M="$2"; shift 2 ;;
+    --exp_preprocess_workers) EXP_PREPROCESS_WORKERS="$2"; shift 2 ;;
+    --exp_pin_memory) EXP_PIN_MEMORY="$2"; shift 2 ;;
     --aesthetic_mlp_path) AESTHETIC_MLP_PATH="$2"; shift 2 ;;
     --aesthetic_mlp_url) AESTHETIC_MLP_URL="$2"; shift 2 ;;
     --teacher_multi_gpu) TEACHER_MULTI_GPU="$2"; shift 2 ;;
@@ -304,25 +377,59 @@ else
 fi
 
 FILTERED_PARQUET="${DATA_DIR}/filtered_${BUCKET}.parquet"
-FEATS_C1="${DATA_DIR}/feats_c1.jsonl"
-FEATS_C2="${DATA_DIR}/feats_c2.jsonl"
-FEATS_C3="${DATA_DIR}/feats_c3_v2_strict.jsonl"
-FEATS_C3_ENRICHED="${DATA_DIR}/feats_c3_v2_strict_enriched.jsonl"
-FEATS_C5="${DATA_DIR}/feats_c5.jsonl"
-FEATS_C2C3C5_RAW="${DATA_DIR}/feats_c2c3c5_v2_strict_raw.jsonl"
-MERGED_FEATS="${DATA_DIR}/feats_c2c3c5_v2_strict_enriched.jsonl"
+ARTIFACTS_DIR="${DATA_DIR}/artifacts"
+PRECOMPUTE_DIR="${ARTIFACTS_DIR}/precompute"
+CANDIDATES_DIR="${ARTIFACTS_DIR}/candidates"
+PUBLIC_TEACHERS_DIR="${ARTIFACTS_DIR}/public_teachers"
+PUBLIC_RAW_DIR="${PUBLIC_TEACHERS_DIR}/raw"
+PUBLIC_PROPOSALS_DIR="${PUBLIC_TEACHERS_DIR}/proposals"
+TEACHER_DIR="${ARTIFACTS_DIR}/teacher"
+TEACHER_SCORES_DIR="${TEACHER_DIR}/scores"
+TEACHER_OVERVIEW_DIR="${TEACHER_DIR}/overview"
+TEACHER_QA_DIR="${TEACHER_DIR}/qa"
+TEACHER_VIZ_BASE_DIR="${TEACHER_DIR}/visualizations"
+CACHE_DIR="${DATA_DIR}/cache"
 
-CANDIDATES_JSONL="${DATA_DIR}/candidates_ar${SUFFIX}.jsonl"
-TEACHER_JSONL="${DATA_DIR}/teacher_scores_ar${SUFFIX}.jsonl"
-TEACHER_OVERVIEW_JSON="${DATA_DIR}/teacher_scores_overview${SUFFIX}.json"
-TEACHER_OVERVIEW_CSV="${DATA_DIR}/teacher_scores_overview_by_ar${SUFFIX}.csv"
-TEACHER_QA_JSON="${DATA_DIR}/teacher_scores_qa_report${SUFFIX}.json"
-TEACHER_QA_CSV="${DATA_DIR}/teacher_scores_qa_report_by_ar${SUFFIX}.csv"
-TEACHER_VIZ_DIR="${DATA_DIR}/visualizations/teacher_scorer${SUFFIX}"
+FEATS_C1="${PRECOMPUTE_DIR}/feats_c1.jsonl"
+FEATS_C2="${PRECOMPUTE_DIR}/feats_c2.jsonl"
+FEATS_C3="${PRECOMPUTE_DIR}/feats_c3_v2_strict.jsonl"
+FEATS_C3_ENRICHED="${PRECOMPUTE_DIR}/feats_c3_v2_strict_enriched.jsonl"
+FEATS_C5="${PRECOMPUTE_DIR}/feats_c5.jsonl"
+FEATS_C2C3C5_RAW="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_raw.jsonl"
+MERGED_FEATS="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched.jsonl"
+
+CANDIDATES_JSONL="${CANDIDATES_DIR}/candidates_ar${SUFFIX}.jsonl"
+TEACHER_JSONL="${TEACHER_SCORES_DIR}/teacher_scores_ar${SUFFIX}.jsonl"
+TEACHER_OVERVIEW_JSON="${TEACHER_OVERVIEW_DIR}/teacher_scores_overview${SUFFIX}.json"
+TEACHER_OVERVIEW_CSV="${TEACHER_OVERVIEW_DIR}/teacher_scores_overview_by_ar${SUFFIX}.csv"
+TEACHER_QA_JSON="${TEACHER_QA_DIR}/teacher_scores_qa_report${SUFFIX}.json"
+TEACHER_QA_CSV="${TEACHER_QA_DIR}/teacher_scores_qa_report_by_ar${SUFFIX}.csv"
+TEACHER_VIZ_DIR="${TEACHER_VIZ_BASE_DIR}/teacher_scorer${SUFFIX}"
+
+if [ -z "$PUBLIC_TEACHER_RAW_JSONL" ]; then
+  PUBLIC_TEACHER_RAW_JSONL="${PUBLIC_RAW_DIR}/teacher_raw_public${SUFFIX}.jsonl"
+fi
+if [ -z "$PUBLIC_TEACHER_PROPOSALS_JSONL" ]; then
+  PUBLIC_TEACHER_PROPOSALS_JSONL="${PUBLIC_PROPOSALS_DIR}/teacher_proposals_public${SUFFIX}.jsonl"
+fi
+if [ "$PUBLIC_TEACHER_MAX_IMAGES" -lt 0 ]; then
+  PUBLIC_TEACHER_MAX_IMAGES="$MAX_IMAGES"
+fi
 
 if [ -z "$ACTUAL_SIZE_CACHE_JSON" ]; then
-  ACTUAL_SIZE_CACHE_JSON="${DATA_DIR}/actual_image_size_map.json"
+  ACTUAL_SIZE_CACHE_JSON="${CACHE_DIR}/actual_image_size_map.json"
 fi
+
+mkdir -p \
+  "$PRECOMPUTE_DIR" \
+  "$CANDIDATES_DIR" \
+  "$PUBLIC_RAW_DIR" \
+  "$PUBLIC_PROPOSALS_DIR" \
+  "$TEACHER_SCORES_DIR" \
+  "$TEACHER_OVERVIEW_DIR" \
+  "$TEACHER_QA_DIR" \
+  "$TEACHER_VIZ_BASE_DIR" \
+  "$CACHE_DIR"
 
 EFFECTIVE_IMAGE_DIR=""
 if [ "$PREFER_CURATED_IMAGES" -eq 1 ] && [ -d "$CURATED_IMAGE_DIR" ]; then
@@ -352,10 +459,90 @@ should_skip_file() {
   return 1
 }
 
+latest_glob_match() {
+  local pattern="$1"
+  local found
+  found=$(ls -1t $pattern 2>/dev/null | head -n 1 || true)
+  echo "$found"
+}
+
+promote_file_if_missing() {
+  local dst="$1"
+  shift || true
+  if [ -f "$dst" ]; then
+    return 0
+  fi
+  local src
+  for src in "$@"; do
+    if [ -z "$src" ] || [ ! -f "$src" ]; then
+      continue
+    fi
+    mkdir -p "$(dirname "$dst")"
+    cp -f "$src" "$dst"
+    echo "[promote] restored $(basename "$dst") from $src -> $dst"
+    return 0
+  done
+  return 1
+}
+
+promote_from_legacy_or_cleanup() {
+  local dst="$1"
+  local base
+  base="$(basename "$dst")"
+  local in_root="${DATA_DIR}/${base}"
+  local in_temp="${DATA_DIR}/Temp/${base}"
+  local in_cleanup
+  in_cleanup="$(latest_glob_match "${DATA_DIR}/Temp/cleanup_*/${base}")"
+  promote_file_if_missing "$dst" "$in_root" "$in_temp" "$in_cleanup" || true
+  return 0
+}
+
+csv_append_unique() {
+  local csv="$1"
+  local item="$2"
+  if [ -z "$item" ]; then
+    echo "$csv"
+    return
+  fi
+  if [ -z "$csv" ]; then
+    echo "$item"
+    return
+  fi
+  local IFS_OLD="$IFS"
+  local found=0
+  IFS=',' read -r -a _arr <<< "$csv"
+  IFS="$IFS_OLD"
+  local x
+  for x in "${_arr[@]}"; do
+    if [ "$x" = "$item" ]; then
+      found=1
+      break
+    fi
+  done
+  if [ "$found" -eq 1 ]; then
+    echo "$csv"
+  else
+    echo "${csv},${item}"
+  fi
+}
+
 filter_extra_args=()
 if [ "$EXPORT_CURATED_IMAGES" -eq 1 ]; then
   filter_extra_args+=("$CURATED_IMAGE_DIR" "$CURATED_IMAGE_SKIP_EXISTING")
 fi
+
+# Promote previously generated artifacts back to canonical paths.
+# This prevents hard failures when old cleanup/layout reorg moved files to Temp.
+promote_from_legacy_or_cleanup "$FEATS_C1"
+promote_from_legacy_or_cleanup "$FEATS_C2"
+promote_from_legacy_or_cleanup "$FEATS_C3"
+promote_from_legacy_or_cleanup "$FEATS_C3_ENRICHED"
+promote_from_legacy_or_cleanup "$FEATS_C5"
+promote_from_legacy_or_cleanup "$FEATS_C2C3C5_RAW"
+promote_from_legacy_or_cleanup "$MERGED_FEATS"
+promote_from_legacy_or_cleanup "$CANDIDATES_JSONL"
+promote_from_legacy_or_cleanup "$PUBLIC_TEACHER_RAW_JSONL"
+promote_from_legacy_or_cleanup "$PUBLIC_TEACHER_PROPOSALS_JSONL"
 
 jsonl_has_c1_embeddings() {
   local f="$1"
@@ -415,10 +602,14 @@ echo " prefer_curated_img  : $PREFER_CURATED_IMAGES (effective=${EFFECTIVE_IMAGE
 echo " extract_mode        : $EXTRACT_MODE (gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
 echo " run_c1/c2/c3/c5    : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C5"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
+echo " public proposals    : enable=$ENABLE_PUBLIC_TEACHER_PROPOSALS setup=$PUBLIC_TEACHER_SETUP teachers=$PUBLIC_TEACHERS max_images=$PUBLIC_TEACHER_MAX_IMAGES"
+echo " public raw/proposal : $PUBLIC_TEACHER_RAW_JSONL | $PUBLIC_TEACHER_PROPOSALS_JSONL"
+echo " public infer multi  : multi_gpu=$PUBLIC_INFER_MULTI_GPU gpu_ids=${PUBLIC_INFER_GPU_IDS:-auto} workers=${PUBLIC_INFER_NUM_WORKERS:-auto}"
 echo " run_candidates      : $RUN_CANDIDATES"
 echo " teacher proposals   : ${TEACHER_PROPOSALS_JSONL:-<none>}"
 echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
+echo " teacher_accel       : exp_batch=$EXP_BATCH_SIZE exp_eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
 echo "========================================================"
 
 # ------------------------------------------------------------------------------
@@ -633,7 +824,102 @@ else
 fi
 
 # ------------------------------------------------------------------------------
-# 3) Candidate Generator
+# 3) Public Teacher Proposals (v1.9 8.2.0a, optional)
+# ------------------------------------------------------------------------------
+if [ "$ENABLE_PUBLIC_TEACHER_PROPOSALS" -eq 1 ]; then
+  need_public_infer=1
+  if [ "$SKIP_EXISTING" -eq 1 ] && [ -f "$PUBLIC_TEACHER_RAW_JSONL" ]; then
+    need_public_infer=0
+    echo "[skip] exists: $PUBLIC_TEACHER_RAW_JSONL"
+  fi
+
+  need_public_build=1
+  if [ "$SKIP_EXISTING" -eq 1 ] && [ -f "$PUBLIC_TEACHER_PROPOSALS_JSONL" ]; then
+    need_public_build=0
+    echo "[skip] exists: $PUBLIC_TEACHER_PROPOSALS_JSONL"
+  fi
+
+  if [ "$need_public_infer" -eq 1 ] || [ "$need_public_build" -eq 1 ]; then
+    if [ "$PUBLIC_TEACHER_SETUP" -eq 1 ]; then
+      run_with_log "08a_public_teacher_setup" \
+        bash src/scripts/run_setup_public_cropping_teachers.sh \
+          --teacher_root_dir "$PUBLIC_TEACHER_ROOT_DIR" \
+          --weights_dir "$PUBLIC_TEACHER_WEIGHTS_DIR" \
+          --download_weights "$PUBLIC_TEACHER_DOWNLOAD_WEIGHTS"
+    fi
+  fi
+
+  if [ "$need_public_infer" -eq 1 ]; then
+    public_teacher_args=()
+    IFS_OLD="$IFS"
+    IFS=',' read -r -a public_teachers_arr <<< "$PUBLIC_TEACHERS"
+    IFS="$IFS_OLD"
+    filtered_public_teachers=()
+    for t in "${public_teachers_arr[@]}"; do
+      if [ -n "$t" ]; then
+        filtered_public_teachers+=("$t")
+      fi
+    done
+    if [ "${#filtered_public_teachers[@]}" -gt 0 ]; then
+      public_teacher_args+=(--teachers)
+      for t in "${filtered_public_teachers[@]}"; do
+        public_teacher_args+=("$t")
+      done
+    fi
+    if [ -n "$PUBLIC_GAIC_WEIGHT_PATH" ]; then
+      public_teacher_args+=(--gaic_weight_path "$PUBLIC_GAIC_WEIGHT_PATH")
+    fi
+    public_teacher_args+=(
+      --teacher_root_dir "$PUBLIC_TEACHER_ROOT_DIR"
+      --weights_dir "$PUBLIC_TEACHER_WEIGHTS_DIR"
+      --device "$PUBLIC_TEACHER_DEVICE"
+      --max_images "$PUBLIC_TEACHER_MAX_IMAGES"
+      --run_setup 0
+      --skip_on_oom "$PUBLIC_INFER_SKIP_ON_OOM"
+      --prefer_curated_images "$PREFER_CURATED_IMAGES"
+      --curated_image_dir "$CURATED_IMAGE_DIR"
+      --fallback_cpu_on_oom "$PUBLIC_INFER_FALLBACK_CPU_ON_OOM"
+      --fallback_cpu_max_images "$PUBLIC_INFER_FALLBACK_CPU_MAX_IMAGES"
+      --skip_if_fallback_failed "$PUBLIC_INFER_SKIP_IF_FALLBACK_FAILED"
+      --multi_gpu "$PUBLIC_INFER_MULTI_GPU"
+    )
+    if [ -n "$PUBLIC_INFER_GPU_IDS" ]; then
+      public_teacher_args+=(--gpu_ids "$PUBLIC_INFER_GPU_IDS")
+    fi
+    if [ -n "$PUBLIC_INFER_NUM_WORKERS" ]; then
+      public_teacher_args+=(--num_workers "$PUBLIC_INFER_NUM_WORKERS")
+    fi
+    run_with_log "08b_public_teacher_infer" \
+      bash src/scripts/run_infer_public_cropping_teachers.sh \
+        "$FILTERED_PARQUET" \
+        "$TAR_DIR" \
+        "$PUBLIC_TEACHER_RAW_JSONL" \
+        "${public_teacher_args[@]}"
+  fi
+
+  if [ ! -f "$PUBLIC_TEACHER_RAW_JSONL" ]; then
+    echo "[error] public teacher raw jsonl not found: $PUBLIC_TEACHER_RAW_JSONL"
+    exit 1
+  fi
+
+  if [ "$need_public_build" -eq 1 ]; then
+    run_with_log "08c_public_teacher_build_proposals" \
+      bash src/scripts/run_build_teacher_proposals.sh \
+        "$PUBLIC_TEACHER_PROPOSALS_JSONL" \
+        "$PUBLIC_TEACHER_RAW_JSONL"
+  fi
+
+  if [ ! -f "$PUBLIC_TEACHER_PROPOSALS_JSONL" ]; then
+    echo "[error] public teacher proposals jsonl not found: $PUBLIC_TEACHER_PROPOSALS_JSONL"
+    exit 1
+  fi
+
+  TEACHER_PROPOSALS_JSONL="$(csv_append_unique "$TEACHER_PROPOSALS_JSONL" "$PUBLIC_TEACHER_PROPOSALS_JSONL")"
+  echo "[info] teacher proposal injection paths: $TEACHER_PROPOSALS_JSONL"
+fi
+
+# ------------------------------------------------------------------------------
+# 4) Candidate Generator
 # ------------------------------------------------------------------------------
 if [ "$RUN_CANDIDATES" -eq 1 ]; then
   if [ ! -f "$FEATS_C2" ] || [ ! -f "$FEATS_C3_ENRICHED" ]; then
@@ -688,7 +974,7 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
         done
       fi
     fi
-    run_with_log "08_generate_candidates" \
+    run_with_log "09_generate_candidates" \
       bash src/scripts/run_generate_candidates.sh \
         "$FILTERED_PARQUET" \
         "$FEATS_C2" \
@@ -706,7 +992,7 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
 fi
 
 # ------------------------------------------------------------------------------
-# 4) Teacher Scorer
+# 5) Teacher Scorer
 # ------------------------------------------------------------------------------
 if [ "$RUN_TEACHER" -eq 1 ]; then
   if [ ! -f "$CANDIDATES_JSONL" ]; then
@@ -729,7 +1015,7 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
     fi
   fi
   if ! should_skip_file "$TEACHER_JSONL"; then
-    run_with_log "09_teacher_scorer" \
+    run_with_log "10_teacher_scorer" \
       bash src/scripts/run_teacher_scorer.sh \
         --server_mode "$SERVER_MODE" \
         --venv_path "$VENV_PATH" \
@@ -754,6 +1040,9 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --align_device "$ALIGN_DEVICE" \
         --aesthetic_device "$AESTHETIC_DEVICE" \
         --exp_batch_size "$EXP_BATCH_SIZE" \
+        --expensive_eval_top_m "$EXPENSIVE_EVAL_TOP_M" \
+        --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
+        --exp_pin_memory "$EXP_PIN_MEMORY" \
         --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \
         --aesthetic_mlp_url "$AESTHETIC_MLP_URL" \
         --max_images "$MAX_IMAGES" \
@@ -778,6 +1067,10 @@ fi
 echo " feats c1          : $FEATS_C1"
 echo " feats c2/c3e/c5  : $FEATS_C2 | $FEATS_C3_ENRICHED | $FEATS_C5"
 echo " merged feats     : $MERGED_FEATS"
+if [ "$ENABLE_PUBLIC_TEACHER_PROPOSALS" -eq 1 ]; then
+  echo " public raw       : $PUBLIC_TEACHER_RAW_JSONL"
+  echo " public proposals : $PUBLIC_TEACHER_PROPOSALS_JSONL"
+fi
 echo " candidates       : $CANDIDATES_JSONL"
 echo " teacher jsonl    : $TEACHER_JSONL"
 echo " teacher overview : $TEACHER_OVERVIEW_JSON"

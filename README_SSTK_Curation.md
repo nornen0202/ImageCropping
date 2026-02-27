@@ -157,7 +157,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 128 \
-  --skip_existing 1 \
+  --skip_existing 0 \
   --run_tag e2e_260227_r0 \
    | tee src/scripts/logs/run_phaseA_to_teacher_e2e_0227_r0.log
 ```

@@ -13,6 +13,7 @@ import argparse
 from tqdm import tqdm
 from collections import Counter
 from itertools import chain
+import shutil
 
 def process_file_pair(args):
     sdp_file, train_file, tmp_dir = args
@@ -223,6 +224,7 @@ def extract_and_save_samples(df_curated, df_rejected, args):
 
 def export_curated_images(df_curated, args):
     import tarfile
+    default_image_exts = {".jpg", ".jpeg", ".png", ".webp"}
 
     image_dir = (args.save_curated_images_dir or "").strip()
     if not image_dir:
@@ -265,9 +267,19 @@ def export_curated_images(df_curated, args):
                     stem, ext = os.path.splitext(base)
                     if stem not in targets:
                         continue
-                    ext = ext.lower() if ext else ".jpg"
+                    ext = ext.lower()
+                    if ext not in default_image_exts:
+                        # SSTK tar member order is often: .desc/.id/.jpg/.tags.
+                        # Only export real image payloads.
+                        continue
                     out_path = os.path.join(image_dir, f"{stem}{ext}")
-                    if skip_existing and os.path.exists(out_path):
+                    has_existing = False
+                    if skip_existing:
+                        for e in default_image_exts:
+                            if os.path.exists(os.path.join(image_dir, f"{stem}{e}")):
+                                has_existing = True
+                                break
+                    if has_existing:
                         skipped += 1
                     else:
                         fobj = tf.extractfile(member)
@@ -289,6 +301,131 @@ def export_curated_images(df_curated, args):
         f"[export_curated_images] done. saved={saved} skipped={skipped} "
         f"missing={missing} total_targets={len(df_curated)}"
     )
+
+
+def _dir_has_parquet(path):
+    if not path or not os.path.isdir(path):
+        return False
+    try:
+        for name in os.listdir(path):
+            if name.lower().endswith(".parquet"):
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _pick_existing_file(candidates):
+    for p in candidates:
+        if p and os.path.isfile(p):
+            return p
+    return ""
+
+
+def _pick_existing_dir(candidates, require_parquet=False):
+    for p in candidates:
+        if not p or not os.path.isdir(p):
+            continue
+        if require_parquet and not _dir_has_parquet(p):
+            continue
+        return p
+    return ""
+
+
+def _resolve_filter_cache_paths(out_dir, bucket):
+    """
+    Canonical cache root:
+      <out_dir>/cache/filter/
+    Backward-compatible fallback:
+      - <out_dir>/*
+      - <out_dir>/Temp/*
+      - <out_dir>/Temp/cleanup_*/*
+    """
+    cache_root = os.path.join(out_dir, "cache", "filter")
+    os.makedirs(cache_root, exist_ok=True)
+
+    canonical_tmp_dir = os.path.join(cache_root, f"tmp_parquets_{bucket}")
+    canonical_df_cache = os.path.join(cache_root, f"df_mapped_cache_{bucket}.parquet")
+    canonical_tag_cache = os.path.join(cache_root, f"tag_cat_probs_cache_{bucket}.pkl")
+
+    cleanup_df = sorted(
+        glob.glob(os.path.join(out_dir, "Temp", "cleanup_*", f"df_mapped_cache_{bucket}.parquet")),
+        key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0,
+        reverse=True,
+    )
+    cleanup_tag = sorted(
+        glob.glob(os.path.join(out_dir, "Temp", "cleanup_*", f"tag_cat_probs_cache_{bucket}.pkl")),
+        key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0,
+        reverse=True,
+    )
+    cleanup_tmp = sorted(
+        glob.glob(os.path.join(out_dir, "Temp", "cleanup_*", f"tmp_parquets_{bucket}")),
+        key=lambda p: os.path.getmtime(p) if os.path.exists(p) else 0,
+        reverse=True,
+    )
+
+    df_candidates = [
+        canonical_df_cache,
+        os.path.join(out_dir, f"df_mapped_cache_{bucket}.parquet"),
+        os.path.join(out_dir, "Temp", f"df_mapped_cache_{bucket}.parquet"),
+        *cleanup_df,
+    ]
+    tag_candidates = [
+        canonical_tag_cache,
+        os.path.join(out_dir, f"tag_cat_probs_cache_{bucket}.pkl"),
+        os.path.join(out_dir, "Temp", f"tag_cat_probs_cache_{bucket}.pkl"),
+        *cleanup_tag,
+    ]
+    tmp_candidates = [
+        canonical_tmp_dir,
+        os.path.join(out_dir, f"tmp_parquets_{bucket}"),
+        os.path.join(out_dir, "Temp", f"tmp_parquets_{bucket}"),
+        *cleanup_tmp,
+    ]
+
+    df_cache_read = _pick_existing_file(df_candidates)
+    tag_cache_read = _pick_existing_file(tag_candidates)
+    tmp_dir_read = _pick_existing_dir(tmp_candidates, require_parquet=True)
+
+    return {
+        "cache_root": cache_root,
+        "canonical_tmp_dir": canonical_tmp_dir,
+        "canonical_df_cache": canonical_df_cache,
+        "canonical_tag_cache": canonical_tag_cache,
+        "df_cache_read": df_cache_read,
+        "tag_cache_read": tag_cache_read,
+        "tmp_dir_read": tmp_dir_read,
+    }
+
+
+def _promote_cache_file(src_path, dst_path):
+    if not src_path or not os.path.exists(src_path):
+        return
+    if os.path.abspath(src_path) == os.path.abspath(dst_path):
+        return
+    if os.path.exists(dst_path):
+        return
+    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+    try:
+        shutil.copy2(src_path, dst_path)
+        print(f"[cache] promoted file: {src_path} -> {dst_path}")
+    except Exception as e:
+        print(f"[cache] promote failed: {src_path} -> {dst_path} ({e})")
+
+
+def _promote_cache_dir(src_dir, dst_dir):
+    if not src_dir or not os.path.isdir(src_dir):
+        return
+    if os.path.abspath(src_dir) == os.path.abspath(dst_dir):
+        return
+    if os.path.isdir(dst_dir) and _dir_has_parquet(dst_dir):
+        return
+    os.makedirs(os.path.dirname(dst_dir), exist_ok=True)
+    try:
+        shutil.copytree(src_dir, dst_dir, dirs_exist_ok=True)
+        print(f"[cache] promoted dir: {src_dir} -> {dst_dir}")
+    except Exception as e:
+        print(f"[cache] promote dir failed: {src_dir} -> {dst_dir} ({e})")
 
 def main():
     parser = argparse.ArgumentParser(description="Filter Shutterstock Dataset")
@@ -324,8 +461,31 @@ def main():
         sdp_files = sorted(sdp_files)
 
     out_dir = os.path.dirname(args.output) if os.path.dirname(args.output) else "."
-    tmp_pq_dir = os.path.join(out_dir, f"tmp_parquets_{args.bucket}")
-    os.makedirs(tmp_pq_dir, exist_ok=True)
+    cache_info = _resolve_filter_cache_paths(out_dir, args.bucket)
+
+    tmp_pq_dir = cache_info["canonical_tmp_dir"]  # write target (canonical)
+    tmp_pq_dir_read = cache_info["tmp_dir_read"]  # read source (fallback allowed)
+    df_mapped_cache_path = cache_info["canonical_df_cache"]  # canonical
+    df_mapped_cache_read = cache_info["df_cache_read"]       # fallback allowed
+    cache_file = cache_info["canonical_tag_cache"]           # canonical
+    cache_file_read = cache_info["tag_cache_read"]           # fallback allowed
+
+    # Promote legacy caches once, then always use canonical paths.
+    _promote_cache_file(df_mapped_cache_read, df_mapped_cache_path)
+    _promote_cache_file(cache_file_read, cache_file)
+    _promote_cache_dir(tmp_pq_dir_read, tmp_pq_dir)
+
+    if os.path.exists(df_mapped_cache_path):
+        df_mapped_cache_read = df_mapped_cache_path
+    if os.path.exists(cache_file):
+        cache_file_read = cache_file
+    if _dir_has_parquet(tmp_pq_dir):
+        tmp_pq_dir_read = tmp_pq_dir
+
+    print(f"[cache] root={cache_info['cache_root']}")
+    print(f"[cache] mapped_df={df_mapped_cache_path} (read={df_mapped_cache_read or '<none>'})")
+    print(f"[cache] tag_probs={cache_file} (read={cache_file_read or '<none>'})")
+    print(f"[cache] tmp_parquets={tmp_pq_dir} (read={tmp_pq_dir_read or '<none>'})")
 
     file_pairs = []
     for sdp_file in sdp_files:
@@ -339,21 +499,28 @@ def main():
     # Servers with high core counts can easily OOM if memory per worker is ~2GB.
     num_workers = min(6, os.cpu_count() or 1)
 
-    df_mapped_cache_path = os.path.join(out_dir, f"df_mapped_cache_{args.bucket}.parquet")
     mapping_already_done = False
 
+    mapped_cache_for_read = ""
     if os.path.exists(df_mapped_cache_path):
-        print(f"\n[CACHE DETECTED] Found fully mapped cache {df_mapped_cache_path}.")
+        mapped_cache_for_read = df_mapped_cache_path
+    elif df_mapped_cache_read and os.path.exists(df_mapped_cache_read):
+        mapped_cache_for_read = df_mapped_cache_read
+
+    if mapped_cache_for_read:
+        print(f"\n[CACHE DETECTED] Found fully mapped cache {mapped_cache_for_read}.")
         print("Skipping multiprocessing JSON parsing AND category mapping phases completely.")
-        df = pd.read_parquet(df_mapped_cache_path)
+        df = pd.read_parquet(mapped_cache_for_read)
         print(f"Total valid mapped images loaded from cache: {len(df)}")
         mapping_already_done = True
     else:
-        cache_file = os.path.join(out_dir, f"tag_cat_probs_cache_{args.bucket}.pkl")
-
-        if os.path.exists(cache_file):
-            print(f"Found cache file {cache_file}. Skipping multiprocessing JSON parsing phase, assuming temporary parquets are ready.")
+        if os.path.exists(cache_file) and _dir_has_parquet(tmp_pq_dir_read):
+            print(
+                f"Found tag cache {cache_file} + temporary parquet dir {tmp_pq_dir_read}. "
+                "Skipping multiprocessing JSON parsing phase."
+            )
         else:
+            os.makedirs(tmp_pq_dir, exist_ok=True)
             print(f"Initializing multiprocessing Pool with {num_workers} workers...")
             try:
                 with Pool(processes=num_workers, maxtasksperchild=1) as pool:
@@ -365,12 +532,13 @@ def main():
                 print(f"Fatal exception during parallel file processing: {e}")
                 traceback.print_exc()
                 raise e
+            tmp_pq_dir_read = tmp_pq_dir
 
         # Read back chunked parquets safely
-        print(f"Loading temporary parquets from {tmp_pq_dir}...")
+        print(f"Loading temporary parquets from {tmp_pq_dir_read}...")
         import pyarrow.dataset as ds
         try:
-            dataset = ds.dataset(tmp_pq_dir, format="parquet")
+            dataset = ds.dataset(tmp_pq_dir_read, format="parquet")
             df = dataset.to_table().to_pandas()
         except Exception as e:
             print(f"No valid Parquet chunks found or failed to load them: {e}")

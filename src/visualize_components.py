@@ -6,20 +6,20 @@ Examples
 Local (separate jsonl):
   python3 src/visualize_components.py \
       --parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
-      --c2_jsonl data/SSTK/10K_local/feats_c2.jsonl \
-      --c3_jsonl data/SSTK/10K_local/feats_c3_v2_strict_enriched.jsonl \
-      --c5_jsonl data/SSTK/10K_local/feats_c5.jsonl \
+      --c2_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c2.jsonl \
+      --c3_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c3_v2_strict_enriched.jsonl \
+      --c5_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c5.jsonl \
       --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
-      --out_dir data/SSTK/10K_local/visualizations_v2 \
+      --out_dir data/SSTK/10K_local/artifacts/visualizations/components_v2_local \
       --num_samples 100 \
       --draw_combined 1
 
 Local (merged jsonl):
   python3 src/visualize_components.py \
       --parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
-      --merged_jsonl data/SSTK/10K_local/feats_c2c3c5_v2_strict_enriched.jsonl \
+      --merged_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl \
       --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
-      --out_dir data/SSTK/10K_local/visualizations_v2 \
+      --out_dir data/SSTK/10K_local/artifacts/visualizations/components_v2_local \
       --num_samples 100 \
       --draw_combined 1
 """
@@ -462,7 +462,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--c3_jsonl", type=str, default="")
     parser.add_argument("--c5_jsonl", type=str, default="")
     parser.add_argument("--tar_dir", type=str, required=True)
-    parser.add_argument("--out_dir", type=str, default="data/SSTK/10K_local/visualizations")
+    parser.add_argument("--out_dir", type=str, default="data/SSTK/10K_local/artifacts/visualizations/components_v2_local")
     parser.add_argument("--num_samples", type=int, default=50)
 
     parser.add_argument("--draw_c2", type=int, default=1, help="1=save c2 layer, 0=skip")

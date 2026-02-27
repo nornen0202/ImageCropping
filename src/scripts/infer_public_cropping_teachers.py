@@ -45,6 +45,7 @@ from tqdm import tqdm
 
 IMAGE_NET_MEAN = np.asarray([0.485, 0.456, 0.406], dtype=np.float32)
 IMAGE_NET_STD = np.asarray([0.229, 0.224, 0.225], dtype=np.float32)
+DEFAULT_IMAGE_EXTS = ("jpg", "jpeg", "png", "webp")
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -281,6 +282,76 @@ class TarImageLoader:
                 return Image.open(io.BytesIO(data)).convert("RGB")
             except Exception:
                 return None
+        return None
+
+
+class LocalImageLoader:
+    def __init__(self, image_dir: Path):
+        self.image_dir = image_dir
+        self._paths_by_id: Dict[str, Path] = {}
+        self._build_index()
+
+    def _build_index(self) -> None:
+        if not self.image_dir.exists():
+            return
+        try:
+            for p in self.image_dir.iterdir():
+                if not p.is_file():
+                    continue
+                stem = p.stem
+                ext = p.suffix.lower().lstrip(".")
+                if not stem or ext not in DEFAULT_IMAGE_EXTS:
+                    continue
+                if stem not in self._paths_by_id:
+                    self._paths_by_id[stem] = p
+        except Exception:
+            return
+
+    def close(self) -> None:
+        return
+
+    def load_rgb(self, image_id: str) -> Optional[Image.Image]:
+        p = self._paths_by_id.get(str(image_id))
+        if p is None:
+            return None
+        try:
+            return Image.open(str(p)).convert("RGB")
+        except Exception:
+            return None
+
+
+class HybridImageLoader:
+    def __init__(
+        self,
+        *,
+        local_loader: Optional[LocalImageLoader],
+        tar_loader: Optional[TarImageLoader],
+    ):
+        self.local_loader = local_loader
+        self.tar_loader = tar_loader
+        self.local_hits = 0
+        self.tar_hits = 0
+        self.misses = 0
+
+    def close(self) -> None:
+        if self.local_loader is not None:
+            self.local_loader.close()
+        if self.tar_loader is not None:
+            self.tar_loader.close()
+
+    def load_rgb(self, image_id: str) -> Optional[Image.Image]:
+        img = None
+        if self.local_loader is not None:
+            img = self.local_loader.load_rgb(image_id)
+            if img is not None:
+                self.local_hits += 1
+                return img
+        if self.tar_loader is not None:
+            img = self.tar_loader.load_rgb(image_id)
+            if img is not None:
+                self.tar_hits += 1
+                return img
+        self.misses += 1
         return None
 
 
@@ -554,12 +625,16 @@ def resolve_weight_path(path_arg: str, fallback_patterns: Sequence[str]) -> Opti
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Run GAIC/CACNet/CGS teacher inference and dump raw outputs")
     p.add_argument("--input_parquet", required=True)
-    p.add_argument("--tar_dir", required=True)
+    p.add_argument("--tar_dir", default="", help="SSTK tar root (fallback source)")
+    p.add_argument("--prefer_curated_images", type=int, default=1, help="1=try curated image dir first")
+    p.add_argument("--curated_image_dir", default="", help="local curated image dir (<image_id>.<ext>)")
     p.add_argument("--output_jsonl", required=True)
     p.add_argument("--teachers", nargs="+", default=["gaic", "cacnet", "cgs"])
     p.add_argument("--teacher_root_dir", default="third_party/public_cropping_teachers")
     p.add_argument("--weights_dir", default="weights/public_cropping_teachers")
     p.add_argument("--max_images", type=int, default=0, help="0 means all")
+    p.add_argument("--num_shards", type=int, default=1, help="dataset shard count")
+    p.add_argument("--shard_index", type=int, default=0, help="0-based shard index")
     p.add_argument("--device", default="auto", help="auto|cuda|cpu")
     p.add_argument("--skip_on_oom", type=int, default=1)
     p.add_argument("--run_setup", type=int, default=1, help="run setup_public_cropping_teachers.py first")
@@ -720,18 +795,55 @@ def main() -> None:
     print(f"[infer] device={device}")
 
     input_parquet = Path(args.input_parquet)
-    tar_dir = Path(args.tar_dir)
+    tar_dir = Path(args.tar_dir) if str(args.tar_dir).strip() else None
     output_path = Path(args.output_jsonl)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    mapping = load_tar_mapping(input_parquet)
-    loader = TarImageLoader(mapping=mapping, tar_dir=tar_dir)
+    prefer_curated = bool(int(args.prefer_curated_images))
+    curated_dir = Path(args.curated_image_dir) if str(args.curated_image_dir).strip() else None
+
+    local_loader: Optional[LocalImageLoader] = None
+    if prefer_curated and curated_dir is not None:
+        if curated_dir.exists() and curated_dir.is_dir():
+            local_loader = LocalImageLoader(curated_dir)
+            print(f"[infer] curated image source enabled: {curated_dir}")
+        else:
+            print(f"[infer][warn] curated_image_dir not found: {curated_dir}. fallback to tar source.")
+
+    tar_loader: Optional[TarImageLoader] = None
+    if tar_dir is not None:
+        if tar_dir.exists() and tar_dir.is_dir():
+            mapping = load_tar_mapping(input_parquet)
+            tar_loader = TarImageLoader(mapping=mapping, tar_dir=tar_dir)
+            print(f"[infer] tar image source enabled: {tar_dir}")
+        else:
+            print(f"[infer][warn] tar_dir not found: {tar_dir}")
+
+    if local_loader is None and tar_loader is None:
+        raise ValueError(
+            "No valid image source. Provide existing --tar_dir and/or "
+            "--prefer_curated_images 1 --curated_image_dir <dir>."
+        )
+
+    loader = HybridImageLoader(local_loader=local_loader, tar_loader=tar_loader)
 
     df = pd.read_parquet(input_parquet)
     if "image_id" not in df.columns:
         raise ValueError("input parquet missing image_id column")
     if args.max_images > 0:
         df = df.head(int(args.max_images))
+    if int(args.num_shards) > 1:
+        num_shards = int(args.num_shards)
+        shard_index = int(args.shard_index)
+        if shard_index < 0 or shard_index >= num_shards:
+            raise ValueError(
+                f"invalid shard_index={shard_index} for num_shards={num_shards}"
+            )
+        df = df.iloc[shard_index::num_shards].reset_index(drop=True)
+        print(
+            f"[infer] sharding enabled: shard_index={shard_index} "
+            f"num_shards={num_shards} shard_rows={len(df)}"
+        )
 
     adapters = build_teacher_adapters(args=args, device=device)
     if not adapters:
@@ -779,6 +891,10 @@ def main() -> None:
                 out_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     loader.close()
+    print(
+        f"[infer] image_source_stats local_hits={loader.local_hits} "
+        f"tar_hits={loader.tar_hits} misses={loader.misses}"
+    )
     print(f"[infer] done -> {output_path}")
 
 

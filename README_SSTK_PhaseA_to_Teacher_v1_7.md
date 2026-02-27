@@ -60,96 +60,115 @@ export TAR_DIR=/your/tar_root
 
 ### 3.1 로컬(가상환경 자동 활성화) 기본 실행
 ```bash
+DATANAME=10K_local
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 0 \
-  --data_dir data/SSTK/10K_local \
+  --data_dir data/SSTK/${DATANAME} \
   --bucket sstk_100 \
   --precompute_mode unified \
   --export_curated_images 1 \
-  --curated_image_dir data/SSTK/10K_local/images \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
   --run_tag v17_local
 ```
 
 ### 3.2 서버 기본 실행
 ```bash
+DATANAME=10K
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
-  --data_dir data/SSTK/10K \
+  --data_dir data/SSTK/${DATANAME} \
   --bucket sstk_100 \
   --precompute_mode unified \
   --export_curated_images 1 \
-  --curated_image_dir data/SSTK/10K/images \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
   --run_tag v17_server
 ```
 
 ### 3.2.1 서버 멀티 GPU 효율 실행(No-Ray 기본)
-# 필터 결과가 이미 있을 때 10K_local w/ 2-gpu
+필터 결과가 이미 있을 때
 ```bash
+DATANAME=10K
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
-  --data_dir data/SSTK/10K_local \
+  --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
   --precompute_mode unified \
-  --curated_image_dir data/SSTK/10K_local/images \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
   --extract_mode auto \
-  --extract_gpu_ids 0,1,2,3 \
+  --extract_gpu_ids 0,1,2 \
   --num_workers 4 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3 \
+  --teacher_gpu_ids 0,1,2 \
   --teacher_num_workers 4 \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 128 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --public_teacher_max_images -1 \
   --skip_existing 0 \
-  --run_tag real_exp_4gpu \
-   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_4gpu.log
+  --run_tag e2e_0227_r0 \
+   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_0227_r0.log
+```
 
-```
-# 필터 결과가 이미 있을 때 10K w/ 4-gpu
-```bash
-bash src/scripts/run_phaseA_to_teacher_e2e.sh \
-  --server_mode 1 \
-  --data_dir data/SSTK/10K \
-  --run_filter 0 \
-  --precompute_mode unified \
-  --curated_image_dir data/SSTK/10K_local/images \
-  --prefer_curated_images 1 \
-  --extract_mode auto \
-  --extract_gpu_ids 0,1 \
-  --num_workers 4 \
-  --use_real_expensive 1 \
-  --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1 \
-  --teacher_num_workers 4 \
-  --align_device cuda \
-  --aesthetic_device cuda \
-  --exp_batch_size 128 \
-  --skip_existing 0 \
-  --max_images 500 \
-  --run_tag real_exp_500  
-   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_10K_real_exp_500.log
-```
 
 ### 3.3 필터 결과가 이미 있을 때(재실행 시간 단축)
 ```bash
+DATANAME=10K
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
-  --data_dir data/SSTK/10K \
+  --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
   --skip_existing 1 \
   --precompute_mode unified \
   --run_tag rerun1
 ```
 
-### 3.4 Real Expensive(미학+crop 임베딩 cosine) 활성화
+`5.5 공개 Teacher 추론/변환(설치 포함)`까지 같은 실행에서 자동 적용하려면:
 ```bash
+DATANAME=10K
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
-  --data_dir data/SSTK/10K \
+  --data_dir data/SSTK/${DATANAME} \
+  --run_filter 0 \
+  --precompute_mode unified \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --public_infer_multi_gpu 1 \
+  --public_infer_gpu_ids 0,1,2 \
+  --public_infer_num_workers 3 \
+  --public_teacher_max_images -1 \
+  --use_real_expensive 1 \
+  --teacher_multi_gpu 1 \
+  --teacher_gpu_ids 0,1,2 \
+  --teacher_num_workers 3 \
+  --align_device cuda \
+  --aesthetic_device cuda \
+  --exp_batch_size 128 \
+  --skip_existing 1 \
+  --run_tag e2e_260227_r0 \
+   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_0227_r0.log
+```
+주의: `--public_infer_multi_gpu`는 `-1|0|1`만 유효하며, GPU 개수는 `--public_infer_gpu_ids`/`--public_infer_num_workers`로 지정합니다.
+
+### 3.4 Real Expensive(미학+crop 임베딩 cosine) 활성화
+```bash
+DATANAME=10K
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
   --precompute_mode unified \
   --use_real_expensive 1 \
@@ -162,12 +181,36 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - `run_c1=-1` 기본값이면 `--use_real_expensive 1`에서 C1이 자동 활성화됩니다.
 - `precompute_mode=unified`에서는 C1도 동일 1-pass precompute 결과(JSONL)에 함께 저장됩니다.
 
+### Teacher Scorer 단계 재실행
+```bash
+DATANAME=10K_local
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/${DATANAME} \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 0 \
+  --run_teacher 1 \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --use_real_expensive 1 \
+  --teacher_multi_gpu 1 \
+  --teacher_gpu_ids 0,1,2 \
+  --teacher_num_workers 4 \
+  --align_device cuda \
+  --aesthetic_device cuda \
+  --exp_batch_size 128 \
+  --skip_existing 0 \
+  --run_tag rerun1_public_e2e
+```
+
 ### 3.5 GPU 서버 smoke/full 예시
 - smoke (후보/teacher만 500장):
 ```bash
+DATANAME=10K
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
-  --data_dir data/SSTK/10K \
+  --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
   --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 1 --run_teacher 1 \
@@ -180,16 +223,17 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 ### 3.6 처음부터 끝까지(명시형 풀 옵션 템플릿)
 ```bash
+DATANAME=10K
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --bucket sstk_100 \
-  --data_dir data/SSTK/10K \
+  --data_dir data/SSTK/${DATANAME} \
   --server_mode 1 \
   --tar_dir /sstk/20230916/sstk_100 \
   --run_filter 1 \
   --curated_pool_size 10000 \
   --top_percentile 0.2 \
   --export_curated_images 1 \
-  --curated_image_dir data/SSTK/10K/images \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
   --skip_existing 1 \
   --precompute_mode unified \
@@ -202,6 +246,20 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_candidates 1 \
   --use_actual_image_size 1 \
   --strict_actual_size 1 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_teacher_max_images -1 \
+  --public_teacher_device auto \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --public_infer_multi_gpu 1 \
+  --public_infer_gpu_ids 0,1,2,3 \
+  --public_infer_num_workers 4 \
+  --public_infer_skip_on_oom 1 \
+  --public_infer_fallback_cpu_on_oom 1 \
+  --public_infer_fallback_cpu_max_images 3 \
+  --public_infer_skip_if_fallback_failed 1 \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --cheap_top_m 30 \
@@ -213,49 +271,64 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_qa 1 \
   --run_viz 1 \
   --num_viz 120 \
-  --run_tag full_v17
+  --run_tag full_260226
 ```
 
 ### 3.7 filtered parquet만 있고 images가 없을 때: images만 생성 후 4.2 실행
 
 1) `filtered parquet`에서 curated images만 별도 추출:
+Local
 ```bash
-/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python \
-  src/scripts/export_curated_images_from_parquet.py \
-  --input_parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
+DATANAME=10K
+python3  src/scripts/export_curated_images_from_parquet.py \
+  --input_parquet data/SSTK/${DATANAME}/filtered_sstk_100.parquet \
   --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
-  --output_dir data/SSTK/10K_local/images \
+  --output_dir data/SSTK/${DATANAME}/images \
   --bucket sstk_100 \
-  --skip_existing 1
+  --skip_existing 1 \
+  --num_workers 0 \
+  --auto_workers_cap 8
 ```
-Space
+Server
 ```bash
+DATANAME=10K
 python3 src/scripts/export_curated_images_from_parquet.py \
-  --input_parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
+  --input_parquet data/SSTK/${DATANAME}/filtered_sstk_100.parquet \
   --tar_dir /sstk/20230916/sstk_100 \
-  --output_dir data/SSTK/10K_local/images \
+  --output_dir data/SSTK/${DATANAME}/images \
   --bucket sstk_100 \
-  --skip_existing 1
+  --skip_existing 1 \
+  --num_workers 0 \
+  --auto_workers_cap 8
 ```
+
+전체 CPU 코어를 강제로 모두 사용하려면(`I/O 포화 가능`):
 ```bash
+DATANAME=10K
 python3 src/scripts/export_curated_images_from_parquet.py \
-  --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
+  --input_parquet data/SSTK/${DATANAME}/filtered_sstk_100.parquet \
   --tar_dir /sstk/20230916/sstk_100 \
-  --output_dir data/SSTK/10K/images \
+  --output_dir data/SSTK/${DATANAME}/images \
   --bucket sstk_100 \
-  --skip_existing 1
+  --skip_existing 0 \
+  --num_workers -1
 ```
+
+옵션 설명:
+- `--num_workers 0`: auto-balanced(기본). `min(CPU코어수, auto_workers_cap, tar job 수)`를 사용
+- `--num_workers -1`: 모든 CPU 코어 사용
+- `--auto_workers_cap`: auto 모드 상한(기본 `8`)
 
 
 2) 4.2(Perception Precompute)만 실행:
 ```bash
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 0 \
-  --data_dir data/SSTK/10K_local \
+  --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
   --precompute_mode unified \
   --prefer_curated_images 1 \
-  --curated_image_dir data/SSTK/10K_local/images \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
   --run_candidates 0 \
   --run_teacher 0 \
   --skip_existing 0 \
@@ -285,6 +358,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 선택 최적화(반복 실험용):
 - `run_filter.sh`에 `CURATED_IMAGE_DIR`를 추가로 넘기면 curated pool 이미지를 `<data_dir>/images` 등에 추출 저장할 수 있습니다.
 - 이후 `run_phaseA_to_teacher_e2e.sh`에서 `--prefer_curated_images 1`이면 4.2~ 단계가 해당 디렉토리를 우선 사용하고, 누락 이미지에만 tar fallback 합니다.
+- Filter 캐시(`tmp_parquets_*`, `df_mapped_cache_*`, `tag_cat_probs_cache_*`)는 기본적으로 `data/SSTK/<DATANAME>/cache/filter/`를 사용하며, 기존 루트/`Temp`/`Temp/cleanup_*` 위치도 자동 탐색 후 재사용합니다.
 
 ---
 
@@ -320,7 +394,7 @@ C3 enrich:
 - `--use_actual_image_size 1` 권장 (tar 실제 사이즈 기준 정규화)
 
 권장 결과물:
-- `feats_c2c3c5_v2_strict_enriched.jsonl`
+- `data/SSTK/<DATANAME>/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl`
 
 ---
 
@@ -343,8 +417,8 @@ C3 enrich:
 - 후보 정리:
   - dedupe, NMS, must-keep 보호, diversity farthest-point 샘플링
 - 산출:
-  - `candidates_ar*.jsonl`
-  - overview json/csv + 시각화(`visualizations/candidates_*`)
+  - `artifacts/candidates/candidates_ar*.jsonl`
+  - overview json/csv + 시각화(`artifacts/candidates/visualizations/candidates_*`)
 
 중요 포인트:
 - `--use_actual_image_size 1` + `--strict_actual_size 1`을 기본 유지
@@ -375,10 +449,10 @@ C3 enrich:
   - IoU 제약 기반 다양성 보장
 
 산출:
-- `teacher_scores_ar*.jsonl`
-- `teacher_scores_overview*.json/.csv`
-- `teacher_scores_qa_report*.json/.csv`
-- 시각화 디렉토리
+- `artifacts/teacher/scores/teacher_scores_ar*.jsonl`
+- `artifacts/teacher/overview/teacher_scores_overview*.json/.csv`
+- `artifacts/teacher/qa/teacher_scores_qa_report*.json/.csv`
+- `artifacts/teacher/visualizations/teacher_scorer*/`
 
 ---
 
@@ -403,6 +477,23 @@ C3 enrich:
 - `--extract_gpu_ids`: precompute에 사용할 GPU 목록 CSV
 - `--run_c1 --run_c2 --run_c3 --run_c3_enrich --run_c5 --run_merge`
 - `--run_candidates --run_teacher`
+- `--teacher_proposals_jsonl`: Candidate 단계에 수동 proposal jsonl 주입(CSV)
+- `--enable_public_teacher_proposals 0|1`: 5.5(공개 Teacher setup+infer+build) 자동 수행 후 Candidate에 자동 주입
+- `--public_teacher_setup 0|1`: 공개 Teacher 준비 단계 실행 여부
+- `--public_teacher_download_weights 0|1`: setup 단계에서 가중치 자동 다운로드 시도
+- `--public_teachers`: 추론 teacher 목록 CSV (예: `gaic,cacnet,cgs`)
+- `--public_teacher_max_images`: 공개 Teacher 추론 이미지 수 (`-1`이면 `--max_images` 상속)
+- `--public_teacher_device auto|cuda|cpu`: 공개 Teacher 추론 디바이스
+- `--public_gaic_weight_path`: GAIC 체크포인트 경로
+- `--public_teacher_raw_jsonl`: 공개 Teacher raw 결과 저장 경로 (기본: `data/SSTK/<DATANAME>/artifacts/public_teachers/raw/teacher_raw_public_<run_tag>.jsonl`)
+- `--public_teacher_proposals_jsonl`: raw->proposal 변환 출력 경로 (기본: `data/SSTK/<DATANAME>/artifacts/public_teachers/proposals/teacher_proposals_public_<run_tag>.jsonl`)
+- `--public_infer_multi_gpu -1|0|1`: 공개 Teacher 추론 multi-gpu on/off (`-1`이면 auto)
+- `--public_infer_gpu_ids`: 공개 Teacher 추론에 사용할 GPU 목록 CSV
+- `--public_infer_num_workers`: 공개 Teacher shard worker 수(기본: 사용 GPU 수)
+- `--public_infer_skip_on_oom 0|1`: 공개 Teacher 추론 중 OOM 레코드 skip
+- `--public_infer_fallback_cpu_on_oom 0|1`: GPU OOM 시 CPU fallback 실행
+- `--public_infer_fallback_cpu_max_images`: CPU fallback 시 최대 샘플 수
+- `--public_infer_skip_if_fallback_failed 0|1`: CPU fallback 실패 시 단계 전체 skip 여부
 - `--use_real_expensive 0|1`
 - `--teacher_multi_gpu -1|0|1`: -1이면 auto(real-expensive + multi-gpu 환경에서 자동 on), `>0` 입력도 on으로 처리
 - `--teacher_gpu_ids`: teacher 멀티 GPU 목록 CSV
@@ -450,7 +541,74 @@ v1.9 proposal 주입 관련:
 
 ### 5.5 공개 Teacher 추론/변환(v1.9 8.2.0a)
 
-1) 공개 teacher 레포/가중치 준비:
+권장 방식은 `run_phaseA_to_teacher_e2e.sh`에서 자동으로 처리하는 것입니다.
+
+멀티 GPU 설계/구현 포인트:
+- 공개 teacher 추론은 `filtered parquet`를 shard로 분할하고, GPU별 독립 프로세스로 병렬 실행 후 JSONL을 병합합니다.
+- 기본값 `--public_infer_multi_gpu -1`에서는 GPU가 2개 이상이면 자동으로 multi-gpu를 사용합니다.
+- 변환(`run_build_teacher_proposals.sh`)은 GPU 연산이 없어서 single-pass 유지가 기본이며, 전체 시간의 병목은 추론 단계에서 해소합니다.
+
+1) 처음부터 끝까지 실행(설치 포함):
+```bash
+DATANAME=10K
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/${DATANAME} \
+  --run_filter 1 \
+  --precompute_mode unified \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --public_infer_multi_gpu 1 \
+  --public_infer_gpu_ids 0,1,2,3 \
+  --public_infer_num_workers 4 \
+  --public_infer_skip_on_oom 1 \
+  --public_infer_fallback_cpu_on_oom 1 \
+  --public_infer_fallback_cpu_max_images 3 \
+  --public_infer_skip_if_fallback_failed 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --run_tag full_v17_public
+```
+
+2) 필터 결과가 이미 있을 때(4.2~9 + 5.5 자동 적용):
+```bash
+DATANAME=10K
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/${DATANAME} \
+  --run_filter 0 \
+  --precompute_mode unified \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --public_infer_multi_gpu 1 \
+  --public_infer_gpu_ids 0,1,2,3 \
+  --public_infer_num_workers 4 \
+  --public_infer_skip_on_oom 1 \
+  --public_infer_fallback_cpu_on_oom 1 \
+  --public_infer_fallback_cpu_max_images 3 \
+  --public_infer_skip_if_fallback_failed 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --skip_existing 0 \
+  --run_tag rerun1_public_e2e
+```
+
+3) Teacher Scorer 재실행 필요 여부:
+- 위 E2E 템플릿처럼 한 번에 실행하면 Candidate와 Teacher가 같은 런에서 갱신되므로 별도 재실행이 필요 없습니다.
+- 이미 이전 candidate/teacher 결과를 만든 뒤에 `teacher_proposals_jsonl`만 추가 주입하면 candidate와 teacher를 다시 실행해야 합니다.
+
+4) 수동 분리 실행(필요 시):
+4-1. 공개 teacher 레포/가중치 준비:
 ```bash
 bash src/scripts/run_setup_public_cropping_teachers.sh \
   --teacher_root_dir third_party/public_cropping_teachers \
@@ -458,43 +616,70 @@ bash src/scripts/run_setup_public_cropping_teachers.sh \
   --download_weights 1
 ```
 
-2) GAIC/CACNet/CGS raw 추론(JSONL):
+4-2. GAIC/CACNet/CGS raw 추론(JSONL):
+- `--prefer_curated_images 1` + `--curated_image_dir ...`를 사용하면 curated 이미지 디렉토리를 우선 사용하고, 누락 이미지만 `tar_dir`에서 fallback 로드합니다.
+- `--curated_image_dir`를 생략하면 래퍼가 기본값으로 `<input_parquet 디렉토리>/images`를 사용합니다.
+- 멀티 GPU를 강제하려면 `--multi_gpu 1 --gpu_ids 0,1,2,3 --num_workers 4`를 추가합니다.
 ```bash
 bash src/scripts/run_infer_public_cropping_teachers.sh \
   data/SSTK/10K_local/filtered_sstk_100.parquet \
   /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
-  data/SSTK/10K_local/teacher_raw_public.jsonl \
+  data/SSTK/10K_local/artifacts/public_teachers/raw/teacher_raw_public_manual.jsonl \
   --teachers gaic cacnet cgs \
-  --max_images 100
-```
-space
-```bash
-bash src/scripts/run_infer_public_cropping_teachers.sh \
-  data/SSTK/10K_local/filtered_sstk_100.parquet \
-  /sstk/20230916/sstk_100 \
-  data/SSTK/10K_local/teacher_raw_public.jsonl \
-  --teachers gaic cacnet cgs
-```
-```bash
-bash src/scripts/run_infer_public_cropping_teachers.sh \
-  data/SSTK/10K/filtered_sstk_100.parquet \
-  /sstk/20230916/sstk_100 \
-  data/SSTK/10K/teacher_raw_public.jsonl \
-  --teachers gaic cacnet cgs
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/10K_local/images \
+  --multi_gpu 1 \
+  --gpu_ids 0,1,2,3 \
+  --num_workers 4 \
+  --gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
 ```
 
-3) raw -> `teacher_proposals_jsonl` 변환:
+4-3. raw -> `teacher_proposals_jsonl` 변환:
 ```bash
 bash src/scripts/run_build_teacher_proposals.sh \
-  data/SSTK/10K_local/teacher_proposals_public.jsonl \
-  data/SSTK/10K_local/teacher_raw_public.jsonl
+  data/SSTK/10K_local/artifacts/public_teachers/proposals/teacher_proposals_public_manual.jsonl \
+  data/SSTK/10K_local/artifacts/public_teachers/raw/teacher_raw_public_manual.jsonl
 ```
 
-4) Candidate 단계 주입:
+4-4. Candidate 단계 주입:
 ```bash
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 0 \
+  --data_dir data/SSTK/10K_local \
   --run_filter 0 \
-  --teacher_proposals_jsonl data/SSTK/10K_local/teacher_proposals_public.jsonl
+  --teacher_proposals_jsonl data/SSTK/10K_local/artifacts/public_teachers/proposals/teacher_proposals_public_manual.jsonl \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 1 \
+  --run_teacher 0 \
+  --skip_existing 0 \
+  --run_tag public_seeded
+```
+
+4-5. Candidate 주입 후 Teacher Scorer 실행:
+```bash
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 0 \
+  --data_dir data/SSTK/10K_local \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 0 \
+  --run_teacher 1 \
+  --skip_existing 0 \
+  --run_tag public_seeded
+```
+
+`use_real_expensive=1` 사용:
+```bash
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 0 \
+  --data_dir data/SSTK/10K_local \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 0 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --skip_existing 0 \
+  --run_tag public_seeded_real
 ```
 
 ---
@@ -506,20 +691,26 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - Filter
   - `data/SSTK/10K_local/filtered_sstk_100.parquet`
 - Precompute
-  - `data/SSTK/10K_local/feats_c2c3c5_v2_strict_raw.jsonl` (unified 중간)
-  - `data/SSTK/10K_local/feats_c2c3c5_v2_strict_enriched.jsonl` (최종)
-  - `data/SSTK/10K_local/feats_c1.jsonl` (split 모드 또는 별도 C1 추출 시)
+  - `data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl` (unified 중간)
+  - `data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl` (최종)
+  - `data/SSTK/10K_local/artifacts/precompute/feats_c1.jsonl` (split 모드 또는 별도 C1 추출 시)
   - `precompute_mode=unified` + `run_c1=1`이면 C1은 위 unified jsonl에 함께 저장됨
 - Candidate
-  - `data/SSTK/10K_local/candidates_ar_v17_local.jsonl`
-  - overview/viz 파일들
+  - `data/SSTK/10K_local/artifacts/candidates/candidates_ar_v17_local.jsonl`
+  - `data/SSTK/10K_local/artifacts/candidates/candidates_ar_v17_local_overview*.{json,csv}`
+  - `data/SSTK/10K_local/artifacts/candidates/visualizations/candidates_ar_v17_local_viz/`
+- Public Teacher (v1.9 8.2.0a)
+  - `data/SSTK/10K_local/artifacts/public_teachers/raw/teacher_raw_public_v17_local.jsonl`
+  - `data/SSTK/10K_local/artifacts/public_teachers/proposals/teacher_proposals_public_v17_local.jsonl`
 - Teacher
-  - `data/SSTK/10K_local/teacher_scores_ar_v17_local.jsonl`
-  - `teacher_scores_overview_v17_local.json`
-  - `teacher_scores_overview_by_ar_v17_local.csv`
-  - `teacher_scores_qa_report_v17_local.json`
-  - `teacher_scores_qa_report_by_ar_v17_local.csv`
-  - `visualizations/teacher_scorer_v17_local/`
+  - `data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_v17_local.jsonl`
+  - `data/SSTK/10K_local/artifacts/teacher/overview/teacher_scores_overview_v17_local.json`
+  - `data/SSTK/10K_local/artifacts/teacher/overview/teacher_scores_overview_by_ar_v17_local.csv`
+  - `data/SSTK/10K_local/artifacts/teacher/qa/teacher_scores_qa_report_v17_local.json`
+  - `data/SSTK/10K_local/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_v17_local.csv`
+  - `data/SSTK/10K_local/artifacts/teacher/visualizations/teacher_scorer_v17_local/`
+- Cache
+  - `data/SSTK/10K_local/cache/actual_image_size_map.json`
 - 로그
   - `data/SSTK/10K_local/logs/e2e_v17_local/*.log`
 
@@ -536,7 +727,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   - precompute는 `--mode single`/작은 배치로 조정
 - 실제 이미지 크기 불일치 이슈
   - Candidate/C3 enrich는 반드시 `--use_actual_image_size 1` 유지
-  - `actual_image_size_map.json` 캐시를 재사용하면 속도 개선
+  - `data/SSTK/<DATANAME>/cache/actual_image_size_map.json` 캐시를 재사용하면 속도 개선
 - C3 품질 이슈
   - `C3_PERSON_VERIFY_STRICT=1` 유지
   - 가능하면 `unified` 모드(C2 person hint 동시 사용) 권장

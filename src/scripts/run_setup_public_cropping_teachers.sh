@@ -7,5 +7,5 @@ if [ -f "$VENV_PATH" ]; then
   source "$VENV_PATH"
 fi
 
-python src/scripts/setup_public_cropping_teachers.py "$@"
+python3 src/scripts/setup_public_cropping_teachers.py "$@"
 

@@ -3,7 +3,7 @@
 # run_phaseA_to_teacher_e2e.sh
 # End-to-end pipeline:
 #   Phase A Filter -> Phase B Perception Precompute(C1,C2,C3,C5, enrich, merge)
-#   -> Candidate Generator -> Teacher Scorer(+QA/+Viz)
+#   -> Candidate Generator -> Teacher Scorer(+QA/+Viz) -> VLM Teacher Labeler(Section 10, optional)
 # ------------------------------------------------------------------------------
 # OCR(C4)는 기본적으로 제외합니다.
 # ==============================================================================
@@ -57,6 +57,28 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teachers gaic,cacnet,cgs \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --run_tag public_seeded
+
+# Section 10 VLM Teacher 라벨 생성(기본: Qwen2.5-VL, fallback heuristic)
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/10K_local \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --run_vlm_teacher 1 \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/10K_local/images \
+  --vlm_backend qwen25_vl \
+  --vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct \
+  --vlm_device auto \
+  --vlm_top_m 12 \
+  --vlm_top_k 5 \
+  --vlm_fallback_backend heuristic \
+  --vlm_multi_gpu 1 \
+  --vlm_gpu_ids 0,1,2,3 \
+  --vlm_num_workers 4 \
+  --run_tag rerun1_public_e2e
 
 Core options
 ------------
@@ -114,6 +136,34 @@ Core options
 --exp_preprocess_workers INT    expensive clip preprocess thread 수(0=auto)
 --exp_pin_memory 0|1            expensive batch H2D pin_memory 사용 여부 (default: 1)
 
+--run_vlm_teacher 0|1           section10 VLM teacher 라벨 생성 실행 여부 (default: 0)
+--vlm_backend NAME              qwen25_vl|heuristic (default: qwen25_vl)
+--vlm_fallback_backend NAME     heuristic|none (default: heuristic)
+--vlm_model_id STR              HF model id (default: Qwen/Qwen2.5-VL-3B-Instruct)
+--vlm_device STR                auto|cuda|cuda:0|cpu (default: auto)
+--vlm_dtype STR                 auto|float16|bfloat16|float32 (default: auto)
+--vlm_max_new_tokens INT        qwen generate max_new_tokens (default: 768)
+--vlm_temperature FLOAT         qwen generate temperature (default: 0.0)
+--vlm_top_m INT                 AR별 VLM 입력 후보 수 (default: 12)
+--vlm_top_k INT                 AR별 VLM 출력 Top-K (default: 5)
+--vlm_target_ar STR             all 또는 CSV(예: 1:1,16:9) (default: all)
+--vlm_max_images INT            0=all, >0=앞 n장 (default: 0)
+--vlm_max_retries INT           VLM 재시도 횟수 (default: 2)
+--vlm_prompt_version STR        prompt 버전 태그 (default: crop_label_candidate_pick_v1)
+--vlm_save_raw_response 0|1     raw 응답 텍스트 저장 (default: 0)
+--vlm_debug_dir PATH            raw 응답 저장 경로 (default: <data_dir>/artifacts/vlm_teacher/debug/vlm_teacher<suffix>)
+--vlm_skip_on_oom 0|1           OOM 시 해당 task fallback/skip 허용 (default: 1)
+--vlm_fallback_cpu_on_oom 0|1   OOM 시 CPU backend 재시도 (default: 1)
+--vlm_fallback_cpu_max_images N OOM 후 CPU fallback 이미지 수 상한 (default: 3)
+--vlm_skip_if_fallback_failed 0|1 fallback 실패 task skip 여부 (default: 1)
+--vlm_strict_backend_init 0|1   primary backend init 실패 시 즉시 종료 (default: 1)
+--vlm_multi_gpu -1|0|1          -1=auto(qwen+cuda+multi-gpu면 on), default -1
+--vlm_gpu_ids CSV               VLM multi-gpu에서 사용할 GPU 목록
+--vlm_num_workers INT           VLM shard worker 수
+--vlm_output_jsonl PATH         crop_label_v1 출력 경로
+--vlm_output_meta_jsonl PATH    meta_norm_v1 출력 경로
+--vlm_summary_json PATH         summary 출력 경로
+
 Advanced stage toggles
 ----------------------
 --run_c1 0|1|-1                 -1=auto(use_real_expensive=1이면 1) (default: -1)
@@ -130,7 +180,7 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$PROJECT_ROOT"
-SCRIPT_VERSION="2026-02-27.3"
+SCRIPT_VERSION="2026-02-27.5"
 
 # ------------------------------------------------------------------------------
 # Defaults
@@ -239,6 +289,35 @@ TEACHER_NUM_WORKERS=""
 TEACHER_AUTO_REPAIR=1
 TEACHER_AUTO_REPAIR_STRICT=1
 
+# VLM Teacher Labeler (Section 10)
+RUN_VLM_TEACHER=0
+VLM_BACKEND="qwen25_vl"
+VLM_FALLBACK_BACKEND="heuristic"
+VLM_MODEL_ID="Qwen/Qwen2.5-VL-3B-Instruct"
+VLM_DEVICE="auto"
+VLM_DTYPE="auto"
+VLM_MAX_NEW_TOKENS=768
+VLM_TEMPERATURE=0.0
+VLM_TOP_M=12
+VLM_TOP_K=5
+VLM_TARGET_AR="all"
+VLM_MAX_IMAGES=-1
+VLM_MAX_RETRIES=2
+VLM_PROMPT_VERSION="crop_label_candidate_pick_v1"
+VLM_SAVE_RAW_RESPONSE=0
+VLM_DEBUG_DIR=""
+VLM_SKIP_ON_OOM=1
+VLM_FALLBACK_CPU_ON_OOM=1
+VLM_FALLBACK_CPU_MAX_IMAGES=3
+VLM_SKIP_IF_FALLBACK_FAILED=1
+VLM_STRICT_BACKEND_INIT=1
+VLM_MULTI_GPU=-1
+VLM_GPU_IDS=""
+VLM_NUM_WORKERS=""
+VLM_OUTPUT_JSONL=""
+VLM_OUTPUT_META_JSONL=""
+VLM_SUMMARY_JSON=""
+
 # ------------------------------------------------------------------------------
 # Option parse
 # ------------------------------------------------------------------------------
@@ -342,6 +421,34 @@ while [ "$#" -gt 0 ]; do
     --teacher_auto_repair) TEACHER_AUTO_REPAIR="$2"; shift 2 ;;
     --teacher_auto_repair_strict) TEACHER_AUTO_REPAIR_STRICT="$2"; shift 2 ;;
 
+    --run_vlm_teacher) RUN_VLM_TEACHER="$2"; shift 2 ;;
+    --vlm_backend) VLM_BACKEND="$2"; shift 2 ;;
+    --vlm_fallback_backend) VLM_FALLBACK_BACKEND="$2"; shift 2 ;;
+    --vlm_model_id) VLM_MODEL_ID="$2"; shift 2 ;;
+    --vlm_device) VLM_DEVICE="$2"; shift 2 ;;
+    --vlm_dtype) VLM_DTYPE="$2"; shift 2 ;;
+    --vlm_max_new_tokens) VLM_MAX_NEW_TOKENS="$2"; shift 2 ;;
+    --vlm_temperature) VLM_TEMPERATURE="$2"; shift 2 ;;
+    --vlm_top_m) VLM_TOP_M="$2"; shift 2 ;;
+    --vlm_top_k) VLM_TOP_K="$2"; shift 2 ;;
+    --vlm_target_ar) VLM_TARGET_AR="$2"; shift 2 ;;
+    --vlm_max_images) VLM_MAX_IMAGES="$2"; shift 2 ;;
+    --vlm_max_retries) VLM_MAX_RETRIES="$2"; shift 2 ;;
+    --vlm_prompt_version) VLM_PROMPT_VERSION="$2"; shift 2 ;;
+    --vlm_save_raw_response) VLM_SAVE_RAW_RESPONSE="$2"; shift 2 ;;
+    --vlm_debug_dir) VLM_DEBUG_DIR="$2"; shift 2 ;;
+    --vlm_skip_on_oom) VLM_SKIP_ON_OOM="$2"; shift 2 ;;
+    --vlm_fallback_cpu_on_oom) VLM_FALLBACK_CPU_ON_OOM="$2"; shift 2 ;;
+    --vlm_fallback_cpu_max_images) VLM_FALLBACK_CPU_MAX_IMAGES="$2"; shift 2 ;;
+    --vlm_skip_if_fallback_failed) VLM_SKIP_IF_FALLBACK_FAILED="$2"; shift 2 ;;
+    --vlm_strict_backend_init) VLM_STRICT_BACKEND_INIT="$2"; shift 2 ;;
+    --vlm_multi_gpu) VLM_MULTI_GPU="$2"; shift 2 ;;
+    --vlm_gpu_ids) VLM_GPU_IDS="$2"; shift 2 ;;
+    --vlm_num_workers) VLM_NUM_WORKERS="$2"; shift 2 ;;
+    --vlm_output_jsonl) VLM_OUTPUT_JSONL="$2"; shift 2 ;;
+    --vlm_output_meta_jsonl) VLM_OUTPUT_META_JSONL="$2"; shift 2 ;;
+    --vlm_summary_json) VLM_SUMMARY_JSON="$2"; shift 2 ;;
+
     -h|--help)
       sed -n '1,220p' "$0"
       exit 0
@@ -418,6 +525,10 @@ else
   SUFFIX=""
 fi
 
+if [ "$VLM_MAX_IMAGES" -lt 0 ]; then
+  VLM_MAX_IMAGES="$MAX_IMAGES"
+fi
+
 FILTERED_PARQUET="${DATA_DIR}/filtered_${BUCKET}.parquet"
 ARTIFACTS_DIR="${DATA_DIR}/artifacts"
 PRECOMPUTE_DIR="${ARTIFACTS_DIR}/precompute"
@@ -431,6 +542,11 @@ TEACHER_SCORES_DIR="${TEACHER_DIR}/scores"
 TEACHER_OVERVIEW_DIR="${TEACHER_DIR}/overview"
 TEACHER_QA_DIR="${TEACHER_DIR}/qa"
 TEACHER_VIZ_BASE_DIR="${TEACHER_DIR}/visualizations"
+VLM_DIR="${ARTIFACTS_DIR}/vlm_teacher"
+VLM_LABELS_DIR="${VLM_DIR}/labels"
+VLM_META_DIR="${VLM_DIR}/meta"
+VLM_SUMMARY_DIR="${VLM_DIR}/summary"
+VLM_DEBUG_BASE_DIR="${VLM_DIR}/debug"
 CACHE_DIR="${DATA_DIR}/cache"
 
 FEATS_C1="${PRECOMPUTE_DIR}/feats_c1.jsonl"
@@ -448,6 +564,18 @@ TEACHER_OVERVIEW_CSV="${TEACHER_OVERVIEW_DIR}/teacher_scores_overview_by_ar${SUF
 TEACHER_QA_JSON="${TEACHER_QA_DIR}/teacher_scores_qa_report${SUFFIX}.json"
 TEACHER_QA_CSV="${TEACHER_QA_DIR}/teacher_scores_qa_report_by_ar${SUFFIX}.csv"
 TEACHER_VIZ_DIR="${TEACHER_VIZ_BASE_DIR}/teacher_scorer${SUFFIX}"
+if [ -z "$VLM_OUTPUT_JSONL" ]; then
+  VLM_OUTPUT_JSONL="${VLM_LABELS_DIR}/crop_label_v1${SUFFIX}.jsonl"
+fi
+if [ -z "$VLM_OUTPUT_META_JSONL" ]; then
+  VLM_OUTPUT_META_JSONL="${VLM_META_DIR}/meta_norm_v1${SUFFIX}.jsonl"
+fi
+if [ -z "$VLM_SUMMARY_JSON" ]; then
+  VLM_SUMMARY_JSON="${VLM_SUMMARY_DIR}/vlm_teacher_summary${SUFFIX}.json"
+fi
+if [ -z "$VLM_DEBUG_DIR" ]; then
+  VLM_DEBUG_DIR="${VLM_DEBUG_BASE_DIR}/vlm_teacher${SUFFIX}"
+fi
 
 if [ -z "$PUBLIC_TEACHER_RAW_JSONL" ]; then
   PUBLIC_TEACHER_RAW_JSONL="${PUBLIC_RAW_DIR}/teacher_raw_public${SUFFIX}.jsonl"
@@ -477,6 +605,10 @@ mkdir -p \
   "$TEACHER_OVERVIEW_DIR" \
   "$TEACHER_QA_DIR" \
   "$TEACHER_VIZ_BASE_DIR" \
+  "$VLM_LABELS_DIR" \
+  "$VLM_META_DIR" \
+  "$VLM_SUMMARY_DIR" \
+  "$VLM_DEBUG_BASE_DIR" \
   "$CACHE_DIR"
 
 EFFECTIVE_IMAGE_DIR=""
@@ -662,6 +794,11 @@ echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
 echo " teacher_auto_repair : $TEACHER_AUTO_REPAIR (strict=$TEACHER_AUTO_REPAIR_STRICT)"
 echo " teacher_accel       : exp_batch=$EXP_BATCH_SIZE exp_eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
+echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
+echo " vlm strict init     : $VLM_STRICT_BACKEND_INIT"
+echo " vlm multi_gpu       : $VLM_MULTI_GPU (gpu_ids=${VLM_GPU_IDS:-auto}, workers=${VLM_NUM_WORKERS:-auto})"
+echo " vlm out/meta/sum    : $VLM_OUTPUT_JSONL | $VLM_OUTPUT_META_JSONL | $VLM_SUMMARY_JSON"
 echo "========================================================"
 
 # ------------------------------------------------------------------------------
@@ -740,7 +877,7 @@ if [ "$PRECOMPUTE_MODE" = "unified" ]; then
     fi
     if ! should_skip_file "$MERGED_FEATS"; then
       run_with_log "03_enrich_c3_unified" \
-        python src/scripts/enrich_c3_pose_jsonl.py \
+        python3 src/scripts/enrich_c3_pose_jsonl.py \
           --input_c3_jsonl "$FEATS_C2C3C5_RAW" \
           --input_parquet "$FILTERED_PARQUET" \
           --use_actual_image_size "$USE_ACTUAL_IMAGE_SIZE" \
@@ -815,7 +952,7 @@ else
     fi
     if ! should_skip_file "$FEATS_C3_ENRICHED"; then
       run_with_log "05_enrich_c3" \
-        python src/scripts/enrich_c3_pose_jsonl.py \
+        python3 src/scripts/enrich_c3_pose_jsonl.py \
           --input_c3_jsonl "$FEATS_C3" \
           --input_parquet "$FILTERED_PARQUET" \
           --use_actual_image_size "$USE_ACTUAL_IMAGE_SIZE" \
@@ -867,7 +1004,7 @@ else
     fi
     if ! should_skip_file "$MERGED_FEATS"; then
       run_with_log "07_merge_features" \
-        python src/scripts/merge_feature_jsonl.py \
+        python3 src/scripts/merge_feature_jsonl.py \
           --input_parquet "$FILTERED_PARQUET" \
           --inputs "$FEATS_C2" "$FEATS_C3_ENRICHED" "$FEATS_C5" \
           --output_jsonl "$MERGED_FEATS"
@@ -1155,7 +1292,7 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
 
   if [ "$TEACHER_AUTO_REPAIR" -eq 1 ]; then
     run_with_log "10b_teacher_repair_outputs" \
-      python src/scripts/repair_teacher_outputs.py \
+      python3 src/scripts/repair_teacher_outputs.py \
         --teacher_scores_jsonl "$TEACHER_JSONL" \
         --overview_json "$TEACHER_OVERVIEW_JSON" \
         --overview_csv "$TEACHER_OVERVIEW_CSV" \
@@ -1166,6 +1303,50 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --prefer_real_expensive "$USE_REAL_EXPENSIVE" \
         --strict_expected_match "$TEACHER_AUTO_REPAIR_STRICT" \
         --verbose 1
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 6) VLM/MLLM Teacher Labeler (Section 10, optional)
+# ------------------------------------------------------------------------------
+if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
+  if [ ! -f "$TEACHER_JSONL" ]; then
+    echo "[error] vlm teacher requires teacher scores jsonl: $TEACHER_JSONL"
+    exit 1
+  fi
+  if ! should_skip_file "$VLM_OUTPUT_JSONL"; then
+    run_with_log "11_vlm_teacher_labeler" \
+      bash src/scripts/run_vlm_teacher_labeler.sh \
+        --server_mode "$SERVER_MODE" \
+        --venv_path "$VENV_PATH" \
+        --teacher_scores_jsonl "$TEACHER_JSONL" \
+        --output_jsonl "$VLM_OUTPUT_JSONL" \
+        --output_meta_jsonl "$VLM_OUTPUT_META_JSONL" \
+        --summary_json "$VLM_SUMMARY_JSON" \
+        --backend "$VLM_BACKEND" \
+        --fallback_backend "$VLM_FALLBACK_BACKEND" \
+        --model_id "$VLM_MODEL_ID" \
+        --device "$VLM_DEVICE" \
+        --dtype "$VLM_DTYPE" \
+        --max_new_tokens "$VLM_MAX_NEW_TOKENS" \
+        --temperature "$VLM_TEMPERATURE" \
+        --target_ar "$VLM_TARGET_AR" \
+        --top_m "$VLM_TOP_M" \
+        --top_k "$VLM_TOP_K" \
+        --max_images "$VLM_MAX_IMAGES" \
+        --max_retries "$VLM_MAX_RETRIES" \
+        --prompt_version "$VLM_PROMPT_VERSION" \
+        --save_raw_response "$VLM_SAVE_RAW_RESPONSE" \
+        --debug_dir "$VLM_DEBUG_DIR" \
+        --skip_on_oom "$VLM_SKIP_ON_OOM" \
+        --fallback_cpu_on_oom "$VLM_FALLBACK_CPU_ON_OOM" \
+        --fallback_cpu_max_images "$VLM_FALLBACK_CPU_MAX_IMAGES" \
+        --skip_if_fallback_failed "$VLM_SKIP_IF_FALLBACK_FAILED" \
+        --strict_backend_init "$VLM_STRICT_BACKEND_INIT" \
+        --multi_gpu "$VLM_MULTI_GPU" \
+        --gpu_ids "$VLM_GPU_IDS" \
+        --num_workers "$VLM_NUM_WORKERS" \
+        "${image_dir_args[@]}"
   fi
 fi
 
@@ -1191,4 +1372,9 @@ echo " teacher jsonl    : $TEACHER_JSONL"
 echo " teacher overview : $TEACHER_OVERVIEW_JSON"
 echo " teacher QA       : $TEACHER_QA_JSON"
 echo " teacher viz dir  : $TEACHER_VIZ_DIR"
+if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
+  echo " vlm labels jsonl : $VLM_OUTPUT_JSONL"
+  echo " vlm meta jsonl   : $VLM_OUTPUT_META_JSONL"
+  echo " vlm summary json : $VLM_SUMMARY_JSON"
+fi
 echo " logs             : $LOG_DIR"

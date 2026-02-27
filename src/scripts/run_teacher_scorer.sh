@@ -293,7 +293,7 @@ run_teacher_one() {
   local num_shards="$5"
   local progress="$6"
 
-  python src/score_teacher.py \
+  python3 src/score_teacher.py \
     --candidates_jsonl "$CANDIDATES_JSONL" \
     --features_jsonl "$FEATURES_JSONL" \
     --c1_jsonl "$C1_JSONL" \
@@ -408,7 +408,7 @@ if [ "$MULTI_GPU" -ne 0 ]; then
     done
     echo "[multi] merged teacher jsonl -> $OUTPUT_JSONL"
 
-    python src/scripts/rebuild_teacher_overview.py \
+    python3 src/scripts/rebuild_teacher_overview.py \
       --teacher_scores_jsonl "$OUTPUT_JSONL" \
       --output_json "$OUTPUT_OVERVIEW_JSON" \
       --output_by_ar_csv "$OUTPUT_OVERVIEW_CSV"
@@ -420,7 +420,7 @@ fi
 
 if [ "$RUN_QA" -eq 1 ]; then
   echo "[2/3] Building QA report..."
-  python src/scripts/qa_teacher_report.py \
+  python3 src/scripts/qa_teacher_report.py \
     --teacher_scores_jsonl "$OUTPUT_JSONL" \
     --output_json "$QA_OUT_JSON" \
     --output_by_ar_csv "$QA_OUT_CSV"
@@ -440,7 +440,7 @@ if [ "$RUN_VIZ" -eq 1 ]; then
   if [ -n "$VIZ_IMAGE_IDS_FILE" ]; then
     viz_args+=(--image_ids_file "$VIZ_IMAGE_IDS_FILE")
   fi
-  python src/visualize_teacher_scores.py \
+  python3 src/visualize_teacher_scores.py \
     --teacher_scores_jsonl "$OUTPUT_JSONL" \
     --parquet "$PARQUET" \
     --tar_dir "$TAR_DIR" \

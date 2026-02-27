@@ -47,7 +47,9 @@ PADDLE_CUDA_INDEX="https://www.paddlepaddle.org.cn/packages/stable/cu126/"  # CU
 
 # Constraints (global)
 NUMPY_CONSTRAINT="numpy<2.0.0"
-TRANSFORMERS_CONSTRAINT="transformers<4.45.0"
+# Qwen2.5-VL(model_type=qwen2_5_vl) 지원을 위해 transformers>=4.49 필요.
+# 너무 최신으로 올려 생길 수 있는 변동성은 줄이기 위해 상한을 함께 둔다.
+TRANSFORMERS_CONSTRAINT="transformers>=4.49.0,<4.53.0"
 
 # -----------------------------
 PYTHON="${PYTHON:-python}"
@@ -148,6 +150,14 @@ echo "2) Installing base ML libraries..."
 _VER() { $PYTHON -m pip show "$1" 2>/dev/null | awk '/^Version:/{print $2}'; }
 
 pip_install -U "${NUMPY_CONSTRAINT}"
+
+# Qwen2.5-VL 런타임 호환성 보장:
+# - constraints(-c)만으로는 기존 설치된 transformers가 유지될 수 있으므로
+#   명시적으로 업그레이드한다.
+pip_install -U \
+  "${TRANSFORMERS_CONSTRAINT}" \
+  "tokenizers>=0.21.0,<0.22.0" \
+  "huggingface-hub>=0.26.0"
 
 # ray
 if [[ -z "$(_VER ray)" ]]; then

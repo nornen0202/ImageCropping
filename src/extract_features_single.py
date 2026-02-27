@@ -10,7 +10,7 @@ extract_features_single.py
 
 Usage 예시:
   # C1만 추출 (high_efficiency)
-  python src/extract_features_single.py \\
+  python3 src/extract_features_single.py \\
       --input_parquet data/SSTK/10K_local/filtered_sstk_100.parquet \\
       --bucket sstk_100 \\
       --tar_dir /path/to/tars \\
@@ -18,10 +18,10 @@ Usage 예시:
       --component c1
 
   # C2+C3만 추출 (quality_first)
-  python src/extract_features_single.py ... --component c2 c3 --priority quality_first
+  python3 src/extract_features_single.py ... --component c2 c3 --priority quality_first
 
   # 전체 (all)
-  python src/extract_features_single.py ... --component all
+  python3 src/extract_features_single.py ... --component all
 """
 from __future__ import annotations
 

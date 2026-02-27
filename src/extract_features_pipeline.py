@@ -6,7 +6,7 @@ GPU가 2개 이상이거나 대용량 데이터를 처리할 때 권장.
 
 Usage 예시:
   # 전체 컴포넌트, 모든 GPU 사용
-  python src/extract_features_pipeline.py \\
+  python3 src/extract_features_pipeline.py \\
       --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \\
       --bucket sstk_100 \\
       --tar_dir /sstk/20230916 \\
@@ -14,7 +14,7 @@ Usage 예시:
       --component all
 
   # C2+C3만, 4-GPU, quality_first
-  python src/extract_features_pipeline.py ... \\
+  python3 src/extract_features_pipeline.py ... \\
       --component c2 c3 --num_workers 4 --priority quality_first
 """
 from __future__ import annotations

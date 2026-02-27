@@ -232,7 +232,7 @@ bash src/scripts/run_visualize_components.sh \
   --num_samples 12 --draw_combined 1 --server_mode 0
 
 # teacher viz (12 샘플 x 5 AR)
-python src/visualize_teacher_scores.py \
+python3 src/visualize_teacher_scores.py \
   --teacher_scores_jsonl data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e.jsonl \
   --parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
   --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \

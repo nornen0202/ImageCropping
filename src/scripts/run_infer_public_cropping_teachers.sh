@@ -87,7 +87,7 @@ run_cpu_fallback() {
   local -a fallback_args=("${fallback_args_lines[@]}")
 
   set +e
-  python src/scripts/infer_public_cropping_teachers.py \
+  python3 src/scripts/infer_public_cropping_teachers.py \
     --input_parquet "$INPUT_PARQUET" \
     --tar_dir "$TAR_DIR" \
     --output_jsonl "$OUTPUT_JSONL" \
@@ -311,7 +311,7 @@ if [ "$MULTI_GPU" -eq 1 ]; then
     LOG_PATHS+=("$shard_log")
     (
       CUDA_VISIBLE_DEVICES="$gpu_id" \
-      python src/scripts/infer_public_cropping_teachers.py \
+      python3 src/scripts/infer_public_cropping_teachers.py \
         --input_parquet "$INPUT_PARQUET" \
         --tar_dir "$TAR_DIR" \
         --output_jsonl "$shard_out" \
@@ -361,7 +361,7 @@ if [ "$MULTI_GPU" -eq 1 ]; then
 fi
 
 run_infer_cmd=(
-  python src/scripts/infer_public_cropping_teachers.py \
+  python3 src/scripts/infer_public_cropping_teachers.py \
     --input_parquet "$INPUT_PARQUET" \
     --tar_dir "$TAR_DIR" \
     --output_jsonl "$OUTPUT_JSONL" \

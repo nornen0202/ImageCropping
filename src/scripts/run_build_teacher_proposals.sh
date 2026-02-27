@@ -15,7 +15,7 @@ if [ -f "$VENV_PATH" ]; then
   source "$VENV_PATH"
 fi
 
-python src/scripts/build_teacher_proposals_jsonl.py \
+python3 src/scripts/build_teacher_proposals_jsonl.py \
   --output_jsonl "$OUT_JSONL" \
   --input_jsonl "$@"
 

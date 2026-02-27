@@ -1,10 +1,10 @@
-# SSTK Cropping Data Factory v1.7 실행 가이드 (Phase A ~ 9 Teacher Scorer)
+# SSTK Cropping Data Factory v1.9 실행 가이드 (Phase A ~ 10 VLM Teacher)
 
-이 문서는 `SSTK_Cropping_DataFactory_QwenLabeler_Reorganized_KO_v1_7.md` 기준으로, 현재 코드베이스에서 **Phase A(Filter) → Phase B(Perception/Candidate) → 9) Teacher Scorer**까지를 처음부터 재현하는 실전 운영 가이드입니다.
+이 문서는 `SSTK_Cropping_DataFactory_QwenLabeler_Reorganized_KO_v1_9.md` 기준으로, 현재 코드베이스에서 **Phase A(Filter) → Phase B(Perception/Candidate) → 9) Teacher Scorer → 10) VLM/MLLM Teacher Labeler**까지를 처음부터 재현하는 실전 운영 가이드입니다.
 
 범위:
-- 포함: `3) Phase A`, `5) Phase B`, `9) Teacher Scorer`
-- 제외: `C4 OCR`, `v1.7 PICD`, `10) Qwen2.5-VL Teacher`
+- 포함: `3) Phase A`, `5) Phase B`, `9) Teacher Scorer`, `10) VLM/MLLM Teacher`
+- 제외: `C4 OCR`, `v1.7 PICD`, `11) UNIC View Adjustment`
 
 ---
 
@@ -14,7 +14,7 @@
 
 - 신규 end-to-end 오케스트레이터 추가
   - `src/scripts/run_phaseA_to_teacher_e2e.sh`
-  - Filter → Precompute → Candidate → Teacher(+QA/+Viz)까지 1개 커맨드로 실행
+  - Filter → Precompute → Candidate → Teacher(+QA/+Viz) → VLM Teacher(옵션)까지 1개 커맨드로 실행
 - Precompute 통합 모드(`--precompute_mode unified`) 도입
   - C1/C2/C3(+C5)를 1-pass로 추출 가능 (`run_c1=1`일 때 C1 포함)
   - `enrich_c3_pose_jsonl.py`로 face/gaze proxy 보강 후 최종 병합 피처 직접 생성
@@ -257,7 +257,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teacher_device auto \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --public_infer_multi_gpu 1 \
-  --public_infer_gpu_ids 0,1,2,3 \
+  --public_infer_gpu_ids 0,1,2,3,4,5,6 \
   --public_infer_num_workers 4 \
   --public_infer_skip_on_oom 1 \
   --public_infer_fallback_cpu_on_oom 1 \
@@ -274,6 +274,13 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_qa 1 \
   --run_viz 1 \
   --num_viz 120 \
+  --run_vlm_teacher 1 \
+  --vlm_backend qwen25_vl \
+  --vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct \
+  --vlm_device auto \
+  --vlm_top_m 12 \
+  --vlm_top_k 5 \
+  --vlm_fallback_backend heuristic \
   --run_tag full_260226
 ```
 
@@ -337,6 +344,69 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --skip_existing 0 \
   --run_tag precompute_only
 ```
+
+### 3.8 Stage 10(VLM Teacher)만 단독 실행
+
+Teacher Scorer 결과가 이미 있을 때(재추론 없이 10단계만 실행):
+```bash
+DATANAME=10K_local
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/${DATANAME} \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --run_vlm_teacher 1 \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --vlm_backend qwen25_vl \
+  --vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct \
+  --vlm_device auto \
+  --vlm_top_m 12 \
+  --vlm_top_k 5 \
+  --vlm_fallback_backend heuristic \
+  --vlm_multi_gpu 1 \
+  --vlm_gpu_ids 0,1,2,3,4,5,6,7 \
+  --vlm_num_workers 8 \
+  --vlm_save_raw_response 1 \
+  --vlm_strict_backend_init 1 \
+  --skip_existing 0 \
+  --run_tag rerun1_public_e2e \
+   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_260227_r0.log
+```
+```bash
+DATANAME=10K
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/${DATANAME} \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --run_vlm_teacher 1 \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --vlm_backend qwen25_vl \
+  --vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct \
+  --vlm_device auto \
+  --vlm_top_m 12 \
+  --vlm_top_k 5 \
+  --vlm_fallback_backend heuristic \
+  --vlm_multi_gpu 1 \
+  --vlm_gpu_ids 0,1,2,3,4,5,6 \
+  --vlm_num_workers 7 \
+  --vlm_save_raw_response 1 \
+  --vlm_strict_backend_init 1 \
+  --skip_existing 0 \
+  --run_tag e2e_260227_r0 \
+   | tee src/scripts/logs/run_phaseA_to_teacher_10K_stage10_e2e_260227_r0.log
+```
+
+
+OOM 대응 권장:
+- GPU OOM 시 CPU fallback 소량 검증: `--vlm_fallback_cpu_on_oom 1 --vlm_fallback_cpu_max_images 3`
+- CPU fallback도 실패하면 skip 지속: `--vlm_skip_if_fallback_failed 1`
 
 ---
 
@@ -459,6 +529,31 @@ C3 enrich:
 
 ---
 
+## 4.5 10) VLM/MLLM Teacher Labeler (Qwen 기본, 플러그인형)
+
+엔트리:
+- `src/vlm_teacher_labeler.py`
+- `src/scripts/run_vlm_teacher_labeler.sh`
+
+로직 구성:
+- 입력: `teacher_scores_ar*.jsonl`의 AR별 `cheap_top_m/selected_topk/hard_negatives`
+- Stage-1 메타 정규화: `meta_norm_v1` 생성(룰 기반)
+- Stage-2 라벨 생성:
+  - backend=`qwen25_vl`일 때 이미지+수치 피처를 기반으로 JSON 생성 시도
+  - strict post-validation(candidate_id/bbox 정합성) + retry
+  - 실패 시 fallback(`heuristic`)으로 numeric top-k 기반 라벨 보정
+- OOM 정책:
+  - GPU OOM 시 CPU backend 소량 fallback(기본 3 이미지)
+  - fallback 실패 task는 skip 또는 fallback backend로 대체
+
+산출:
+- `artifacts/vlm_teacher/labels/crop_label_v1*.jsonl`
+- `artifacts/vlm_teacher/meta/meta_norm_v1*.jsonl`
+- `artifacts/vlm_teacher/summary/vlm_teacher_summary*.json`
+- (옵션) `artifacts/vlm_teacher/debug/vlm_teacher*/raw_responses/*`
+
+---
+
 ## 5. 실행 스크립트 옵션 가이드
 
 ### 5.1 `run_phaseA_to_teacher_e2e.sh` 핵심 옵션
@@ -511,6 +606,16 @@ C3 enrich:
 - `--max_images`: candidate/teacher 단계 처리 수 제한
 - `--skip_existing 0|1`: 산출물 존재 시 skip
 - `--run_tag`: 결과 파일 suffix
+- `--run_vlm_teacher 0|1`: Section 10 실행 여부
+- `--vlm_backend`: `qwen25_vl|heuristic`
+- `--vlm_fallback_backend`: `heuristic|none`
+- `--vlm_model_id`: HF 모델 ID (기본: `Qwen/Qwen2.5-VL-3B-Instruct`)
+- `--vlm_device`, `--vlm_dtype`, `--vlm_max_new_tokens`, `--vlm_temperature`
+- `--vlm_top_m`, `--vlm_top_k`, `--vlm_target_ar`, `--vlm_max_images`, `--vlm_max_retries`
+- `--vlm_skip_on_oom`, `--vlm_fallback_cpu_on_oom`, `--vlm_fallback_cpu_max_images`, `--vlm_skip_if_fallback_failed`
+- `--vlm_strict_backend_init 0|1`: qwen backend init 실패 시 즉시 종료(기본 1)
+- `--vlm_multi_gpu -1|0|1`, `--vlm_gpu_ids`, `--vlm_num_workers`
+- `--vlm_output_jsonl`, `--vlm_output_meta_jsonl`, `--vlm_summary_json`, `--vlm_debug_dir`
 
 ### 5.2 `run_extract_component.sh` 핵심 옵션
 
@@ -617,6 +722,52 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --skip_existing 0 \
   --run_tag rerun1_public_e2e
 ```
+
+### 5.6 `run_vlm_teacher_labeler.sh` 핵심 옵션
+
+- 입력/출력:
+  - `--teacher_scores_jsonl`
+  - `--output_jsonl`
+  - `--output_meta_jsonl`
+  - `--summary_json`
+- backend:
+  - `--backend qwen25_vl|heuristic`
+  - `--fallback_backend heuristic|none`
+  - `--model_id`, `--device`, `--dtype`
+- 실행 범위:
+  - `--image_dir`(qwen backend 시 권장)
+  - `--target_ar all|CSV`
+  - `--top_m`, `--top_k`
+  - `--max_images`, `--max_retries`
+- 안정성:
+  - `--skip_on_oom`
+  - `--fallback_cpu_on_oom`
+  - `--fallback_cpu_max_images`
+  - `--skip_if_fallback_failed`
+  - `--strict_backend_init` (기본 1)
+- 멀티 GPU 샤딩:
+  - `--multi_gpu -1|0|1` (`-1`이면 qwen+cuda+multi-gpu 환경에서 auto on)
+  - `--gpu_ids 0,1,2,3`
+  - `--num_workers 4`
+- 디버그:
+  - `--save_raw_response 1`
+  - `--debug_dir <path>`
+
+Qwen2.5-VL 필수 런타임:
+- `transformers>=4.49.0` (권장: `<4.53.0`)
+- 구버전(`transformers<4.49`)에서는 `model_type=qwen2_5_vl` 미인식으로 로드 실패
+
+업그레이드 예시:
+```bash
+python -m pip install -U \
+  "transformers>=4.49.0,<4.53.0" \
+  "tokenizers>=0.21.0,<0.22.0" \
+  "huggingface-hub>=0.26.0"
+```
+
+`The following generation flags are not valid and may be ignored: ['temperature']` 경고:
+- greedy decode(`temperature=0`)에서 `temperature`를 함께 전달할 때 나타나는 HF 경고입니다.
+- 현재 코드에서는 `temperature>0`일 때만 전달하도록 수정되어 동일 경고가 발생하지 않습니다.
 
 3) Teacher Scorer 재실행 필요 여부:
 - 위 E2E 템플릿처럼 한 번에 실행하면 Candidate와 Teacher가 같은 런에서 갱신되므로 별도 재실행이 필요 없습니다.
@@ -768,8 +919,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 ## 9. 문서/코드 매핑
 
 설계 문서:
-- `ImplementPlan_Docs/SSTK_Cropping_DataFactory_QwenLabeler_Reorganized_KO_v1_7.md`
-- `ImplementPlan_Docs/SSTK_Cropping_DataFactory_QwenLabeler_Reorganized_EN_v1_7.md`
+- `ImplementPlan_Docs/SSTK_Cropping_DataFactory_QwenLabeler_Reorganized_KO_v1_9.md`
+- `ImplementPlan_Docs/SSTK_Cropping_DataFactory_QwenLabeler_Reorganized_EN_v1_9.md`
 
 구현 코드:
 - Filter: `src/filter_sstk_dataset.py`, `src/scripts/run_filter.sh`
@@ -777,4 +928,5 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - C3 enrich: `src/scripts/enrich_c3_pose_jsonl.py`
 - Candidate: `src/generate_candidates.py`, `src/scripts/run_generate_candidates.sh`
 - Teacher: `src/score_teacher.py`, `src/scripts/run_teacher_scorer.sh`, `src/scripts/qa_teacher_report.py`, `src/visualize_teacher_scores.py`
+- VLM Teacher: `src/vlm_teacher_labeler.py`, `src/scripts/run_vlm_teacher_labeler.sh`
 - End-to-end: `src/scripts/run_phaseA_to_teacher_e2e.sh`

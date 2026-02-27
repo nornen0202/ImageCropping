@@ -109,7 +109,7 @@ C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
    --component c2 c3 c5 --priority quality_first --server_mode 1
 
 # 1) C3 enrich (face/gaze proxy 보강) -> 최종 병합 피처
-python src/scripts/enrich_c3_pose_jsonl.py \
+python3 src/scripts/enrich_c3_pose_jsonl.py \
    --input_c3_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_raw.jsonl \
    --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
    --use_actual_image_size 1 \
@@ -130,7 +130,7 @@ C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
    --component c3 --priority quality_first --server_mode 1
 
 # 3) C3 enrich (face/gaze proxy 보강)
-python src/scripts/enrich_c3_pose_jsonl.py \
+python3 src/scripts/enrich_c3_pose_jsonl.py \
    --input_c3_jsonl data/SSTK/10K/feats_c3_v2_strict.jsonl \
    --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
    --use_actual_image_size 1 \
@@ -144,7 +144,7 @@ bash src/scripts/run_extract_component.sh \
    --component c5 --priority high_efficiency --server_mode 1
 
 # 5) 병합 피처 생성 (최종)
-python src/scripts/merge_feature_jsonl.py \
+python3 src/scripts/merge_feature_jsonl.py \
    --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
    --inputs data/SSTK/10K/feats_c2.jsonl \
             data/SSTK/10K/feats_c3_v2_strict_enriched.jsonl \
@@ -169,7 +169,7 @@ C3_PERSON_VERIFY_STRICT=1 bash src/scripts/run_extract_component.sh \
    2>&1  | tee src/scripts/logs/run_extract_component_10K_c2c3c5_unified.log
 
 # (B) C3 enrich(face/gaze proxy 포함) -> 최종 병합 피처
-python src/scripts/enrich_c3_pose_jsonl.py \
+python3 src/scripts/enrich_c3_pose_jsonl.py \
   --input_c3_jsonl data/SSTK/10K/feats_c2c3c5_v2_strict_raw.jsonl \
   --input_parquet data/SSTK/10K/filtered_sstk_100.parquet \
   --use_actual_image_size 1 \

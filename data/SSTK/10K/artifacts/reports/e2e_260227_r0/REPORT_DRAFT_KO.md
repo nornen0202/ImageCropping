@@ -175,7 +175,7 @@ Top-K 분포 시각화(전체 task 기준):
 
 ```bash
 # precompute viz (12 super_cat 샘플)
-python src/visualize_components.py \
+python3 src/visualize_components.py \
   --parquet data/SSTK/10K/filtered_sstk_100.parquet \
   --merged_jsonl data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl \
   --tar_dir /sstk/20230916/sstk_100 \
@@ -185,7 +185,7 @@ python src/visualize_components.py \
   --num_samples 12 --draw_combined 1
 
 # teacher viz (12 샘플 x 5 AR)
-python src/visualize_teacher_scores.py \
+python3 src/visualize_teacher_scores.py \
   --teacher_scores_jsonl data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl \
   --parquet data/SSTK/10K/filtered_sstk_100.parquet \
   --tar_dir /sstk/20230916/sstk_100 \

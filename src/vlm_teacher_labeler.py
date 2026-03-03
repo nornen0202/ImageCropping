@@ -138,6 +138,51 @@ def as_clean_str(v: Any) -> str:
     return ""
 
 
+def is_template_placeholder_text(v: Any) -> bool:
+    s = as_clean_str(v)
+    if not s:
+        return False
+    s_l = s.lower()
+    if re.fullmatch(r"<[^<>]{1,200}>", s):
+        return True
+    if s_l in {"crop|minimal_crop|keep_full"}:
+        return True
+    placeholder_needles = (
+        "<candidate_id",
+        "<allowed_tag>",
+        "<1 sentence summary>",
+        "<2~4 sentence rationale using selected candidates>",
+        "<why this crop is selected>",
+        "<why this candidate is rejected>",
+    )
+    return any(n in s_l for n in placeholder_needles)
+
+
+def as_non_template_str(v: Any) -> str:
+    s = as_clean_str(v)
+    if is_template_placeholder_text(s):
+        return ""
+    return s
+
+
+def _count_placeholder_strings(v: Any, depth: int = 0) -> int:
+    if depth > 6:
+        return 0
+    if isinstance(v, str):
+        return 1 if is_template_placeholder_text(v) else 0
+    if isinstance(v, dict):
+        cnt = 0
+        for _, vv in list(v.items())[:64]:
+            cnt += _count_placeholder_strings(vv, depth + 1)
+        return cnt
+    if isinstance(v, (list, tuple)):
+        cnt = 0
+        for vv in list(v)[:64]:
+            cnt += _count_placeholder_strings(vv, depth + 1)
+        return cnt
+    return 0
+
+
 def stable_shard_index(image_id: str, num_shards: int) -> int:
     n = max(1, int(num_shards))
     if n <= 1:
@@ -565,28 +610,40 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     except Exception:
         pass
 
+    def _scan_json_objects(seg_text: str, base_pos: int = 0) -> List[Tuple[Dict[str, Any], int]]:
+        objs_local: List[Tuple[Dict[str, Any], int]] = []
+        starts = [i for i, ch in enumerate(seg_text) if ch == "{"]
+        for s in starts:
+            depth = 0
+            for i in range(s, len(seg_text)):
+                ch = seg_text[i]
+                if ch == "{":
+                    depth += 1
+                elif ch == "}":
+                    depth -= 1
+                    if depth == 0:
+                        seg = seg_text[s : i + 1]
+                        try:
+                            obj = json.loads(seg)
+                        except Exception:
+                            break
+                        if isinstance(obj, dict):
+                            objs_local.append((obj, base_pos + s))
+                        break
+        return objs_local
+
+    # Prefer parsing the final assistant section first when present.
+    assistant_marks = list(re.finditer(r"(?im)^assistant\s*$", text))
+    if assistant_marks:
+        tail_start = assistant_marks[-1].end()
+        tail_text = text[tail_start:].strip()
+        tail_objs = _scan_json_objects(tail_text, base_pos=tail_start)
+    else:
+        tail_objs = []
+
     # Collect every decodable JSON object and choose the one most likely
     # to be model output (not echoed input payload).
-    objs: List[Dict[str, Any]] = []
-    starts = [i for i, ch in enumerate(text) if ch == "{"]
-    for s in starts:
-        depth = 0
-        for i in range(s, len(text)):
-            ch = text[i]
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    seg = text[s : i + 1]
-                    try:
-                        obj = json.loads(seg)
-                    except Exception:
-                        break
-                    if isinstance(obj, dict):
-                        objs.append(obj)
-                    break
-
+    objs: List[Tuple[Dict[str, Any], int]] = tail_objs if tail_objs else _scan_json_objects(text)
     if not objs:
         return None
 
@@ -616,7 +673,10 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
 
         # Input payload echo pattern.
         if {"target_ar", "meta_norm", "candidates", "allowed_tags", "top_k"}.issubset(keys):
-            score -= 200
+            score -= 220
+        # Explicit schema template block inside input payload.
+        if "required_output_schema" in keys:
+            score -= 260
         # Typical echoed sub-object of input meta_norm.
         if {"category", "main_subject", "intent", "special_flags"}.issubset(keys):
             score -= 80
@@ -630,10 +690,24 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
         # Composition-only object can still be useful when no picks are returned.
         if keys.issubset({"composition_checks", "checks", "scores"}):
             score -= 5
+
+        # Penalize placeholder/template strings to avoid choosing required_output_schema.
+        ph_cnt = _count_placeholder_strings(o)
+        if ph_cnt > 0:
+            score -= min(600, ph_cnt * 120)
+        ex = o.get("explanations")
+        if isinstance(ex, dict):
+            if is_template_placeholder_text(ex.get("short")) or is_template_placeholder_text(ex.get("long")):
+                score -= 240
+        if isinstance(o.get("selected_topk"), list):
+            first = o.get("selected_topk")[0] if o.get("selected_topk") else None
+            if isinstance(first, dict) and is_template_placeholder_text(first.get("candidate_id")):
+                score -= 240
         return score
 
-    best = max(objs, key=_score_obj)
-    return best
+    # Tie-breaker: prefer later position (assistant output is usually later).
+    best_obj, _ = max(objs, key=lambda item: (_score_obj(item[0]), item[1]))
+    return best_obj
 
 
 def _bbox_iou_xyxy(a: Sequence[float], b: Sequence[float]) -> float:
@@ -719,7 +793,7 @@ def _extract_model_selected_items(
     for it in raw_sel:
         if not isinstance(it, dict):
             continue
-        cid = str(it.get("candidate_id", "")).strip()
+        cid = as_non_template_str(it.get("candidate_id"))
         if (not cid) or (cid not in cand_map):
             cid = _match_candidate_id_by_bbox(it.get("bbox_norm_xyxy"), cand_map, used, min_iou=0.75) or ""
         if not cid or cid in used or cid not in cand_map:
@@ -730,7 +804,7 @@ def _extract_model_selected_items(
                 "why_tags": (
                     as_list(it.get("why_tags"))
                     if as_list(it.get("why_tags"))
-                    else ([str(it.get("label")).strip()] if str(it.get("label", "")).strip() else [])
+                    else ([as_non_template_str(it.get("label"))] if as_non_template_str(it.get("label")) else [])
                 ),
                 "why_text": it.get("why_text"),
             }
@@ -832,7 +906,7 @@ def normalize_backend_output(
                 "candidate_id": cid,
                 "bbox_norm_xyxy": normalize_box(base.get("bbox_norm_xyxy")) or [0.0, 0.0, 1.0, 1.0],
                 "why_tags": sanitize_tags(it.get("why_tags"), fallback=as_list(base.get("why_tags"))),
-                "why_text": as_clean_str(it.get("why_text")) or _fallback_why_text(base),
+                "why_text": as_non_template_str(it.get("why_text")) or _fallback_why_text(base),
             }
         )
         used.add(cid)
@@ -877,7 +951,7 @@ def normalize_backend_output(
             {
                 "candidate_id": cid,
                 "reject_tags": sanitize_tags(it.get("reject_tags"), fallback=["context_lost"]),
-                "reject_text": as_clean_str(it.get("reject_text")) or "Top-K 대비 우선순위가 낮아 제외되었습니다.",
+                "reject_text": as_non_template_str(it.get("reject_text")) or "Top-K 대비 우선순위가 낮아 제외되었습니다.",
             }
         )
         if len(also_considered) >= 3:
@@ -911,11 +985,18 @@ def normalize_backend_output(
         top2_final = safe_float(cand_map[selected[1]["candidate_id"]].get("features", {}).get("final", top1_final), top1_final)
     teacher_conf = clamp(0.5 + max(0.0, top1_final - top2_final), 0.0, 1.0)
 
-    decision_type = str(parsed.get("decision_type", decision.get("decision_type", "crop")))
+    base_decision_type = as_non_template_str(decision.get("decision_type")) or "crop"
+    parsed_decision_type = as_non_template_str(parsed.get("decision_type"))
+    if parsed_decision_type in {"crop", "minimal_crop", "keep_full"}:
+        decision_type = parsed_decision_type
+    elif base_decision_type in {"crop", "minimal_crop", "keep_full"}:
+        decision_type = base_decision_type
+    else:
+        decision_type = "crop"
     delta_improve = safe_float(parsed.get("delta_improve_vs_baseline", decision.get("delta_improve", 0.0)), 0.0)
     parsed_expl = parsed.get("explanations", {}) if isinstance(parsed.get("explanations"), dict) else {}
-    out_short = as_clean_str(parsed_expl.get("short"))
-    out_long = as_clean_str(parsed_expl.get("long"))
+    out_short = as_non_template_str(parsed_expl.get("short"))
+    out_long = as_non_template_str(parsed_expl.get("long"))
     if (not out_short) or (not out_long):
         auto_expl = _build_auto_explanations(
             task,
@@ -939,7 +1020,12 @@ def normalize_backend_output(
         "target_ar": task.get("target_ar"),
         "decision_type": decision_type,
         "delta_improve_vs_baseline": delta_improve,
-        "baseline_used_candidate_id": str(parsed.get("baseline_used_candidate_id", baseline_id)),
+        "baseline_used_candidate_id": (
+            as_non_template_str(parsed.get("baseline_used_candidate_id"))
+            if as_non_template_str(parsed.get("baseline_used_candidate_id")) in cand_map
+            or as_non_template_str(parsed.get("baseline_used_candidate_id")) == baseline_id
+            else baseline_id
+        ),
         "selected_topk": selected,
         "also_considered": also_considered,
         "composition_checks": comp_checks,

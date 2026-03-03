@@ -427,7 +427,6 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
    | tee src/scripts/logs/run_phaseA_to_teacher_10K_stage10_${SM_TAG}.log
 ```
 
-
 OOM 대응 권장:
 - GPU OOM 시 CPU fallback 소량 검증: `--vlm_fallback_cpu_on_oom 1 --vlm_fallback_cpu_max_images 3`
 - CPU fallback도 실패하면 skip 지속: `--vlm_skip_if_fallback_failed 1`
@@ -569,6 +568,66 @@ PY
 5. 리포트 반영
 - Stage 10 결과를 사용하는 리포트(`REPORT_DRAFT_KO.md`)는 재실행 산출물 기준으로 갱신
 - 구버전 labels 기반 리포트는 explanations/통계가 왜곡될 수 있으므로 재생성 권장
+
+### 3.8.4 프록시 차단 서버용 오프라인 전송(정상 서버 -> 문제 서버)
+
+`Qwen/Qwen3-VL-4B-Instruct`를 프록시 차단 환경에서 실행할 때는,
+- 모델 파일(허깅페이스 스냅샷)
+- Qwen3 런타임 심볼(`Qwen3VLForConditionalGeneration`)을 포함한 오프라인 wheelhouse
+를 같이 옮겨야 안정적으로 동작합니다.
+
+아래 스크립트를 사용하세요:
+- `src/scripts/transfer_qwen3_vl_offline.sh`
+
+1) 정상 동작 서버에서 준비 + 번들 생성(프로젝트 경로 기준)
+```bash
+cd /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping
+
+# (선택) venv 활성화
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/transfer_qwen3_vl_offline.sh prepare
+bash src/scripts/transfer_qwen3_vl_offline.sh pack
+```
+
+생성물:
+- 번들 파일: `artifacts/offline_qwen3_vl/qwen3_vl_4b_offline_bundle.tgz`
+
+2) 문제 서버로 번들 전송
+```bash
+cd /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping
+scp artifacts/offline_qwen3_vl/qwen3_vl_4b_offline_bundle.tgz <user>@<problem-server>:/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/artifacts/offline_qwen3_vl/
+```
+
+3) 문제 서버에서 오프라인 설치
+```bash
+cd /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping
+
+# (선택) venv 활성화
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/transfer_qwen3_vl_offline.sh install
+```
+
+설치 결과:
+- 로컬 모델 경로: `artifacts/models/Qwen3-VL-4B-Instruct`
+- 오프라인 pip 설치 후 `has_qwen3=True` 검증 수행
+
+4) Stage 10 실행 시 오프라인 모드 + 로컬 모델 경로 사용
+```bash
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+unset http_proxy https_proxy HTTP_PROXY HTTPS_PROXY ALL_PROXY
+```
+
+기존 명령에서 아래만 교체:
+```bash
+--vlm_model_id artifacts/models/Qwen3-VL-4B-Instruct
+```
+
+참고:
+- `HEAD https://huggingface.co/... timed out` 에러는 오프라인 모드 + 로컬 모델 경로로 회피합니다.
+- `transformers==4.44.2` 계열의 `has_qwen3=False` 에러는 스크립트의 wheelhouse 설치 단계로 해결합니다.
 
 ### 3.9 기존 산출물 재활용: Subject-mode 보완 + Visualization + Report 자산 생성
 

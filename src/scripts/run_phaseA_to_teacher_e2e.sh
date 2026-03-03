@@ -58,7 +58,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --run_tag public_seeded
 
-# Section 10 VLM Teacher 라벨 생성(기본: Qwen2.5-VL, fallback heuristic)
+# Section 10 VLM Teacher 라벨 생성(기본: Qwen3-VL-4B, fallback heuristic)
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/10K_local \
@@ -70,7 +70,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --prefer_curated_images 1 \
   --curated_image_dir data/SSTK/10K_local/images \
   --vlm_backend qwen25_vl \
-  --vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct \
+  --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
   --vlm_device auto \
   --vlm_top_m 12 \
   --vlm_top_k 5 \
@@ -139,7 +139,7 @@ Core options
 --run_vlm_teacher 0|1           section10 VLM teacher 라벨 생성 실행 여부 (default: 0)
 --vlm_backend NAME              qwen25_vl|heuristic (default: qwen25_vl)
 --vlm_fallback_backend NAME     heuristic|none (default: heuristic)
---vlm_model_id STR              HF model id (default: Qwen/Qwen2.5-VL-3B-Instruct)
+--vlm_model_id STR              HF model id (default: Qwen/Qwen3-VL-4B-Instruct)
 --vlm_device STR                auto|cuda|cuda:0|cpu (default: auto)
 --vlm_dtype STR                 auto|float16|bfloat16|float32 (default: auto)
 --vlm_max_new_tokens INT        qwen generate max_new_tokens (default: 768)
@@ -301,7 +301,7 @@ TEACHER_AUTO_REPAIR_STRICT=1
 RUN_VLM_TEACHER=0
 VLM_BACKEND="qwen25_vl"
 VLM_FALLBACK_BACKEND="heuristic"
-VLM_MODEL_ID="Qwen/Qwen2.5-VL-3B-Instruct"
+VLM_MODEL_ID="Qwen/Qwen3-VL-4B-Instruct"
 VLM_DEVICE="auto"
 VLM_DTYPE="auto"
 VLM_MAX_NEW_TOKENS=768
@@ -522,13 +522,14 @@ if [ -z "$LOG_DIR" ]; then
 fi
 mkdir -p "$LOG_DIR"
 
-if [ "$SERVER_MODE" -ne 1 ]; then
-  if [ -f "$VENV_PATH" ]; then
-    # shellcheck disable=SC1090
-    source "$VENV_PATH"
-  else
-    echo "[warn] venv not found: $VENV_PATH (using current python)"
-  fi
+if [ -f "$VENV_PATH" ]; then
+  # shellcheck disable=SC1090
+  source "$VENV_PATH"
+  echo "[info] activated venv: $VENV_PATH"
+elif [ "$SERVER_MODE" -ne 1 ]; then
+  echo "[warn] venv not found: $VENV_PATH (using current python)"
+else
+  echo "[info] server_mode=1 and venv not found: $VENV_PATH (using current python)"
 fi
 
 if [ -n "$RUN_TAG" ]; then

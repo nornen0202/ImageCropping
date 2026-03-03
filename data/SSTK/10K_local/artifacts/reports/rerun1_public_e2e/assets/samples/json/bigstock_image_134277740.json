@@ -163,5 +163,897 @@
         "context_pass": false
       }
     }
+  },
+  "vlm_teacher": {
+    "schema_version": "sample_vlm_io_v1",
+    "schemas": {
+      "input_task_schema": "teacher_ab_input_v1",
+      "output_label_schema": "crop_label_v1",
+      "meta_schema": "meta_norm_v1"
+    },
+    "sources": {
+      "teacher_scores_jsonl": "data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e.jsonl",
+      "labels_jsonl": "data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e.jsonl",
+      "image_dir": "data/SSTK/10K_local/images"
+    },
+    "input_summary": {
+      "tasks_expected": 5,
+      "target_ars": [
+        "1:1",
+        "9:16",
+        "16:9",
+        "3:4",
+        "4:3"
+      ],
+      "by_ar": {
+        "1:1": {
+          "num_input_candidates": 127,
+          "num_valid_candidates": 0,
+          "num_effective_candidates": 35,
+          "num_expensive_eval": 30,
+          "cheap_top_m_size": 30,
+          "cheap_top_m_candidate_ids_top5": [
+            "1x1_g12x12_steach_gaic_jit0_12_i0007",
+            "1x1_g12x12_steach_gaic_jit0_14_i0011",
+            "1x1_g12x12_steach_gaic_jit0_9_i0008",
+            "1x1_g12x12_steach_gaic_proj0_i0006",
+            "1x1_g12x12_s2_i0068"
+          ],
+          "baseline_candidate_id": "1x1_g12x12_steach_cacnet_proj0_i0005",
+          "baseline_final_score": -9.067764,
+          "teacher_numeric_decision": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "chosen_candidate_id": "1x1_g12x12_steach_cacnet_proj0_i0005"
+          },
+          "teacher_selected_topk_candidate_ids": [
+            "1x1_g12x12_steach_cacnet_proj0_i0005",
+            "1x1_g12x12_s4_i0060",
+            "1x1_g12x12_s2_i0068",
+            "1x1_g12x12_sphi0_8_i0052",
+            "1x1_g12x12_sphi0_12_i0056"
+          ]
+        },
+        "9:16": {
+          "num_input_candidates": 142,
+          "num_valid_candidates": 7,
+          "num_effective_candidates": 7,
+          "num_expensive_eval": 7,
+          "cheap_top_m_size": 7,
+          "cheap_top_m_candidate_ids_top5": [
+            "9x16_g12x12_steach_cacnet_jit0_16_i0010",
+            "9x16_g12x12_steach_cacnet_jit0_13_i0006",
+            "9x16_g12x12_steach_cacnet_jit0_11_i0008",
+            "9x16_g12x12_steach_cgs_jit0_15_i0004",
+            "9x16_g12x12_smaxc_i0001"
+          ],
+          "baseline_candidate_id": "9x16_g12x12_smaxc_i0001",
+          "baseline_final_score": -2.006976,
+          "teacher_numeric_decision": {
+            "decision_type": "crop",
+            "delta_improve": 0.6600447426030307,
+            "tau_improve": 0.045,
+            "chosen_candidate_id": "9x16_g12x12_smx1_i0003"
+          },
+          "teacher_selected_topk_candidate_ids": [
+            "9x16_g12x12_smx1_i0003",
+            "9x16_g12x12_smaxc_i0001",
+            "9x16_g12x12_steach_cacnet_jit0_11_i0008",
+            "9x16_g12x12_steach_cacnet_jit0_13_i0006",
+            "9x16_g12x12_smx0_i0002"
+          ]
+        },
+        "16:9": {
+          "num_input_candidates": 71,
+          "num_valid_candidates": 0,
+          "num_effective_candidates": 7,
+          "num_expensive_eval": 7,
+          "cheap_top_m_size": 7,
+          "cheap_top_m_candidate_ids_top5": [
+            "16x9_g12x12_s1_i0040",
+            "16x9_g12x12_s0_i0064",
+            "16x9_g12x12_s0_i0046",
+            "16x9_g12x12_s0_i0055",
+            "16x9_g12x12_s0_i0063"
+          ],
+          "baseline_candidate_id": "16x9_g12x12_s1_i0040",
+          "baseline_final_score": -31.002774,
+          "teacher_numeric_decision": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "chosen_candidate_id": "16x9_g12x12_s1_i0040"
+          },
+          "teacher_selected_topk_candidate_ids": [
+            "16x9_g12x12_s1_i0040",
+            "16x9_g12x12_s0_i0055",
+            "16x9_g12x12_s0_i0054",
+            "16x9_g12x12_s0_i0046",
+            "16x9_g12x12_s0_i0064"
+          ]
+        },
+        "3:4": {
+          "num_input_candidates": 167,
+          "num_valid_candidates": 1,
+          "num_effective_candidates": 1,
+          "num_expensive_eval": 1,
+          "cheap_top_m_size": 1,
+          "cheap_top_m_candidate_ids_top5": [
+            "3x4_g12x12_smy1_i0003"
+          ],
+          "baseline_candidate_id": "3x4_g12x12_smy1_i0003",
+          "baseline_final_score": -1.332438,
+          "teacher_numeric_decision": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "chosen_candidate_id": "3x4_g12x12_smy1_i0003"
+          },
+          "teacher_selected_topk_candidate_ids": [
+            "3x4_g12x12_smy1_i0003"
+          ]
+        },
+        "4:3": {
+          "num_input_candidates": 71,
+          "num_valid_candidates": 0,
+          "num_effective_candidates": 7,
+          "num_expensive_eval": 7,
+          "cheap_top_m_size": 7,
+          "cheap_top_m_candidate_ids_top5": [
+            "4x3_g12x12_s2_i0040",
+            "4x3_g12x12_s0_i0065",
+            "4x3_g12x12_s0_i0058",
+            "4x3_g12x12_s2_i0039",
+            "4x3_g12x12_s1_i0044"
+          ],
+          "baseline_candidate_id": "4x3_g12x12_s2_i0040",
+          "baseline_final_score": -19.034655,
+          "teacher_numeric_decision": {
+            "decision_type": "minimal_crop",
+            "delta_improve": 0.0,
+            "tau_improve": 0.045,
+            "chosen_candidate_id": "4x3_g12x12_s2_i0040"
+          },
+          "teacher_selected_topk_candidate_ids": [
+            "4x3_g12x12_s2_i0040",
+            "4x3_g12x12_s2_i0039",
+            "4x3_g12x12_s0_i0058",
+            "4x3_g12x12_s1_i0045",
+            "4x3_g12x12_s1_i0044"
+          ]
+        }
+      }
+    },
+    "output_summary": {
+      "tasks_labeled": 5,
+      "target_ars": [
+        "1:1",
+        "9:16",
+        "16:9",
+        "3:4",
+        "4:3"
+      ],
+      "decision_counts": {
+        "minimal_crop": 4,
+        "crop": 1
+      },
+      "selected_k_hist": {
+        "5": 4,
+        "1": 1
+      },
+      "by_ar": {
+        "1:1": {
+          "record_id": "1d3637f0-6159-4fb5-b674-2b5b0589966e",
+          "decision_type": "minimal_crop",
+          "delta_improve_vs_baseline": 0.0,
+          "baseline_used_candidate_id": "1x1_g12x12_steach_cacnet_proj0_i0005",
+          "selected_k": 5,
+          "selected_candidate_ids": [
+            "1x1_g12x12_steach_cacnet_proj0_i0005",
+            "1x1_g12x12_s4_i0060",
+            "1x1_g12x12_s2_i0068",
+            "1x1_g12x12_sphi0_8_i0052",
+            "1x1_g12x12_sphi0_12_i0056"
+          ],
+          "also_considered_count": 2,
+          "teacher": {
+            "backend": "qwen25_vl",
+            "teacher_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "teacher_confidence": 1.0
+          },
+          "validator": {
+            "schema_ok": true,
+            "numeric_consistency_ok": true,
+            "notes": ""
+          },
+          "timing": {
+            "latency_ms": 36463,
+            "n_candidates_in": 17
+          },
+          "input_refs": {
+            "prompt_version": "crop_label_candidate_pick_v1",
+            "teacher_scores_source": "data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e.jsonl",
+            "image_path": "data/SSTK/10K_local/images/bigstock_image_134277740.jpg"
+          },
+          "explanations": {
+            "short": "Top-K 후보를 선택하고 체크리스트를 검증했습니다.",
+            "long": "후보별 수치 피처(coverage/cutoff/context/final)를 기반으로 순위를 확정했습니다."
+          },
+          "selected_topk_preview": [
+            {
+              "rank": 1,
+              "candidate_id": "1x1_g12x12_steach_cacnet_proj0_i0005",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "balanced_crop",
+                "context_loss",
+                "headroom_violation",
+                "phi_grid",
+                "rule_of_thirds",
+                "symmetry"
+              ],
+              "why_text": "final=-9.068, subj_coverage=0.758, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            },
+            {
+              "rank": 2,
+              "candidate_id": "1x1_g12x12_s4_i0060",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "balanced_crop",
+                "context_loss",
+                "headroom_ok",
+                "symmetry"
+              ],
+              "why_text": "final=-12.369, subj_coverage=0.616, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            },
+            {
+              "rank": 3,
+              "candidate_id": "1x1_g12x12_s2_i0068",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "balanced_crop",
+                "context_loss",
+                "headroom_ok",
+                "symmetry"
+              ],
+              "why_text": "final=-15.865, subj_coverage=0.525, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            }
+          ],
+          "composition_checks_top1": {
+            "headroom": {
+              "value": -0.02091,
+              "target_range": [
+                0.03,
+                0.19
+              ],
+              "pass": false
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": null,
+              "pass": true,
+              "gaze_dir": "n/a"
+            },
+            "horizon": {
+              "y": null,
+              "roll_deg": null,
+              "conf": 0.0,
+              "third_dist": null,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8819,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.8408650937314148,
+              "target_range": [
+                0.25,
+                0.55
+              ],
+              "pass": false
+            },
+            "cutoff": {
+              "joint_cutoff_score": 1.4285714285714286,
+              "joint_severe_count": 8,
+              "joint_violated": [
+                "knee_l",
+                "knee_r",
+                "ankle_l",
+                "ankle_r"
+              ],
+              "face_cut": false,
+              "pass": false
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "original_policy": {
+            "original_is_candidate": true,
+            "kept_original": true,
+            "why_not_original": ""
+          }
+        },
+        "9:16": {
+          "record_id": "52c196a2-3c50-42ed-a698-5e169c5db08d",
+          "decision_type": "crop",
+          "delta_improve_vs_baseline": 0.6600447426030307,
+          "baseline_used_candidate_id": "9x16_g12x12_smaxc_i0001",
+          "selected_k": 5,
+          "selected_candidate_ids": [
+            "9x16_g12x12_smx1_i0003",
+            "9x16_g12x12_smaxc_i0001",
+            "9x16_g12x12_steach_cacnet_jit0_11_i0008",
+            "9x16_g12x12_steach_cacnet_jit0_13_i0006",
+            "9x16_g12x12_smx0_i0002"
+          ],
+          "also_considered_count": 0,
+          "teacher": {
+            "backend": "qwen25_vl",
+            "teacher_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "teacher_confidence": 1.0
+          },
+          "validator": {
+            "schema_ok": true,
+            "numeric_consistency_ok": true,
+            "notes": ""
+          },
+          "timing": {
+            "latency_ms": 26398,
+            "n_candidates_in": 7
+          },
+          "input_refs": {
+            "prompt_version": "crop_label_candidate_pick_v1",
+            "teacher_scores_source": "data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e.jsonl",
+            "image_path": "data/SSTK/10K_local/images/bigstock_image_134277740.jpg"
+          },
+          "explanations": {
+            "short": "Top-K 후보를 선택하고 체크리스트를 검증했습니다.",
+            "long": "후보별 수치 피처(coverage/cutoff/context/final)를 기반으로 순위를 확정했습니다."
+          },
+          "selected_topk_preview": [
+            {
+              "rank": 1,
+              "candidate_id": "9x16_g12x12_smx1_i0003",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "centered_subject",
+                "context_loss",
+                "headroom_ok",
+                "phi_grid",
+                "symmetry",
+                "wide_crop"
+              ],
+              "why_text": "final=-1.347, subj_coverage=1.000, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            },
+            {
+              "rank": 2,
+              "candidate_id": "9x16_g12x12_smaxc_i0001",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "centered_subject",
+                "context_loss",
+                "headroom_ok",
+                "phi_grid",
+                "rule_of_thirds",
+                "symmetry"
+              ],
+              "why_text": "final=-2.007, subj_coverage=0.961, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            },
+            {
+              "rank": 3,
+              "candidate_id": "9x16_g12x12_steach_cacnet_jit0_11_i0008",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "centered_subject",
+                "context_loss",
+                "headroom_ok",
+                "phi_grid",
+                "symmetry",
+                "wide_crop"
+              ],
+              "why_text": "final=-1.655, subj_coverage=0.970, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            }
+          ],
+          "composition_checks_top1": {
+            "headroom": {
+              "value": 0.105519,
+              "target_range": [
+                0.03,
+                0.19
+              ],
+              "pass": true
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": null,
+              "pass": true,
+              "gaze_dir": "n/a"
+            },
+            "horizon": {
+              "y": null,
+              "roll_deg": null,
+              "conf": 0.0,
+              "third_dist": null,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8819,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.8789960000000001,
+              "target_range": [
+                0.25,
+                0.55
+              ],
+              "pass": false
+            },
+            "cutoff": {
+              "joint_cutoff_score": 0.2857142857142857,
+              "joint_severe_count": 0,
+              "joint_violated": [
+                "ankle_l",
+                "ankle_r"
+              ],
+              "face_cut": false,
+              "pass": true
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "original_policy": {
+            "original_is_candidate": true,
+            "kept_original": false,
+            "why_not_original": "selected_non_baseline"
+          }
+        },
+        "16:9": {
+          "record_id": "9ef27deb-f56e-4799-b484-7d54821144d3",
+          "decision_type": "minimal_crop",
+          "delta_improve_vs_baseline": 0.0,
+          "baseline_used_candidate_id": "16x9_g12x12_s1_i0040",
+          "selected_k": 5,
+          "selected_candidate_ids": [
+            "16x9_g12x12_s1_i0040",
+            "16x9_g12x12_s0_i0055",
+            "16x9_g12x12_s0_i0054",
+            "16x9_g12x12_s0_i0046",
+            "16x9_g12x12_s0_i0064"
+          ],
+          "also_considered_count": 0,
+          "teacher": {
+            "backend": "qwen25_vl",
+            "teacher_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "teacher_confidence": 1.0
+          },
+          "validator": {
+            "schema_ok": true,
+            "numeric_consistency_ok": true,
+            "notes": ""
+          },
+          "timing": {
+            "latency_ms": 24621,
+            "n_candidates_in": 7
+          },
+          "input_refs": {
+            "prompt_version": "crop_label_candidate_pick_v1",
+            "teacher_scores_source": "data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e.jsonl",
+            "image_path": "data/SSTK/10K_local/images/bigstock_image_134277740.jpg"
+          },
+          "explanations": {
+            "short": "Top-K 후보를 선택하고 체크리스트를 검증했습니다.",
+            "long": "후보별 수치 피처(coverage/cutoff/context/final)를 기반으로 순위를 확정했습니다."
+          },
+          "selected_topk_preview": [
+            {
+              "rank": 1,
+              "candidate_id": "16x9_g12x12_s1_i0040",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "context_loss",
+                "headroom_ok",
+                "symmetry",
+                "tight_crop"
+              ],
+              "why_text": "final=-31.003, subj_coverage=0.353, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            },
+            {
+              "rank": 2,
+              "candidate_id": "16x9_g12x12_s0_i0055",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "context_loss",
+                "headroom_violation",
+                "symmetry",
+                "tight_crop"
+              ],
+              "why_text": "final=-38.091, subj_coverage=0.304, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            },
+            {
+              "rank": 3,
+              "candidate_id": "16x9_g12x12_s0_i0054",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "context_loss",
+                "headroom_violation",
+                "symmetry",
+                "tight_crop"
+              ],
+              "why_text": "final=-42.674, subj_coverage=0.214, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            }
+          ],
+          "composition_checks_top1": {
+            "headroom": {
+              "value": 0.101454,
+              "target_range": [
+                0.03,
+                0.19
+              ],
+              "pass": true
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": null,
+              "pass": true,
+              "gaze_dir": "n/a"
+            },
+            "horizon": {
+              "y": null,
+              "roll_deg": null,
+              "conf": 0.0,
+              "third_dist": null,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8819,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.7470917707040164,
+              "target_range": [
+                0.25,
+                0.55
+              ],
+              "pass": false
+            },
+            "cutoff": {
+              "joint_cutoff_score": 1.7857142857142858,
+              "joint_severe_count": 10,
+              "joint_violated": [
+                "wrist_r",
+                "knee_l",
+                "knee_r",
+                "ankle_l",
+                "ankle_r"
+              ],
+              "face_cut": false,
+              "pass": false
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "original_policy": {
+            "original_is_candidate": true,
+            "kept_original": true,
+            "why_not_original": ""
+          }
+        },
+        "3:4": {
+          "record_id": "f97c5c92-1bc9-40a2-beb2-dcc049bc4263",
+          "decision_type": "minimal_crop",
+          "delta_improve_vs_baseline": 0.0,
+          "baseline_used_candidate_id": "3x4_g12x12_smy1_i0003",
+          "selected_k": 1,
+          "selected_candidate_ids": [
+            "3x4_g12x12_smy1_i0003"
+          ],
+          "also_considered_count": 0,
+          "teacher": {
+            "backend": "qwen25_vl",
+            "teacher_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "teacher_confidence": 0.5
+          },
+          "validator": {
+            "schema_ok": true,
+            "numeric_consistency_ok": true,
+            "notes": ""
+          },
+          "timing": {
+            "latency_ms": 10442,
+            "n_candidates_in": 1
+          },
+          "input_refs": {
+            "prompt_version": "crop_label_candidate_pick_v1",
+            "teacher_scores_source": "data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e.jsonl",
+            "image_path": "data/SSTK/10K_local/images/bigstock_image_134277740.jpg"
+          },
+          "explanations": {
+            "short": "Top-K 후보를 선택하고 체크리스트를 검증했습니다.",
+            "long": "후보별 수치 피처(coverage/cutoff/context/final)를 기반으로 순위를 확정했습니다."
+          },
+          "selected_topk_preview": [
+            {
+              "rank": 1,
+              "candidate_id": "3x4_g12x12_smy1_i0003",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "centered_subject",
+                "context_loss",
+                "headroom_violation",
+                "phi_grid",
+                "symmetry",
+                "wide_crop"
+              ],
+              "why_text": "final=-1.332, subj_coverage=1.000, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            }
+          ],
+          "composition_checks_top1": {
+            "headroom": {
+              "value": -0.004981,
+              "target_range": [
+                0.03,
+                0.19
+              ],
+              "pass": false
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": null,
+              "pass": true,
+              "gaze_dir": "n/a"
+            },
+            "horizon": {
+              "y": null,
+              "roll_deg": null,
+              "conf": 0.0,
+              "third_dist": null,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8819,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.8323277798815344,
+              "target_range": [
+                0.25,
+                0.55
+              ],
+              "pass": false
+            },
+            "cutoff": {
+              "joint_cutoff_score": 0.2857142857142857,
+              "joint_severe_count": 0,
+              "joint_violated": [
+                "ankle_l",
+                "ankle_r"
+              ],
+              "face_cut": false,
+              "pass": true
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "original_policy": {
+            "original_is_candidate": true,
+            "kept_original": true,
+            "why_not_original": ""
+          }
+        },
+        "4:3": {
+          "record_id": "07a9ce1d-ce06-4bfb-9b0b-417a35790380",
+          "decision_type": "minimal_crop",
+          "delta_improve_vs_baseline": 0.0,
+          "baseline_used_candidate_id": "4x3_g12x12_s2_i0040",
+          "selected_k": 5,
+          "selected_candidate_ids": [
+            "4x3_g12x12_s2_i0040",
+            "4x3_g12x12_s2_i0039",
+            "4x3_g12x12_s0_i0058",
+            "4x3_g12x12_s1_i0045",
+            "4x3_g12x12_s1_i0044"
+          ],
+          "also_considered_count": 0,
+          "teacher": {
+            "backend": "qwen25_vl",
+            "teacher_id": "Qwen/Qwen2.5-VL-3B-Instruct",
+            "teacher_confidence": 1.0
+          },
+          "validator": {
+            "schema_ok": true,
+            "numeric_consistency_ok": true,
+            "notes": ""
+          },
+          "timing": {
+            "latency_ms": 24693,
+            "n_candidates_in": 7
+          },
+          "input_refs": {
+            "prompt_version": "crop_label_candidate_pick_v1",
+            "teacher_scores_source": "data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e.jsonl",
+            "image_path": "data/SSTK/10K_local/images/bigstock_image_134277740.jpg"
+          },
+          "explanations": {
+            "short": "Top-K 후보를 선택하고 체크리스트를 검증했습니다.",
+            "long": "후보별 수치 피처(coverage/cutoff/context/final)를 기반으로 순위를 확정했습니다."
+          },
+          "selected_topk_preview": [
+            {
+              "rank": 1,
+              "candidate_id": "4x3_g12x12_s2_i0040",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "balanced_crop",
+                "context_loss",
+                "headroom_violation",
+                "symmetry"
+              ],
+              "why_text": "final=-19.035, subj_coverage=0.512, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            },
+            {
+              "rank": 2,
+              "candidate_id": "4x3_g12x12_s2_i0039",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "balanced_crop",
+                "context_loss",
+                "headroom_violation",
+                "symmetry"
+              ],
+              "why_text": "final=-22.013, subj_coverage=0.417, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            },
+            {
+              "rank": 3,
+              "candidate_id": "4x3_g12x12_s0_i0058",
+              "why_tags": [
+                "ar_fits_well",
+                "avoid_face_cut",
+                "context_loss",
+                "headroom_ok",
+                "symmetry",
+                "tight_crop"
+              ],
+              "why_text": "final=-31.895, subj_coverage=0.292, face_cut=false 기준으로 안정적인 후보로 선택했습니다."
+            }
+          ],
+          "composition_checks_top1": {
+            "headroom": {
+              "value": 0.020038,
+              "target_range": [
+                0.03,
+                0.19
+              ],
+              "pass": false
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": null,
+              "pass": true,
+              "gaze_dir": "n/a"
+            },
+            "horizon": {
+              "y": null,
+              "roll_deg": null,
+              "conf": 0.0,
+              "third_dist": null,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8819,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.8421459698317715,
+              "target_range": [
+                0.25,
+                0.55
+              ],
+              "pass": false
+            },
+            "cutoff": {
+              "joint_cutoff_score": 1.4285714285714286,
+              "joint_severe_count": 8,
+              "joint_violated": [
+                "knee_l",
+                "knee_r",
+                "ankle_l",
+                "ankle_r"
+              ],
+              "face_cut": false,
+              "pass": false
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "original_policy": {
+            "original_is_candidate": true,
+            "kept_original": true,
+            "why_not_original": ""
+          }
+        }
+      }
+    },
+    "meta_norm_v1": {
+      "schema_version": "meta_norm_v1",
+      "image_id": "bigstock_image_134277740",
+      "language": "en",
+      "category": "person",
+      "subcategory": "beauty_fashion",
+      "main_subject": {
+        "label": "symmetry",
+        "type": "person",
+        "confidence": 0.7,
+        "evidence": {
+          "tags_top": [
+            "symmetry",
+            "cap",
+            "workout",
+            "building",
+            "posing",
+            "abdominal",
+            "athletic",
+            "attractive"
+          ],
+          "noun_phrases_top": [
+            "symmetry"
+          ],
+          "notes": "rule_based"
+        }
+      },
+      "secondary_subjects": [],
+      "multi_subject": true,
+      "special_flags": {
+        "copy_space": false,
+        "copy_space_side": "unknown",
+        "portrait": true,
+        "isolated": false,
+        "panoramic": false,
+        "close_up": false,
+        "text_overlay_likely": false
+      },
+      "intent": [
+        {
+          "code": "avoid_face_cut",
+          "priority": 5,
+          "detail": "face_cut=false preferred"
+        }
+      ]
+    },
+    "note": "입력(input_summary.by_ar)은 teacher_scorer.results_by_ar 기반, 출력(output_summary.by_ar)은 crop_label_v1 레코드 기반입니다.",
+    "schema_audit_for_sample": {
+      "tasks_labeled": 5,
+      "tasks_with_explanations_short_long": 5,
+      "all_tasks_have_explanations": true,
+      "note": "샘플 JSON은 요약본이며, 원본 전체 필드는 labels jsonl 레코드를 참조합니다."
+    }
   }
 }

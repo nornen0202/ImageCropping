@@ -12,6 +12,7 @@
 #   - mmdet/mmpose: NON-editable install (pip 26 PEP660 호환)
 #   - EfficientViT / SAM2: NON-editable install, SAM2 CUDA ext 기본 비활성화
 #   - numpy<2.0.0 global constraints 적용
+#   - Qwen3-VL 런타임 심볼(Qwen3VLForConditionalGeneration) 자동 검증/보정
 #   - PaddleOCR: C4 OCR 비필수이므로 기본 비활성화 (주석 해제로 설치 가능)
 #
 # ==============================================================================
@@ -48,8 +49,10 @@ PADDLE_CUDA_INDEX="https://www.paddlepaddle.org.cn/packages/stable/cu126/"  # CU
 # Constraints (global)
 NUMPY_CONSTRAINT="numpy<2.0.0"
 # Qwen2.5-VL(model_type=qwen2_5_vl) 지원을 위해 transformers>=4.49 필요.
-# 너무 최신으로 올려 생길 수 있는 변동성은 줄이기 위해 상한을 함께 둔다.
+# 기본은 안정성 상한을 두되, Qwen3-VL 심볼이 없으면 아래에서 git head로 자동 보정한다.
 TRANSFORMERS_CONSTRAINT="transformers>=4.49.0,<4.53.0"
+# 1이면 Qwen3-VL 심볼을 강제 보장한다.
+ENABLE_QWEN3_VL="${ENABLE_QWEN3_VL:-1}"
 
 # -----------------------------
 PYTHON="${PYTHON:-python}"
@@ -112,6 +115,10 @@ pip_uninstall() {
   $PIP uninstall -y "$@" || true
 }
 
+pip_install_noc() {
+  $PIP install "${PIP_INSTALL_ARGS[@]}" "$@"
+}
+
 # -----------------------------
 # 0) Tooling (do NOT use openmim)
 # -----------------------------
@@ -158,6 +165,44 @@ pip_install -U \
   "${TRANSFORMERS_CONSTRAINT}" \
   "tokenizers>=0.21.0,<0.22.0" \
   "huggingface-hub>=0.26.0"
+
+echo "2a) Verifying Qwen3-VL runtime symbol..."
+QWEN3_OK=0
+$PYTHON - <<'PY' || QWEN3_OK=$?
+import sys
+try:
+    import transformers
+    has_qwen3 = hasattr(transformers, "Qwen3VLForConditionalGeneration")
+    print(f"  transformers={transformers.__version__} has_qwen3={has_qwen3}")
+    sys.exit(0 if has_qwen3 else 2)
+except Exception as exc:
+    print(f"  transformers import failed: {exc}")
+    sys.exit(3)
+PY
+
+if [[ "${ENABLE_QWEN3_VL}" == "1" ]] && [[ "${QWEN3_OK}" -ne 0 ]]; then
+  echo "  [Fixup] Qwen3-VL class missing. Upgrading transformers from git head..."
+  # NOTE:
+  # - This step intentionally bypasses constraints(-c). Qwen3-VL 지원 심볼을 우선 보장한다.
+  # - 운영 환경에서 git 설치가 불가하면 ENABLE_QWEN3_VL=0으로 실행 후
+  #   Stage10 모델을 Qwen2.5-VL로 사용한다.
+  pip_install_noc -U \
+    "git+https://github.com/huggingface/transformers" \
+    "tokenizers>=0.21.0" \
+    "huggingface-hub>=0.26.0" \
+    "accelerate>=0.30.0"
+
+  $PYTHON - <<'PY'
+import sys
+import transformers
+has_qwen3 = hasattr(transformers, "Qwen3VLForConditionalGeneration")
+print(f"  transformers(after fixup)={transformers.__version__} has_qwen3={has_qwen3}")
+if not has_qwen3:
+    raise SystemExit("ERROR: Qwen3VLForConditionalGeneration still missing after fixup.")
+PY
+elif [[ "${ENABLE_QWEN3_VL}" != "1" ]]; then
+  echo "  [Info] ENABLE_QWEN3_VL=${ENABLE_QWEN3_VL}: skipping qwen3 symbol enforcement."
+fi
 
 # ray
 if [[ -z "$(_VER ray)" ]]; then

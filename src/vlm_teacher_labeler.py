@@ -132,6 +132,12 @@ def parse_bool01(v: Any, default: bool = False) -> bool:
     return bool(default)
 
 
+def as_clean_str(v: Any) -> str:
+    if isinstance(v, str):
+        return v.strip()
+    return ""
+
+
 def stable_shard_index(image_id: str, num_shards: int) -> int:
     n = max(1, int(num_shards))
     if n <= 1:
@@ -501,6 +507,11 @@ def build_fallback_output(task: Dict[str, Any], reason: str, backend_name: str) 
     top2_final = safe_float(selected[1].get("features", {}).get("final", top1_final), top1_final) if len(selected) > 1 else top1_final
     conf = clamp(0.5 + max(0.0, top1_final - top2_final), 0.0, 1.0)
 
+    top1_id = selected_rows[0]["candidate_id"] if selected_rows else ""
+    top1_src = ""
+    if selected and isinstance(selected[0], dict):
+        top1_src = str(selected[0].get("source", "unknown"))
+
     return {
         "schema_version": "crop_label_v1",
         "record_id": str(uuid.uuid4()),
@@ -519,8 +530,15 @@ def build_fallback_output(task: Dict[str, Any], reason: str, backend_name: str) 
             "why_not_original": "improvement_over_baseline" if baseline_id else "baseline_missing",
         },
         "explanations": {
-            "short": "수치 기반 fallback 라벨입니다.",
-            "long": f"VLM 응답 실패({reason})로 numeric scorer 결과를 사용했습니다.",
+            "short": (
+                f"fallback 선택: top1={top1_id}({top1_src or 'unknown'}), "
+                f"final={top1_final:.3f}, delta={safe_float(decision.get('delta_improve', 0.0), 0.0):.3f}"
+            ),
+            "long": (
+                f"VLM 응답 실패({reason})로 numeric_topk 기반으로 재구성했습니다. "
+                f"selected={len(selected_rows)}개, baseline={baseline_id or 'none'}, "
+                f"top1-top2 margin={max(0.0, top1_final - top2_final):.3f}."
+            ),
         },
         "teacher": {
             "backend": backend_name,
@@ -539,7 +557,7 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     if not text:
         return None
     text = text.strip()
-    # Fast path
+    # Fast path: already a single JSON dict.
     try:
         obj = json.loads(text)
         if isinstance(obj, dict):
@@ -547,6 +565,9 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     except Exception:
         pass
 
+    # Collect every decodable JSON object and choose the one most likely
+    # to be model output (not echoed input payload).
+    objs: List[Dict[str, Any]] = []
     starts = [i for i, ch in enumerate(text) if ch == "{"]
     for s in starts:
         depth = 0
@@ -561,11 +582,229 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
                     try:
                         obj = json.loads(seg)
                     except Exception:
-                        continue
+                        break
                     if isinstance(obj, dict):
-                        return obj
-                    continue
-    return None
+                        objs.append(obj)
+                    break
+
+    if not objs:
+        return None
+
+    def _score_obj(o: Dict[str, Any]) -> int:
+        keys = set(o.keys())
+        score = 0
+        if "selected_topk" in keys:
+            score += 120
+        if "selected_crops" in keys:
+            score += 110
+        if "selected_candidates" in keys:
+            score += 100
+        if "crop_labels" in keys:
+            score += 90
+        if "crop_label" in keys:
+            score += 70
+        if "decision_type" in keys:
+            score += 20
+        if "delta_improve_vs_baseline" in keys:
+            score += 15
+        if "explanations" in keys:
+            score += 12
+        if "also_considered" in keys:
+            score += 10
+        if "composition_checks" in keys:
+            score += 6
+
+        # Input payload echo pattern.
+        if {"target_ar", "meta_norm", "candidates", "allowed_tags", "top_k"}.issubset(keys):
+            score -= 200
+        # Typical echoed sub-object of input meta_norm.
+        if {"category", "main_subject", "intent", "special_flags"}.issubset(keys):
+            score -= 80
+        if {"code", "priority", "detail"}.issubset(keys):
+            score -= 120
+        if {"copy_space", "copy_space_side", "portrait", "isolated", "panoramic", "close_up", "text_overlay_likely"}.issubset(keys):
+            score -= 120
+        # Typical echoed candidate object.
+        if {"candidate_id", "bbox_norm_xyxy"}.issubset(keys) and "selected_topk" not in keys and "selected_crops" not in keys:
+            score -= 40
+        # Composition-only object can still be useful when no picks are returned.
+        if keys.issubset({"composition_checks", "checks", "scores"}):
+            score -= 5
+        return score
+
+    best = max(objs, key=_score_obj)
+    return best
+
+
+def _bbox_iou_xyxy(a: Sequence[float], b: Sequence[float]) -> float:
+    aa = normalize_box(a)
+    bb = normalize_box(b)
+    if aa is None or bb is None:
+        return 0.0
+    ax1, ay1, ax2, ay2 = aa
+    bx1, by1, bx2, by2 = bb
+    ix1 = max(ax1, bx1)
+    iy1 = max(ay1, by1)
+    ix2 = min(ax2, bx2)
+    iy2 = min(ay2, by2)
+    iw = max(0.0, ix2 - ix1)
+    ih = max(0.0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(1e-12, (ax2 - ax1) * (ay2 - ay1))
+    area_b = max(1e-12, (bx2 - bx1) * (by2 - by1))
+    union = max(1e-12, area_a + area_b - inter)
+    return float(inter / union)
+
+
+def _match_candidate_id_by_bbox(
+    bbox: Any,
+    cand_map: Dict[str, Dict[str, Any]],
+    used_ids: set[str],
+    min_iou: float = 0.75,
+) -> Optional[str]:
+    box = normalize_box(bbox)
+    if box is None:
+        return None
+    best_id = None
+    best_iou = -1.0
+    for cid, cand in cand_map.items():
+        if cid in used_ids:
+            continue
+        iou = _bbox_iou_xyxy(box, cand.get("bbox_norm_xyxy"))
+        if iou > best_iou:
+            best_iou = iou
+            best_id = cid
+    if best_id is None or best_iou < float(min_iou):
+        return None
+    return str(best_id)
+
+
+def _extract_model_selected_items(
+    parsed: Dict[str, Any],
+    cand_map: Dict[str, Dict[str, Any]],
+    k: int,
+) -> Tuple[List[Dict[str, Any]], str]:
+    raw_sel = as_list(parsed.get("selected_topk"))
+    mode = "selected_topk"
+    if not raw_sel:
+        alt = as_list(parsed.get("selected_crops"))
+        if alt:
+            raw_sel = alt
+            mode = "selected_crops"
+        else:
+            alt = as_list(parsed.get("selected_candidates"))
+            if alt:
+                raw_sel = alt
+                mode = "selected_candidates"
+            else:
+                alt = as_list(parsed.get("crop_labels"))
+                if alt:
+                    raw_sel = alt
+                    mode = "crop_labels"
+                else:
+                    # weak format: single crop entry
+                    if "crop_label" in parsed or "bbox_norm_xyxy" in parsed:
+                        raw_sel = [parsed]
+                        mode = "crop_label_single"
+                    else:
+                        alt = as_list(parsed.get("numeric_topk"))
+                        if alt:
+                            raw_sel = alt
+                            mode = "numeric_topk_hint"
+
+    out: List[Dict[str, Any]] = []
+    used: set[str] = set()
+    for it in raw_sel:
+        if not isinstance(it, dict):
+            continue
+        cid = str(it.get("candidate_id", "")).strip()
+        if (not cid) or (cid not in cand_map):
+            cid = _match_candidate_id_by_bbox(it.get("bbox_norm_xyxy"), cand_map, used, min_iou=0.75) or ""
+        if not cid or cid in used or cid not in cand_map:
+            continue
+        out.append(
+            {
+                "candidate_id": cid,
+                "why_tags": (
+                    as_list(it.get("why_tags"))
+                    if as_list(it.get("why_tags"))
+                    else ([str(it.get("label")).strip()] if str(it.get("label", "")).strip() else [])
+                ),
+                "why_text": it.get("why_text"),
+            }
+        )
+        used.add(cid)
+        if len(out) >= max(1, int(k)):
+            break
+    return out, mode
+
+
+def _build_auto_explanations(
+    task: Dict[str, Any],
+    cand_map: Dict[str, Dict[str, Any]],
+    selected_rows: List[Dict[str, Any]],
+    decision_type: str,
+    delta_improve: float,
+    model_selected_n: int,
+    selected_mode: str,
+) -> Dict[str, str]:
+    if not selected_rows:
+        return {
+            "short": "수치 기반 후보를 사용해 Top-K를 구성했습니다.",
+            "long": "모델 출력이 불완전하여 numeric_topk를 기반으로 라벨을 구성했습니다.",
+        }
+    top1_id = str(selected_rows[0].get("candidate_id", ""))
+    top1 = cand_map.get(top1_id, {}) if top1_id else {}
+    feats = top1.get("features", {}) if isinstance(top1.get("features"), dict) else {}
+    src = str(top1.get("source", "unknown")) if isinstance(top1, dict) else "unknown"
+    final_v = safe_float(feats.get("final", 0.0), 0.0)
+    cov_v = safe_float(feats.get("subj_coverage", 0.0), 0.0)
+    face_cut = bool(feats.get("face_cut", False))
+    k_sel = len(selected_rows)
+    k_model = int(model_selected_n)
+
+    dec = str(decision_type or "crop")
+    short = (
+        f"{dec} 선택: top1={top1_id}({src}), final={final_v:.3f}, "
+        f"coverage={cov_v:.3f}, face_cut={str(face_cut).lower()}"
+    )
+
+    tau = safe_float(task.get("decision", {}).get("tau_improve", 0.0), 0.0) if isinstance(task.get("decision"), dict) else 0.0
+    baseline_id = ""
+    baseline = task.get("baseline_candidate")
+    if isinstance(baseline, dict):
+        baseline_id = str(baseline.get("candidate_id", ""))
+    long = (
+        f"selected_topk={k_sel}개 중 모델 직접 선택={k_model}개(mode={selected_mode}), "
+        f"부족분은 numeric_topk로 보완했습니다. "
+        f"delta={safe_float(delta_improve, 0.0):.3f}, tau={tau:.3f}, baseline={baseline_id or 'none'}."
+    )
+    return {"short": short, "long": long}
+
+
+def _classify_parsed_object(parsed: Dict[str, Any]) -> str:
+    if not isinstance(parsed, dict):
+        return "non_dict"
+    keys = set(parsed.keys())
+    if "selected_topk" in keys:
+        return "selected_topk"
+    if "selected_crops" in keys:
+        return "selected_crops"
+    if "selected_candidates" in keys:
+        return "selected_candidates"
+    if "crop_labels" in keys:
+        return "crop_labels"
+    if "crop_label" in keys:
+        return "crop_label"
+    if "numeric_topk" in keys:
+        return "numeric_topk"
+    if {"target_ar", "meta_norm", "candidates", "allowed_tags", "top_k"}.issubset(keys):
+        return "input_echo"
+    if keys.issubset({"composition_checks", "checks", "scores"}):
+        return "composition_only"
+    return "other"
 
 
 def normalize_backend_output(
@@ -579,12 +818,10 @@ def normalize_backend_output(
     k = max(1, safe_int(task.get("policy", {}).get("topk", 5), 5))
     decision = task.get("decision", {}) if isinstance(task.get("decision"), dict) else {}
 
-    raw_sel = as_list(parsed.get("selected_topk"))
     selected: List[Dict[str, Any]] = []
     used = set()
-    for it in raw_sel:
-        if not isinstance(it, dict):
-            continue
+    model_rows, selected_mode = _extract_model_selected_items(parsed, cand_map, k)
+    for it in model_rows:
         cid = str(it.get("candidate_id", "")).strip()
         if not cid or cid in used or cid not in cand_map:
             continue
@@ -595,15 +832,18 @@ def normalize_backend_output(
                 "candidate_id": cid,
                 "bbox_norm_xyxy": normalize_box(base.get("bbox_norm_xyxy")) or [0.0, 0.0, 1.0, 1.0],
                 "why_tags": sanitize_tags(it.get("why_tags"), fallback=as_list(base.get("why_tags"))),
-                "why_text": str(it.get("why_text", "")).strip() or _fallback_why_text(base),
+                "why_text": as_clean_str(it.get("why_text")) or _fallback_why_text(base),
             }
         )
         used.add(cid)
         if len(selected) >= k:
             break
+    selected_from_model = len(selected)
 
     # Fill with numeric top-k when model output is partial
     for c in as_list(task.get("numeric_topk")):
+        if len(selected) >= k:
+            break
         cid = str(c.get("candidate_id", "")).strip()
         if not cid or cid in used or cid not in cand_map:
             continue
@@ -637,7 +877,7 @@ def normalize_backend_output(
             {
                 "candidate_id": cid,
                 "reject_tags": sanitize_tags(it.get("reject_tags"), fallback=["context_lost"]),
-                "reject_text": str(it.get("reject_text", "")).strip() or "Top-K 대비 우선순위가 낮아 제외되었습니다.",
+                "reject_text": as_clean_str(it.get("reject_text")) or "Top-K 대비 우선순위가 낮아 제외되었습니다.",
             }
         )
         if len(also_considered) >= 3:
@@ -671,14 +911,34 @@ def normalize_backend_output(
         top2_final = safe_float(cand_map[selected[1]["candidate_id"]].get("features", {}).get("final", top1_final), top1_final)
     teacher_conf = clamp(0.5 + max(0.0, top1_final - top2_final), 0.0, 1.0)
 
+    decision_type = str(parsed.get("decision_type", decision.get("decision_type", "crop")))
+    delta_improve = safe_float(parsed.get("delta_improve_vs_baseline", decision.get("delta_improve", 0.0)), 0.0)
+    parsed_expl = parsed.get("explanations", {}) if isinstance(parsed.get("explanations"), dict) else {}
+    out_short = as_clean_str(parsed_expl.get("short"))
+    out_long = as_clean_str(parsed_expl.get("long"))
+    if (not out_short) or (not out_long):
+        auto_expl = _build_auto_explanations(
+            task,
+            cand_map,
+            selected,
+            decision_type=decision_type,
+            delta_improve=delta_improve,
+            model_selected_n=selected_from_model,
+            selected_mode=selected_mode,
+        )
+        if not out_short:
+            out_short = auto_expl["short"]
+        if not out_long:
+            out_long = auto_expl["long"]
+
     out = {
         "schema_version": "crop_label_v1",
         "record_id": str(uuid.uuid4()),
         "sample_id": task.get("sample_id"),
         "image_id": task.get("image_id"),
         "target_ar": task.get("target_ar"),
-        "decision_type": str(parsed.get("decision_type", decision.get("decision_type", "crop"))),
-        "delta_improve_vs_baseline": safe_float(parsed.get("delta_improve_vs_baseline", decision.get("delta_improve", 0.0)), 0.0),
+        "decision_type": decision_type,
+        "delta_improve_vs_baseline": delta_improve,
         "baseline_used_candidate_id": str(parsed.get("baseline_used_candidate_id", baseline_id)),
         "selected_topk": selected,
         "also_considered": also_considered,
@@ -689,12 +949,8 @@ def normalize_backend_output(
             "why_not_original": "selected_non_baseline" if baseline_id and selected[0]["candidate_id"] != baseline_id else "",
         },
         "explanations": {
-            "short": str(parsed.get("explanations", {}).get("short", "")).strip()
-            if isinstance(parsed.get("explanations"), dict)
-            else "",
-            "long": str(parsed.get("explanations", {}).get("long", "")).strip()
-            if isinstance(parsed.get("explanations"), dict)
-            else "",
+            "short": out_short,
+            "long": out_long,
         },
         "teacher": {
             "backend": backend_name,
@@ -707,11 +963,6 @@ def normalize_backend_output(
             "notes": "",
         },
     }
-
-    if not out["explanations"]["short"]:
-        out["explanations"]["short"] = "Top-K 후보를 선택하고 체크리스트를 검증했습니다."
-    if not out["explanations"]["long"]:
-        out["explanations"]["long"] = "후보별 수치 피처(coverage/cutoff/context/final)를 기반으로 순위를 확정했습니다."
 
     return out
 
@@ -726,19 +977,34 @@ def build_prompt(task: Dict[str, Any]) -> str:
     for c in candidates:
         if not isinstance(c, dict):
             continue
+        feats = c.get("features", {}) if isinstance(c.get("features"), dict) else {}
         compact_candidates.append(
             {
                 "candidate_id": c.get("candidate_id"),
                 "bbox_norm_xyxy": c.get("bbox_norm_xyxy"),
                 "source": c.get("source"),
                 "must_keep": c.get("must_keep", False),
-                "features": c.get("features", {}),
+                "features": {
+                    "subj_coverage": round(safe_float(feats.get("subj_coverage", 0.0), 0.0), 4),
+                    "subj_area": round(safe_float(feats.get("subj_area", 0.0), 0.0), 4),
+                    "face_cut": bool(feats.get("face_cut", False)),
+                    "joint_cutoff_score": round(safe_float(feats.get("joint_cutoff_score", 0.0), 0.0), 4),
+                    "horizon_y": round(safe_float(feats.get("horizon_y", 0.0), 0.0), 4),
+                    "roll_deg": round(safe_float(feats.get("roll_deg", 0.0), 0.0), 3),
+                    "symmetry_score": round(safe_float(feats.get("symmetry_score", 0.0), 0.0), 4),
+                    "clip_img_txt": round(safe_float(feats.get("clip_img_txt", 0.0), 0.0), 4),
+                    "aesthetic_pre": round(safe_float(feats.get("aesthetic_pre", 0.0), 0.0), 4),
+                    "final": round(safe_float(feats.get("final", 0.0), 0.0), 4),
+                },
                 "why_tags": c.get("why_tags", []),
             }
         )
 
     policy = task.get("policy", {}) if isinstance(task.get("policy"), dict) else {}
     topk = safe_int(policy.get("topk", 5), 5)
+    numeric_topk = as_list(task.get("numeric_topk"))
+    numeric_topk_ids = [str(x.get("candidate_id", "")) for x in numeric_topk if isinstance(x, dict) and str(x.get("candidate_id", "")).strip()]
+    candidate_id_list = [str(x.get("candidate_id", "")) for x in compact_candidates if str(x.get("candidate_id", "")).strip()]
 
     payload = {
         "target_ar": task.get("target_ar"),
@@ -752,10 +1018,44 @@ def build_prompt(task: Dict[str, Any]) -> str:
         },
         "keep_policy": policy.get("keep_policy", {}),
         "baseline_candidate": task.get("baseline_candidate"),
-        "numeric_topk": task.get("numeric_topk"),
+        "numeric_topk": numeric_topk,
+        "numeric_topk_ids": numeric_topk_ids,
+        "candidate_id_list": candidate_id_list,
         "candidates": compact_candidates,
         "allowed_tags": sorted(ALLOWED_WHY_TAGS),
         "top_k": topk,
+        "required_output_schema": {
+            "decision_type": "crop|minimal_crop|keep_full",
+            "delta_improve_vs_baseline": 0.0,
+            "baseline_used_candidate_id": "<candidate_id>",
+            "selected_topk": [
+                {
+                    "rank": 1,
+                    "candidate_id": "<candidate_id_from_candidate_id_list>",
+                    "why_tags": ["<allowed_tag>"],
+                    "why_text": "<why this crop is selected>",
+                }
+            ],
+            "also_considered": [
+                {
+                    "candidate_id": "<candidate_id_from_candidate_id_list>",
+                    "reject_tags": ["<allowed_tag>"],
+                    "reject_text": "<why this candidate is rejected>",
+                }
+            ],
+            "composition_checks": {
+                "headroom": {"pass": True},
+                "lookroom": {"pass": True},
+                "horizon": {"pass": True},
+                "symmetry": {"pass": True},
+                "context": {"pass": True},
+                "cutoff": {"pass": True},
+            },
+            "explanations": {
+                "short": "<1 sentence summary>",
+                "long": "<2~4 sentence rationale using selected candidates>",
+            },
+        },
     }
 
     return (
@@ -765,7 +1065,9 @@ def build_prompt(task: Dict[str, Any]) -> str:
         "2) bbox_norm_xyxy must match selected candidate.\n"
         "3) Use only allowed_tags for why_tags/reject_tags.\n"
         "4) Fill composition_checks with numeric consistency.\n"
-        "5) Return a single JSON object only. No markdown.\n\n"
+        "5) Return a single JSON object only. No markdown.\n"
+        "6) DO NOT echo/copy the Input JSON.\n"
+        "7) Output keys must follow required_output_schema and MUST include explanations.short and explanations.long.\n\n"
         f"Input:\n{json.dumps(payload, ensure_ascii=False)}"
     )
 
@@ -836,6 +1138,20 @@ class Qwen25VLHFBackend(BaseVLMBackend):
         model_l = str(model_id).strip().lower()
         tf_v = cls._parse_version(tf_version)
 
+        # Qwen3-VL support check.
+        if "qwen3-vl" in model_l or "qwen3_vl" in model_l:
+            has_cls = hasattr(transformers_mod, "Qwen3VLForConditionalGeneration")
+            if not has_cls:
+                raise BackendInitError(
+                    "Qwen3-VL requires a Transformers build exposing "
+                    "Qwen3VLForConditionalGeneration. "
+                    f"current={tf_version}, has_qwen3_vl_class={has_cls}. "
+                    "Please upgrade, e.g.: "
+                    "python -m pip install -U "
+                    "\"git+https://github.com/huggingface/transformers\" "
+                    "\"tokenizers>=0.21.0\" \"huggingface-hub>=0.26.0\""
+                )
+
         # Qwen2.5-VL support check.
         if "qwen2.5-vl" in model_l or "qwen2_5_vl" in model_l:
             min_v = Version("4.49.0")
@@ -858,6 +1174,25 @@ class Qwen25VLHFBackend(BaseVLMBackend):
                     "Qwen2-VL requires transformers>=4.45.0. "
                     f"current={tf_version}, has_qwen2_vl_class={has_cls}."
                 )
+
+    @staticmethod
+    def _sanitize_generation_config_for_greedy(model: Any, temperature: float) -> None:
+        # Some checkpoints ship a non-null temperature in generation_config.
+        # For deterministic decode (temperature<=0), this can produce noisy warnings.
+        if safe_float(temperature, 0.0) > 0.0:
+            return
+        gen_cfg = getattr(model, "generation_config", None)
+        if gen_cfg is None:
+            return
+        try:
+            setattr(gen_cfg, "do_sample", False)
+        except Exception:
+            pass
+        if hasattr(gen_cfg, "temperature"):
+            try:
+                setattr(gen_cfg, "temperature", None)
+            except Exception:
+                pass
 
     def __init__(self, cfg: BackendConfig):
         super().__init__(cfg)
@@ -898,7 +1233,11 @@ class Qwen25VLHFBackend(BaseVLMBackend):
 
         model_l = str(cfg.model_id).strip().lower()
         model_cls = self._AutoModelForVision2Seq
-        if "qwen2.5-vl" in model_l or "qwen2_5_vl" in model_l:
+        if "qwen3-vl" in model_l or "qwen3_vl" in model_l:
+            qwen3_cls = getattr(transformers, "Qwen3VLForConditionalGeneration", None)
+            if qwen3_cls is not None:
+                model_cls = qwen3_cls
+        elif "qwen2.5-vl" in model_l or "qwen2_5_vl" in model_l:
             qwen25_cls = getattr(transformers, "Qwen2_5_VLForConditionalGeneration", None)
             if qwen25_cls is not None:
                 model_cls = qwen25_cls
@@ -915,6 +1254,7 @@ class Qwen25VLHFBackend(BaseVLMBackend):
                 self.model.to(self.device)
             else:
                 self.model.to("cpu")
+            self._sanitize_generation_config_for_greedy(self.model, cfg.temperature)
         except Exception as exc:
             raise BackendInitError(f"failed to load model_id={cfg.model_id}: {exc}") from exc
 
@@ -1033,7 +1373,7 @@ def parse_args() -> argparse.Namespace:
 
     p.add_argument("--backend", default="qwen25_vl", choices=sorted(BACKEND_REGISTRY.keys()))
     p.add_argument("--fallback_backend", default="heuristic", help="heuristic|none")
-    p.add_argument("--model_id", default="Qwen/Qwen2.5-VL-3B-Instruct")
+    p.add_argument("--model_id", default="Qwen/Qwen3-VL-4B-Instruct")
     p.add_argument("--device", default="auto", help="auto|cuda|cuda:0|cpu")
     p.add_argument("--dtype", default="auto", help="auto|float16|bfloat16|float32")
     p.add_argument("--max_new_tokens", type=int, default=768)
@@ -1299,6 +1639,17 @@ def main() -> None:
                                             break
 
                     if parsed_obj is not None:
+                        parsed_profile = _classify_parsed_object(parsed_obj)
+                        summary_counter[f"parsed_profile_{parsed_profile}"] += 1
+                        if isinstance(parsed_obj.get("selected_topk"), list):
+                            summary_counter["parsed_has_selected_topk"] += 1
+                        if isinstance(parsed_obj.get("selected_crops"), list):
+                            summary_counter["parsed_has_selected_crops"] += 1
+                        pexp = parsed_obj.get("explanations")
+                        if isinstance(pexp, dict):
+                            summary_counter["parsed_has_explanations"] += 1
+                            if str(pexp.get("short", "")).strip() and str(pexp.get("long", "")).strip():
+                                summary_counter["parsed_has_explanations_full"] += 1
                         try:
                             normalized = normalize_backend_output(
                                 task,
@@ -1317,13 +1668,15 @@ def main() -> None:
                     if normalized is None:
                         if fallback_backend is not None:
                             try:
-                                fb_obj, _ = fallback_backend.label(task, image_path)
+                                fb_obj, fb_raw = fallback_backend.label(task, image_path)
                                 normalized = normalize_backend_output(
                                     task,
                                     fb_obj,
                                     backend_name=fallback_backend.backend_name,
                                     model_id=fallback_backend.model_id,
                                 )
+                                if not raw_text:
+                                    raw_text = str(fb_raw or "")
                                 note = normalized.get("validator", {}).get("notes", "")
                                 normalized.setdefault("validator", {})["notes"] = (
                                     f"{note}; fallback_reason={fallback_reason}" if note else f"fallback_reason={fallback_reason}"

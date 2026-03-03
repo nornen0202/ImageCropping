@@ -13,6 +13,8 @@
 - Public Teacher raw/proposal: **30,000 / 10,000**
 - Teacher Scorer QA: `crop` 0.3736, `minimal_crop` 0.6264
 - Teacher 점수(최종): mean=-3.9795, p90=1.0558, neg_rate=0.7337
+- VLM Teacher(Stage 10): tasks=**49,998**, backend=`qwen25_vl` 100%, validator fallback note 비어있음 100%
+- VLM label 분포: decision `crop=18680`, `minimal_crop=31318`, selected_k `{1:1856, 2:873, 3:675, 4:745, 5:45849}`
 - 보고서용 보강 시각화: precompute(12장) + teacher(60 task) 생성 완료
 
 ## 2) 파이프라인 단계별 로직/역할
@@ -78,6 +80,34 @@
   - `select_topk_diverse(k=5, tau_div=0.75)`로 IoU 다양성 제약을 적용해 선택
   - 다양성 제약으로 모자라면 남은 상위 후보로 fill하여 최대 `top_k`까지 채움
 
+### 2.7 VLM/MLLM Teacher Labeler (Stage 10)
+- 입력:
+  - `teacher_scores_ar` jsonl의 image-level row(`teacher_scorer.results_by_ar[AR]`)를 AR task로 펼쳐 사용
+  - curated image(`data/SSTK/10K/images`)
+- 내부 입력 태스크 스키마(`teacher_ab_input_v1`) 핵심 필드:
+  - `sample_id`, `image(width,height)`, `target_ar`
+  - `features.route_global`, `features.subject_prior`
+  - `candidates`(cheap_top_m + selected_topk + hard_negatives + baseline/best dedupe)
+  - `policy(topm, topk, keep_policy)`, `decision`(Teacher numeric), `baseline_candidate`, `numeric_topk`
+- 출력 라벨 스키마(`crop_label_v1`) 핵심 필드:
+  - `image_id`, `target_ar`, `decision_type`, `delta_improve_vs_baseline`
+  - `selected_topk(rank, candidate_id, bbox_norm_xyxy, why_tags, why_text)`
+  - `also_considered(candidate_id, reject_tags, reject_text)`
+  - `composition_checks`, `teacher(backend, teacher_id, teacher_confidence)`
+  - `validator(schema_ok, numeric_consistency_ok, notes)`, `timing`, `input_refs`, `meta_norm_v1`
+- 출력:
+  - `artifacts/vlm_teacher/labels/*.jsonl` (`crop_label_v1`)
+  - `artifacts/vlm_teacher/meta/*.jsonl` (`meta_norm_v1`)
+  - `artifacts/vlm_teacher/summary/*.json`
+- 스키마 전수 점검(`crop_label_v1` 전체):
+  - total_tasks=49998, explanations 존재=49998/49998, explanations.short/long 존재=49998/49998·49998/49998
+  - selected_topk why_text 존재=237852/237852 (missing=0)
+  - validator schema_ok/numeric_ok=True = 49998/49998 / 49998/49998, notes_empty=49998/49998
+  - teacher/input_refs/meta_norm_v1 존재=49998/49998 / 49998/49998 / 49998/49998
+- 샘플별 확인 경로:
+  - 각 샘플 JSON(`assets/samples/json/<image_id>.json`)에 `vlm_teacher.input_summary.by_ar`(입력)와 `vlm_teacher.output_summary.by_ar`(출력)를 추가해 두었음
+  - 1:1 기준 빠른 확인: `num_input_candidates`, `cheap_top_m_size`, `decision_type`, `selected_k`, `selected_candidate_ids`, `teacher_confidence`
+
 ## 3) 단계별 입출력 포맷 정의 (예시 샘플: `sstk_image_2190537205`)
 
 - Phase A row 예시: [`assets/samples/json/sstk_image_2190537205.json`](assets/samples/json/sstk_image_2190537205.json) 의 `phaseA`
@@ -85,6 +115,11 @@
 - Public Teacher proposal 예시: 같은 파일의 `public_teacher` (teacher별 `free_form` bbox/score)
 - Candidate row 예시: 같은 파일의 `candidate` (`candidate_counts_by_ar`, `proposal_injected`)
 - Teacher row 예시: 같은 파일의 `teacher.by_ar` (`decision_type`, `delta_improve`, `tau_improve`, composition check)
+- VLM label row 예시: `artifacts/vlm_teacher/labels/crop_label_v1*.jsonl` (`schema_version=crop_label_v1`)
+- 샘플 JSON Stage10 예시: `assets/samples/json/<image_id>.json`의 `vlm_teacher`
+  - 입력 스키마 요약: `vlm_teacher.input_summary.by_ar[AR]` (`num_input_candidates`, `cheap_top_m_size`, `baseline_candidate_id`, `teacher_numeric_decision`) 
+  - 출력 스키마 요약: `vlm_teacher.output_summary.by_ar[AR]` (`decision_type`, `selected_k`, `selected_candidate_ids`, `explanations`, `selected_topk_preview`, `teacher`, `validator`, `timing`) 
+  - 메타 정규화: `vlm_teacher.meta_norm_v1` (`category`, `main_subject`, `intent`, `special_flags`) 
 
 ## 4) Visualization 키 항목 설명 (Teacher Overlay)
 
@@ -132,12 +167,29 @@
 ![teacher_1x1](../../teacher/visualizations/teacher_scorer_e2e_260227_r0_report12/by_ar/1x1/sstk_image_2190537205.jpg)
 
 Top-K 분포 시각화(전체 task 기준):
-![teacher_selected_k_distribution.png](./assets/analytics/teacher_topk/teacher_selected_k_distribution.png)
-![teacher_topk_final_score_hist.png](./assets/analytics/teacher_topk/teacher_topk_final_score_hist.png)
-![teacher_topk_source_mix_by_rank.png](./assets/analytics/teacher_topk/teacher_topk_source_mix_by_rank.png)
+![teacher_selected_k_distribution.png](assets/analytics/teacher_topk/teacher_selected_k_distribution.png)
+![teacher_topk_final_score_hist.png](assets/analytics/teacher_topk/teacher_topk_final_score_hist.png)
+![teacher_topk_source_mix_by_rank.png](assets/analytics/teacher_topk/teacher_topk_source_mix_by_rank.png)
 - `teacher_selected_k_distribution`: `(image,AR)`별 최종 K 분포
 - `teacher_topk_final_score_hist`: selected_topk row들의 final score 분포
 - `teacher_topk_source_mix_by_rank`: rank(1~5)별 source 비율
+
+### 5.4 VLM Teacher 단계 (Stage 10 검증 시각화)
+- 경로: `../../vlm_teacher/visualizations/vlm_teacher_e2e_260227_r0`
+- 요약: analytics_tasks=49,998, selected_rows=237,852, rendered=60, missing=0
+
+![vlm_decision_type_distribution.png](assets/analytics/vlm_teacher/vlm_decision_type_distribution.png)
+![vlm_selected_k_distribution.png](assets/analytics/vlm_teacher/vlm_selected_k_distribution.png)
+![vlm_teacher_confidence_hist.png](assets/analytics/vlm_teacher/vlm_teacher_confidence_hist.png)
+![vlm_why_tags_top.png](assets/analytics/vlm_teacher/vlm_why_tags_top.png)
+![vlm_source_mix_by_rank.png](assets/analytics/vlm_teacher/vlm_source_mix_by_rank.png)
+
+- 오버레이 색상 규칙:
+  - 주황색: `baseline_used_candidate_id`
+  - 컬러 박스(#1~#5): `selected_topk`
+  - 회색 박스: `also_considered` (비선정 후보)
+- 대표 샘플(`sstk_image_2190537205`, AR=1:1):
+![vlm_1x1](../../vlm_teacher/visualizations/vlm_teacher_e2e_260227_r0/by_ar/1x1/sstk_image_2190537205.jpg)
 
 ## 6) Super Category별 예시 샘플 (원본 + 단계 결과 매칭)
 
@@ -156,6 +208,26 @@ Top-K 분포 시각화(전체 task 기준):
 |sports|sstk_image_1178976352|![](assets/samples/original/sstk_image_1178976352.jpg)|![](../../precompute/visualizations/components_e2e_260227_r0_report12/combined_all/sstk_image_1178976352.jpg)|![](../../teacher/visualizations/teacher_scorer_e2e_260227_r0_report12/by_ar/1x1/sstk_image_1178976352.jpg)|[json](assets/samples/json/sstk_image_1178976352.json)|
 |transportation|sstk_image_1977782153|![](assets/samples/original/sstk_image_1977782153.jpg)|![](../../precompute/visualizations/components_e2e_260227_r0_report12/combined_all/sstk_image_1977782153.jpg)|![](../../teacher/visualizations/teacher_scorer_e2e_260227_r0_report12/by_ar/1x1/sstk_image_1977782153.jpg)|[json](assets/samples/json/sstk_image_1977782153.json)|
 
+### 6.1 샘플별 VLM Teacher 입력/출력(JSON) 확인표
+- 아래 표는 각 샘플 JSON(`assets/samples/json/<image_id>.json`)의 `vlm_teacher` 블록에서 집계한 값입니다.
+- `입력(1:1 input/top_m)`은 `num_input_candidates/cheap_top_m_size`, `출력(1:1 decision/K)`은 `decision_type/selected_k`를 의미합니다.
+- 각 샘플 JSON의 `vlm_teacher.output_summary.by_ar[AR].explanations`에서 short/long 설명을 확인할 수 있습니다.
+
+|super_cat|image_id|AR task 수|decision 분포|selected_k 분포|입력(1:1 input/top_m)|출력(1:1 decision/K)|1:1 top1 candidate_id|1:1 conf|샘플 JSON|
+|---|---|---:|---|---|---|---|---|---:|---|
+|people_multi|pond5_image_99604568|5|minimal_crop:5|1:2, 5:3|108/1|minimal_crop/1|1x1_g12x12_smaxc_i0001|0.5|[json](assets/samples/json/pond5_image_99604568.json)|
+|landscape_nature|sstk_image_1104016514|5|crop:1, minimal_crop:4|5:5|114/30|minimal_crop/5|1x1_g12x12_smaxc_i0001|1.0|[json](assets/samples/json/sstk_image_1104016514.json)|
+|architecture_exterior|sstk_image_1165522843|5|crop:4, minimal_crop:1|5:5|103/30|crop/5|1x1_g12x12_smy0_i0002|1.0|[json](assets/samples/json/sstk_image_1165522843.json)|
+|sports|sstk_image_1178976352|5|crop:1, minimal_crop:4|3:1, 5:4|122/31|crop/5|1x1_g12x12_smy2_i0004|1.0|[json](assets/samples/json/sstk_image_1178976352.json)|
+|other_ambiguous|sstk_image_174059567|5|crop:5|5:5|123/30|crop/5|1x1_g12x12_steach_cgs_jit0_10_i0004|0.717496|[json](assets/samples/json/sstk_image_174059567.json)|
+|product_object|sstk_image_1955755765|5|crop:2, minimal_crop:3|4:2, 5:3|182/4|minimal_crop/4|1x1_g12x12_steach_gaic_jit0_22_i0004|0.7104909999999998|[json](assets/samples/json/sstk_image_1955755765.json)|
+|transportation|sstk_image_1977782153|5|crop:2, minimal_crop:3|5:5|128/30|minimal_crop/5|1x1_g12x12_smaxc_i0001|1.0|[json](assets/samples/json/sstk_image_1977782153.json)|
+|food|sstk_image_2024012429|5|minimal_crop:5|5:5|104/30|minimal_crop/5|1x1_g12x12_smaxc_i0001|0.536654|[json](assets/samples/json/sstk_image_2024012429.json)|
+|documents_text|sstk_image_2129282159|5|minimal_crop:5|1:2, 5:3|128/1|minimal_crop/1|1x1_g12x12_smx2_i0003|0.5|[json](assets/samples/json/sstk_image_2129282159.json)|
+|people_single|sstk_image_2190537205|5|minimal_crop:5|1:1, 5:4|136/1|minimal_crop/1|1x1_g12x12_steach_cacnet_jit0_13_i0004|0.5|[json](assets/samples/json/sstk_image_2190537205.json)|
+|animals|sstk_image_2257975789|5|crop:1, minimal_crop:4|5:5|125/30|minimal_crop/5|1x1_g12x12_smaxc_i0001|0.5|[json](assets/samples/json/sstk_image_2257975789.json)|
+|indoor_interior|sstk_image_629195588|5|minimal_crop:5|5:5|109/31|minimal_crop/5|1x1_g12x12_smaxc_i0001|0.593186|[json](assets/samples/json/sstk_image_629195588.json)|
+
 ## 7) 공개 Teacher(5.5) 결과 요약
 
 - raw jsonl rows: **30,000**
@@ -170,6 +242,8 @@ Top-K 분포 시각화(전체 task 기준):
 - precompute viz(report12): `data/SSTK/10K/artifacts/precompute/visualizations/components_e2e_260227_r0_report12`
 - teacher viz(report12): `data/SSTK/10K/artifacts/teacher/visualizations/teacher_scorer_e2e_260227_r0_report12`
 - topk analytics: `data/SSTK/10K/artifacts/reports/e2e_260227_r0/assets/analytics/teacher_topk`
+- vlm labels/meta/summary: `data/SSTK/10K/artifacts/vlm_teacher/{labels,meta,summary}`
+- vlm viz/report analytics: `data/SSTK/10K/artifacts/vlm_teacher/visualizations/vlm_teacher_e2e_260227_r0`, `data/SSTK/10K/artifacts/reports/e2e_260227_r0/assets/analytics/vlm_teacher`
 
 ## 9) 재현 명령어 (이번 보고서 보강분)
 
@@ -193,10 +267,24 @@ python3 src/visualize_teacher_scores.py \
   --out_dir data/SSTK/10K/artifacts/teacher/visualizations/teacher_scorer_e2e_260227_r0_report12 \
   --image_ids_file data/SSTK/10K/artifacts/reports/e2e_260227_r0/sample_ids_supercat12.txt \
   --target_ar all --decision_filter all --num_samples 0
+
+# VLM stage-10 viz (12 샘플 x 5 AR + 전체 analytics)
+bash src/scripts/run_visualize_vlm_teacher.sh \
+  data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl \
+  data/SSTK/10K/filtered_sstk_100.parquet \
+  /sstk/20230916/sstk_100 \
+  data/SSTK/10K/artifacts/vlm_teacher/visualizations/vlm_teacher_e2e_260227_r0 \
+  --teacher_scores_jsonl data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl \
+  --image_dir data/SSTK/10K/images \
+  --image_ids_file data/SSTK/10K/artifacts/reports/e2e_260227_r0/sample_ids_supercat12.txt \
+  --num_samples 0 \
+  --target_ar all \
+  --analytics_use_full_labels 1
 ```
 
 ## 10) 검토 포인트(초안 단계)
 
 - 현재 run_tag 기준 teacher 결과는 `use_real_expensive=true` 경로로 일관되게 생성됨
 - Top-K 분포/score/source 분석 자산은 보고서 `assets/analytics/teacher_topk`에 정리됨
+- Stage-10도 동일 run_tag 기준으로 검증 완료(`qwen25_vl`, fallback note 없음, rendered=60/60)
 - 추가 요청 시 동일 포맷으로 EN 버전 보고서 및 PPT 요약본 변환 가능

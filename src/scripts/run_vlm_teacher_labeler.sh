@@ -17,7 +17,7 @@ SUMMARY_JSON="${DATA_ROOT}/artifacts/vlm_teacher/summary/vlm_teacher_summary.jso
 
 BACKEND="qwen25_vl"
 FALLBACK_BACKEND="heuristic"
-MODEL_ID="Qwen/Qwen2.5-VL-3B-Instruct"
+MODEL_ID="Qwen/Qwen3-VL-4B-Instruct"
 DEVICE="auto"
 DTYPE="auto"
 MAX_NEW_TOKENS=768
@@ -102,13 +102,14 @@ if [ -z "$IMAGE_DIR" ]; then
   IMAGE_DIR="${DATA_ROOT}/images"
 fi
 
-if [ "$SERVER_MODE" -ne 1 ]; then
-  if [ -f "$VENV_PATH" ]; then
-    # shellcheck disable=SC1090
-    source "$VENV_PATH"
-  else
-    echo "[warn] venv not found: $VENV_PATH (using current python)"
-  fi
+if [ -f "$VENV_PATH" ]; then
+  # shellcheck disable=SC1090
+  source "$VENV_PATH"
+  echo "[info] activated venv: $VENV_PATH"
+elif [ "$SERVER_MODE" -ne 1 ]; then
+  echo "[warn] venv not found: $VENV_PATH (using current python)"
+else
+  echo "[info] server_mode=1 and venv not found: $VENV_PATH (using current python)"
 fi
 
 mkdir -p "$(dirname "$OUTPUT_JSONL")" "$(dirname "$OUTPUT_META_JSONL")" "$(dirname "$SUMMARY_JSON")"
@@ -144,6 +145,7 @@ try:
     print(
         "[env] transformers="
         f"{transformers.__version__} "
+        f"has_qwen3={hasattr(transformers, 'Qwen3VLForConditionalGeneration')} "
         f"has_qwen2_5={hasattr(transformers, 'Qwen2_5_VLForConditionalGeneration')} "
         f"has_qwen2={hasattr(transformers, 'Qwen2VLForConditionalGeneration')}"
     )

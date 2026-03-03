@@ -155,8 +155,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teacher_max_images -1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2 \
-  --teacher_num_workers 3 \
+  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
+  --teacher_num_workers 8 \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 128 \
@@ -280,7 +280,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --num_viz 120 \
   --run_vlm_teacher 1 \
   --vlm_backend qwen25_vl \
-  --vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct \
+  --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
   --vlm_device auto \
   --vlm_top_m 12 \
   --vlm_top_k 5 \
@@ -351,9 +351,27 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 ### 3.8 Stage 10(VLM Teacher)만 단독 실행
 
+운영 TL;DR:
+- 기본 모델: `Qwen/Qwen3-VL-4B-Instruct` (호환성 이슈 시 2.5-VL-3B로 임시 전환)
+- 필수 입력: `teacher_scores_ar_<run_tag>.jsonl` + `data/SSTK/<DATANAME>/images`
+- 권장 실행: `--run_vlm_teacher 1 --run_teacher 0 --skip_existing 0 --vlm_save_raw_response 1`
+- 멀티 GPU: `--vlm_multi_gpu 1 --vlm_gpu_ids ... --vlm_num_workers ...`
+- OOM 안전장치: `--vlm_fallback_cpu_on_oom 1 --vlm_fallback_cpu_max_images 3 --vlm_skip_if_fallback_failed 1`
+- 품질 게이트 1: `summary_json`에서 `task_written`, `fallback_used`, `task_skipped` 확인
+- 품질 게이트 2: labels의 `explanations.short/long` 유니크 개수가 `1`이 아닌지 확인
+- 품질 게이트 3: `debug/raw_responses` 타입 분포(`selected_crops` 등) 점검
+- 결과 검증 시각화: `3.8.1`의 `run_visualize_vlm_teacher.sh` 실행
+- 리포트 사용 전: Stage 10 재실행 산출물 기준으로 `REPORT_DRAFT_KO.md` 갱신
+- 상세 원인/검증 스크립트: `3.8.2` 참고
+- 단계별 재실행 절차: `3.8.3` 체크리스트 참고
+
 Teacher Scorer 결과가 이미 있을 때(재추론 없이 10단계만 실행):
+- 기본 권장 모델: `Qwen/Qwen3-VL-4B-Instruct`
+- 환경 호환성 이슈 시 임시 대안: `--vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct`
 ```bash
 DATANAME=10K_local
+BASE_TAG=rerun1_public_e2e
+SM_TAG=${BASE_TAG}_subject_mode
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -365,7 +383,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --prefer_curated_images 1 \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --vlm_backend qwen25_vl \
-  --vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct \
+  --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
   --vlm_device auto \
   --vlm_top_m 12 \
   --vlm_top_k 5 \
@@ -376,11 +394,13 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_save_raw_response 1 \
   --vlm_strict_backend_init 1 \
   --skip_existing 0 \
-  --run_tag rerun1_public_e2e \
-   | tee src/scripts/logs/run_phaseA_to_teacher_e2e_260227_r0.log
+  --run_tag ${SM_TAG} \
+   | tee src/scripts/logs/run_phaseA_to_teacherr_10K_local_stage10_${SM_TAG}.log
 ```
 ```bash
 DATANAME=10K
+BASE_TAG=e2e_260227_r0
+SM_TAG=${BASE_TAG}_subject_mode
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -392,25 +412,163 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --prefer_curated_images 1 \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --vlm_backend qwen25_vl \
-  --vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct \
+  --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
   --vlm_device auto \
   --vlm_top_m 12 \
   --vlm_top_k 5 \
   --vlm_fallback_backend heuristic \
   --vlm_multi_gpu 1 \
-  --vlm_gpu_ids 0,1,2,3,4,5,6 \
-  --vlm_num_workers 7 \
+  --vlm_gpu_ids 0,1,2,3,4,5,6,7 \
+  --vlm_num_workers 8 \
   --vlm_save_raw_response 1 \
   --vlm_strict_backend_init 1 \
   --skip_existing 0 \
-  --run_tag e2e_260227_r0 \
-   | tee src/scripts/logs/run_phaseA_to_teacher_10K_stage10_e2e_260227_r0.log
+  --run_tag ${SM_TAG} \
+   | tee src/scripts/logs/run_phaseA_to_teacher_10K_stage10_${SM_TAG}.log
 ```
 
 
 OOM 대응 권장:
 - GPU OOM 시 CPU fallback 소량 검증: `--vlm_fallback_cpu_on_oom 1 --vlm_fallback_cpu_max_images 3`
 - CPU fallback도 실패하면 skip 지속: `--vlm_skip_if_fallback_failed 1`
+
+### 3.8.1 Stage 10 결과 검증 시각화(Overlay + Analytics)
+
+Stage 10 산출물(`crop_label_v1*.jsonl`)이 생성된 뒤, 아래 명령으로 검증용 시각화/분석을 생성할 수 있습니다.
+
+10K_local (`run_tag=rerun1_public_e2e`) 예시:
+```bash
+DATANAME=10K_local
+RUNTAG=rerun1_public_e2e
+bash src/scripts/run_visualize_vlm_teacher.sh \
+  data/SSTK/${DATANAME}/artifacts/vlm_teacher/labels/crop_label_v1_${RUNTAG}.jsonl \
+  data/SSTK/${DATANAME}/filtered_sstk_100.parquet \
+  /sstk/20230916/sstk_100 \
+  data/SSTK/${DATANAME}/artifacts/vlm_teacher/visualizations/vlm_teacher_${RUNTAG} \
+  --teacher_scores_jsonl data/SSTK/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${RUNTAG}.jsonl \
+  --image_dir data/SSTK/${DATANAME}/images \
+  --image_ids_file data/SSTK/${DATANAME}/artifacts/reports/${RUNTAG}/sample_ids_supercat12.txt \
+  --target_ar all \
+  --num_samples 0 \
+  --analytics_use_full_labels 1 \
+  --server_mode 1
+```
+
+10K (`run_tag=e2e_260227_r0`) 예시:
+```bash
+DATANAME=10K
+RUNTAG=e2e_260227_r0
+bash src/scripts/run_visualize_vlm_teacher.sh \
+  data/SSTK/${DATANAME}/artifacts/vlm_teacher/labels/crop_label_v1_${RUNTAG}.jsonl \
+  data/SSTK/${DATANAME}/filtered_sstk_100.parquet \
+  /sstk/20230916/sstk_100 \
+  data/SSTK/${DATANAME}/artifacts/vlm_teacher/visualizations/vlm_teacher_${RUNTAG} \
+  --teacher_scores_jsonl data/SSTK/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${RUNTAG}.jsonl \
+  --image_dir data/SSTK/${DATANAME}/images \
+  --image_ids_file data/SSTK/${DATANAME}/artifacts/reports/${RUNTAG}/sample_ids_supercat12.txt \
+  --target_ar all \
+  --num_samples 0 \
+  --analytics_use_full_labels 1 \
+  --server_mode 1
+```
+
+주요 출력:
+- overlay: `data/SSTK/<DATANAME>/artifacts/vlm_teacher/visualizations/vlm_teacher_<run_tag>/by_ar/*`
+- analytics: `.../analytics/vlm_analytics_summary.json`, `vlm_decision_type_distribution.png`, `vlm_selected_k_distribution.png` 등
+- 요약: `.../viz_overview.json`
+
+### 3.8.2 Stage 10 explanations 고정 문구 이슈 원인/검증 포인트
+
+빠른 운영 체크는 `3.8 Stage 10(VLM Teacher)만 단독 실행`의 `운영 TL;DR`를 먼저 확인하세요.
+
+증상:
+- `crop_label_v1*.jsonl`의 `explanations.short/long`가 전 레코드에서 동일 문구로 반복
+- 예: `Top-K 후보를 선택하고 체크리스트를 검증했습니다.`
+
+원인(코드/산출물 기준):
+- 주 원인은 fallback 자체가 아니라, 구버전 파서/정규화 로직의 스키마 흡수 한계
+- 실제 Qwen raw 응답은 `selected_topk` 정식 스키마 대신 `selected_crops`/`selected_candidates`/`crop_label` 변형 포맷이 다수
+- 구버전에서 이 케이스를 충분히 매핑하지 못해 정규화 시 설명이 기본 문구로 수렴
+
+보완 반영(현재 코드):
+- `src/vlm_teacher_labeler.py`
+- `_extract_first_json_object`: 입력 echo보다 실제 출력 객체를 우선 선택하도록 점수화 추출
+- `_extract_model_selected_items`: `selected_crops`, `selected_candidates`, `crop_labels`, `crop_label`까지 매핑
+- bbox만 있는 경우 IoU 기반 candidate_id 매칭으로 복원
+- `_build_auto_explanations`: 모델 설명 누락 시 top1/source/final/delta/tau/baseline 기반 동적 설명 생성
+- fallback 경로도 정적 문구 대신 동적 설명 사용
+
+검증 포인트(운영 필수):
+- `summary_json`에서 `fallback_used`가 과도하지 않은지 확인
+- `debug/raw_responses`에서 응답 타입 분포(`selected_crops` 등) 확인
+- 최종 labels에서 `explanations` 유니크 개수가 1이 아닌지 확인
+
+유니크 개수 빠른 점검(10K/10K_local 공통):
+```bash
+python - <<'PY'
+import json
+from collections import Counter
+paths=[
+  "data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl",
+  "data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e.jsonl",
+]
+for p in paths:
+    c1=Counter(); c2=Counter(); n=0
+    with open(p,"r",encoding="utf-8") as f:
+        for line in f:
+            o=json.loads(line); exp=o.get("explanations") or {}
+            c1[(exp.get("short") or "").strip()] += 1
+            c2[(exp.get("long") or "").strip()] += 1
+            n += 1
+    print(p, "rows=", n, "uniq_short=", len(c1), "uniq_long=", len(c2))
+PY
+```
+
+raw 응답 타입 분포 점검(예: 10K):
+```bash
+PYTHONPATH=src python - <<'PY'
+from pathlib import Path
+from collections import Counter
+from vlm_teacher_labeler import _extract_first_json_object, _classify_parsed_object
+root=Path("data/SSTK/10K/artifacts/vlm_teacher/debug/vlm_teacher_e2e_260227_r0")
+ctr=Counter()
+for p in root.glob("shard_*/raw_responses/*.txt"):
+    t=p.read_text(encoding="utf-8",errors="ignore").strip()
+    if not t:
+        ctr["empty"] += 1
+        continue
+    obj=_extract_first_json_object(t)
+    ctr["parse_none" if obj is None else _classify_parsed_object(obj)] += 1
+print(dict(ctr))
+PY
+```
+
+### 3.8.3 Stage 10 재실행 체크리스트(필수)
+
+실행 옵션 요약은 `3.8`의 `운영 TL;DR`, 원인/검증 배경은 `3.8.2`를 함께 참조하세요.
+
+1. 코드 최신화
+- `src/vlm_teacher_labeler.py`가 최신인지 확인
+- 테스트 수행: `PYTHONPATH=src python -m pytest -q tests/test_vlm_teacher_labeler.py`
+
+2. 입력 준비 확인
+- Teacher scores 존재 확인
+- curated image cache 존재 확인: `data/SSTK/<DATANAME>/images`
+- 기존 Stage 10 출력 덮어쓸지(`--skip_existing 0`) 결정
+
+3. Stage 10 재실행
+- `3.8 Stage 10(VLM Teacher)만 단독 실행` 템플릿 사용
+- 권장: `--vlm_save_raw_response 1` 유지(디버그/검증용)
+
+4. 재실행 후 품질 게이트
+- `summary_json`에서 `task_written == expected task 수` 확인
+- `counts.fallback_used`/`counts.task_skipped` 비정상 급증 여부 확인
+- `explanations` 유니크 개수 확인(위 유니크 점검 스크립트)
+- 필요 시 `3.8.1`로 visualization 재생성 후 샘플 점검
+
+5. 리포트 반영
+- Stage 10 결과를 사용하는 리포트(`REPORT_DRAFT_KO.md`)는 재실행 산출물 기준으로 갱신
+- 구버전 labels 기반 리포트는 explanations/통계가 왜곡될 수 있으므로 재생성 권장
 
 ### 3.9 기존 산출물 재활용: Subject-mode 보완 + Visualization + Report 자산 생성
 
@@ -434,6 +592,8 @@ BASE_TAG=rerun1_public_e2e
 SM_TAG=${BASE_TAG}_subject_mode
 DATA_DIR=data/SSTK/${DATANAME}
 REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+# C1 전략: 0=기존 c1 재활용(권장), 1=C1 재생성(HF/OpenCLIP 다운로드 가능 환경)
+RUN_C1_REBUILD=0
 
 # 0) (선택) base report의 샘플 id/manifest 재사용
 mkdir -p "${REPORT_DIR}"
@@ -442,12 +602,21 @@ cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.csv"
 cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.json" "${REPORT_DIR}/"
 cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_summary_table.md" "${REPORT_DIR}/"
 
+# 0.1) real expensive 사용 전제: run_c1=0일 때는 기존 c1 jsonl 필수
+if [ "${RUN_C1_REBUILD}" -eq 0 ] && [ ! -f "${DATA_DIR}/artifacts/precompute/feats_c1.jsonl" ]; then
+  echo "[error] missing c1 jsonl: ${DATA_DIR}/artifacts/precompute/feats_c1.jsonl"
+  echo "        해결: RUN_C1_REBUILD=1로 C1 재생성(네트워크/HF 필요) 또는 --use_real_expensive 0"
+  exit 1
+fi
+
 # 1) 기존 precompute를 재활용해 subject routing + candidates + teacher 재실행
+# 기본값: "재활용" 경로(run_c1=0)
+# 선택값: RUN_C1_REBUILD=1이면 C1 재생성 수행(HF/OpenCLIP 다운로드 필요)
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir "${DATA_DIR}" \
   --run_filter 0 \
-  --run_c1 1 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 "${RUN_C1_REBUILD}" --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_subject_routing 1 \
   --subject_routing_top_n 5 \
   --subject_routing_union_top_m 3 \
@@ -456,15 +625,22 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2 \
-  --teacher_num_workers 3 \
+  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
+  --teacher_num_workers 8 \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 128 \
   --prefer_curated_images 1 \
   --curated_image_dir "${DATA_DIR}/images" \
-  --skip_existing 1 \
+  --skip_existing 0 \
   --run_tag "${SM_TAG}"
+
+# 1.1) 1단계 성공 가드: teacher score가 생성되지 않았으면 즉시 중단
+if [ ! -f "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" ]; then
+  echo "[error] missing teacher scores: ${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl"
+  echo "        step-1 로그/에러를 먼저 해결한 뒤 step-2~4를 실행하세요."
+  exit 1
+fi
 
 # 2) precompute component visualization(샘플 고정)
 bash src/scripts/run_visualize_components.sh \
@@ -514,6 +690,8 @@ BASE_TAG=e2e_260227_r0
 SM_TAG=${BASE_TAG}_subject_mode
 DATA_DIR=data/SSTK/${DATANAME}
 REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+# C1 전략: 0=기존 c1 재활용(권장), 1=C1 재생성(HF/OpenCLIP 다운로드 가능 환경)
+RUN_C1_REBUILD=0
 
 # 0) 10K에는 feats_c1.jsonl이 없을 수 있음(통합 raw 재사용용 alias)
 if [ ! -f "${DATA_DIR}/artifacts/precompute/feats_c1.jsonl" ] && [ -f "${DATA_DIR}/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl" ]; then
@@ -527,12 +705,21 @@ cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.csv"
 cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.json" "${REPORT_DIR}/"
 cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_summary_table.md" "${REPORT_DIR}/"
 
+# 1.1) real expensive 사용 전제: run_c1=0일 때는 기존 c1 jsonl 필수
+if [ "${RUN_C1_REBUILD}" -eq 0 ] && [ ! -f "${DATA_DIR}/artifacts/precompute/feats_c1.jsonl" ]; then
+  echo "[error] missing c1 jsonl: ${DATA_DIR}/artifacts/precompute/feats_c1.jsonl"
+  echo "        해결: RUN_C1_REBUILD=1로 C1 재생성(네트워크/HF 필요) 또는 --use_real_expensive 0"
+  exit 1
+fi
+
 # 2) subject routing + candidates + teacher 재실행
+# 기본값: "재활용" 경로(run_c1=0)
+# 선택값: RUN_C1_REBUILD=1이면 C1 재생성 수행(HF/OpenCLIP 다운로드 필요)
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir "${DATA_DIR}" \
   --run_filter 0 \
-  --run_c1 1 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 "${RUN_C1_REBUILD}" --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_subject_routing 1 \
   --subject_routing_top_n 5 \
   --subject_routing_union_top_m 3 \
@@ -541,8 +728,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3,4,5,6 \
-  --teacher_num_workers 7 \
+  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
+  --teacher_num_workers 8 \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 512 \
@@ -550,6 +737,13 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --curated_image_dir "${DATA_DIR}/images" \
   --skip_existing 1 \
   --run_tag "${SM_TAG}"
+
+# 2.1) 2단계 성공 가드: teacher score가 생성되지 않았으면 즉시 중단
+if [ ! -f "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" ]; then
+  echo "[error] missing teacher scores: ${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl"
+  echo "        step-2 로그/에러를 먼저 해결한 뒤 visualization/report 단계를 실행하세요."
+  exit 1
+fi
 
 # 3) precompute/teacher visualization + report analytics
 bash src/scripts/run_visualize_components.sh \
@@ -825,7 +1019,7 @@ Subject-Mode enrich(신규):
 - `--run_vlm_teacher 0|1`: Section 10 실행 여부
 - `--vlm_backend`: `qwen25_vl|heuristic`
 - `--vlm_fallback_backend`: `heuristic|none`
-- `--vlm_model_id`: HF 모델 ID (기본: `Qwen/Qwen2.5-VL-3B-Instruct`)
+- `--vlm_model_id`: HF 모델 ID (기본: `Qwen/Qwen3-VL-4B-Instruct`)
 - `--vlm_device`, `--vlm_dtype`, `--vlm_max_new_tokens`, `--vlm_temperature`
 - `--vlm_top_m`, `--vlm_top_k`, `--vlm_target_ar`, `--vlm_max_images`, `--vlm_max_retries`
 - `--vlm_skip_on_oom`, `--vlm_fallback_cpu_on_oom`, `--vlm_fallback_cpu_max_images`, `--vlm_skip_if_fallback_failed`
@@ -969,17 +1163,47 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   - `--save_raw_response 1`
   - `--debug_dir <path>`
 
-Qwen2.5-VL 필수 런타임:
-- `transformers>=4.49.0` (권장: `<4.53.0`)
-- 구버전(`transformers<4.49`)에서는 `model_type=qwen2_5_vl` 미인식으로 로드 실패
+Qwen3-VL(기본) 필수 런타임:
+- `Qwen/Qwen3-VL-4B-Instruct`는 Hugging Face 공식 카드 기준으로 최신 `transformers` 소스 빌드를 권장합니다.
+- 현재 환경에서 `Qwen3VLForConditionalGeneration` 심볼이 없으면 로드가 실패합니다.
+- 대표 에러: `current=4.44.2, has_qwen3_vl_class=False`
 
-업그레이드 예시:
+업그레이드 예시(Qwen3-VL):
 ```bash
 python -m pip install -U \
-  "transformers>=4.49.0,<4.53.0" \
-  "tokenizers>=0.21.0,<0.22.0" \
-  "huggingface-hub>=0.26.0"
+  "git+https://github.com/huggingface/transformers" \
+  "tokenizers>=0.21.0" \
+  "huggingface-hub>=0.26.0" \
+  "accelerate>=0.30.0"
 ```
+
+서버 즉시 복구 절차(권장):
+```bash
+# 1) Stage10이 사용할 venv 활성화
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+# 2) Qwen3-VL 호환 런타임 업그레이드
+python -m pip install -U \
+  "git+https://github.com/huggingface/transformers" \
+  "tokenizers>=0.21.0" \
+  "huggingface-hub>=0.26.0" \
+  "accelerate>=0.30.0"
+
+# 3) 심볼 확인 (True여야 함)
+python - <<'PY'
+import transformers, sys
+print("python:", sys.executable)
+print("transformers:", transformers.__version__)
+print("has_qwen3:", hasattr(transformers, "Qwen3VLForConditionalGeneration"))
+PY
+```
+
+참고:
+- `run_phaseA_to_teacher_e2e.sh`, `run_vlm_teacher_labeler.sh`는 이제 `server_mode=1`에서도 `--venv_path` 파일이 존재하면 자동 활성화합니다.
+- `--venv_path`를 실제 서버 venv로 지정하지 않으면 시스템 python(`/usr/bin/python`)이 사용될 수 있습니다.
+
+호환성 이슈 시 임시 대안:
+- 환경 고정으로 `transformers` 업그레이드가 어려우면 `--vlm_model_id Qwen/Qwen2.5-VL-3B-Instruct`로 내려서 실행할 수 있습니다.
 
 `The following generation flags are not valid and may be ignored: ['temperature']` 경고:
 - greedy decode(`temperature=0`)에서 `temperature`를 함께 전달할 때 나타나는 HF 경고입니다.
@@ -1144,5 +1368,5 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - C3 enrich: `src/scripts/enrich_c3_pose_jsonl.py`
 - Candidate: `src/generate_candidates.py`, `src/scripts/run_generate_candidates.sh`
 - Teacher: `src/score_teacher.py`, `src/scripts/run_teacher_scorer.sh`, `src/scripts/qa_teacher_report.py`, `src/visualize_teacher_scores.py`
-- VLM Teacher: `src/vlm_teacher_labeler.py`, `src/scripts/run_vlm_teacher_labeler.sh`
+- VLM Teacher: `src/vlm_teacher_labeler.py`, `src/scripts/run_vlm_teacher_labeler.sh`, `src/visualize_vlm_teacher_labels.py`, `src/scripts/run_visualize_vlm_teacher.sh`
 - End-to-end: `src/scripts/run_phaseA_to_teacher_e2e.sh`

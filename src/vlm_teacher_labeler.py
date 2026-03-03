@@ -1199,14 +1199,19 @@ class Qwen25VLHFBackend(BaseVLMBackend):
         try:
             import torch
             import transformers
-            from transformers import AutoModelForVision2Seq, AutoProcessor
+            from transformers import AutoProcessor
         except Exception as exc:
             raise BackendInitError(f"transformers backend unavailable: {exc}") from exc
 
         self._transformers = transformers
         self._torch = torch
         self._AutoProcessor = AutoProcessor
-        self._AutoModelForVision2Seq = AutoModelForVision2Seq
+        auto_vision_model_cls = getattr(transformers, "AutoModelForVision2Seq", None)
+        if auto_vision_model_cls is None:
+            auto_vision_model_cls = getattr(transformers, "AutoModelForImageTextToText", None)
+        if auto_vision_model_cls is None:
+            auto_vision_model_cls = getattr(transformers, "AutoModelForSeq2SeqLM", None)
+        self._AutoModelForVision2Seq = auto_vision_model_cls
 
         self.device = str(cfg.device or "auto")
         if self.device == "auto":
@@ -1232,7 +1237,7 @@ class Qwen25VLHFBackend(BaseVLMBackend):
             model_kwargs["torch_dtype"] = torch_dtype
 
         model_l = str(cfg.model_id).strip().lower()
-        model_cls = self._AutoModelForVision2Seq
+        model_cls = None
         if "qwen3-vl" in model_l or "qwen3_vl" in model_l:
             qwen3_cls = getattr(transformers, "Qwen3VLForConditionalGeneration", None)
             if qwen3_cls is not None:
@@ -1245,6 +1250,13 @@ class Qwen25VLHFBackend(BaseVLMBackend):
             qwen2vl_cls = getattr(transformers, "Qwen2VLForConditionalGeneration", None)
             if qwen2vl_cls is not None:
                 model_cls = qwen2vl_cls
+        if model_cls is None:
+            model_cls = self._AutoModelForVision2Seq
+        if model_cls is None:
+            raise BackendInitError(
+                "No compatible auto vision model class found in transformers. "
+                "Expected one of AutoModelForVision2Seq / AutoModelForImageTextToText / AutoModelForSeq2SeqLM."
+            )
 
         try:
             self.processor = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)

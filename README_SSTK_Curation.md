@@ -1176,6 +1176,14 @@ python -m pip install -U \
   "huggingface-hub>=0.26.0" \
   "accelerate>=0.30.0"
 ```
+GitHub 경로 말고, 사내 PyPI 미러에서 최신 transformers 시도
+```bash
+python -m pip install -U \
+  transformers \
+  "tokenizers>=0.21.0" \
+  "huggingface-hub>=0.26.0" \
+  "accelerate>=0.30.0"
+```
 
 서버 즉시 복구 절차(권장):
 ```bash

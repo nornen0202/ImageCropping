@@ -172,6 +172,10 @@ Advanced stage toggles
 --run_c3_enrich 0|1             (default: 1)
 --run_c5 0|1                    (default: 1)
 --run_merge 0|1                 (default: 1)
+--run_subject_routing 0|1       merged feats에 subject_mode/c2_topn 주입 (default: 1)
+--subject_routing_top_n INT     C2 top-N instance 수 (default: 5)
+--subject_routing_union_top_m INT union box 계산용 상위 instance 수 (default: 3)
+--subject_routing_allow_det_proxy 0|1 c2_det proxy로 topN 보강 (default: 1)
 --run_candidates 0|1            (default: 1)
 --run_teacher 0|1               (default: 1)
 USAGE
@@ -180,7 +184,7 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$PROJECT_ROOT"
-SCRIPT_VERSION="2026-02-27.5"
+SCRIPT_VERSION="2026-02-27.6"
 
 # ------------------------------------------------------------------------------
 # Defaults
@@ -215,6 +219,10 @@ RUN_C3=1
 RUN_C3_ENRICH=1
 RUN_C5=1
 RUN_MERGE=1
+RUN_SUBJECT_ROUTING=1
+SUBJECT_ROUTING_TOP_N=5
+SUBJECT_ROUTING_UNION_TOP_M=3
+SUBJECT_ROUTING_ALLOW_DET_PROXY=1
 EXTRACT_MODE="auto"
 EXTRACT_PRIORITY="quality_first"
 C5_PRIORITY="quality_first"
@@ -350,6 +358,10 @@ while [ "$#" -gt 0 ]; do
     --run_c3_enrich) RUN_C3_ENRICH="$2"; shift 2 ;;
     --run_c5) RUN_C5="$2"; shift 2 ;;
     --run_merge) RUN_MERGE="$2"; shift 2 ;;
+    --run_subject_routing) RUN_SUBJECT_ROUTING="$2"; shift 2 ;;
+    --subject_routing_top_n) SUBJECT_ROUTING_TOP_N="$2"; shift 2 ;;
+    --subject_routing_union_top_m) SUBJECT_ROUTING_UNION_TOP_M="$2"; shift 2 ;;
+    --subject_routing_allow_det_proxy) SUBJECT_ROUTING_ALLOW_DET_PROXY="$2"; shift 2 ;;
     --extract_mode) EXTRACT_MODE="$2"; shift 2 ;;
     --extract_priority) EXTRACT_PRIORITY="$2"; shift 2 ;;
     --c5_priority) C5_PRIORITY="$2"; shift 2 ;;
@@ -556,6 +568,8 @@ FEATS_C3_ENRICHED="${PRECOMPUTE_DIR}/feats_c3_v2_strict_enriched.jsonl"
 FEATS_C5="${PRECOMPUTE_DIR}/feats_c5.jsonl"
 FEATS_C2C3C5_RAW="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_raw.jsonl"
 MERGED_FEATS="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched.jsonl"
+MERGED_FEATS_ROUTED="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed.jsonl"
+DOWNSTREAM_FEATS="$MERGED_FEATS"
 
 CANDIDATES_JSONL="${CANDIDATES_DIR}/candidates_ar${SUFFIX}.jsonl"
 TEACHER_JSONL="${TEACHER_SCORES_DIR}/teacher_scores_ar${SUFFIX}.jsonl"
@@ -720,6 +734,7 @@ promote_from_legacy_or_cleanup "$FEATS_C3_ENRICHED"
 promote_from_legacy_or_cleanup "$FEATS_C5"
 promote_from_legacy_or_cleanup "$FEATS_C2C3C5_RAW"
 promote_from_legacy_or_cleanup "$MERGED_FEATS"
+promote_from_legacy_or_cleanup "$MERGED_FEATS_ROUTED"
 promote_from_legacy_or_cleanup "$CANDIDATES_JSONL"
 promote_from_legacy_or_cleanup "$PUBLIC_TEACHER_RAW_JSONL"
 promote_from_legacy_or_cleanup "$PUBLIC_TEACHER_PROPOSALS_JSONL"
@@ -783,6 +798,7 @@ echo " prefer_curated_img  : $PREFER_CURATED_IMAGES (effective=${EFFECTIVE_IMAGE
 echo " extract_mode        : $EXTRACT_MODE (gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
 echo " run_c1/c2/c3/c5    : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C5"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
+echo " subject routing     : run=$RUN_SUBJECT_ROUTING top_n=$SUBJECT_ROUTING_TOP_N union_top_m=$SUBJECT_ROUTING_UNION_TOP_M det_proxy=$SUBJECT_ROUTING_ALLOW_DET_PROXY"
 echo " run_component_viz   : $RUN_COMPONENT_VIZ (out=$COMPONENT_VIZ_OUT_DIR, num_samples=$COMPONENT_VIZ_NUM_SAMPLES)"
 echo " public proposals    : enable=$ENABLE_PUBLIC_TEACHER_PROPOSALS setup=$PUBLIC_TEACHER_SETUP teachers=$PUBLIC_TEACHERS max_images=$PUBLIC_TEACHER_MAX_IMAGES"
 echo " public raw/proposal : $PUBLIC_TEACHER_RAW_JSONL | $PUBLIC_TEACHER_PROPOSALS_JSONL"
@@ -1013,18 +1029,49 @@ else
 fi
 
 # ------------------------------------------------------------------------------
+# 2.4) Subject-Mode Routing + C2 Top-N enrich (v1 patch)
+# ------------------------------------------------------------------------------
+DOWNSTREAM_FEATS="$MERGED_FEATS"
+if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
+  if [ ! -f "$MERGED_FEATS" ]; then
+    echo "[error] subject routing requires merged features jsonl: $MERGED_FEATS"
+    exit 1
+  fi
+  if ! should_skip_file "$MERGED_FEATS_ROUTED"; then
+    run_with_log "07a_enrich_subject_mode" \
+      python3 src/scripts/enrich_subject_mode_jsonl.py \
+        --input_feats_jsonl "$MERGED_FEATS" \
+        --input_filtered_parquet "$FILTERED_PARQUET" \
+        --output_jsonl "$MERGED_FEATS_ROUTED" \
+        --c2_top_n "$SUBJECT_ROUTING_TOP_N" \
+        --c2_union_top_m "$SUBJECT_ROUTING_UNION_TOP_M" \
+        --allow_det_proxy "$SUBJECT_ROUTING_ALLOW_DET_PROXY"
+  fi
+  if [ -f "$MERGED_FEATS_ROUTED" ]; then
+    DOWNSTREAM_FEATS="$MERGED_FEATS_ROUTED"
+  else
+    echo "[warn] subject routing output missing. fallback to merged feats: $MERGED_FEATS"
+  fi
+fi
+
+# Compatibility aliases for downstream steps.
+FEATS_C2="$DOWNSTREAM_FEATS"
+FEATS_C3_ENRICHED="$DOWNSTREAM_FEATS"
+FEATS_C5="$DOWNSTREAM_FEATS"
+
+# ------------------------------------------------------------------------------
 # 2.5) Precompute Visualization (optional)
 # ------------------------------------------------------------------------------
 if [ "$RUN_COMPONENT_VIZ" -eq 1 ]; then
-  if [ ! -f "$MERGED_FEATS" ]; then
-    echo "[error] component visualization requires merged features jsonl: $MERGED_FEATS"
+  if [ ! -f "$DOWNSTREAM_FEATS" ]; then
+    echo "[error] component visualization requires merged features jsonl: $DOWNSTREAM_FEATS"
     exit 1
   fi
   if [ "$SKIP_EXISTING" -eq 1 ] && [ -f "${COMPONENT_VIZ_OUT_DIR}/viz_overview.json" ]; then
     echo "[skip] exists: ${COMPONENT_VIZ_OUT_DIR}/viz_overview.json"
   else
     comp_viz_args=(
-      --merged_jsonl "$MERGED_FEATS"
+      --merged_jsonl "$DOWNSTREAM_FEATS"
       --num_samples "$COMPONENT_VIZ_NUM_SAMPLES"
       --draw_c2 1
       --draw_c3 1
@@ -1233,8 +1280,8 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
     echo "[error] candidates jsonl not found: $CANDIDATES_JSONL"
     exit 1
   fi
-  if [ ! -f "$MERGED_FEATS" ]; then
-    echo "[error] merged features jsonl not found: $MERGED_FEATS"
+  if [ ! -f "$DOWNSTREAM_FEATS" ]; then
+    echo "[error] merged features jsonl not found: $DOWNSTREAM_FEATS"
     exit 1
   fi
   if [ "$USE_REAL_EXPENSIVE" -eq 1 ]; then
@@ -1254,7 +1301,7 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --server_mode "$SERVER_MODE" \
         --venv_path "$VENV_PATH" \
         --candidates_jsonl "$CANDIDATES_JSONL" \
-        --features_jsonl "$MERGED_FEATS" \
+        --features_jsonl "$DOWNSTREAM_FEATS" \
         --c1_jsonl "$FEATS_C1" \
         --parquet "$FILTERED_PARQUET" \
         --tar_dir "$TAR_DIR" \
@@ -1360,6 +1407,10 @@ fi
 echo " feats c1          : $FEATS_C1"
 echo " feats c2/c3e/c5  : $FEATS_C2 | $FEATS_C3_ENRICHED | $FEATS_C5"
 echo " merged feats     : $MERGED_FEATS"
+if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
+  echo " routed feats     : $MERGED_FEATS_ROUTED"
+fi
+echo " downstream feats : $DOWNSTREAM_FEATS"
 if [ "$ENABLE_PUBLIC_TEACHER_PROPOSALS" -eq 1 ]; then
   echo " public raw       : $PUBLIC_TEACHER_RAW_JSONL"
   echo " public proposals : $PUBLIC_TEACHER_PROPOSALS_JSONL"

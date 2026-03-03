@@ -1162,6 +1162,18 @@ def build_subject_bbox(
     width: int,
     height: int,
 ) -> List[float]:
+    routing = candidate_rec.get("routing", {})
+    if not isinstance(routing, dict):
+        routing = feat_rec.get("routing", {}) if isinstance(feat_rec.get("routing"), dict) else {}
+    subject_set = routing.get("subject_set", {}) if isinstance(routing.get("subject_set"), dict) else {}
+    mode = str(routing.get("subject_mode", "")).strip().lower()
+    union_box = subject_set.get("union_box_xyxy")
+    if isinstance(union_box, (list, tuple)) and len(union_box) == 4:
+        ub = clip_box01(norm_box_xyxy(union_box, width, height))
+        if box_area(ub) > 0:
+            if mode in {"portrait_group", "object_multi", "scene_landscape", "background_texture_copyspace"}:
+                return ub
+
     sp = candidate_rec.get("subject_prior", {})
     if isinstance(sp, dict):
         b = sp.get("bbox_norm_xyxy")
@@ -1655,6 +1667,111 @@ def effective_lambdas(
     for k in lam:
         lam[k] = max(0.0, float(lam[k]))
     return lam
+
+
+def _resolve_subject_routing_hint(cand_rec: Dict[str, Any], feat_rec: Dict[str, Any]) -> Dict[str, Any]:
+    # Candidate-level routing takes precedence because it is the exact generation context,
+    # but we backfill missing fields from feature-level routing.
+    cand_routing = cand_rec.get("routing", {})
+    feat_routing = feat_rec.get("routing", {})
+    out: Dict[str, Any] = {}
+    if isinstance(feat_routing, dict):
+        out.update(feat_routing)
+    if isinstance(cand_routing, dict):
+        out.update(cand_routing)
+    return out
+
+
+def apply_subject_policy_overrides(
+    route: Dict[str, Any],
+    subject_mode: str,
+    policy_id: str,
+    routing_hint: Dict[str, Any],
+) -> Dict[str, Any]:
+    out = dict(route)
+    lambdas = dict(route.get("lambdas", {}))
+    flags = dict(route.get("flags", {}))
+
+    # Keep compatibility with existing flags while exposing richer routing info.
+    if isinstance(routing_hint.get("subject_mode_flags"), dict):
+        sm_flags = routing_hint.get("subject_mode_flags", {})
+        flags["subject_mode_has_person"] = bool(sm_flags.get("has_person", False))
+        flags["subject_mode_has_text_heavy"] = bool(sm_flags.get("has_text_heavy", False))
+        flags["subject_mode_has_copyspace_tag"] = bool(sm_flags.get("has_copyspace_tag", False))
+        flags["subject_mode_is_background_like"] = bool(sm_flags.get("is_background_like", False))
+
+    mode = str(subject_mode or "").strip().lower()
+    policy = str(policy_id or "").strip().lower()
+    if not mode:
+        mode = "other_ambiguous"
+    if not policy:
+        policy = "generic_v1"
+
+    # Route-level schedules tuned by subject mode.
+    if mode in {"portrait_single", "portrait_group"} or policy in {"portrait_single_v1", "portrait_group_v1"}:
+        if mode == "portrait_group":
+            out["shot_type"] = "group"
+            out["tau_improve"] = max(float(out.get("tau_improve", 0.03)), 0.045)
+            if lambdas.get("lr", 0.0) > 0.12:
+                lambdas["lr"] = 0.12
+            lambdas["cut"] = max(lambdas.get("cut", 0.0), 1.10)
+        else:
+            out["tau_improve"] = max(float(out.get("tau_improve", 0.03)), 0.03)
+            lambdas["hr"] = max(lambdas.get("hr", 0.0), 0.25)
+            lambdas["lr"] = max(lambdas.get("lr", 0.0), 0.20)
+            lambdas["cut"] = max(lambdas.get("cut", 0.0), 1.05)
+        out["w_area"] = max(float(out.get("w_area", 0.10)), 0.10)
+
+    elif mode in {"object_single", "object_multi"} or policy in {"object_v1", "object_multi_v1"}:
+        out["tau_improve"] = max(float(out.get("tau_improve", 0.03)), 0.02)
+        out["w_area"] = max(float(out.get("w_area", 0.08)), 0.08)
+        lambdas["cut"] = max(lambdas.get("cut", 0.0), 1.05)
+        lambdas["ctx"] = max(lambdas.get("ctx", 0.0), 0.18)
+        if mode == "object_multi":
+            lambdas["cov"] = max(lambdas.get("cov", 0.0), 0.55)
+
+    elif mode == "scene_landscape" or policy == "scene_v1":
+        out["tau_improve"] = max(float(out.get("tau_improve", 0.035)), 0.055)
+        out["w_area"] = min(float(out.get("w_area", 0.10)), 0.08)
+        lambdas["cov"] = min(lambdas.get("cov", 0.0), 0.30)
+        lambdas["comp"] = max(lambdas.get("comp", 0.0), 0.55)
+        lambdas["ctx"] = max(lambdas.get("ctx", 0.0), 0.35)
+        lambdas["hr"] = 0.0
+        lambdas["lr"] = 0.0
+
+    elif mode == "background_texture_copyspace" or policy == "copyspace_v1":
+        out["tau_improve"] = max(float(out.get("tau_improve", 0.035)), 0.05)
+        out["w_area"] = min(float(out.get("w_area", 0.10)), 0.08)
+        flags["has_copy_space"] = True
+        lambdas["cs"] = max(lambdas.get("cs", 0.0), 0.35)
+        lambdas["ctx"] = max(lambdas.get("ctx", 0.0), 0.30)
+        lambdas["hr"] = 0.0
+        lambdas["lr"] = 0.0
+
+    elif mode == "text_document" or policy == "text_v1":
+        out["tau_improve"] = max(float(out.get("tau_improve", 0.035)), 0.05)
+        flags["is_product"] = False
+        lambdas["text"] = max(lambdas.get("text", 0.0), 0.40)
+        lambdas["cut"] = max(lambdas.get("cut", 0.0), 1.00)
+        lambdas["hr"] = 0.0
+        lambdas["lr"] = 0.0
+
+    for k in list(lambdas.keys()):
+        lambdas[k] = max(0.0, float(lambdas[k]))
+
+    out["flags"] = flags
+    out["lambdas"] = lambdas
+    out["subject_mode"] = mode
+    out["policy_id"] = policy
+    out["subject_mode_conf"] = safe_float(routing_hint.get("subject_mode_conf", 0.0))
+    out["subject_mode_reasons"] = (
+        routing_hint.get("subject_mode_reasons", [])
+        if isinstance(routing_hint.get("subject_mode_reasons"), list)
+        else []
+    )
+    out["subject_set"] = routing_hint.get("subject_set", {}) if isinstance(routing_hint.get("subject_set"), dict) else {}
+    out["subject_mode_conflict"] = bool(routing_hint.get("subject_mode_conflict", False))
+    return out
 
 
 def apply_expensive_score(
@@ -2337,6 +2454,7 @@ def process_one_image(
     )
 
     tags = tags_to_tokens(cand_rec.get("tags", []))
+    routing_hint = _resolve_subject_routing_hint(cand_rec=cand_rec, feat_rec=feat_rec)
 
     c3_info = collect_c3_info(feat_rec=feat_rec, width=width, height=height)
     c5_info = collect_c5_info(feat_rec=feat_rec)
@@ -2350,6 +2468,12 @@ def process_one_image(
     flags = infer_flags(tags, has_human_evidence=has_human_evidence)
 
     has_people = num_people > 0
+
+    hint_shot_type = str(routing_hint.get("shot_type", "")).strip().lower()
+    if hint_shot_type in {"headshot", "half", "full", "group"}:
+        shot_type = hint_shot_type
+    hint_subject_mode = str(routing_hint.get("subject_mode", "")).strip()
+    hint_policy_id = str(routing_hint.get("policy_id", "")).strip()
 
     route = {
         "shot_type": shot_type,
@@ -2371,6 +2495,12 @@ def process_one_image(
         "w_area": area_weight_for_route(flags),
         "lambdas": effective_lambdas(cfg, shot_type, flags, has_people),
     }
+    route = apply_subject_policy_overrides(
+        route=route,
+        subject_mode=hint_subject_mode,
+        policy_id=hint_policy_id,
+        routing_hint=routing_hint,
+    )
 
     subject_box = build_subject_bbox(cand_rec, feat_rec, width=width, height=height)
     subject_centroid = box_center(subject_box)
@@ -2612,13 +2742,19 @@ def process_one_image(
             "hard_negatives": [candidate_brief(c) for c in hard_negs],
             "also_considered_rejected": [candidate_brief(c) for c in rejected_sorted[:5]],
             "routing": {
-                "shot_type": shot_type,
+                "shot_type": route.get("shot_type", shot_type),
                 "portrait_category": portrait_category,
-                "flags": flags,
+                "flags": route.get("flags", flags),
                 "num_people": int(num_people),
                 "c2_person_count": int(c2_person_count),
                 "has_human_evidence": bool(has_human_evidence),
                 "norm_size_source": norm_size_source,
+                "subject_mode": route.get("subject_mode", "other_ambiguous"),
+                "policy_id": route.get("policy_id", "generic_v1"),
+                "subject_mode_conf": safe_float(route.get("subject_mode_conf", 0.0)),
+                "subject_mode_reasons": route.get("subject_mode_reasons", []),
+                "subject_mode_conflict": bool(route.get("subject_mode_conflict", False)),
+                "subject_set": route.get("subject_set", {}),
                 "headroom_range": route["headroom_range"],
                 "lookroom_range": route["lookroom_range"],
                 "context_range": route["context_range"],
@@ -2649,13 +2785,19 @@ def process_one_image(
         "tags": tags,
         "subject_prior": cand_rec.get("subject_prior", {}),
         "route_global": {
-            "shot_type": shot_type,
+            "shot_type": route.get("shot_type", shot_type),
             "portrait_category": portrait_category,
-            "flags": flags,
+            "flags": route.get("flags", flags),
             "num_people": num_people,
             "c2_person_count": int(c2_person_count),
             "has_human_evidence": bool(has_human_evidence),
             "norm_size_source": norm_size_source,
+            "subject_mode": route.get("subject_mode", "other_ambiguous"),
+            "policy_id": route.get("policy_id", "generic_v1"),
+            "subject_mode_conf": safe_float(route.get("subject_mode_conf", 0.0)),
+            "subject_mode_reasons": route.get("subject_mode_reasons", []),
+            "subject_mode_conflict": bool(route.get("subject_mode_conflict", False)),
+            "subject_set": route.get("subject_set", {}),
         },
         "teacher_scorer": {
             "config": asdict(cfg),
@@ -2831,6 +2973,8 @@ def run(args: argparse.Namespace) -> None:
                         "shot_type": route_info.get("shot_type", "unknown"),
                         "num_people": one.get("route_global", {}).get("num_people", 0),
                         "flags": route_info.get("flags", {}),
+                        "subject_mode": route_info.get("subject_mode", "other_ambiguous"),
+                        "policy_id": route_info.get("policy_id", "generic_v1"),
                     }
 
                     update_stats(

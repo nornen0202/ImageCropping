@@ -1,0 +1,1424 @@
+#!/usr/bin/env python3
+"""
+VLM/MLLM Teacher Label Generator (Section 10)
+
+Input:
+  - teacher_scores jsonl (from score_teacher.py)
+  - optional curated image dir (<image_id>.<ext>) for vision backends
+
+Output:
+  - crop_label_v1 jsonl (one row per image_id x target_ar)
+  - optional meta_norm_v1 jsonl (one row per image)
+  - summary json
+
+Design goals:
+  - Pluggable backend registry (default: qwen25_vl)
+  - Strict post-validation (candidate-id/bbox consistency)
+  - Retry + deterministic fallback (numeric scorer top-k)
+  - OOM-safe behavior (optional CPU fallback / skip)
+"""
+
+from __future__ import annotations
+
+import argparse
+from collections import Counter
+from dataclasses import dataclass
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import random
+import re
+import sys
+import time
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+import uuid
+
+from tqdm import tqdm
+from packaging.version import Version, InvalidVersion
+
+
+AR_ORDER = ["1:1", "9:16", "16:9", "3:4", "4:3"]
+
+# Union of spec vocab + current numeric-scoring tags already used in pipeline
+ALLOWED_WHY_TAGS = {
+    "subject_preserved",
+    "background_context_ok",
+    "clutter_reduced",
+    "avoid_face_cut",
+    "avoid_person_cut",
+    "avoid_object_cut",
+    "copy_space_kept",
+    "copy_space_preserved",
+    "text_kept",
+    "text_preserved",
+    "rule_of_thirds",
+    "phi_grid",
+    "centered_subject",
+    "center_comp",
+    "symmetry",
+    "leading_lines",
+    "balanced_negative_space",
+    "horizon_on_third",
+    "ar_fits_well",
+    "tight_crop",
+    "wide_crop",
+    "headroom_ok",
+    "headroom_violation",
+    "lookroom_ok",
+    "lookroom_violation",
+    "joint_cutoff",
+    "face_cut",
+    "roll_tilt",
+    "context_preserved",
+    "context_lost",
+    "context_loss",
+    "no_crop_needed",
+    "crop_improves_comp",
+    "balanced_crop",
+    "diagonal",
+    "triangle",
+    "s_curve",
+    "c_curve",
+    "o_curve",
+    "radial",
+    "perspective",
+    "pattern",
+    "dense",
+    "scatter",
+}
+
+
+def safe_float(v: Any, default: float = 0.0) -> float:
+    try:
+        x = float(v)
+    except Exception:
+        return float(default)
+    if not math.isfinite(x):
+        return float(default)
+    return x
+
+
+def safe_int(v: Any, default: int = 0) -> int:
+    try:
+        return int(v)
+    except Exception:
+        return int(default)
+
+
+def clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, float(v)))
+
+
+def as_list(v: Any) -> List[Any]:
+    if isinstance(v, list):
+        return v
+    if isinstance(v, tuple):
+        return list(v)
+    return []
+
+
+def parse_bool01(v: Any, default: bool = False) -> bool:
+    if v is None:
+        return bool(default)
+    if isinstance(v, bool):
+        return v
+    s = str(v).strip().lower()
+    if s in {"1", "true", "yes", "y", "on"}:
+        return True
+    if s in {"0", "false", "no", "n", "off"}:
+        return False
+    return bool(default)
+
+
+def stable_shard_index(image_id: str, num_shards: int) -> int:
+    n = max(1, int(num_shards))
+    if n <= 1:
+        return 0
+    key = str(image_id).encode("utf-8", errors="ignore")
+    hv = int(hashlib.md5(key).hexdigest(), 16)
+    return int(hv % n)
+
+
+def build_generation_kwargs(max_new_tokens: int, temperature: float) -> Dict[str, Any]:
+    out: Dict[str, Any] = {
+        "max_new_tokens": max(64, int(max_new_tokens)),
+    }
+    temp = float(temperature)
+    if temp > 0.0:
+        out["do_sample"] = True
+        out["temperature"] = temp
+    else:
+        out["do_sample"] = False
+    return out
+
+
+def normalize_box(box: Any) -> Optional[List[float]]:
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return None
+    try:
+        x1, y1, x2, y2 = [float(x) for x in box]
+    except Exception:
+        return None
+    x1 = clamp(x1, 0.0, 1.0)
+    y1 = clamp(y1, 0.0, 1.0)
+    x2 = clamp(x2, 0.0, 1.0)
+    y2 = clamp(y2, 0.0, 1.0)
+    if x2 < x1:
+        x1, x2 = x2, x1
+    if y2 < y1:
+        y1, y2 = y2, y1
+    if (x2 - x1) <= 1e-8 or (y2 - y1) <= 1e-8:
+        return None
+    return [round(x1, 6), round(y1, 6), round(x2, 6), round(y2, 6)]
+
+
+def is_oom_error(exc: BaseException) -> bool:
+    msg = str(exc).lower()
+    needles = [
+        "out of memory",
+        "cuda out of memory",
+        "cublas status alloc failed",
+        "cuda error: out of memory",
+    ]
+    return any(n in msg for n in needles)
+
+
+def infer_category(tags: Sequence[str], route_flags: Dict[str, Any], has_human_evidence: bool) -> str:
+    tset = {str(t).strip().lower() for t in tags if str(t).strip()}
+    if has_human_evidence or any(x in tset for x in {"person", "people", "man", "woman", "portrait", "group"}):
+        return "person"
+    if parse_bool01(route_flags.get("is_product", False), False) or any(x in tset for x in {"product", "packshot"}):
+        return "product"
+    if parse_bool01(route_flags.get("is_landscape_scene", False), False):
+        return "landscape"
+    if any(x in tset for x in {"animal", "pet", "wildlife"}):
+        return "animal"
+    return "generic"
+
+
+def infer_main_subject(tags: Sequence[str], category: str) -> Dict[str, Any]:
+    if tags:
+        label = str(tags[0])
+    else:
+        label = category
+    stype = "person" if category == "person" else "object"
+    return {
+        "label": label,
+        "type": stype,
+        "confidence": 0.7,
+        "evidence": {
+            "tags_top": [str(x) for x in tags[:8]],
+            "noun_phrases_top": [label],
+            "notes": "rule_based",
+        },
+    }
+
+
+def build_meta_norm_v1(row: Dict[str, Any]) -> Dict[str, Any]:
+    image_id = str(row.get("image_id", ""))
+    tags = as_list(row.get("tags"))
+    route_global = row.get("route_global", {}) if isinstance(row.get("route_global"), dict) else {}
+    flags = route_global.get("flags", {}) if isinstance(route_global.get("flags"), dict) else {}
+
+    has_human_evidence = parse_bool01(route_global.get("has_human_evidence", False), False)
+    if not has_human_evidence:
+        has_human_evidence = (safe_int(route_global.get("num_people", 0), 0) > 0) or (
+            safe_int(route_global.get("c2_person_count", 0), 0) > 0
+        )
+
+    category = infer_category(tags, flags, has_human_evidence)
+    main_subject = infer_main_subject(tags, category)
+
+    copy_space = parse_bool01(flags.get("has_copy_space", False), False)
+    portrait = category == "person"
+
+    intents = []
+    intents.append({"code": "avoid_face_cut", "priority": 5, "detail": "face_cut=false preferred"})
+    if copy_space:
+        intents.append({"code": "preserve_copy_space", "priority": 4, "detail": "keep negative space"})
+    if parse_bool01(flags.get("is_landscape_scene", False), False):
+        intents.append({"code": "horizon_level", "priority": 3, "detail": "roll tilt minimized"})
+
+    return {
+        "schema_version": "meta_norm_v1",
+        "image_id": image_id,
+        "language": "en",
+        "category": category,
+        "subcategory": str(route_global.get("portrait_category", "unknown") or "unknown"),
+        "main_subject": main_subject,
+        "secondary_subjects": [],
+        "multi_subject": bool(safe_int(route_global.get("num_people", 0), 0) >= 2),
+        "special_flags": {
+            "copy_space": copy_space,
+            "copy_space_side": "unknown",
+            "portrait": portrait,
+            "isolated": parse_bool01(flags.get("is_isolated_packshot", False), False),
+            "panoramic": False,
+            "close_up": str(route_global.get("shot_type", "unknown")) in {"headshot", "half"},
+            "text_overlay_likely": False,
+        },
+        "intent": intents,
+    }
+
+
+def candidate_id_of(cand: Dict[str, Any]) -> str:
+    return str(cand.get("candidate_id", "")).strip()
+
+
+def dedupe_candidates(cands: Iterable[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for c in cands:
+        if not isinstance(c, dict):
+            continue
+        cid = candidate_id_of(c)
+        if not cid or cid in seen:
+            continue
+        box = normalize_box(c.get("bbox_norm_xyxy"))
+        if box is None:
+            continue
+        cc = dict(c)
+        cc["bbox_norm_xyxy"] = box
+        out.append(cc)
+        seen.add(cid)
+    return out
+
+
+def _candidate_feature_view(c: Dict[str, Any]) -> Dict[str, Any]:
+    comps = c.get("scores", {}).get("components", {}) if isinstance(c.get("scores"), dict) else {}
+    flags = c.get("flags", {}) if isinstance(c.get("flags"), dict) else {}
+    checks = c.get("composition_checks", {}) if isinstance(c.get("composition_checks"), dict) else {}
+    return {
+        "candidate_id": candidate_id_of(c),
+        "bbox_norm_xyxy": normalize_box(c.get("bbox_norm_xyxy")) or [0.0, 0.0, 1.0, 1.0],
+        "source": str(c.get("source", "unknown")),
+        "must_keep": bool(c.get("must_keep", False)),
+        "features": {
+            "subj_coverage": safe_float(flags.get("subject_coverage", 0.0), 0.0),
+            "subj_area": safe_float(flags.get("subject_area", 0.0), 0.0),
+            "face_cut": bool(flags.get("face_cut", False)),
+            "joint_cutoff_score": safe_float(flags.get("joint_cutoff_score", 0.0), 0.0),
+            "horizon_y": safe_float(checks.get("horizon", {}).get("y", 0.0), 0.0)
+            if isinstance(checks.get("horizon"), dict)
+            else 0.0,
+            "roll_deg": safe_float(checks.get("horizon", {}).get("roll_deg", 0.0), 0.0)
+            if isinstance(checks.get("horizon"), dict)
+            else 0.0,
+            "horizon_conf": safe_float(checks.get("horizon", {}).get("conf", 0.0), 0.0)
+            if isinstance(checks.get("horizon"), dict)
+            else 0.0,
+            "symmetry_score": safe_float(checks.get("symmetry", {}).get("value", comps.get("r_sym", 0.0)), 0.0)
+            if isinstance(checks.get("symmetry"), dict)
+            else safe_float(comps.get("r_sym", 0.0), 0.0),
+            "text_keep_ratio": safe_float(checks.get("text", {}).get("text_keep_ratio", 0.0), 0.0)
+            if isinstance(checks.get("text"), dict)
+            else 0.0,
+            "clip_img_txt": safe_float(comps.get("cosine_img_text", 0.0), 0.0),
+            "aesthetic_pre": safe_float(comps.get("aesthetic_norm", 0.0), 0.0),
+            "cheap": safe_float(c.get("scores", {}).get("cheap", 0.0), 0.0),
+            "expensive": safe_float(c.get("scores", {}).get("expensive", 0.0), 0.0),
+            "final": safe_float(c.get("scores", {}).get("final", 0.0), 0.0),
+        },
+        "why_tags": [str(x) for x in as_list(c.get("why_tags"))[:12]],
+    }
+
+
+def _target_ar_list(results_by_ar: Dict[str, Any], target_ar: str) -> List[str]:
+    if target_ar == "all":
+        ars = [ar for ar in AR_ORDER if ar in results_by_ar]
+        for ar in sorted(results_by_ar.keys()):
+            if ar not in ars:
+                ars.append(ar)
+        return ars
+    out = []
+    for ar in [x.strip() for x in target_ar.split(",") if x.strip()]:
+        if ar in results_by_ar:
+            out.append(ar)
+    return out
+
+
+def build_task(
+    row: Dict[str, Any],
+    target_ar: str,
+    *,
+    top_m: int,
+    top_k: int,
+    prompt_version: str,
+) -> Optional[Dict[str, Any]]:
+    scorer = row.get("teacher_scorer", {}) if isinstance(row.get("teacher_scorer"), dict) else {}
+    results_by_ar = scorer.get("results_by_ar", {}) if isinstance(scorer.get("results_by_ar"), dict) else {}
+    ar_res = results_by_ar.get(target_ar, {}) if isinstance(results_by_ar.get(target_ar), dict) else {}
+    if not ar_res:
+        return None
+
+    pool: List[Dict[str, Any]] = []
+    cheap_top = as_list(ar_res.get("cheap_top_m"))
+    if cheap_top:
+        pool.extend(cheap_top[: max(1, int(top_m))])
+    pool.extend(as_list(ar_res.get("selected_topk")))
+    pool.extend(as_list(ar_res.get("hard_negatives")))
+
+    baseline = ar_res.get("baseline_candidate") if isinstance(ar_res.get("baseline_candidate"), dict) else None
+    best = ar_res.get("best_candidate") if isinstance(ar_res.get("best_candidate"), dict) else None
+    if baseline:
+        pool.insert(0, baseline)
+    if best:
+        pool.insert(0, best)
+
+    candidates = dedupe_candidates(pool)
+    if not candidates:
+        return None
+
+    cand_map = {candidate_id_of(c): c for c in candidates}
+
+    numeric_topk = []
+    for c in as_list(ar_res.get("selected_topk")):
+        cid = candidate_id_of(c)
+        if cid and cid in cand_map:
+            numeric_topk.append(cand_map[cid])
+    if not numeric_topk:
+        # fallback to highest final among candidate pool
+        numeric_topk = sorted(
+            candidates,
+            key=lambda x: safe_float(x.get("scores", {}).get("final", -1e9), -1e9),
+            reverse=True,
+        )[: max(1, int(top_k))]
+
+    hard_neg = []
+    for c in as_list(ar_res.get("hard_negatives")):
+        cid = candidate_id_of(c)
+        if cid and cid in cand_map:
+            hard_neg.append(cand_map[cid])
+
+    task = {
+        "schema_version": "teacher_ab_input_v1",
+        "sample_id": f"{row.get('image_id', '')}|ar={target_ar}",
+        "image_id": str(row.get("image_id", "")),
+        "image": {
+            "image_id": str(row.get("image_id", "")),
+            "width": safe_int(row.get("width", 0), 0),
+            "height": safe_int(row.get("height", 0), 0),
+        },
+        "target_ar": target_ar,
+        "meta": {
+            "tags": [str(x) for x in as_list(row.get("tags"))[:64]],
+            "caption": "",
+            "alt_text": "",
+        },
+        "meta_norm_v1": build_meta_norm_v1(row),
+        "features": {
+            "route_global": row.get("route_global", {}),
+            "subject_prior": row.get("subject_prior", {}),
+        },
+        "candidates": [_candidate_feature_view(c) for c in candidates],
+        "policy": {
+            "topk": int(top_k),
+            "topm": int(top_m),
+            "prompt_version": str(prompt_version),
+            "keep_policy": ar_res.get("keep_policy", {}),
+        },
+        "decision": ar_res.get("decision", {}),
+        "baseline_candidate": _candidate_feature_view(baseline) if isinstance(baseline, dict) else None,
+        "best_candidate": _candidate_feature_view(best) if isinstance(best, dict) else None,
+        "numeric_topk": [_candidate_feature_view(c) for c in numeric_topk[: max(1, int(top_k))]],
+        "hard_negatives": [_candidate_feature_view(c) for c in hard_neg[:5]],
+        "composition_checks_top1": (
+            numeric_topk[0].get("composition_checks", {})
+            if numeric_topk and isinstance(numeric_topk[0], dict)
+            else {}
+        ),
+    }
+    return task
+
+
+def sanitize_tags(tags: Any, fallback: Optional[List[str]] = None) -> List[str]:
+    out: List[str] = []
+    for t in as_list(tags):
+        s = str(t).strip()
+        if not s:
+            continue
+        if s in ALLOWED_WHY_TAGS and s not in out:
+            out.append(s)
+    if not out and fallback:
+        for t in fallback:
+            s = str(t).strip()
+            if s and s in ALLOWED_WHY_TAGS and s not in out:
+                out.append(s)
+    if not out:
+        out = ["crop_improves_comp"]
+    return out[:8]
+
+
+def _fallback_why_text(cand: Dict[str, Any]) -> str:
+    feats = cand.get("features", {}) if isinstance(cand.get("features"), dict) else {}
+    final_s = safe_float(feats.get("final", 0.0), 0.0)
+    cov = safe_float(feats.get("subj_coverage", 0.0), 0.0)
+    face_cut = bool(feats.get("face_cut", False))
+    return (
+        f"final={final_s:.3f}, subj_coverage={cov:.3f}, face_cut={str(face_cut).lower()} 기준으로 "
+        "안정적인 후보로 선택했습니다."
+    )
+
+
+def build_fallback_output(task: Dict[str, Any], reason: str, backend_name: str) -> Dict[str, Any]:
+    cands = as_list(task.get("numeric_topk"))
+    k = max(1, safe_int(task.get("policy", {}).get("topk", 5), 5))
+    selected = cands[:k]
+
+    selected_rows = []
+    for rank, c in enumerate(selected, start=1):
+        selected_rows.append(
+            {
+                "rank": rank,
+                "candidate_id": str(c.get("candidate_id", "")),
+                "bbox_norm_xyxy": normalize_box(c.get("bbox_norm_xyxy")) or [0.0, 0.0, 1.0, 1.0],
+                "why_tags": sanitize_tags(c.get("why_tags"), fallback=["crop_improves_comp"]),
+                "why_text": _fallback_why_text(c),
+            }
+        )
+
+    selected_ids = {x["candidate_id"] for x in selected_rows}
+    also_considered = []
+    for c in as_list(task.get("hard_negatives"))[:3]:
+        cid = str(c.get("candidate_id", ""))
+        if not cid or cid in selected_ids:
+            continue
+        also_considered.append(
+            {
+                "candidate_id": cid,
+                "reject_tags": ["context_lost"],
+                "reject_text": "Top-K 대비 우선순위가 낮아 제외되었습니다.",
+            }
+        )
+
+    decision = task.get("decision", {}) if isinstance(task.get("decision"), dict) else {}
+    baseline = task.get("baseline_candidate") if isinstance(task.get("baseline_candidate"), dict) else None
+    baseline_id = str(baseline.get("candidate_id", "")) if baseline else ""
+
+    top1_final = safe_float(selected[0].get("features", {}).get("final", 0.0), 0.0) if selected else 0.0
+    top2_final = safe_float(selected[1].get("features", {}).get("final", top1_final), top1_final) if len(selected) > 1 else top1_final
+    conf = clamp(0.5 + max(0.0, top1_final - top2_final), 0.0, 1.0)
+
+    return {
+        "schema_version": "crop_label_v1",
+        "record_id": str(uuid.uuid4()),
+        "sample_id": task.get("sample_id"),
+        "image_id": task.get("image_id"),
+        "target_ar": task.get("target_ar"),
+        "decision_type": str(decision.get("decision_type", "crop")),
+        "delta_improve_vs_baseline": safe_float(decision.get("delta_improve", 0.0), 0.0),
+        "baseline_used_candidate_id": baseline_id,
+        "selected_topk": selected_rows,
+        "also_considered": also_considered,
+        "composition_checks": task.get("composition_checks_top1", {}),
+        "original_policy": {
+            "original_is_candidate": bool(baseline_id),
+            "kept_original": (bool(selected_rows) and selected_rows[0]["candidate_id"] == baseline_id),
+            "why_not_original": "improvement_over_baseline" if baseline_id else "baseline_missing",
+        },
+        "explanations": {
+            "short": "수치 기반 fallback 라벨입니다.",
+            "long": f"VLM 응답 실패({reason})로 numeric scorer 결과를 사용했습니다.",
+        },
+        "teacher": {
+            "backend": backend_name,
+            "teacher_id": backend_name,
+            "teacher_confidence": conf,
+        },
+        "validator": {
+            "schema_ok": True,
+            "numeric_consistency_ok": True,
+            "notes": f"fallback:{reason}",
+        },
+    }
+
+
+def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
+    if not text:
+        return None
+    text = text.strip()
+    # Fast path
+    try:
+        obj = json.loads(text)
+        if isinstance(obj, dict):
+            return obj
+    except Exception:
+        pass
+
+    starts = [i for i, ch in enumerate(text) if ch == "{"]
+    for s in starts:
+        depth = 0
+        for i in range(s, len(text)):
+            ch = text[i]
+            if ch == "{":
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0:
+                    seg = text[s : i + 1]
+                    try:
+                        obj = json.loads(seg)
+                    except Exception:
+                        continue
+                    if isinstance(obj, dict):
+                        return obj
+                    continue
+    return None
+
+
+def normalize_backend_output(
+    task: Dict[str, Any],
+    parsed: Dict[str, Any],
+    *,
+    backend_name: str,
+    model_id: str,
+) -> Dict[str, Any]:
+    cand_map = {str(c.get("candidate_id", "")): c for c in as_list(task.get("candidates"))}
+    k = max(1, safe_int(task.get("policy", {}).get("topk", 5), 5))
+    decision = task.get("decision", {}) if isinstance(task.get("decision"), dict) else {}
+
+    raw_sel = as_list(parsed.get("selected_topk"))
+    selected: List[Dict[str, Any]] = []
+    used = set()
+    for it in raw_sel:
+        if not isinstance(it, dict):
+            continue
+        cid = str(it.get("candidate_id", "")).strip()
+        if not cid or cid in used or cid not in cand_map:
+            continue
+        base = cand_map[cid]
+        selected.append(
+            {
+                "rank": len(selected) + 1,
+                "candidate_id": cid,
+                "bbox_norm_xyxy": normalize_box(base.get("bbox_norm_xyxy")) or [0.0, 0.0, 1.0, 1.0],
+                "why_tags": sanitize_tags(it.get("why_tags"), fallback=as_list(base.get("why_tags"))),
+                "why_text": str(it.get("why_text", "")).strip() or _fallback_why_text(base),
+            }
+        )
+        used.add(cid)
+        if len(selected) >= k:
+            break
+
+    # Fill with numeric top-k when model output is partial
+    for c in as_list(task.get("numeric_topk")):
+        cid = str(c.get("candidate_id", "")).strip()
+        if not cid or cid in used or cid not in cand_map:
+            continue
+        selected.append(
+            {
+                "rank": len(selected) + 1,
+                "candidate_id": cid,
+                "bbox_norm_xyxy": normalize_box(c.get("bbox_norm_xyxy")) or [0.0, 0.0, 1.0, 1.0],
+                "why_tags": sanitize_tags(c.get("why_tags"), fallback=["crop_improves_comp"]),
+                "why_text": _fallback_why_text(c),
+            }
+        )
+        used.add(cid)
+        if len(selected) >= k:
+            break
+
+    if not selected:
+        raise ValueError("selected_topk is empty after normalization")
+
+    # also_considered
+    raw_cons = as_list(parsed.get("also_considered"))
+    also_considered: List[Dict[str, Any]] = []
+    selected_ids = {x["candidate_id"] for x in selected}
+    for it in raw_cons:
+        if not isinstance(it, dict):
+            continue
+        cid = str(it.get("candidate_id", "")).strip()
+        if not cid or cid in selected_ids or cid not in cand_map:
+            continue
+        also_considered.append(
+            {
+                "candidate_id": cid,
+                "reject_tags": sanitize_tags(it.get("reject_tags"), fallback=["context_lost"]),
+                "reject_text": str(it.get("reject_text", "")).strip() or "Top-K 대비 우선순위가 낮아 제외되었습니다.",
+            }
+        )
+        if len(also_considered) >= 3:
+            break
+
+    if not also_considered:
+        for c in as_list(task.get("hard_negatives")):
+            cid = str(c.get("candidate_id", "")).strip()
+            if not cid or cid in selected_ids:
+                continue
+            also_considered.append(
+                {
+                    "candidate_id": cid,
+                    "reject_tags": ["context_lost"],
+                    "reject_text": "Top-K 대비 우선순위가 낮아 제외되었습니다.",
+                }
+            )
+            if len(also_considered) >= 3:
+                break
+
+    baseline = task.get("baseline_candidate") if isinstance(task.get("baseline_candidate"), dict) else None
+    baseline_id = str(baseline.get("candidate_id", "")) if baseline else ""
+
+    comp_checks = parsed.get("composition_checks") if isinstance(parsed.get("composition_checks"), dict) else {}
+    if not comp_checks:
+        comp_checks = task.get("composition_checks_top1", {}) if isinstance(task.get("composition_checks_top1"), dict) else {}
+
+    top1_final = safe_float(cand_map[selected[0]["candidate_id"]].get("features", {}).get("final", 0.0), 0.0)
+    top2_final = top1_final
+    if len(selected) > 1:
+        top2_final = safe_float(cand_map[selected[1]["candidate_id"]].get("features", {}).get("final", top1_final), top1_final)
+    teacher_conf = clamp(0.5 + max(0.0, top1_final - top2_final), 0.0, 1.0)
+
+    out = {
+        "schema_version": "crop_label_v1",
+        "record_id": str(uuid.uuid4()),
+        "sample_id": task.get("sample_id"),
+        "image_id": task.get("image_id"),
+        "target_ar": task.get("target_ar"),
+        "decision_type": str(parsed.get("decision_type", decision.get("decision_type", "crop"))),
+        "delta_improve_vs_baseline": safe_float(parsed.get("delta_improve_vs_baseline", decision.get("delta_improve", 0.0)), 0.0),
+        "baseline_used_candidate_id": str(parsed.get("baseline_used_candidate_id", baseline_id)),
+        "selected_topk": selected,
+        "also_considered": also_considered,
+        "composition_checks": comp_checks,
+        "original_policy": {
+            "original_is_candidate": bool(baseline_id),
+            "kept_original": (selected[0]["candidate_id"] == baseline_id) if baseline_id else False,
+            "why_not_original": "selected_non_baseline" if baseline_id and selected[0]["candidate_id"] != baseline_id else "",
+        },
+        "explanations": {
+            "short": str(parsed.get("explanations", {}).get("short", "")).strip()
+            if isinstance(parsed.get("explanations"), dict)
+            else "",
+            "long": str(parsed.get("explanations", {}).get("long", "")).strip()
+            if isinstance(parsed.get("explanations"), dict)
+            else "",
+        },
+        "teacher": {
+            "backend": backend_name,
+            "teacher_id": model_id,
+            "teacher_confidence": teacher_conf,
+        },
+        "validator": {
+            "schema_ok": True,
+            "numeric_consistency_ok": True,
+            "notes": "",
+        },
+    }
+
+    if not out["explanations"]["short"]:
+        out["explanations"]["short"] = "Top-K 후보를 선택하고 체크리스트를 검증했습니다."
+    if not out["explanations"]["long"]:
+        out["explanations"]["long"] = "후보별 수치 피처(coverage/cutoff/context/final)를 기반으로 순위를 확정했습니다."
+
+    return out
+
+
+def build_prompt(task: Dict[str, Any]) -> str:
+    meta = task.get("meta_norm_v1", {}) if isinstance(task.get("meta_norm_v1"), dict) else {}
+    route = task.get("features", {}).get("route_global", {}) if isinstance(task.get("features", {}), dict) else {}
+    candidates = as_list(task.get("candidates"))
+
+    # Keep prompt compact for token stability
+    compact_candidates = []
+    for c in candidates:
+        if not isinstance(c, dict):
+            continue
+        compact_candidates.append(
+            {
+                "candidate_id": c.get("candidate_id"),
+                "bbox_norm_xyxy": c.get("bbox_norm_xyxy"),
+                "source": c.get("source"),
+                "must_keep": c.get("must_keep", False),
+                "features": c.get("features", {}),
+                "why_tags": c.get("why_tags", []),
+            }
+        )
+
+    policy = task.get("policy", {}) if isinstance(task.get("policy"), dict) else {}
+    topk = safe_int(policy.get("topk", 5), 5)
+
+    payload = {
+        "target_ar": task.get("target_ar"),
+        "meta_norm": {
+            "category": meta.get("category"),
+            "main_subject": meta.get("main_subject", {}).get("label") if isinstance(meta.get("main_subject"), dict) else "",
+            "intent": meta.get("intent", []),
+            "special_flags": meta.get("special_flags", {}),
+            "shot_type_prior": route.get("shot_type", "unknown"),
+            "portrait_category": route.get("portrait_category", "unknown"),
+        },
+        "keep_policy": policy.get("keep_policy", {}),
+        "baseline_candidate": task.get("baseline_candidate"),
+        "numeric_topk": task.get("numeric_topk"),
+        "candidates": compact_candidates,
+        "allowed_tags": sorted(ALLOWED_WHY_TAGS),
+        "top_k": topk,
+    }
+
+    return (
+        "You are a strict JSON generator for crop labeling.\n"
+        "Rules:\n"
+        "1) Select Top-K crops ONLY from provided candidates. Never invent candidate_id.\n"
+        "2) bbox_norm_xyxy must match selected candidate.\n"
+        "3) Use only allowed_tags for why_tags/reject_tags.\n"
+        "4) Fill composition_checks with numeric consistency.\n"
+        "5) Return a single JSON object only. No markdown.\n\n"
+        f"Input:\n{json.dumps(payload, ensure_ascii=False)}"
+    )
+
+
+class BackendError(RuntimeError):
+    pass
+
+
+class BackendInitError(BackendError):
+    pass
+
+
+class BackendInferenceError(BackendError):
+    pass
+
+
+@dataclass
+class BackendConfig:
+    model_id: str
+    device: str
+    dtype: str
+    max_new_tokens: int
+    temperature: float
+
+
+class BaseVLMBackend:
+    backend_name = "base"
+
+    def __init__(self, cfg: BackendConfig):
+        self.cfg = cfg
+
+    @property
+    def model_id(self) -> str:
+        return self.cfg.model_id
+
+    def label(self, task: Dict[str, Any], image_path: Optional[Path]) -> Tuple[Dict[str, Any], str]:
+        raise NotImplementedError
+
+    def close(self) -> None:
+        return None
+
+
+class HeuristicBackend(BaseVLMBackend):
+    backend_name = "heuristic"
+
+    @property
+    def model_id(self) -> str:
+        return "heuristic"
+
+    def label(self, task: Dict[str, Any], image_path: Optional[Path]) -> Tuple[Dict[str, Any], str]:
+        del image_path
+        out = build_fallback_output(task, reason="heuristic_backend", backend_name=self.backend_name)
+        return out, json.dumps(out, ensure_ascii=False)
+
+
+class Qwen25VLHFBackend(BaseVLMBackend):
+    backend_name = "qwen25_vl"
+
+    @staticmethod
+    def _parse_version(v: str) -> Version:
+        try:
+            return Version(str(v))
+        except InvalidVersion:
+            return Version("0")
+
+    @classmethod
+    def _check_transformers_compat(cls, model_id: str, tf_version: str, transformers_mod: Any) -> None:
+        model_l = str(model_id).strip().lower()
+        tf_v = cls._parse_version(tf_version)
+
+        # Qwen2.5-VL support check.
+        if "qwen2.5-vl" in model_l or "qwen2_5_vl" in model_l:
+            min_v = Version("4.49.0")
+            has_cls = hasattr(transformers_mod, "Qwen2_5_VLForConditionalGeneration")
+            if tf_v < min_v or not has_cls:
+                raise BackendInitError(
+                    "Qwen2.5-VL requires transformers>=4.49.0. "
+                    f"current={tf_version}, has_qwen2_5_class={has_cls}. "
+                    "Please upgrade, e.g.: "
+                    "python -m pip install -U 'transformers>=4.49.0,<4.53.0' "
+                    "'tokenizers>=0.21.0,<0.22.0' 'huggingface-hub>=0.26.0'"
+                )
+
+        # Qwen2-VL support check (for alternate model ids).
+        if "qwen2-vl" in model_l and "qwen2.5-vl" not in model_l and "qwen2_5_vl" not in model_l:
+            min_v = Version("4.45.0")
+            has_cls = hasattr(transformers_mod, "Qwen2VLForConditionalGeneration")
+            if tf_v < min_v or not has_cls:
+                raise BackendInitError(
+                    "Qwen2-VL requires transformers>=4.45.0. "
+                    f"current={tf_version}, has_qwen2_vl_class={has_cls}."
+                )
+
+    def __init__(self, cfg: BackendConfig):
+        super().__init__(cfg)
+        try:
+            import torch
+            import transformers
+            from transformers import AutoModelForVision2Seq, AutoProcessor
+        except Exception as exc:
+            raise BackendInitError(f"transformers backend unavailable: {exc}") from exc
+
+        self._transformers = transformers
+        self._torch = torch
+        self._AutoProcessor = AutoProcessor
+        self._AutoModelForVision2Seq = AutoModelForVision2Seq
+
+        self.device = str(cfg.device or "auto")
+        if self.device == "auto":
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        self._check_transformers_compat(cfg.model_id, getattr(transformers, "__version__", "0"), transformers)
+
+        dtype_map = {
+            "auto": None,
+            "float16": torch.float16,
+            "fp16": torch.float16,
+            "bfloat16": torch.bfloat16,
+            "bf16": torch.bfloat16,
+            "float32": torch.float32,
+            "fp32": torch.float32,
+        }
+        torch_dtype = dtype_map.get(str(cfg.dtype).lower(), None)
+
+        model_kwargs: Dict[str, Any] = {
+            "trust_remote_code": True,
+        }
+        if torch_dtype is not None:
+            model_kwargs["torch_dtype"] = torch_dtype
+
+        model_l = str(cfg.model_id).strip().lower()
+        model_cls = self._AutoModelForVision2Seq
+        if "qwen2.5-vl" in model_l or "qwen2_5_vl" in model_l:
+            qwen25_cls = getattr(transformers, "Qwen2_5_VLForConditionalGeneration", None)
+            if qwen25_cls is not None:
+                model_cls = qwen25_cls
+        elif "qwen2-vl" in model_l:
+            qwen2vl_cls = getattr(transformers, "Qwen2VLForConditionalGeneration", None)
+            if qwen2vl_cls is not None:
+                model_cls = qwen2vl_cls
+
+        try:
+            self.processor = AutoProcessor.from_pretrained(cfg.model_id, trust_remote_code=True)
+            self.model = model_cls.from_pretrained(cfg.model_id, **model_kwargs)
+            self.model.eval()
+            if self.device.startswith("cuda"):
+                self.model.to(self.device)
+            else:
+                self.model.to("cpu")
+        except Exception as exc:
+            raise BackendInitError(f"failed to load model_id={cfg.model_id}: {exc}") from exc
+
+    def _load_image(self, image_path: Path):
+        try:
+            from PIL import Image
+        except Exception as exc:
+            raise BackendInferenceError(f"PIL import failed: {exc}") from exc
+        try:
+            return Image.open(image_path).convert("RGB")
+        except Exception as exc:
+            raise BackendInferenceError(f"failed to open image: {image_path} ({exc})") from exc
+
+    def label(self, task: Dict[str, Any], image_path: Optional[Path]) -> Tuple[Dict[str, Any], str]:
+        if image_path is None:
+            raise BackendInferenceError("qwen backend requires image_path")
+
+        prompt = build_prompt(task)
+        image = self._load_image(image_path)
+
+        # Prefer chat template when available
+        text_in = prompt
+        try:
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image"},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            ]
+            text_in = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+        except Exception:
+            text_in = prompt
+
+        try:
+            inputs = self.processor(text=[text_in], images=[image], return_tensors="pt")
+        except Exception as exc:
+            raise BackendInferenceError(f"processor encode failed: {exc}") from exc
+
+        try:
+            if hasattr(inputs, "to"):
+                inputs = inputs.to(self.device)
+            else:
+                for k, v in list(inputs.items()):
+                    if hasattr(v, "to"):
+                        inputs[k] = v.to(self.device)
+        except Exception as exc:
+            raise BackendInferenceError(f"inputs.to(device={self.device}) failed: {exc}") from exc
+
+        gen_kwargs = build_generation_kwargs(
+            max_new_tokens=int(self.cfg.max_new_tokens),
+            temperature=float(self.cfg.temperature),
+        )
+
+        try:
+            with self._torch.inference_mode():
+                generated = self.model.generate(**inputs, **gen_kwargs)
+        except Exception as exc:
+            raise BackendInferenceError(f"model.generate failed: {exc}") from exc
+
+        try:
+            input_len = 0
+            if isinstance(inputs, dict) and "input_ids" in inputs:
+                input_len = int(inputs["input_ids"].shape[-1])
+            if input_len > 0:
+                generated = generated[:, input_len:]
+            raw_text = self.processor.batch_decode(generated, skip_special_tokens=True)[0]
+        except Exception as exc:
+            raise BackendInferenceError(f"decode failed: {exc}") from exc
+
+        parsed = _extract_first_json_object(raw_text)
+        if parsed is None:
+            raise BackendInferenceError("failed to parse json from model output")
+        return parsed, raw_text
+
+
+BACKEND_REGISTRY = {
+    "heuristic": HeuristicBackend,
+    "qwen25_vl": Qwen25VLHFBackend,
+    "qwen25_vl_hf": Qwen25VLHFBackend,
+}
+
+
+def make_backend(backend_name: str, cfg: BackendConfig) -> BaseVLMBackend:
+    name = str(backend_name).strip().lower()
+    cls = BACKEND_REGISTRY.get(name)
+    if cls is None:
+        raise BackendInitError(f"unknown backend: {backend_name}")
+    return cls(cfg)
+
+
+def build_image_index(image_dir: Optional[Path]) -> Dict[str, Path]:
+    out: Dict[str, Path] = {}
+    if image_dir is None or (not image_dir.exists()):
+        return out
+    exts = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+    for p in sorted(image_dir.glob("*")):
+        if not p.is_file():
+            continue
+        if p.suffix.lower() not in exts:
+            continue
+        stem = p.stem
+        if stem not in out:
+            out[stem] = p
+    return out
+
+
+def parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description="VLM/MLLM teacher label generator (Section 10)")
+    p.add_argument("--teacher_scores_jsonl", required=True)
+    p.add_argument("--output_jsonl", required=True)
+    p.add_argument("--output_meta_jsonl", default="")
+    p.add_argument("--summary_json", default="")
+
+    p.add_argument("--backend", default="qwen25_vl", choices=sorted(BACKEND_REGISTRY.keys()))
+    p.add_argument("--fallback_backend", default="heuristic", help="heuristic|none")
+    p.add_argument("--model_id", default="Qwen/Qwen2.5-VL-3B-Instruct")
+    p.add_argument("--device", default="auto", help="auto|cuda|cuda:0|cpu")
+    p.add_argument("--dtype", default="auto", help="auto|float16|bfloat16|float32")
+    p.add_argument("--max_new_tokens", type=int, default=768)
+    p.add_argument("--temperature", type=float, default=0.0)
+
+    p.add_argument("--image_dir", default="")
+    p.add_argument("--target_ar", default="all", help="all or CSV(e.g., 1:1,16:9)")
+    p.add_argument("--top_m", type=int, default=12, help="input candidates per AR for VLM")
+    p.add_argument("--top_k", type=int, default=5)
+    p.add_argument("--max_images", type=int, default=0)
+    p.add_argument("--max_retries", type=int, default=2)
+    p.add_argument("--prompt_version", default="crop_label_candidate_pick_v1")
+    p.add_argument("--seed", type=int, default=42)
+
+    p.add_argument("--save_raw_response", type=int, default=0)
+    p.add_argument("--debug_dir", default="")
+
+    p.add_argument("--skip_on_oom", type=int, default=1)
+    p.add_argument("--fallback_cpu_on_oom", type=int, default=1)
+    p.add_argument("--fallback_cpu_max_images", type=int, default=3)
+    p.add_argument("--skip_if_fallback_failed", type=int, default=1)
+    p.add_argument("--strict_backend_init", type=int, default=1, help="1이면 primary backend init 실패 시 즉시 종료")
+    p.add_argument("--num_shards", type=int, default=1, help="입력 image_id를 num_shards로 해시 샤딩")
+    p.add_argument("--shard_index", type=int, default=0, help="현재 샤드 인덱스(0-based)")
+    return p.parse_args()
+
+
+def ensure_parent(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+
+
+def main() -> None:
+    args = parse_args()
+
+    random.seed(int(args.seed))
+
+    in_path = Path(args.teacher_scores_jsonl)
+    if not in_path.exists():
+        raise FileNotFoundError(f"teacher_scores_jsonl not found: {in_path}")
+
+    out_jsonl = Path(args.output_jsonl)
+    ensure_parent(out_jsonl)
+
+    out_meta = Path(args.output_meta_jsonl) if str(args.output_meta_jsonl).strip() else None
+    if out_meta is not None:
+        ensure_parent(out_meta)
+
+    out_summary = Path(args.summary_json) if str(args.summary_json).strip() else None
+    if out_summary is not None:
+        ensure_parent(out_summary)
+
+    debug_dir = Path(args.debug_dir) if str(args.debug_dir).strip() else None
+    if debug_dir is not None:
+        debug_dir.mkdir(parents=True, exist_ok=True)
+
+    image_dir = Path(args.image_dir) if str(args.image_dir).strip() else None
+    image_index = build_image_index(image_dir)
+
+    backend_cfg = BackendConfig(
+        model_id=str(args.model_id),
+        device=str(args.device),
+        dtype=str(args.dtype),
+        max_new_tokens=int(args.max_new_tokens),
+        temperature=float(args.temperature),
+    )
+
+    backend_name = str(args.backend).strip().lower()
+    fallback_name = str(args.fallback_backend).strip().lower()
+    if fallback_name in {"", "none", "null", "off", "0"}:
+        fallback_name = ""
+    strict_backend_init = parse_bool01(args.strict_backend_init, True)
+
+    backend: Optional[BaseVLMBackend] = None
+    fallback_backend: Optional[BaseVLMBackend] = None
+
+    summary_counter = Counter()
+    per_ar_counter = Counter()
+
+    cpu_fallback_active = False
+    cpu_fallback_backend: Optional[BaseVLMBackend] = None
+    cpu_fallback_seen_images: set[str] = set()
+    cpu_fallback_limit = max(0, int(args.fallback_cpu_max_images))
+
+    try:
+        backend = make_backend(backend_name, backend_cfg)
+        summary_counter["backend_init_ok"] += 1
+    except Exception as exc:
+        summary_counter["backend_init_fail"] += 1
+        print(f"[warn] backend init failed ({backend_name}): {exc}")
+        if strict_backend_init and backend_name != "heuristic":
+            raise RuntimeError(
+                f"primary backend init failed and strict_backend_init=1: backend={backend_name}, error={exc}"
+            ) from exc
+        if fallback_name:
+            try:
+                fallback_backend = make_backend(
+                    fallback_name,
+                    BackendConfig(
+                        model_id=fallback_name,
+                        device="cpu",
+                        dtype="auto",
+                        max_new_tokens=0,
+                        temperature=0.0,
+                    ),
+                )
+                summary_counter["fallback_backend_init_ok"] += 1
+                backend = None
+            except Exception as fexc:
+                summary_counter["fallback_backend_init_fail"] += 1
+                raise RuntimeError(f"Both backend and fallback backend failed: {exc} / {fexc}")
+        else:
+            raise
+
+    if fallback_backend is None and fallback_name and fallback_name != backend_name:
+        try:
+            fallback_backend = make_backend(
+                fallback_name,
+                BackendConfig(
+                    model_id=fallback_name,
+                    device="cpu",
+                    dtype="auto",
+                    max_new_tokens=0,
+                    temperature=0.0,
+                ),
+            )
+            summary_counter["fallback_backend_init_ok"] += 1
+        except Exception as exc:
+            summary_counter["fallback_backend_init_fail"] += 1
+            print(f"[warn] fallback backend init failed ({fallback_name}): {exc}")
+
+    max_images = max(0, int(args.max_images))
+    max_retries = max(0, int(args.max_retries))
+    num_shards = max(1, int(args.num_shards))
+    shard_index = int(args.shard_index)
+    if shard_index < 0 or shard_index >= num_shards:
+        raise ValueError(f"invalid shard args: shard_index={shard_index}, num_shards={num_shards}")
+
+    num_images = 0
+    num_images_scanned = 0
+    num_tasks = 0
+
+    target_ar_req = str(args.target_ar).strip().lower()
+
+    with in_path.open("r", encoding="utf-8") as f_in, out_jsonl.open("w", encoding="utf-8") as f_out:
+        f_meta = out_meta.open("w", encoding="utf-8") if out_meta is not None else None
+        try:
+            for line in tqdm(f_in, desc="vlm_teacher", unit="img"):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except Exception:
+                    summary_counter["row_json_parse_fail"] += 1
+                    continue
+                image_id = str(row.get("image_id", "")).strip()
+                if not image_id:
+                    summary_counter["row_missing_image_id"] += 1
+                    continue
+
+                num_images_scanned += 1
+                if max_images > 0 and num_images_scanned > max_images:
+                    break
+                if num_shards > 1 and stable_shard_index(image_id, num_shards) != shard_index:
+                    summary_counter["row_not_in_shard"] += 1
+                    continue
+                num_images += 1
+
+                meta_norm_v1 = build_meta_norm_v1(row)
+                if f_meta is not None:
+                    f_meta.write(json.dumps(meta_norm_v1, ensure_ascii=False) + "\n")
+
+                scorer = row.get("teacher_scorer", {}) if isinstance(row.get("teacher_scorer"), dict) else {}
+                results_by_ar = scorer.get("results_by_ar", {}) if isinstance(scorer.get("results_by_ar"), dict) else {}
+                ars = _target_ar_list(results_by_ar, "all" if target_ar_req == "all" else str(args.target_ar))
+                if not ars:
+                    summary_counter["row_no_target_ar"] += 1
+                    continue
+
+                image_path = image_index.get(image_id)
+                if image_path is None and backend is not None and backend_name.startswith("qwen"):
+                    summary_counter["image_missing_for_qwen"] += 1
+
+                for target_ar in ars:
+                    task = build_task(
+                        row,
+                        target_ar,
+                        top_m=max(1, int(args.top_m)),
+                        top_k=max(1, int(args.top_k)),
+                        prompt_version=str(args.prompt_version),
+                    )
+                    if task is None:
+                        summary_counter["task_build_fail"] += 1
+                        continue
+
+                    num_tasks += 1
+                    per_ar_counter[target_ar] += 1
+
+                    parsed_obj: Optional[Dict[str, Any]] = None
+                    raw_text: str = ""
+                    used_backend_name = backend_name if backend is not None else (fallback_name or "none")
+                    fallback_reason = ""
+                    t0 = time.time()
+
+                    if backend is not None:
+                        # CPU fallback budget check (applies once qwen OOM triggered)
+                        if cpu_fallback_active:
+                            if image_id not in cpu_fallback_seen_images:
+                                if len(cpu_fallback_seen_images) >= cpu_fallback_limit:
+                                    fallback_reason = "cpu_fallback_limit_reached"
+                                else:
+                                    cpu_fallback_seen_images.add(image_id)
+
+                        if not fallback_reason:
+                            active_backend = cpu_fallback_backend if cpu_fallback_active and cpu_fallback_backend is not None else backend
+                            used_backend_name = active_backend.backend_name
+
+                            if active_backend.backend_name.startswith("qwen") and image_path is None:
+                                fallback_reason = "missing_image"
+                            else:
+                                for attempt in range(max_retries + 1):
+                                    try:
+                                        parsed_obj, raw_text = active_backend.label(task, image_path)
+                                        break
+                                    except Exception as exc:
+                                        summary_counter["backend_infer_fail"] += 1
+                                        if is_oom_error(exc):
+                                            summary_counter["backend_oom"] += 1
+                                            # Try CPU fallback once
+                                            if (
+                                                parse_bool01(args.fallback_cpu_on_oom, True)
+                                                and not cpu_fallback_active
+                                                and active_backend.backend_name.startswith("qwen")
+                                                and str(getattr(active_backend, "device", "")).startswith("cuda")
+                                            ):
+                                                try:
+                                                    cpu_fallback_backend = make_backend(
+                                                        backend_name,
+                                                        BackendConfig(
+                                                            model_id=str(args.model_id),
+                                                            device="cpu",
+                                                            dtype="float32",
+                                                            max_new_tokens=int(args.max_new_tokens),
+                                                            temperature=float(args.temperature),
+                                                        ),
+                                                    )
+                                                    cpu_fallback_active = True
+                                                    cpu_fallback_seen_images.add(image_id)
+                                                    summary_counter["oom_switched_to_cpu"] += 1
+                                                    # retry immediately on CPU backend
+                                                    active_backend = cpu_fallback_backend
+                                                    used_backend_name = active_backend.backend_name
+                                                    continue
+                                                except Exception as cpu_exc:
+                                                    summary_counter["cpu_fallback_init_fail"] += 1
+                                                    print(f"[warn] cpu fallback init failed: {cpu_exc}")
+                                            if parse_bool01(args.skip_on_oom, True):
+                                                fallback_reason = f"oom:{exc}"
+                                                break
+                                        # non-oom or retry exhaustion
+                                        if attempt >= max_retries:
+                                            fallback_reason = f"infer_fail:{exc}"
+                                            break
+
+                    if parsed_obj is not None:
+                        try:
+                            normalized = normalize_backend_output(
+                                task,
+                                parsed_obj,
+                                backend_name=used_backend_name,
+                                model_id=(backend.model_id if backend is not None else used_backend_name),
+                            )
+                            summary_counter["normalized_ok"] += 1
+                        except Exception as exc:
+                            fallback_reason = f"normalize_fail:{exc}"
+                            summary_counter["normalize_fail"] += 1
+                            normalized = None
+                    else:
+                        normalized = None
+
+                    if normalized is None:
+                        if fallback_backend is not None:
+                            try:
+                                fb_obj, _ = fallback_backend.label(task, image_path)
+                                normalized = normalize_backend_output(
+                                    task,
+                                    fb_obj,
+                                    backend_name=fallback_backend.backend_name,
+                                    model_id=fallback_backend.model_id,
+                                )
+                                note = normalized.get("validator", {}).get("notes", "")
+                                normalized.setdefault("validator", {})["notes"] = (
+                                    f"{note}; fallback_reason={fallback_reason}" if note else f"fallback_reason={fallback_reason}"
+                                )
+                                summary_counter["fallback_used"] += 1
+                                used_backend_name = fallback_backend.backend_name
+                            except Exception as exc:
+                                summary_counter["fallback_fail"] += 1
+                                if parse_bool01(args.skip_if_fallback_failed, True):
+                                    summary_counter["task_skipped"] += 1
+                                    continue
+                                raise RuntimeError(f"fallback backend failed: {exc}") from exc
+                        else:
+                            if parse_bool01(args.skip_if_fallback_failed, True):
+                                summary_counter["task_skipped"] += 1
+                                continue
+                            raise RuntimeError(f"task failed without fallback: {fallback_reason}")
+
+                    latency_ms = int((time.time() - t0) * 1000.0)
+                    normalized.setdefault("timing", {})
+                    normalized["timing"]["latency_ms"] = latency_ms
+                    normalized["timing"]["n_candidates_in"] = len(as_list(task.get("candidates")))
+                    normalized.setdefault("input_refs", {})
+                    normalized["input_refs"]["prompt_version"] = str(args.prompt_version)
+                    normalized["input_refs"]["teacher_scores_source"] = str(in_path)
+                    normalized["input_refs"]["image_path"] = str(image_path) if image_path is not None else ""
+                    normalized.setdefault("meta_norm_v1", task.get("meta_norm_v1", {}))
+
+                    f_out.write(json.dumps(normalized, ensure_ascii=False) + "\n")
+                    summary_counter["task_written"] += 1
+
+                    if parse_bool01(args.save_raw_response, False) and debug_dir is not None:
+                        raw_dir = debug_dir / "raw_responses"
+                        raw_dir.mkdir(parents=True, exist_ok=True)
+                        safe_ar = target_ar.replace(":", "x")
+                        raw_path = raw_dir / f"{image_id}__{safe_ar}.txt"
+                        raw_path.write_text(raw_text or "", encoding="utf-8")
+
+        finally:
+            if f_meta is not None:
+                f_meta.close()
+
+    if backend is not None:
+        backend.close()
+    if cpu_fallback_backend is not None and cpu_fallback_backend is not backend:
+        cpu_fallback_backend.close()
+    if fallback_backend is not None:
+        fallback_backend.close()
+
+    summary = {
+        "schema_version": "vlm_teacher_summary_v1",
+        "input_teacher_scores_jsonl": str(in_path),
+        "output_jsonl": str(out_jsonl),
+        "output_meta_jsonl": str(out_meta) if out_meta is not None else "",
+        "backend": backend_name,
+        "fallback_backend": fallback_name or "none",
+        "model_id": str(args.model_id),
+        "device": str(args.device),
+        "dtype": str(args.dtype),
+        "target_ar": str(args.target_ar),
+        "top_m": int(args.top_m),
+        "top_k": int(args.top_k),
+        "max_images": int(args.max_images),
+        "num_images_seen": int(num_images),
+        "num_images_scanned": int(num_images_scanned),
+        "num_tasks_seen": int(num_tasks),
+        "num_shards": int(num_shards),
+        "shard_index": int(shard_index),
+        "counts": dict(summary_counter),
+        "per_ar_tasks": dict(per_ar_counter),
+        "cpu_fallback_active": bool(cpu_fallback_active),
+        "cpu_fallback_image_count": int(len(cpu_fallback_seen_images)),
+    }
+
+    if out_summary is not None:
+        out_summary.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    print(
+        "[done] vlm teacher labeler: "
+        f"written={summary_counter.get('task_written', 0)} "
+        f"fallback={summary_counter.get('fallback_used', 0)} "
+        f"skipped={summary_counter.get('task_skipped', 0)}"
+    )
+    print(f"[done] output_jsonl={out_jsonl}")
+    if out_meta is not None:
+        print(f"[done] output_meta_jsonl={out_meta}")
+    if out_summary is not None:
+        print(f"[done] summary_json={out_summary}")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception as exc:
+        print(f"[error] {exc}")
+        raise SystemExit(1)

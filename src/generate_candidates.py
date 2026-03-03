@@ -63,6 +63,9 @@ DEFAULT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 _WORKER_C2_SEG_MAP: Optional[Dict[str, Any]] = None
 _WORKER_C2_DET_MAP: Optional[Dict[str, Any]] = None
 _WORKER_C3_MAP: Optional[Dict[str, Any]] = None
+_WORKER_ROUTING_MAP: Optional[Dict[str, Any]] = None
+_WORKER_C2_PRIMARY_IDX_MAP: Optional[Dict[str, Any]] = None
+_WORKER_C2_UNION_BOX_MAP: Optional[Dict[str, Any]] = None
 _WORKER_CFG: Optional["CandidateGenConfig"] = None
 _WORKER_CFG_HASH: str = ""
 _WORKER_ACTUAL_SIZE_MAP: Optional[Dict[str, Tuple[int, int]]] = None
@@ -102,6 +105,9 @@ def _init_build_worker(
     c2_seg_map: Dict[str, Any],
     c2_det_map: Dict[str, Any],
     c3_map: Dict[str, Any],
+    routing_map: Dict[str, Any],
+    c2_primary_idx_map: Dict[str, Any],
+    c2_union_box_map: Dict[str, Any],
     cfg: CandidateGenConfig,
     cfg_hash: str,
     actual_size_map: Optional[Dict[str, Tuple[int, int]]],
@@ -111,6 +117,9 @@ def _init_build_worker(
     global _WORKER_C2_SEG_MAP
     global _WORKER_C2_DET_MAP
     global _WORKER_C3_MAP
+    global _WORKER_ROUTING_MAP
+    global _WORKER_C2_PRIMARY_IDX_MAP
+    global _WORKER_C2_UNION_BOX_MAP
     global _WORKER_CFG
     global _WORKER_CFG_HASH
     global _WORKER_ACTUAL_SIZE_MAP
@@ -120,6 +129,9 @@ def _init_build_worker(
     _WORKER_C2_SEG_MAP = c2_seg_map
     _WORKER_C2_DET_MAP = c2_det_map
     _WORKER_C3_MAP = c3_map
+    _WORKER_ROUTING_MAP = routing_map
+    _WORKER_C2_PRIMARY_IDX_MAP = c2_primary_idx_map
+    _WORKER_C2_UNION_BOX_MAP = c2_union_box_map
     _WORKER_CFG = cfg
     _WORKER_CFG_HASH = cfg_hash
     _WORKER_ACTUAL_SIZE_MAP = actual_size_map
@@ -128,13 +140,24 @@ def _init_build_worker(
 
 
 def _build_output_record_worker(row: Dict[str, Any]) -> Dict[str, Any]:
-    if _WORKER_C2_SEG_MAP is None or _WORKER_C2_DET_MAP is None or _WORKER_C3_MAP is None or _WORKER_CFG is None:
+    if (
+        _WORKER_C2_SEG_MAP is None
+        or _WORKER_C2_DET_MAP is None
+        or _WORKER_C3_MAP is None
+        or _WORKER_ROUTING_MAP is None
+        or _WORKER_C2_PRIMARY_IDX_MAP is None
+        or _WORKER_C2_UNION_BOX_MAP is None
+        or _WORKER_CFG is None
+    ):
         raise RuntimeError("candidate worker state is not initialized")
     return build_output_record(
         row=row,
         c2_seg_map=_WORKER_C2_SEG_MAP,
         c2_det_map=_WORKER_C2_DET_MAP,
         c3_map=_WORKER_C3_MAP,
+        routing_map=_WORKER_ROUTING_MAP,
+        c2_primary_idx_map=_WORKER_C2_PRIMARY_IDX_MAP,
+        c2_union_box_map=_WORKER_C2_UNION_BOX_MAP,
         cfg=_WORKER_CFG,
         cfg_hash=_WORKER_CFG_HASH,
         actual_size_map=_WORKER_ACTUAL_SIZE_MAP,
@@ -182,6 +205,9 @@ def iter_build_output_records(
     c2_seg_map: Dict[str, Any],
     c2_det_map: Dict[str, Any],
     c3_map: Dict[str, Any],
+    routing_map: Dict[str, Any],
+    c2_primary_idx_map: Dict[str, Any],
+    c2_union_box_map: Dict[str, Any],
     cfg: CandidateGenConfig,
     cfg_hash: str,
     actual_size_map: Optional[Dict[str, Tuple[int, int]]],
@@ -195,6 +221,9 @@ def iter_build_output_records(
                 c2_seg_map=c2_seg_map,
                 c2_det_map=c2_det_map,
                 c3_map=c3_map,
+                routing_map=routing_map,
+                c2_primary_idx_map=c2_primary_idx_map,
+                c2_union_box_map=c2_union_box_map,
                 cfg=cfg,
                 cfg_hash=cfg_hash,
                 actual_size_map=actual_size_map,
@@ -213,6 +242,9 @@ def iter_build_output_records(
             c2_seg_map,
             c2_det_map,
             c3_map,
+            routing_map,
+            c2_primary_idx_map,
+            c2_union_box_map,
             cfg,
             cfg_hash,
             actual_size_map,
@@ -836,9 +868,21 @@ def resolve_subject_prior(
     c2_det: Optional[List[Dict[str, Any]]],
     c3_pose: Optional[List[Dict[str, Any]]],
     cfg: CandidateGenConfig,
+    routing: Optional[Dict[str, Any]] = None,
+    c2_primary_idx: Optional[int] = None,
+    c2_union_box_xyxy: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
     boxes: List[List[float]] = []
     source_parts: List[str] = []
+    mode = ""
+    policy_id = ""
+    subject_set: Dict[str, Any] = {}
+    if isinstance(routing, dict):
+        mode = str(routing.get("subject_mode", ""))
+        policy_id = str(routing.get("policy_id", ""))
+        ss = routing.get("subject_set", {})
+        if isinstance(ss, dict):
+            subject_set = ss
 
     # Prefer explicit person detections when available.
     det_person_boxes: List[List[float]] = []
@@ -866,11 +910,23 @@ def resolve_subject_prior(
 
     if c2_seg:
         def c2_rank(seg: Dict[str, Any]) -> float:
+            imp = float(seg.get("importance_score", float("-inf")))
+            if math.isfinite(imp):
+                return imp
             area = float(seg.get("area", 0.0))
             score = float(seg.get("score", 0.0))
             return score + 0.001 * math.sqrt(max(area, 0.0))
 
-        best = max(c2_seg, key=c2_rank)
+        best = None
+        if c2_primary_idx is not None:
+            try:
+                idx = int(c2_primary_idx)
+            except Exception:
+                idx = -1
+            if 0 <= idx < len(c2_seg):
+                best = c2_seg[idx]
+        if best is None:
+            best = max(c2_seg, key=c2_rank)
         if "box" in best:
             boxes.append(norm_box_xyxy(best["box"], float(width), float(height)))
             source_parts.append("c2")
@@ -890,7 +946,29 @@ def resolve_subject_prior(
                 boxes.append(pb)
                 source_parts.append("c3")
 
-    subj_box = union_boxes(boxes)
+    union_pref = None
+    if isinstance(c2_union_box_xyxy, (list, tuple)) and len(c2_union_box_xyxy) == 4:
+        union_pref = norm_box_xyxy(c2_union_box_xyxy, float(width), float(height))
+    union_in_routing = subject_set.get("union_box_xyxy")
+    if isinstance(union_in_routing, (list, tuple)) and len(union_in_routing) == 4:
+        union_pref = norm_box_xyxy(union_in_routing, float(width), float(height))
+
+    union_used = False
+    if mode in {"portrait_group", "object_multi"} and union_pref is not None:
+        subj_box = union_pref
+        source_parts.append("routing_union")
+        union_used = True
+    elif mode in {"scene_landscape", "background_texture_copyspace", "text_document"}:
+        if union_pref is not None:
+            subj_box = union_pref
+            source_parts.append("routing_union")
+            union_used = True
+        else:
+            subj_box = [0.2, 0.2, 0.8, 0.8]
+            source_parts.append("routing_none")
+    else:
+        subj_box = union_boxes(boxes)
+
     if subj_box is None or box_area(subj_box) <= 0:
         subj_box = [0.25, 0.25, 0.75, 0.75]
         source = "fallback_center"
@@ -909,6 +987,10 @@ def resolve_subject_prior(
         "size": [round(ws, 6), round(hs, 6)],
         "has_people": num_people > 0,
         "num_people": int(num_people),
+        "subject_mode": mode,
+        "policy_id": policy_id,
+        "union_used": bool(union_used),
+        "multi_subject": bool(subject_set.get("multi_subject", False)),
     }
 
 
@@ -1572,6 +1654,9 @@ def build_output_record(
     c2_seg_map: Dict[str, Any],
     c2_det_map: Dict[str, Any],
     c3_map: Dict[str, Any],
+    routing_map: Dict[str, Any],
+    c2_primary_idx_map: Dict[str, Any],
+    c2_union_box_map: Dict[str, Any],
     cfg: CandidateGenConfig,
     cfg_hash: str,
     actual_size_map: Optional[Dict[str, Tuple[int, int]]] = None,
@@ -1597,12 +1682,18 @@ def build_output_record(
     c2_seg = c2_seg_map.get(img_id, [])
     c2_det = c2_det_map.get(img_id, [])
     c3_pose = c3_map.get(img_id, [])
+    routing = routing_map.get(img_id, {}) if isinstance(routing_map.get(img_id, {}), dict) else {}
+    c2_primary_idx = c2_primary_idx_map.get(img_id, None)
+    c2_union_box_xyxy = c2_union_box_map.get(img_id, None)
     subj = resolve_subject_prior(
         width=width,
         height=height,
         c2_seg=c2_seg,
         c2_det=c2_det,
         c3_pose=c3_pose,
+        routing=routing,
+        c2_primary_idx=c2_primary_idx,
+        c2_union_box_xyxy=c2_union_box_xyxy,
         cfg=cfg,
     )
 
@@ -1668,6 +1759,18 @@ def build_output_record(
             "height_parquet": int(height_pq),
         },
         "tags": tags,
+        "routing": {
+            "subject_mode": str(routing.get("subject_mode", "")),
+            "policy_id": str(routing.get("policy_id", "")),
+            "subject_mode_conf": safe_float(routing.get("subject_mode_conf", 0.0), 0.0),
+            "subject_set": routing.get("subject_set", {}) if isinstance(routing.get("subject_set"), dict) else {},
+        },
+        "subject": {
+            "primary_box": [round(v, 6) for v in subj.get("bbox_norm_xyxy", [0.25, 0.25, 0.75, 0.75])],
+            "union_box": routing.get("subject_set", {}).get("union_box_xyxy")
+            if isinstance(routing.get("subject_set"), dict)
+            else None,
+        },
         "subject_prior": subj,
         "candidate_gen_hash": cfg_hash,
         "proposal_injected": bool(teacher_candidates),
@@ -1701,6 +1804,8 @@ def summarize_candidates_jsonl(
 
     hash_counter: Counter[str] = Counter()
     subject_source_counter: Counter[str] = Counter()
+    subject_mode_counter: Counter[str] = Counter()
+    policy_counter: Counter[str] = Counter()
     source_counter: Counter[str] = Counter()
     has_people_count = 0
     proposal_injected_count = 0
@@ -1730,6 +1835,9 @@ def summarize_candidates_jsonl(
 
             subj = rec.get("subject_prior", {})
             subject_source_counter[str(subj.get("source", "unknown"))] += 1
+            routing = rec.get("routing", {}) if isinstance(rec.get("routing"), dict) else {}
+            subject_mode_counter[str(routing.get("subject_mode", "unknown"))] += 1
+            policy_counter[str(routing.get("policy_id", "unknown"))] += 1
             if bool(subj.get("has_people", False)):
                 has_people_count += 1
             centroid = subj.get("centroid", [0.5, 0.5])
@@ -1776,6 +1884,8 @@ def summarize_candidates_jsonl(
         "p90_total_candidates": _safe_percentile(total_candidates_list, 90),
         "avg_image_ar": float(np.mean(image_ar_list)) if image_ar_list else 0.0,
         "subject_source_counts": dict(subject_source_counter),
+        "subject_mode_counts": dict(subject_mode_counter),
+        "policy_id_counts": dict(policy_counter),
         "has_people_rate": float(has_people_count / rows) if rows > 0 else 0.0,
         "proposal_injected_rate": float(proposal_injected_count / rows) if rows > 0 else 0.0,
         "teacher_stage_counts": dict(teacher_stage_counter),
@@ -2118,6 +2228,9 @@ def main() -> None:
     c2_seg_map = load_jsonl_map(c2_path, value_key="c2_seg")
     c2_det_map = load_jsonl_map(c2_path, value_key="c2_det")
     c3_map = load_jsonl_map(c3_path, value_key="c3_pose")
+    routing_map = load_jsonl_map(c2_path, value_key="routing")
+    c2_primary_idx_map = load_jsonl_map(c2_path, value_key="c2_primary_idx")
+    c2_union_box_map = load_jsonl_map(c2_path, value_key="c2_union_box_xyxy")
     teacher_proposal_paths = [Path(x) for x in args.teacher_proposals_jsonl if str(x).strip()]
     teacher_proposals_map: Dict[str, Dict[str, Dict[str, Any]]] = {}
     if teacher_proposal_paths:
@@ -2129,6 +2242,7 @@ def main() -> None:
         f"[CandidateGen] rows={len(df)} c2_seg={len(c2_seg_map)} "
         f"c2_det={len(c2_det_map)}(nonempty={c2_det_nonempty}) "
         f"c3={len(c3_map)}(nonempty={c3_nonempty}) "
+        f"routing={len(routing_map)} "
         f"teacher_proposals={len(teacher_proposals_map)} cfg_hash={cfg_hash}"
     )
 
@@ -2188,6 +2302,9 @@ def main() -> None:
             c2_seg_map=c2_seg_map,
             c2_det_map=c2_det_map,
             c3_map=c3_map,
+            routing_map=routing_map,
+            c2_primary_idx_map=c2_primary_idx_map,
+            c2_union_box_map=c2_union_box_map,
             cfg=cfg,
             cfg_hash=cfg_hash,
             actual_size_map=actual_size_map,

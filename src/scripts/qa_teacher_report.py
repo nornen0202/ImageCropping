@@ -61,6 +61,15 @@ def make_bucket() -> Dict[str, Any]:
         "decision": Counter(),
         "final_scores": [],
         "delta_improve": [],
+        "num_input_candidates": [],
+        "subject_mode": Counter(),
+        "policy_id": Counter(),
+        "subject_mode_conf": [],
+        "subject_mode_conflict_count": 0,
+        "c2_num_inst": [],
+        "c2_primary_bg_like_count": 0,
+        "multi_subject_count": 0,
+        "union_used_count": 0,
         "neg_final_count": 0,
         "face_cut_count": 0,
         "joint_cut_count": 0,
@@ -81,6 +90,7 @@ def make_bucket() -> Dict[str, Any]:
 def update_bucket(
     bucket: Dict[str, Any],
     *,
+    rec: Dict[str, Any],
     ar_res: Dict[str, Any],
     route_global: Dict[str, Any],
     negative_score_thr: float,
@@ -94,6 +104,7 @@ def update_bucket(
     delta = safe_float(decision.get("delta_improve", 0.0))
     bucket["decision"][decision_type] += 1
     bucket["delta_improve"].append(delta)
+    bucket["num_input_candidates"].append(int(safe_float(ar_res.get("num_input_candidates", 0), 0.0)))
 
     topk = ar_res.get("selected_topk", [])
     if not isinstance(topk, list) or not topk:
@@ -126,7 +137,31 @@ def update_bucket(
         bucket["expensive_source"][src] += 1
 
     routing = ar_res.get("routing", {}) if isinstance(ar_res.get("routing"), dict) else {}
+    if not routing:
+        routing = route_global if isinstance(route_global, dict) else {}
     flags_route = routing.get("flags", {}) if isinstance(routing.get("flags"), dict) else {}
+    subject_mode = str(routing.get("subject_mode", route_global.get("subject_mode", "other_ambiguous")))
+    policy_id = str(routing.get("policy_id", route_global.get("policy_id", "generic_v1")))
+    subject_mode_conf = safe_float(routing.get("subject_mode_conf", route_global.get("subject_mode_conf", 0.0)))
+    subject_mode_conflict = bool(routing.get("subject_mode_conflict", route_global.get("subject_mode_conflict", False)))
+    subject_set = routing.get("subject_set", {}) if isinstance(routing.get("subject_set"), dict) else {}
+
+    bucket["subject_mode"][subject_mode] += 1
+    bucket["policy_id"][policy_id] += 1
+    bucket["subject_mode_conf"].append(subject_mode_conf)
+    if subject_mode_conflict:
+        bucket["subject_mode_conflict_count"] += 1
+    c2_num_inst = int(safe_float(subject_set.get("num_subject_inst", 0), 0.0))
+    bucket["c2_num_inst"].append(c2_num_inst)
+    if bool(subject_set.get("c2_primary_bg_like", False)):
+        bucket["c2_primary_bg_like_count"] += 1
+    if bool(subject_set.get("multi_subject", False)):
+        bucket["multi_subject_count"] += 1
+
+    subj_prior = rec.get("subject_prior", {}) if isinstance(rec.get("subject_prior"), dict) else {}
+    if bool(subj_prior.get("union_used", False)):
+        bucket["union_used_count"] += 1
+
     shot_type = str(routing.get("shot_type", "unknown"))
     norm_size_source = str(
         routing.get(
@@ -169,9 +204,32 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
     n = max(1, int(bucket["count"]))
     finals = [float(v) for v in bucket["final_scores"]]
     deltas = [float(v) for v in bucket["delta_improve"]]
+    num_input = [int(v) for v in bucket["num_input_candidates"]]
+    sm_conf = [float(v) for v in bucket["subject_mode_conf"]]
+    c2_num_inst = [int(v) for v in bucket["c2_num_inst"]]
 
     return {
         "count": int(bucket["count"]),
+        "subject_mode_counts": dict(bucket["subject_mode"]),
+        "policy_id_counts": dict(bucket["policy_id"]),
+        "subject_mode_conf": {
+            "mean": mean(sm_conf) if sm_conf else 0.0,
+            "p10": percentile(sm_conf, 0.10),
+            "p50": percentile(sm_conf, 0.50),
+            "p90": percentile(sm_conf, 0.90),
+            "conflict_rate": float(bucket["subject_mode_conflict_count"]) / n,
+        },
+        "candidate_volume": {
+            "num_input_mean": mean(num_input) if num_input else 0.0,
+            "num_input_p95": percentile([float(v) for v in num_input], 0.95) if num_input else 0.0,
+            "c2_num_inst_mean": mean(c2_num_inst) if c2_num_inst else 0.0,
+            "c2_num_inst_p95": percentile([float(v) for v in c2_num_inst], 0.95) if c2_num_inst else 0.0,
+        },
+        "subject_mode_kpi": {
+            "bg_selected_rate": float(bucket["c2_primary_bg_like_count"]) / n,
+            "multi_subject_detect_rate": float(bucket["multi_subject_count"]) / n,
+            "union_used_rate": float(bucket["union_used_count"]) / n,
+        },
         "decision_counts": dict(bucket["decision"]),
         "decision_rates": {k: float(v) / n for k, v in bucket["decision"].items()},
         "final_score": {
@@ -219,9 +277,20 @@ def flatten_for_csv(ar: str, summary: Dict[str, Any]) -> Dict[str, Any]:
     out = {
         "target_ar": ar,
         "count": summary.get("count", 0),
+        "subject_mode_top1": (
+            sorted(summary.get("subject_mode_counts", {}).items(), key=lambda kv: kv[1], reverse=True)[0][0]
+            if summary.get("subject_mode_counts")
+            else "unknown"
+        ),
         "keep_full_rate": summary.get("decision_rates", {}).get("keep_full", 0.0),
         "minimal_crop_rate": summary.get("decision_rates", {}).get("minimal_crop", 0.0),
         "crop_rate": summary.get("decision_rates", {}).get("crop", 0.0),
+        "candidate_input_mean": summary.get("candidate_volume", {}).get("num_input_mean", 0.0),
+        "c2_num_inst_mean": summary.get("candidate_volume", {}).get("c2_num_inst_mean", 0.0),
+        "bg_selected_rate": summary.get("subject_mode_kpi", {}).get("bg_selected_rate", 0.0),
+        "multi_subject_detect_rate": summary.get("subject_mode_kpi", {}).get("multi_subject_detect_rate", 0.0),
+        "union_used_rate": summary.get("subject_mode_kpi", {}).get("union_used_rate", 0.0),
+        "subject_mode_conflict_rate": summary.get("subject_mode_conf", {}).get("conflict_rate", 0.0),
         "final_mean": summary.get("final_score", {}).get("mean", 0.0),
         "final_p50": summary.get("final_score", {}).get("p50", 0.0),
         "final_p90": summary.get("final_score", {}).get("p90", 0.0),
@@ -257,6 +326,8 @@ def main() -> None:
 
     global_bucket = make_bucket()
     per_ar: Dict[str, Dict[str, Any]] = {}
+    per_mode: Dict[str, Dict[str, Any]] = {}
+    per_mode_ar: Dict[str, Dict[str, Any]] = {}
     image_ids = set()
     total_ar_results = 0
 
@@ -285,9 +356,17 @@ def main() -> None:
                 total_ar_results += 1
                 if ar_text not in per_ar:
                     per_ar[ar_text] = make_bucket()
+                ar_routing = ar_res.get("routing", {}) if isinstance(ar_res.get("routing"), dict) else {}
+                mode_key = str(ar_routing.get("subject_mode", route_global.get("subject_mode", "other_ambiguous")))
+                mode_ar_key = f"{mode_key}__{ar_text}"
+                if mode_key not in per_mode:
+                    per_mode[mode_key] = make_bucket()
+                if mode_ar_key not in per_mode_ar:
+                    per_mode_ar[mode_ar_key] = make_bucket()
 
                 update_bucket(
                     global_bucket,
+                    rec=rec,
                     ar_res=ar_res,
                     route_global=route_global,
                     negative_score_thr=float(args.negative_score_thr),
@@ -296,6 +375,25 @@ def main() -> None:
                 )
                 update_bucket(
                     per_ar[ar_text],
+                    rec=rec,
+                    ar_res=ar_res,
+                    route_global=route_global,
+                    negative_score_thr=float(args.negative_score_thr),
+                    subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
+                    copyspace_keep_thr=float(args.copyspace_keep_thr),
+                )
+                update_bucket(
+                    per_mode[mode_key],
+                    rec=rec,
+                    ar_res=ar_res,
+                    route_global=route_global,
+                    negative_score_thr=float(args.negative_score_thr),
+                    subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
+                    copyspace_keep_thr=float(args.copyspace_keep_thr),
+                )
+                update_bucket(
+                    per_mode_ar[mode_ar_key],
+                    rec=rec,
                     ar_res=ar_res,
                     route_global=route_global,
                     negative_score_thr=float(args.negative_score_thr),
@@ -305,6 +403,8 @@ def main() -> None:
 
     global_summary = summarize_bucket(global_bucket)
     by_ar_summary = {k: summarize_bucket(v) for k, v in sorted(per_ar.items())}
+    by_subject_mode = {k: summarize_bucket(v) for k, v in sorted(per_mode.items())}
+    by_subject_mode_ar = {k: summarize_bucket(v) for k, v in sorted(per_mode_ar.items())}
 
     report = {
         "input_jsonl": str(in_path),
@@ -317,6 +417,8 @@ def main() -> None:
         },
         "global": global_summary,
         "by_ar": by_ar_summary,
+        "by_subject_mode": by_subject_mode,
+        "by_subject_mode_ar": by_subject_mode_ar,
     }
 
     out_json.parent.mkdir(parents=True, exist_ok=True)

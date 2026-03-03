@@ -224,6 +224,7 @@ CANDIDATES_JSONL="$(resolve_input_path \
 
 FEATURES_JSONL="$(resolve_input_path \
   "$FEATURES_JSONL" \
+  "${DATA_ROOT}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl" \
   "${DATA_ROOT}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl" \
   "${DATA_ROOT}/feats_c2c3c5_v2_strict_enriched.jsonl" \
   "${DATA_ROOT}/Temp/feats_c2c3c5_v2_strict_enriched.jsonl")"

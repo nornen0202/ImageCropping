@@ -242,6 +242,10 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --precompute_mode unified \
   --run_c1 -1 \
   --run_c2 1 --run_c3 1 --run_c3_enrich 1 --run_c5 1 --run_merge 1 \
+  --run_subject_routing 1 \
+  --subject_routing_top_n 5 \
+  --subject_routing_union_top_m 3 \
+  --subject_routing_allow_det_proxy 1 \
   --extract_mode auto \
   --extract_priority quality_first \
   --batch_size 16 \
@@ -408,6 +412,202 @@ OOM 대응 권장:
 - GPU OOM 시 CPU fallback 소량 검증: `--vlm_fallback_cpu_on_oom 1 --vlm_fallback_cpu_max_images 3`
 - CPU fallback도 실패하면 skip 지속: `--vlm_skip_if_fallback_failed 1`
 
+### 3.9 기존 산출물 재활용: Subject-mode 보완 + Visualization + Report 자산 생성
+
+아래 템플릿은 이미 생성된 산출물(`filtered parquet`, `precompute`, `candidates`, `teacher`)을 재활용하여,
+- subject-mode 보완(`run_subject_routing`) 반영 재실행
+- 컴포넌트/teacher 시각화 재생성
+- report용 QA/overview/top-k 분석 자산 재생성
+을 수행합니다.
+
+권장: 기존 run_tag를 그대로 덮어쓰기보다, `*_subject_mode`처럼 별도 run_tag를 사용하세요.
+
+공통 사전 준비(서버 예시):
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+```
+
+10K_local (`base_tag=rerun1_public_e2e`) 예시:
+```bash
+DATANAME=10K_local
+BASE_TAG=rerun1_public_e2e
+SM_TAG=${BASE_TAG}_subject_mode
+DATA_DIR=data/SSTK/${DATANAME}
+REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+
+# 0) (선택) base report의 샘플 id/manifest 재사용
+mkdir -p "${REPORT_DIR}"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_ids_supercat12.txt" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.csv" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.json" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_summary_table.md" "${REPORT_DIR}/"
+
+# 1) 기존 precompute를 재활용해 subject routing + candidates + teacher 재실행
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir "${DATA_DIR}" \
+  --run_filter 0 \
+  --run_c1 1 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_subject_routing 1 \
+  --subject_routing_top_n 5 \
+  --subject_routing_union_top_m 3 \
+  --subject_routing_allow_det_proxy 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --teacher_multi_gpu 1 \
+  --teacher_gpu_ids 0,1,2 \
+  --teacher_num_workers 3 \
+  --align_device cuda \
+  --aesthetic_device cuda \
+  --exp_batch_size 128 \
+  --prefer_curated_images 1 \
+  --curated_image_dir "${DATA_DIR}/images" \
+  --skip_existing 1 \
+  --run_tag "${SM_TAG}"
+
+# 2) precompute component visualization(샘플 고정)
+bash src/scripts/run_visualize_components.sh \
+  "${DATA_DIR}/filtered_sstk_100.parquet" \
+  /sstk/20230916/sstk_100 \
+  "${DATA_DIR}/artifacts/precompute/visualizations/components_${SM_TAG}" \
+  --merged_jsonl "${DATA_DIR}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl" \
+  --image_dir "${DATA_DIR}/images" \
+  --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
+  --draw_c2 1 --draw_c3 1 --draw_c5 1 --draw_combined 1 \
+  --num_samples 120 \
+  --server_mode 1
+
+# 3) teacher visualization(샘플 고정)
+python src/visualize_teacher_scores.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --parquet "${DATA_DIR}/filtered_sstk_100.parquet" \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --image_dir "${DATA_DIR}/images" \
+  --out_dir "${DATA_DIR}/artifacts/teacher/visualizations/teacher_scorer_${SM_TAG}" \
+  --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
+  --num_samples 120 \
+  --target_ar all \
+  --decision_filter all
+
+# 4) report용 overview/qa/top-k analytics 재생성
+python src/scripts/rebuild_teacher_overview.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_json "${DATA_DIR}/artifacts/teacher/overview/teacher_scores_overview_${SM_TAG}.json" \
+  --output_by_ar_csv "${DATA_DIR}/artifacts/teacher/overview/teacher_scores_overview_by_ar_${SM_TAG}.csv"
+
+python src/scripts/qa_teacher_report.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_json "${DATA_DIR}/artifacts/teacher/qa/teacher_scores_qa_report_${SM_TAG}.json" \
+  --output_by_ar_csv "${DATA_DIR}/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_${SM_TAG}.csv"
+
+mkdir -p "${REPORT_DIR}/assets/analytics/teacher_topk"
+python src/scripts/build_teacher_topk_analytics.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_dir "${REPORT_DIR}/assets/analytics/teacher_topk"
+```
+
+10K (`base_tag=e2e_260227_r0`) 예시:
+```bash
+DATANAME=10K
+BASE_TAG=e2e_260227_r0
+SM_TAG=${BASE_TAG}_subject_mode
+DATA_DIR=data/SSTK/${DATANAME}
+REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+
+# 0) 10K에는 feats_c1.jsonl이 없을 수 있음(통합 raw 재사용용 alias)
+if [ ! -f "${DATA_DIR}/artifacts/precompute/feats_c1.jsonl" ] && [ -f "${DATA_DIR}/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl" ]; then
+  ln -sfn feats_c2c3c5_v2_strict_raw.jsonl "${DATA_DIR}/artifacts/precompute/feats_c1.jsonl"
+fi
+
+# 1) base report 샘플 id/manifest 복사
+mkdir -p "${REPORT_DIR}"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_ids_supercat12.txt" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.csv" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.json" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_summary_table.md" "${REPORT_DIR}/"
+
+# 2) subject routing + candidates + teacher 재실행
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir "${DATA_DIR}" \
+  --run_filter 0 \
+  --run_c1 1 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_subject_routing 1 \
+  --subject_routing_top_n 5 \
+  --subject_routing_union_top_m 3 \
+  --subject_routing_allow_det_proxy 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --teacher_multi_gpu 1 \
+  --teacher_gpu_ids 0,1,2,3,4,5,6 \
+  --teacher_num_workers 7 \
+  --align_device cuda \
+  --aesthetic_device cuda \
+  --exp_batch_size 512 \
+  --prefer_curated_images 1 \
+  --curated_image_dir "${DATA_DIR}/images" \
+  --skip_existing 1 \
+  --run_tag "${SM_TAG}"
+
+# 3) precompute/teacher visualization + report analytics
+bash src/scripts/run_visualize_components.sh \
+  "${DATA_DIR}/filtered_sstk_100.parquet" \
+  /sstk/20230916/sstk_100 \
+  "${DATA_DIR}/artifacts/precompute/visualizations/components_${SM_TAG}" \
+  --merged_jsonl "${DATA_DIR}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl" \
+  --image_dir "${DATA_DIR}/images" \
+  --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
+  --draw_c2 1 --draw_c3 1 --draw_c5 1 --draw_combined 1 \
+  --num_samples 120 \
+  --server_mode 1
+
+python src/visualize_teacher_scores.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --parquet "${DATA_DIR}/filtered_sstk_100.parquet" \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --image_dir "${DATA_DIR}/images" \
+  --out_dir "${DATA_DIR}/artifacts/teacher/visualizations/teacher_scorer_${SM_TAG}" \
+  --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
+  --num_samples 120 \
+  --target_ar all \
+  --decision_filter all
+
+python src/scripts/rebuild_teacher_overview.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_json "${DATA_DIR}/artifacts/teacher/overview/teacher_scores_overview_${SM_TAG}.json" \
+  --output_by_ar_csv "${DATA_DIR}/artifacts/teacher/overview/teacher_scores_overview_by_ar_${SM_TAG}.csv"
+
+python src/scripts/qa_teacher_report.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_json "${DATA_DIR}/artifacts/teacher/qa/teacher_scores_qa_report_${SM_TAG}.json" \
+  --output_by_ar_csv "${DATA_DIR}/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_${SM_TAG}.csv"
+
+mkdir -p "${REPORT_DIR}/assets/analytics/teacher_topk"
+python src/scripts/build_teacher_topk_analytics.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_dir "${REPORT_DIR}/assets/analytics/teacher_topk"
+```
+
+레포트 파일 경로:
+- `data/SSTK/10K_local/artifacts/reports/<run_tag>/REPORT_DRAFT_KO.md`
+- `data/SSTK/10K/artifacts/reports/<run_tag>/REPORT_DRAFT_KO.md`
+
+주의:
+- 현재 저장소에는 `REPORT_DRAFT_KO.md` 본문을 자동 생성/갱신하는 스크립트는 없습니다.
+- 위 명령은 레포트 본문에서 참조하는 시각화/통계 자산을 재생성하는 절차입니다.
+- 기존 본문을 복사해 새 run_tag용으로 사용하려면:
+```bash
+# 10K_local
+cp -f data/SSTK/10K_local/artifacts/reports/${BASE_TAG}/REPORT_DRAFT_KO.md \
+      data/SSTK/10K_local/artifacts/reports/${SM_TAG}/REPORT_DRAFT_KO.md
+
+# 10K
+cp -f data/SSTK/10K/artifacts/reports/${BASE_TAG}/REPORT_DRAFT_KO.md \
+      data/SSTK/10K/artifacts/reports/${SM_TAG}/REPORT_DRAFT_KO.md
+```
+
 ---
 
 ## 4. 단계별 로직/코드 설명
@@ -466,8 +666,16 @@ C3 enrich:
 - keypoint 기반 `face`, `headpose_gaze` proxy를 안정적으로 추가
 - `--use_actual_image_size 1` 권장 (tar 실제 사이즈 기준 정규화)
 
+Subject-Mode enrich(신규):
+- `src/scripts/enrich_subject_mode_jsonl.py`
+- merged precompute에 아래를 주입:
+  - `routing.subject_mode/policy_id/subject_set`
+  - `c2_seg` Top-N + `importance_score/bg_like`
+  - `c2_primary_idx`, `c2_union_box_xyxy`, `c2_stats`
+- e2e 기본값은 `--run_subject_routing 1`이며, Candidate/Teacher/QA는 routed 파일을 우선 사용
+
 권장 결과물:
-- `data/SSTK/<DATANAME>/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl`
+- `data/SSTK/<DATANAME>/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl`
 
 ---
 
@@ -479,6 +687,7 @@ C3 enrich:
 
 핵심 방법론:
 - 입력: filtered parquet + C2/C3
+- 라우팅: `routing.subject_mode/policy_id` 기반 subject prior/union 보강
 - 주체 prior 구성:
   - C2(det/seg) + C3(pose) 결합으로 subject box 추정
 - 후보 생성:
@@ -510,6 +719,9 @@ C3 enrich:
 로직 구성:
 - Hard constraints
   - AR/면적 범위/face-cut/joint-cut 등 구조적 실패 필터
+- Subject-Mode policy schedule
+  - `subject_mode/policy_id` 기반으로 lambda/tau/w_area를 재스케줄
+  - scene/copyspace/text 모드는 headroom/lookroom 비중을 낮추고 context/copyspace/text 보존 가중치를 강화
 - Cheap score (N -> M)
   - subject coverage, cut penalty, composition prior(3분할/phi/center/horizon)
   - headroom/lookroom, symmetry, context, copy-space 반영
@@ -574,6 +786,10 @@ C3 enrich:
   - `ray` = 명시적 레거시 Ray 모드
 - `--extract_gpu_ids`: precompute에 사용할 GPU 목록 CSV
 - `--run_c1 --run_c2 --run_c3 --run_c3_enrich --run_c5 --run_merge`
+- `--run_subject_routing 0|1`: merged precompute에 subject_mode + c2 topN 주입(기본 1)
+- `--subject_routing_top_n`: c2 top-N instance 수(기본 5)
+- `--subject_routing_union_top_m`: union box 계산용 상위 instance 수(기본 3)
+- `--subject_routing_allow_det_proxy 0|1`: c2_det proxy로 topN 보강(기본 1)
 - `--run_component_viz 0|1`: precompute(C2/C3/C5) 시각화 자동 생성
 - `--component_viz_num_samples`: precompute 시각화 샘플 수
 - `--component_viz_out_dir`: precompute 시각화 출력 경로

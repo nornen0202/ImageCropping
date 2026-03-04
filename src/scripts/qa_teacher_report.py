@@ -84,6 +84,15 @@ def make_bucket() -> Dict[str, Any]:
         "fallback_activated_count": 0,
         "fallback_mode": Counter(),
         "norm_size_source": Counter(),
+        "router_rule_id": Counter(),
+        "guard_no_person_for_portrait_count": 0,
+        "guard_no_text_signal_count": 0,
+        "guard_low_blank_ratio_copyspace_count": 0,
+        "proposal_injected_count": 0,
+        "teacher_seed_top1_count": 0,
+        "teacher_seed_selected_any_count": 0,
+        "proposal_teacher_seed_top1_count": 0,
+        "proposal_teacher_seed_selected_any_count": 0,
     }
 
 
@@ -99,6 +108,15 @@ def update_bucket(
 ) -> None:
     bucket["count"] += 1
 
+    proposal_injected = bool(
+        rec.get(
+            "proposal_injected",
+            (rec.get("candidate_meta", {}) or {}).get("proposal_injected", False),
+        )
+    )
+    if proposal_injected:
+        bucket["proposal_injected_count"] += 1
+
     decision = ar_res.get("decision", {}) if isinstance(ar_res.get("decision"), dict) else {}
     decision_type = str(decision.get("decision_type", "unknown"))
     delta = safe_float(decision.get("delta_improve", 0.0))
@@ -110,6 +128,21 @@ def update_bucket(
     if not isinstance(topk, list) or not topk:
         return
     top1 = topk[0] if isinstance(topk[0], dict) else {}
+    top1_source = str(top1.get("source", ""))
+    teacher_seed_top1 = top1_source.startswith("teacher:")
+    if teacher_seed_top1:
+        bucket["teacher_seed_top1_count"] += 1
+        if proposal_injected:
+            bucket["proposal_teacher_seed_top1_count"] += 1
+
+    teacher_seed_selected_any = any(
+        isinstance(c, dict) and str(c.get("source", "")).startswith("teacher:")
+        for c in topk
+    )
+    if teacher_seed_selected_any:
+        bucket["teacher_seed_selected_any_count"] += 1
+        if proposal_injected:
+            bucket["proposal_teacher_seed_selected_any_count"] += 1
 
     score_final = safe_float(top1.get("scores", {}).get("final", 0.0))
     bucket["final_scores"].append(score_final)
@@ -145,6 +178,10 @@ def update_bucket(
     subject_mode_conf = safe_float(routing.get("subject_mode_conf", route_global.get("subject_mode_conf", 0.0)))
     subject_mode_conflict = bool(routing.get("subject_mode_conflict", route_global.get("subject_mode_conflict", False)))
     subject_set = routing.get("subject_set", {}) if isinstance(routing.get("subject_set"), dict) else {}
+    router_signals = routing.get("router_signals", {}) if isinstance(routing.get("router_signals"), dict) else {}
+    rule_id = str(routing.get("router_rule_id", "")).strip()
+    if rule_id:
+        bucket["router_rule_id"][rule_id] += 1
 
     bucket["subject_mode"][subject_mode] += 1
     bucket["policy_id"][policy_id] += 1
@@ -157,6 +194,35 @@ def update_bucket(
         bucket["c2_primary_bg_like_count"] += 1
     if bool(subject_set.get("multi_subject", False)):
         bucket["multi_subject_count"] += 1
+
+    # Guard consistency diagnostics
+    signal_num_person = int(
+        safe_float(
+            router_signals.get(
+                "num_person",
+                route_global.get("num_people", 0),
+            ),
+            0.0,
+        )
+    )
+    signal_has_text_hint = bool(router_signals.get("has_text_hint", False))
+    signal_text_overlay = bool(router_signals.get("text_overlay_likely", False))
+    signal_ocr_boxes = int(safe_float(router_signals.get("ocr_text_boxes", 0), 0.0))
+    signal_blank_ratio = safe_float(router_signals.get("blank_ratio_est", 0.0), 0.0)
+    signal_blank_thr = safe_float(router_signals.get("blank_ratio_thr", 0.28), 0.28)
+    signal_copy_tag = bool(router_signals.get("has_copyspace_tag", False))
+
+    if subject_mode.startswith("portrait") and signal_num_person <= 0:
+        bucket["guard_no_person_for_portrait_count"] += 1
+    if (
+        subject_mode == "text_document"
+        and signal_ocr_boxes <= 0
+        and (not signal_text_overlay)
+        and (not signal_has_text_hint)
+    ):
+        bucket["guard_no_text_signal_count"] += 1
+    if subject_mode == "background_texture_copyspace" and signal_copy_tag and signal_blank_ratio < signal_blank_thr:
+        bucket["guard_low_blank_ratio_copyspace_count"] += 1
 
     subj_prior = rec.get("subject_prior", {}) if isinstance(rec.get("subject_prior"), dict) else {}
     if bool(subj_prior.get("union_used", False)):
@@ -207,6 +273,7 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
     num_input = [int(v) for v in bucket["num_input_candidates"]]
     sm_conf = [float(v) for v in bucket["subject_mode_conf"]]
     c2_num_inst = [int(v) for v in bucket["c2_num_inst"]]
+    proposal_n = int(bucket["proposal_injected_count"])
 
     return {
         "count": int(bucket["count"]),
@@ -229,6 +296,22 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
             "bg_selected_rate": float(bucket["c2_primary_bg_like_count"]) / n,
             "multi_subject_detect_rate": float(bucket["multi_subject_count"]) / n,
             "union_used_rate": float(bucket["union_used_count"]) / n,
+            "guard_no_person_for_portrait_rate": float(bucket["guard_no_person_for_portrait_count"]) / n,
+            "guard_no_text_signal_rate": float(bucket["guard_no_text_signal_count"]) / n,
+            "guard_low_blank_ratio_copyspace_rate": float(bucket["guard_low_blank_ratio_copyspace_count"]) / n,
+        },
+        "proposal_injection": {
+            "proposal_injected_rate": float(proposal_n) / n,
+            "teacher_seed_top1_rate_all": float(bucket["teacher_seed_top1_count"]) / n,
+            "teacher_seed_selected_any_rate_all": float(bucket["teacher_seed_selected_any_count"]) / n,
+            "teacher_seed_top1_win_rate_given_proposal": (
+                float(bucket["proposal_teacher_seed_top1_count"]) / max(1, proposal_n)
+            ),
+            "teacher_seed_selected_any_rate_given_proposal": (
+                float(bucket["proposal_teacher_seed_selected_any_count"]) / max(1, proposal_n)
+            ),
+            # Practical proxy for "proposal rescue": injected task where teacher-seed is selected top1.
+            "proposal_rescue_rate_proxy": float(bucket["proposal_teacher_seed_top1_count"]) / max(1, proposal_n),
         },
         "decision_counts": dict(bucket["decision"]),
         "decision_rates": {k: float(v) / n for k, v in bucket["decision"].items()},
@@ -270,6 +353,7 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
             "mode_counts": dict(bucket["fallback_mode"]),
         },
         "norm_size_source_counts": dict(bucket["norm_size_source"]),
+        "router_rule_id_counts": dict(bucket["router_rule_id"]),
     }
 
 
@@ -291,6 +375,9 @@ def flatten_for_csv(ar: str, summary: Dict[str, Any]) -> Dict[str, Any]:
         "multi_subject_detect_rate": summary.get("subject_mode_kpi", {}).get("multi_subject_detect_rate", 0.0),
         "union_used_rate": summary.get("subject_mode_kpi", {}).get("union_used_rate", 0.0),
         "subject_mode_conflict_rate": summary.get("subject_mode_conf", {}).get("conflict_rate", 0.0),
+        "proposal_injected_rate": summary.get("proposal_injection", {}).get("proposal_injected_rate", 0.0),
+        "teacher_seed_top1_rate_all": summary.get("proposal_injection", {}).get("teacher_seed_top1_rate_all", 0.0),
+        "proposal_rescue_rate_proxy": summary.get("proposal_injection", {}).get("proposal_rescue_rate_proxy", 0.0),
         "final_mean": summary.get("final_score", {}).get("mean", 0.0),
         "final_p50": summary.get("final_score", {}).get("p50", 0.0),
         "final_p90": summary.get("final_score", {}).get("p90", 0.0),
@@ -328,6 +415,7 @@ def main() -> None:
     per_ar: Dict[str, Dict[str, Any]] = {}
     per_mode: Dict[str, Dict[str, Any]] = {}
     per_mode_ar: Dict[str, Dict[str, Any]] = {}
+    per_mode_shot_ar: Dict[str, Dict[str, Any]] = {}
     image_ids = set()
     total_ar_results = 0
 
@@ -358,11 +446,15 @@ def main() -> None:
                     per_ar[ar_text] = make_bucket()
                 ar_routing = ar_res.get("routing", {}) if isinstance(ar_res.get("routing"), dict) else {}
                 mode_key = str(ar_routing.get("subject_mode", route_global.get("subject_mode", "other_ambiguous")))
+                shot_key = str(ar_routing.get("shot_type", route_global.get("shot_type", "unknown")))
                 mode_ar_key = f"{mode_key}__{ar_text}"
+                mode_shot_ar_key = f"{mode_key}__{shot_key}__{ar_text}"
                 if mode_key not in per_mode:
                     per_mode[mode_key] = make_bucket()
                 if mode_ar_key not in per_mode_ar:
                     per_mode_ar[mode_ar_key] = make_bucket()
+                if mode_shot_ar_key not in per_mode_shot_ar:
+                    per_mode_shot_ar[mode_shot_ar_key] = make_bucket()
 
                 update_bucket(
                     global_bucket,
@@ -400,11 +492,21 @@ def main() -> None:
                     subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
                     copyspace_keep_thr=float(args.copyspace_keep_thr),
                 )
+                update_bucket(
+                    per_mode_shot_ar[mode_shot_ar_key],
+                    rec=rec,
+                    ar_res=ar_res,
+                    route_global=route_global,
+                    negative_score_thr=float(args.negative_score_thr),
+                    subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
+                    copyspace_keep_thr=float(args.copyspace_keep_thr),
+                )
 
     global_summary = summarize_bucket(global_bucket)
     by_ar_summary = {k: summarize_bucket(v) for k, v in sorted(per_ar.items())}
     by_subject_mode = {k: summarize_bucket(v) for k, v in sorted(per_mode.items())}
     by_subject_mode_ar = {k: summarize_bucket(v) for k, v in sorted(per_mode_ar.items())}
+    by_subject_mode_shot_ar = {k: summarize_bucket(v) for k, v in sorted(per_mode_shot_ar.items())}
 
     report = {
         "input_jsonl": str(in_path),
@@ -419,6 +521,7 @@ def main() -> None:
         "by_ar": by_ar_summary,
         "by_subject_mode": by_subject_mode,
         "by_subject_mode_ar": by_subject_mode_ar,
+        "by_subject_mode_shot_ar": by_subject_mode_shot_ar,
     }
 
     out_json.parent.mkdir(parents=True, exist_ok=True)

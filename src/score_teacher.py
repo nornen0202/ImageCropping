@@ -1771,6 +1771,12 @@ def apply_subject_policy_overrides(
     )
     out["subject_set"] = routing_hint.get("subject_set", {}) if isinstance(routing_hint.get("subject_set"), dict) else {}
     out["subject_mode_conflict"] = bool(routing_hint.get("subject_mode_conflict", False))
+    out["router_rule_id"] = str(routing_hint.get("router_rule_id", ""))
+    out["router_signals"] = (
+        routing_hint.get("router_signals", {})
+        if isinstance(routing_hint.get("router_signals"), dict)
+        else {}
+    )
     return out
 
 
@@ -2505,6 +2511,20 @@ def process_one_image(
     subject_box = build_subject_bbox(cand_rec, feat_rec, width=width, height=height)
     subject_centroid = box_center(subject_box)
 
+    cand_stats = cand_rec.get("stats", {}) if isinstance(cand_rec.get("stats"), dict) else {}
+    proposal_injected = bool(cand_rec.get("proposal_injected", False))
+    teacher_cands_total = int(safe_float(cand_stats.get("num_teacher_candidates_total", 0), 0.0))
+    teacher_cands_by_ar = (
+        cand_stats.get("num_teacher_candidates_by_ar", {})
+        if isinstance(cand_stats.get("num_teacher_candidates_by_ar"), dict)
+        else {}
+    )
+    iou_to_teacher_top1_by_ar = (
+        cand_rec.get("iou_to_teacher_top1_by_ar", {})
+        if isinstance(cand_rec.get("iou_to_teacher_top1_by_ar"), dict)
+        else {}
+    )
+
     results_by_ar: Dict[str, Any] = {}
     stats_for_ar: Dict[str, Dict[str, float]] = {}
     per_ar_tmp: Dict[str, Dict[str, Any]] = {}
@@ -2755,6 +2775,8 @@ def process_one_image(
                 "subject_mode_reasons": route.get("subject_mode_reasons", []),
                 "subject_mode_conflict": bool(route.get("subject_mode_conflict", False)),
                 "subject_set": route.get("subject_set", {}),
+                "router_rule_id": route.get("router_rule_id", ""),
+                "router_signals": route.get("router_signals", {}),
                 "headroom_range": route["headroom_range"],
                 "lookroom_range": route["lookroom_range"],
                 "context_range": route["context_range"],
@@ -2764,6 +2786,11 @@ def process_one_image(
                 "real_applied": bool(expensive_real_applied),
                 "uses_aesthetic_predictor": bool(expensive_real_applied),
                 "uses_clip_text_alignment": bool(expensive_real_applied),
+            },
+            "proposal_injection": {
+                "enabled": bool(proposal_injected),
+                "num_teacher_candidates_ar": int(safe_float(teacher_cands_by_ar.get(ar_text, 0), 0.0)),
+                "candidate_top1_iou_to_teacher_seed": safe_float(iou_to_teacher_top1_by_ar.get(ar_text, 0.0), 0.0),
             },
         }
         results_by_ar[ar_text] = ar_result
@@ -2784,6 +2811,13 @@ def process_one_image(
         "meta_norm": meta_norm,
         "tags": tags,
         "subject_prior": cand_rec.get("subject_prior", {}),
+        "proposal_injected": bool(proposal_injected),
+        "candidate_meta": {
+            "proposal_injected": bool(proposal_injected),
+            "num_teacher_candidates_total": int(teacher_cands_total),
+            "num_teacher_candidates_by_ar": teacher_cands_by_ar,
+            "iou_to_teacher_top1_by_ar": iou_to_teacher_top1_by_ar,
+        },
         "route_global": {
             "shot_type": route.get("shot_type", shot_type),
             "portrait_category": portrait_category,
@@ -2798,6 +2832,8 @@ def process_one_image(
             "subject_mode_reasons": route.get("subject_mode_reasons", []),
             "subject_mode_conflict": bool(route.get("subject_mode_conflict", False)),
             "subject_set": route.get("subject_set", {}),
+            "router_rule_id": route.get("router_rule_id", ""),
+            "router_signals": route.get("router_signals", {}),
         },
         "teacher_scorer": {
             "config": asdict(cfg),

@@ -438,7 +438,7 @@ Stage 10 산출물(`crop_label_v1*.jsonl`)이 생성된 뒤, 아래 명령으로
 10K_local (`run_tag=rerun1_public_e2e`) 예시:
 ```bash
 DATANAME=10K_local
-RUNTAG=rerun1_public_e2e
+RUNTAG=rerun1_public_e2e_subject_mode
 bash src/scripts/run_visualize_vlm_teacher.sh \
   data/SSTK/${DATANAME}/artifacts/vlm_teacher/labels/crop_label_v1_${RUNTAG}.jsonl \
   data/SSTK/${DATANAME}/filtered_sstk_100.parquet \
@@ -681,6 +681,14 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --subject_routing_union_top_m 3 \
   --subject_routing_allow_det_proxy 1 \
   --run_candidates 1 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 0 \
+  --public_teacher_download_weights 0 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --proposal_injection_gate 1 \
+  --proposal_injection_min_rate 0.95 \
+  --proposal_injection_gate_strict 1 \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
@@ -742,6 +750,227 @@ python src/scripts/build_teacher_topk_analytics.py \
   --output_dir "${REPORT_DIR}/assets/analytics/teacher_topk"
 ```
 
+#### 3.9.1 Subject-mode 결과 재활용: Stage 10(VLM) + VLM 시각화까지
+
+아래는 `*_subject_mode` 산출물에 Stage-10을 추가하고, VLM 결과 시각화/분석 자산까지 만드는 절차입니다.
+
+```bash
+DATANAME=10K_local
+BASE_TAG=rerun1_public_e2e
+SM_TAG=${BASE_TAG}_subject_mode
+DATA_DIR=data/SSTK/${DATANAME}
+REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+
+# 0) 선행 산출물 확인
+if [ ! -f "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" ]; then
+  echo "[error] missing teacher scores for ${SM_TAG}"
+  echo "        먼저 3.9의 subject-mode + candidate + teacher 재실행 단계를 완료하세요."
+  exit 1
+fi
+
+# 1) Stage-10 라벨 생성(기존 teacher score 재활용)
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir "${DATA_DIR}" \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --run_vlm_teacher 1 \
+  --prefer_curated_images 1 \
+  --curated_image_dir "${DATA_DIR}/images" \
+  --vlm_backend qwen25_vl \
+  --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
+  --vlm_device auto \
+  --vlm_top_m 12 \
+  --vlm_top_k 5 \
+  --vlm_fallback_backend heuristic \
+  --vlm_multi_gpu 1 \
+  --vlm_gpu_ids 0,1,2,3,4,5,6,7 \
+  --vlm_num_workers 8 \
+  --vlm_save_raw_response 1 \
+  --vlm_strict_backend_init 1 \
+  --skip_existing 0 \
+  --run_tag "${SM_TAG}"
+
+# 2) Stage-10 시각화 + analytics 자산 생성
+bash src/scripts/run_visualize_vlm_teacher.sh \
+  "${DATA_DIR}/artifacts/vlm_teacher/labels/crop_label_v1_${SM_TAG}.jsonl" \
+  "${DATA_DIR}/filtered_sstk_100.parquet" \
+  /sstk/20230916/sstk_100 \
+  "${DATA_DIR}/artifacts/vlm_teacher/visualizations/vlm_teacher_${SM_TAG}" \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --image_dir "${DATA_DIR}/images" \
+  --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
+  --num_samples 120 \
+  --analytics_use_full_labels 1 \
+  --server_mode 1
+```
+### 3.9 + 3.9.1 동시에 실행
+10K_local (`base_tag=rerun1_public_e2e`) 예시:
+```bash
+DATANAME=10K_local
+BASE_TAG=rerun1_public_e2e
+#DATANAME=10K
+#BASE_TAG=e2e_260227_r0
+
+SM_TAG=${BASE_TAG}_260303
+DATA_DIR=data/SSTK/${DATANAME}
+REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+# C1 전략: 0=기존 c1 재활용(권장), 1=C1 재생성(HF/OpenCLIP 다운로드 가능 환경)
+RUN_C1_REBUILD=0
+
+# 0) (선택) base report의 샘플 id/manifest 재사용
+mkdir -p "${REPORT_DIR}"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_ids_supercat12.txt" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.csv" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_manifest_supercat12.json" "${REPORT_DIR}/"
+cp -f "${DATA_DIR}/artifacts/reports/${BASE_TAG}/sample_summary_table.md" "${REPORT_DIR}/"
+
+# 0.1) real expensive 사용 전제: run_c1=0일 때는 기존 c1 jsonl 필수
+if [ "${RUN_C1_REBUILD}" -eq 0 ] && [ ! -f "${DATA_DIR}/artifacts/precompute/feats_c1.jsonl" ]; then
+  echo "[error] missing c1 jsonl: ${DATA_DIR}/artifacts/precompute/feats_c1.jsonl"
+  echo "        해결: RUN_C1_REBUILD=1로 C1 재생성(네트워크/HF 필요) 또는 --use_real_expensive 0"
+  exit 1
+fi
+
+# 1) 기존 precompute를 재활용해 subject routing + candidates + teacher 재실행
+# 기본값: "재활용" 경로(run_c1=0)
+# 선택값: RUN_C1_REBUILD=1이면 C1 재생성 수행(HF/OpenCLIP 다운로드 필요)
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir "${DATA_DIR}" \
+  --run_filter 0 \
+  --run_c1 "${RUN_C1_REBUILD}" --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_subject_routing 1 \
+  --subject_routing_top_n 5 \
+  --subject_routing_union_top_m 3 \
+  --subject_routing_allow_det_proxy 1 \
+  --run_candidates 1 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 0 \
+  --public_teacher_download_weights 0 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --proposal_injection_gate 1 \
+  --proposal_injection_min_rate 0.95 \
+  --proposal_injection_gate_strict 1 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --teacher_multi_gpu 1 \
+  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
+  --teacher_num_workers 8 \
+  --align_device cuda \
+  --aesthetic_device cuda \
+  --exp_batch_size 128 \
+  --prefer_curated_images 1 \
+  --curated_image_dir "${DATA_DIR}/images" \
+  --skip_existing 0 \
+  --run_tag "${SM_TAG}"
+
+# 1.1) 1단계 성공 가드: teacher score가 생성되지 않았으면 즉시 중단
+if [ ! -f "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" ]; then
+  echo "[error] missing teacher scores: ${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl"
+  echo "        step-1 로그/에러를 먼저 해결한 뒤 step-2~4를 실행하세요."
+  exit 1
+fi
+
+# 2) precompute component visualization(샘플 고정)
+bash src/scripts/run_visualize_components.sh \
+  "${DATA_DIR}/filtered_sstk_100.parquet" \
+  /sstk/20230916/sstk_100 \
+  "${DATA_DIR}/artifacts/precompute/visualizations/components_${SM_TAG}" \
+  --merged_jsonl "${DATA_DIR}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl" \
+  --image_dir "${DATA_DIR}/images" \
+  --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
+  --draw_c2 1 --draw_c3 1 --draw_c5 1 --draw_combined 1 \
+  --num_samples 120 \
+  --server_mode 1
+
+# 3) teacher visualization(샘플 고정)
+python src/visualize_teacher_scores.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --parquet "${DATA_DIR}/filtered_sstk_100.parquet" \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --image_dir "${DATA_DIR}/images" \
+  --out_dir "${DATA_DIR}/artifacts/teacher/visualizations/teacher_scorer_${SM_TAG}" \
+  --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
+  --num_samples 120 \
+  --target_ar all \
+  --decision_filter all
+
+# 4) report용 overview/qa/top-k analytics 재생성
+python src/scripts/rebuild_teacher_overview.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_json "${DATA_DIR}/artifacts/teacher/overview/teacher_scores_overview_${SM_TAG}.json" \
+  --output_by_ar_csv "${DATA_DIR}/artifacts/teacher/overview/teacher_scores_overview_by_ar_${SM_TAG}.csv"
+
+python src/scripts/qa_teacher_report.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_json "${DATA_DIR}/artifacts/teacher/qa/teacher_scores_qa_report_${SM_TAG}.json" \
+  --output_by_ar_csv "${DATA_DIR}/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_${SM_TAG}.csv"
+
+mkdir -p "${REPORT_DIR}/assets/analytics/teacher_topk"
+python src/scripts/build_teacher_topk_analytics.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --output_dir "${REPORT_DIR}/assets/analytics/teacher_topk"
+
+# 0) 선행 산출물 확인
+if [ ! -f "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" ]; then
+  echo "[error] missing teacher scores for ${SM_TAG}"
+  echo "        먼저 3.9의 subject-mode + candidate + teacher 재실행 단계를 완료하세요."
+  exit 1
+fi
+
+# 1) Stage-10 라벨 생성(기존 teacher score 재활용)
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir "${DATA_DIR}" \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --run_vlm_teacher 1 \
+  --prefer_curated_images 1 \
+  --curated_image_dir "${DATA_DIR}/images" \
+  --vlm_backend qwen25_vl \
+  --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
+  --vlm_device auto \
+  --vlm_top_m 12 \
+  --vlm_top_k 5 \
+  --vlm_fallback_backend heuristic \
+  --vlm_multi_gpu 1 \
+  --vlm_gpu_ids 0,1,2,3,4,5,6,7 \
+  --vlm_num_workers 8 \
+  --vlm_save_raw_response 1 \
+  --vlm_strict_backend_init 1 \
+  --skip_existing 0 \
+  --run_tag "${SM_TAG}"
+
+# 2) Stage-10 시각화 + analytics 자산 생성
+bash src/scripts/run_visualize_vlm_teacher.sh \
+  "${DATA_DIR}/artifacts/vlm_teacher/labels/crop_label_v1_${SM_TAG}.jsonl" \
+  "${DATA_DIR}/filtered_sstk_100.parquet" \
+  /sstk/20230916/sstk_100 \
+  "${DATA_DIR}/artifacts/vlm_teacher/visualizations/vlm_teacher_${SM_TAG}" \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
+  --image_dir "${DATA_DIR}/images" \
+  --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
+  --num_samples 120 \
+  --analytics_use_full_labels 1 \
+  --server_mode 1
+```
+
+이미 `crop_label_v1_${SM_TAG}.jsonl`이 있으면 1단계는 생략하고 2단계만 수행해도 됩니다.
+
+필요한 선행 산출물이 없는 경우:
+- `teacher_scores_ar_${SM_TAG}.jsonl` 없음: 3.9의 subject-mode 재실행(후보+teacher)부터 수행
+- `sample_ids_supercat12.txt` 없음: base report(`$BASE_TAG`)에서 복사하거나 `--image_ids_file` 옵션을 제거하고 랜덤 샘플 렌더링
+
+주요 주의사항:
+- `--enable_public_teacher_proposals 1`을 켜면 candidate overview의 `proposal_injected_rate`를 기본 gate(`>=0.95`)로 검사합니다.
+- 과거 산출물 비교 등으로 의도적으로 proposal 주입을 끄는 경우에만 `--proposal_injection_gate 0`을 사용하세요.
+
 10K (`base_tag=e2e_260227_r0`) 예시:
 ```bash
 DATANAME=10K
@@ -784,6 +1013,14 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --subject_routing_union_top_m 3 \
   --subject_routing_allow_det_proxy 1 \
   --run_candidates 1 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 0 \
+  --public_teacher_download_weights 0 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --proposal_injection_gate 1 \
+  --proposal_injection_min_rate 0.95 \
+  --proposal_injection_gate_strict 1 \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
@@ -841,6 +1078,106 @@ mkdir -p "${REPORT_DIR}/assets/analytics/teacher_topk"
 python src/scripts/build_teacher_topk_analytics.py \
   --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" \
   --output_dir "${REPORT_DIR}/assets/analytics/teacher_topk"
+```
+
+### 3.10 리뷰 반영 재실험 (짧은 A/B 템플릿)
+
+아래 A/B는 `SSTK_rerun1_subject_mode_report_review_KO_260303.md`의 권고를 바로 검증하기 위한 최소 템플릿입니다.
+
+#### A/B-0: proposal injection on/off 영향
+```bash
+DATANAME=10K_local
+DATA_DIR=data/SSTK/${DATANAME}
+BASE_TAG=rerun1_public_e2e
+
+# A: injection ON + gate ON
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir "${DATA_DIR}" \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_subject_routing 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 0 \
+  --public_teacher_download_weights 0 \
+  --public_teachers gaic,cacnet,cgs \
+  --proposal_injection_gate 1 \
+  --proposal_injection_min_rate 0.95 \
+  --run_tag ${BASE_TAG}_ab_on
+
+# B: injection OFF
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir "${DATA_DIR}" \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_subject_routing 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --enable_public_teacher_proposals 0 \
+  --proposal_injection_gate 0 \
+  --run_tag ${BASE_TAG}_ab_off
+```
+
+#### A/B-1: router guard on/off
+```bash
+DATANAME=10K_local
+DATA_DIR=data/SSTK/${DATANAME}
+BASE_TAG=rerun1_public_e2e
+
+# ON: 기본(guard 포함 최신 코드)
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir "${DATA_DIR}" \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_subject_routing 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --run_tag ${BASE_TAG}_guard_on
+```
+
+비교 지표:
+- `teacher_scores_qa_report_<tag>.json`의
+  - `global.subject_mode_kpi.guard_no_person_for_portrait_rate`
+  - `global.subject_mode_kpi.guard_no_text_signal_rate`
+  - `global.subject_mode_kpi.guard_low_blank_ratio_copyspace_rate`
+- `global.proposal_injection.proposal_rescue_rate_proxy`
+- `by_subject_mode_shot_ar`에서 문제 모드/샷/AR 집중 여부 확인
+
+#### A/B-2: scene/copyspace/text 정책 파라미터 스윕
+현재 구현은 `score_teacher.py`의 `apply_subject_policy_overrides()`에 모드별 lambda/tau/w_area가 하드코딩되어 있습니다.
+짧은 스윕은 아래처럼 브랜치 분리 후 상수만 바꿔 `--run_tag`를 달리해 비교하세요.
+```bash
+# 예: scene_landscape에서 cov 가중치 추가 축소 실험
+# src/score_teacher.py 의 apply_subject_policy_overrides()에서
+# mode=="scene_landscape" 블록 파라미터를 수정 후 실행
+
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/10K_local \
+  --run_filter 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_subject_routing 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --run_tag rerun1_public_e2e_scene_sweep1
+```
+
+#### A/B-3: Stress set 자동 샘플링(릴리즈 고정 비교셋)
+```bash
+DATANAME=10K_local
+TAG=rerun1_public_e2e_subject_mode
+DATA_DIR=data/SSTK/${DATANAME}
+
+python src/scripts/build_subject_mode_stress_set.py \
+  --teacher_scores_jsonl "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${TAG}.jsonl" \
+  --output_json "${DATA_DIR}/artifacts/reports/${TAG}/subject_mode_stress_set.json" \
+  --output_csv "${DATA_DIR}/artifacts/reports/${TAG}/subject_mode_stress_set.csv" \
+  --max_per_bucket 120 \
+  --seed 42
 ```
 
 레포트 파일 경로:
@@ -1051,6 +1388,9 @@ Subject-Mode enrich(신규):
 - `--run_candidates --run_teacher`
 - `--teacher_proposals_jsonl`: Candidate 단계에 수동 proposal jsonl 주입(CSV)
 - `--enable_public_teacher_proposals 0|1`: 5.5(공개 Teacher setup+infer+build) 자동 수행 후 Candidate에 자동 주입
+- `--proposal_injection_gate 0|1`: 공개 proposal 주입률 QA gate 수행(기본 1)
+- `--proposal_injection_min_rate`: `proposal_injected_rate` 하한(기본 0.95)
+- `--proposal_injection_gate_strict 0|1`: gate 미달 시 즉시 실패 여부(기본 1)
 - `--public_teacher_setup 0|1`: 공개 Teacher 준비 단계 실행 여부
 - `--public_teacher_download_weights 0|1`: setup 단계에서 가중치 자동 다운로드 시도
 - `--public_teachers`: 추론 teacher 목록 CSV (예: `gaic,cacnet,cgs`)

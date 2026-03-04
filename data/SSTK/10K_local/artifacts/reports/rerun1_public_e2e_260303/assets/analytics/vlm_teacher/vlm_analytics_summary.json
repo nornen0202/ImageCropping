@@ -1,0 +1,63 @@
+{
+  "num_tasks": 2500,
+  "num_selected_rows": 11899,
+  "decision_counts": {
+    "crop": 886,
+    "keep_full": 1604,
+    "minimal_crop": 10
+  },
+  "selected_k_distribution": {
+    "1": 86,
+    "2": 44,
+    "3": 49,
+    "4": 27,
+    "5": 2294
+  },
+  "per_ar_tasks": {
+    "16:9": 500,
+    "1:1": 500,
+    "3:4": 500,
+    "4:3": 500,
+    "9:16": 500
+  },
+  "backend_counts": {
+    "qwen25_vl": 2500
+  },
+  "validator_note_counts": {
+    "<empty>": 2500
+  },
+  "teacher_confidence": {
+    "mean": 0.7940306848,
+    "p50": 1.0,
+    "p90": 1.0,
+    "min": 0.5,
+    "max": 1.0
+  },
+  "why_tags_top": {
+    "ar_fits_well": 11898,
+    "avoid_face_cut": 10859,
+    "avoid_person_cut": 9125,
+    "context_loss": 8102,
+    "balanced_crop": 7704,
+    "phi_grid": 6815,
+    "symmetry": 6808,
+    "centered_subject": 5318,
+    "rule_of_thirds": 5287,
+    "context_preserved": 3791,
+    "headroom_violation": 3249,
+    "copy_space_kept": 2233,
+    "horizon_on_third": 1596,
+    "wide_crop": 1358,
+    "tight_crop": 1238,
+    "headroom_ok": 1136,
+    "lookroom_violation": 906,
+    "lookroom_ok": 408
+  },
+  "score_final": {
+    "mean": -5.9198324671821165,
+    "p50": -3.008357,
+    "p90": 1.0286084,
+    "min": -77.998021,
+    "max": 1.180863
+  }
+}

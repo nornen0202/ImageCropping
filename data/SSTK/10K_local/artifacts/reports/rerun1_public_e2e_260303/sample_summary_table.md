@@ -1,0 +1,14 @@
+|super_cat|image_id|total_candidates|c2|c3|
+|---|---|---:|---:|---:|
+|animals|bigstock_image_149147297|492|1|0|
+|architecture_exterior|bigstock_image_163220822|476|1|0|
+|documents_text|bigstock_image_129575693|535|1|0|
+|food|bigstock_image_165044747|533|1|0|
+|indoor_interior|bigstock_image_112983323|464|1|0|
+|landscape_nature|bigstock_image_218991439|480|1|0|
+|other_ambiguous|bigstock_image_207940879|467|1|3|
+|people_multi|bigstock_image_122199020|545|1|1|
+|people_single|sstk_image_1772011034|527|1|1|
+|product_object|bigstock_image_141430643|534|1|0|
+|sports|bigstock_image_134277740|578|1|2|
+|transportation|bigstock_image_109682993|559|1|0|

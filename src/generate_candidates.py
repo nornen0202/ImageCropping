@@ -1764,6 +1764,20 @@ def build_output_record(
             "policy_id": str(routing.get("policy_id", "")),
             "subject_mode_conf": safe_float(routing.get("subject_mode_conf", 0.0), 0.0),
             "subject_set": routing.get("subject_set", {}) if isinstance(routing.get("subject_set"), dict) else {},
+            "subject_mode_reasons": routing.get("subject_mode_reasons", [])
+            if isinstance(routing.get("subject_mode_reasons"), list)
+            else [],
+            "subject_mode_flags": routing.get("subject_mode_flags", {})
+            if isinstance(routing.get("subject_mode_flags"), dict)
+            else {},
+            "subject_mode_conflict": bool(routing.get("subject_mode_conflict", False)),
+            "router_rule_id": str(routing.get("router_rule_id", "")),
+            "router_signals": routing.get("router_signals", {})
+            if isinstance(routing.get("router_signals"), dict)
+            else {},
+            "shot_type": str(routing.get("shot_type", "unknown") or "unknown"),
+            "primary_subject_type": str(routing.get("primary_subject_type", "other") or "other"),
+            "primary_subject_source": str(routing.get("primary_subject_source", "none") or "none"),
         },
         "subject": {
             "primary_box": [round(v, 6) for v in subj.get("bbox_norm_xyxy", [0.25, 0.25, 0.75, 0.75])],

@@ -1,0 +1,45 @@
+{
+  "run_tag": "rerun1_public_e2e_260303",
+  "num_samples": 12,
+  "sample_ids": [
+    "bigstock_image_149147297",
+    "bigstock_image_163220822",
+    "bigstock_image_129575693",
+    "bigstock_image_165044747",
+    "bigstock_image_112983323",
+    "bigstock_image_218991439",
+    "bigstock_image_207940879",
+    "bigstock_image_122199020",
+    "sstk_image_1772011034",
+    "bigstock_image_141430643",
+    "bigstock_image_134277740",
+    "bigstock_image_109682993"
+  ],
+  "by_super_cat": {
+    "animals": 1,
+    "architecture_exterior": 1,
+    "documents_text": 1,
+    "food": 1,
+    "indoor_interior": 1,
+    "landscape_nature": 1,
+    "other_ambiguous": 1,
+    "people_multi": 1,
+    "people_single": 1,
+    "product_object": 1,
+    "sports": 1,
+    "transportation": 1
+  },
+  "teacher_decision_counts": {
+    "crop": 30,
+    "minimal_crop": 30
+  },
+  "vlm_decision_counts": {
+    "keep_full": 39,
+    "crop": 21
+  },
+  "teacher_vlm_match": {
+    "match": 14,
+    "mismatch": 46
+  },
+  "teacher_vlm_match_rate": 0.23333333333333334
+}

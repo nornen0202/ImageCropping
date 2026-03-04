@@ -106,6 +106,9 @@ Core options
 --component_viz_image_ids_file PATH precompute 시각화 대상 image_id 파일(한 줄 1개)
 --teacher_proposals_jsonl CSV   candidate 단계 teacher proposal jsonl(쉼표로 다중 경로)
 --enable_public_teacher_proposals 0|1   공개 teacher(5.5) setup+infer+build 자동 수행 (default: 0)
+--proposal_injection_gate 0|1   공개 proposal 주입률 QA gate 적용 (default: 1)
+--proposal_injection_min_rate FLOAT proposal_injected_rate 하한 (default: 0.95)
+--proposal_injection_gate_strict 0|1 gate 미달 시 즉시 실패 여부 (default: 1)
 --public_teacher_setup 0|1      공개 teacher setup 수행 여부 (default: 1)
 --public_teacher_download_weights 0|1    setup 시 가중치 다운로드 (default: 1)
 --public_teachers CSV           추론 teacher 목록 (default: gaic,cacnet,cgs)
@@ -252,6 +255,9 @@ TEACHER_PREFER_EXPAND=1
 TEACHER_JITTER_SHIFT_FRACS="0.03"
 TEACHER_JITTER_SCALES="0.92,1.0,1.08"
 ENABLE_PUBLIC_TEACHER_PROPOSALS=0
+PROPOSAL_INJECTION_GATE=1
+PROPOSAL_INJECTION_MIN_RATE=0.95
+PROPOSAL_INJECTION_GATE_STRICT=1
 PUBLIC_TEACHER_SETUP=1
 PUBLIC_TEACHER_DOWNLOAD_WEIGHTS=1
 PUBLIC_TEACHERS="gaic,cacnet,cgs"
@@ -389,6 +395,9 @@ while [ "$#" -gt 0 ]; do
     --teacher_jitter_shift_fracs) TEACHER_JITTER_SHIFT_FRACS="$2"; shift 2 ;;
     --teacher_jitter_scales) TEACHER_JITTER_SCALES="$2"; shift 2 ;;
     --enable_public_teacher_proposals) ENABLE_PUBLIC_TEACHER_PROPOSALS="$2"; shift 2 ;;
+    --proposal_injection_gate) PROPOSAL_INJECTION_GATE="$2"; shift 2 ;;
+    --proposal_injection_min_rate) PROPOSAL_INJECTION_MIN_RATE="$2"; shift 2 ;;
+    --proposal_injection_gate_strict) PROPOSAL_INJECTION_GATE_STRICT="$2"; shift 2 ;;
     --public_teacher_setup) PUBLIC_TEACHER_SETUP="$2"; shift 2 ;;
     --public_teacher_download_weights) PUBLIC_TEACHER_DOWNLOAD_WEIGHTS="$2"; shift 2 ;;
     --public_teachers) PUBLIC_TEACHERS="$2"; shift 2 ;;
@@ -573,6 +582,7 @@ MERGED_FEATS_ROUTED="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed.js
 DOWNSTREAM_FEATS="$MERGED_FEATS"
 
 CANDIDATES_JSONL="${CANDIDATES_DIR}/candidates_ar${SUFFIX}.jsonl"
+CANDIDATES_OVERVIEW_JSON="${CANDIDATES_DIR}/candidates_ar${SUFFIX}_overview.json"
 TEACHER_JSONL="${TEACHER_SCORES_DIR}/teacher_scores_ar${SUFFIX}.jsonl"
 TEACHER_OVERVIEW_JSON="${TEACHER_OVERVIEW_DIR}/teacher_scores_overview${SUFFIX}.json"
 TEACHER_OVERVIEW_CSV="${TEACHER_OVERVIEW_DIR}/teacher_scores_overview_by_ar${SUFFIX}.csv"
@@ -804,6 +814,7 @@ echo " run_component_viz   : $RUN_COMPONENT_VIZ (out=$COMPONENT_VIZ_OUT_DIR, num
 echo " public proposals    : enable=$ENABLE_PUBLIC_TEACHER_PROPOSALS setup=$PUBLIC_TEACHER_SETUP teachers=$PUBLIC_TEACHERS max_images=$PUBLIC_TEACHER_MAX_IMAGES"
 echo " public raw/proposal : $PUBLIC_TEACHER_RAW_JSONL | $PUBLIC_TEACHER_PROPOSALS_JSONL"
 echo " public infer multi  : multi_gpu=$PUBLIC_INFER_MULTI_GPU gpu_ids=${PUBLIC_INFER_GPU_IDS:-auto} workers=${PUBLIC_INFER_NUM_WORKERS:-auto}"
+echo " proposal gate       : enable=$PROPOSAL_INJECTION_GATE min_rate=$PROPOSAL_INJECTION_MIN_RATE strict=$PROPOSAL_INJECTION_GATE_STRICT"
 echo " run_candidates      : $RUN_CANDIDATES"
 echo " candidate_mp       : workers=$CAND_NUM_WORKERS chunksize=$CAND_MP_CHUNKSIZE start=$CAND_MP_START_METHOD"
 echo " teacher proposals   : ${TEACHER_PROPOSALS_JSONL:-<none>}"
@@ -1271,6 +1282,15 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
         --mp_start_method "$CAND_MP_START_METHOD" \
         "${cand_extra_args[@]}"
   fi
+
+  if [ "$ENABLE_PUBLIC_TEACHER_PROPOSALS" -eq 1 ] && [ "$PROPOSAL_INJECTION_GATE" -eq 1 ]; then
+    run_with_log "09b_check_public_proposal_injection_gate" \
+      python3 src/scripts/check_candidate_injection_gate.py \
+        --candidate_overview_json "$CANDIDATES_OVERVIEW_JSON" \
+        --expected_enabled 1 \
+        --min_injected_rate "$PROPOSAL_INJECTION_MIN_RATE" \
+        --strict "$PROPOSAL_INJECTION_GATE_STRICT"
+  fi
 fi
 
 # ------------------------------------------------------------------------------
@@ -1420,6 +1440,7 @@ if [ "$RUN_COMPONENT_VIZ" -eq 1 ]; then
   echo " component viz    : $COMPONENT_VIZ_OUT_DIR"
 fi
 echo " candidates       : $CANDIDATES_JSONL"
+echo " cand overview    : $CANDIDATES_OVERVIEW_JSON"
 echo " teacher jsonl    : $TEACHER_JSONL"
 echo " teacher overview : $TEACHER_OVERVIEW_JSON"
 echo " teacher QA       : $TEACHER_QA_JSON"

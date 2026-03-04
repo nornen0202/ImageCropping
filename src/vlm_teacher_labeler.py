@@ -40,6 +40,16 @@ from packaging.version import Version, InvalidVersion
 
 
 AR_ORDER = ["1:1", "9:16", "16:9", "3:4", "4:3"]
+SUBJECT_STOP_TAG_KEYWORDS = (
+    "background",
+    "copy space",
+    "copy-space",
+    "negative space",
+    "texture",
+    "wallpaper",
+    "backdrop",
+    "pattern",
+)
 
 # Union of spec vocab + current numeric-scoring tags already used in pipeline
 ALLOWED_WHY_TAGS = {
@@ -250,19 +260,33 @@ def infer_category(tags: Sequence[str], route_flags: Dict[str, Any], has_human_e
 
 
 def infer_main_subject(tags: Sequence[str], category: str) -> Dict[str, Any]:
-    if tags:
-        label = str(tags[0])
+    cleaned = [str(t).strip() for t in tags if str(t).strip()]
+    label = ""
+    for t in cleaned:
+        tl = t.lower()
+        if any(k in tl for k in SUBJECT_STOP_TAG_KEYWORDS):
+            continue
+        label = t
+        break
+    if not label:
+        label = str(category or "generic")
+
+    if category == "person":
+        stype = "person"
+    elif category == "landscape":
+        stype = "scene"
     else:
-        label = category
-    stype = "person" if category == "person" else "object"
+        stype = "object"
+
+    filtered_out = [t for t in cleaned if any(k in t.lower() for k in SUBJECT_STOP_TAG_KEYWORDS)]
     return {
         "label": label,
         "type": stype,
         "confidence": 0.7,
         "evidence": {
-            "tags_top": [str(x) for x in tags[:8]],
+            "tags_top": [str(x) for x in cleaned[:8]],
             "noun_phrases_top": [label],
-            "notes": "rule_based",
+            "notes": "rule_based_filtered_stop_tags" if filtered_out else "rule_based",
         },
     }
 

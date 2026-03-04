@@ -49,6 +49,45 @@ def _load_meta_map(parquet_path: Path) -> Dict[str, Dict[str, Any]]:
     return out
 
 
+def _first_int(rec: Dict[str, Any], keys: list[str], default: int = 0) -> int:
+    for k in keys:
+        if k in rec and rec.get(k) is not None:
+            try:
+                return int(float(rec.get(k)))
+            except Exception:
+                continue
+    return int(default)
+
+
+def _first_bool(rec: Dict[str, Any], keys: list[str], default: bool = False) -> bool:
+    for k in keys:
+        if k not in rec:
+            continue
+        v = rec.get(k)
+        if isinstance(v, bool):
+            return bool(v)
+        s = str(v).strip().lower()
+        if s in {"1", "true", "yes", "y", "on"}:
+            return True
+        if s in {"0", "false", "no", "n", "off"}:
+            return False
+    return bool(default)
+
+
+def _compute_blank_ratio_from_union(union_box: Any, width: int, height: int) -> float:
+    if not isinstance(union_box, (list, tuple)) or len(union_box) != 4:
+        return 0.0
+    try:
+        x1, y1, x2, y2 = [float(v) for v in union_box]
+    except Exception:
+        return 0.0
+    w = max(1.0, float(width))
+    h = max(1.0, float(height))
+    area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+    ratio = max(0.0, min(1.0, area / (w * h)))
+    return float(max(0.0, min(1.0, 1.0 - ratio)))
+
+
 def main() -> None:
     args = parse_args()
     input_jsonl = Path(args.input_feats_jsonl)
@@ -113,6 +152,39 @@ def main() -> None:
             rec["c2_stats"] = c2_payload["c2_stats"]
 
             tags_norm = normalize_tags(tags)
+            ocr_text_boxes = _first_int(
+                rec,
+                [
+                    "ocr_text_boxes",
+                    "ocr_num_boxes",
+                    "ocr_box_count",
+                    "c4_text_boxes",
+                    "c4_ocr_boxes",
+                ],
+                default=0,
+            )
+            text_overlay_likely = _first_bool(
+                rec,
+                [
+                    "text_overlay_likely",
+                    "has_text_overlay",
+                    "ocr_text_overlay_likely",
+                ],
+                default=False,
+            )
+            copy_space_flag = _first_bool(
+                rec,
+                [
+                    "copy_space",
+                    "has_copy_space",
+                    "special_flag_copy_space",
+                ],
+                default=False,
+            )
+            blank_ratio_est = _compute_blank_ratio_from_union(rec.get("c2_union_box_xyxy"), width, height)
+            c5_geom = rec.get("c5_geom", {}) if isinstance(rec.get("c5_geom"), dict) else {}
+            horizon_conf = c5_geom.get("horizon_conf", 0.0)
+            symmetry_score = c5_geom.get("symmetry_score", 0.0)
             routing = route_subject_mode(
                 tags_norm=tags_norm,
                 super_cat=super_cat,
@@ -122,6 +194,12 @@ def main() -> None:
                 c2_primary_idx=int(rec.get("c2_primary_idx", -1)),
                 width=width,
                 height=height,
+                ocr_text_boxes_count=ocr_text_boxes,
+                text_overlay_likely=text_overlay_likely,
+                copy_space_flag=copy_space_flag,
+                blank_ratio_est=blank_ratio_est,
+                horizon_conf=horizon_conf,
+                symmetry_score=symmetry_score,
             )
             rec["routing"] = routing
 
@@ -143,4 +221,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

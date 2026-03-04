@@ -1,0 +1,102 @@
+{
+  "dataset": "10K_local",
+  "run_tag": "rerun1_public_e2e",
+  "samples": [
+    {
+      "super_cat": "animals",
+      "image_id": "bigstock_image_149147297",
+      "tar_name": "SSTK_000000.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667
+    },
+    {
+      "super_cat": "architecture_exterior",
+      "image_id": "bigstock_image_163220822",
+      "tar_name": "SSTK_000001.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667
+    },
+    {
+      "super_cat": "documents_text",
+      "image_id": "bigstock_image_129575693",
+      "tar_name": "SSTK_000000.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667
+    },
+    {
+      "super_cat": "food",
+      "image_id": "bigstock_image_165044747",
+      "tar_name": "SSTK_000008.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667
+    },
+    {
+      "super_cat": "indoor_interior",
+      "image_id": "bigstock_image_112983323",
+      "tar_name": "SSTK_000008.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 669
+    },
+    {
+      "super_cat": "landscape_nature",
+      "image_id": "bigstock_image_218991439",
+      "tar_name": "SSTK_000002.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 676
+    },
+    {
+      "super_cat": "other_ambiguous",
+      "image_id": "bigstock_image_207940879",
+      "tar_name": "SSTK_000005.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667
+    },
+    {
+      "super_cat": "people_multi",
+      "image_id": "bigstock_image_122199020",
+      "tar_name": "SSTK_000003.tar",
+      "bucket": "",
+      "width": 770,
+      "height": 1000
+    },
+    {
+      "super_cat": "people_single",
+      "image_id": "sstk_image_1772011034",
+      "tar_name": "SSTK_000005.tar",
+      "bucket": "",
+      "width": 730,
+      "height": 1000
+    },
+    {
+      "super_cat": "product_object",
+      "image_id": "bigstock_image_141430643",
+      "tar_name": "SSTK_000005.tar",
+      "bucket": "",
+      "width": 667,
+      "height": 1000
+    },
+    {
+      "super_cat": "sports",
+      "image_id": "bigstock_image_134277740",
+      "tar_name": "SSTK_000001.tar",
+      "bucket": "",
+      "width": 667,
+      "height": 1000
+    },
+    {
+      "super_cat": "transportation",
+      "image_id": "bigstock_image_109682993",
+      "tar_name": "SSTK_000003.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667
+    }
+  ]
+}

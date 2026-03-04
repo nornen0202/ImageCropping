@@ -103,3 +103,71 @@
 - 다운스트림 입력은 자동으로 routed precompute를 우선 사용.
 - 기존 산출물과 호환되며, routing 미존재 파일도 fallback 경로로 동작.
 
+## 6) 2026-03-03 리뷰(P0/P1) 반영 업데이트
+
+`SSTK_rerun1_subject_mode_report_review_KO_260303.md` 기준으로 아래 보완을 추가 반영함.
+
+### 6.1 P0-A 라우팅 하드 가드 + 디버그 필드
+- 파일: `src/routing/subject_mode_router.py`
+- 반영:
+  - 불가능 조건 가드
+    - `num_person==0`이면 `portrait_*` 금지
+    - text 증거 부재(`ocr_text_boxes=0`, `text_overlay_likely=false`, text hint 없음) 시 `text_document` 금지
+    - `blank_ratio_est < 0.28`이면 `background_texture_copyspace` 금지
+  - 가드 발동 시 fallback 라우팅 수행(장면/오브젝트/ambiguous)
+  - 추적용 필드 추가
+    - `router_rule_id`
+    - `router_signals`(num_person, text/copyspace 신호, blank_ratio, c2 primary 상태, horizon/symmetry 등)
+
+### 6.2 P0-B 공개 proposal injection QA gate
+- 신규 스크립트: `src/scripts/check_candidate_injection_gate.py`
+- e2e 연결: `src/scripts/run_phaseA_to_teacher_e2e.sh`
+- 동작:
+  - `--enable_public_teacher_proposals 1` + `--proposal_injection_gate 1`이면
+    `candidates_ar_<tag>_overview.json`의 `proposal_injected_rate`를 검사
+  - 기본 기준: `--proposal_injection_min_rate 0.95`
+  - 미달 시 strict 모드에서 즉시 실패(`--proposal_injection_gate_strict 1`)
+
+### 6.3 P0-C main_subject stop-tag 필터
+- 파일: `src/vlm_teacher_labeler.py`
+- 반영:
+  - `background/copy space/texture/wallpaper`류 태그를 `main_subject` 후보에서 제거
+  - category fallback 시 `scene/person/object` 타입 일관성 보강
+
+### 6.4 P1 QA 확장 (mode × shot_type × AR)
+- 파일: `src/scripts/qa_teacher_report.py`
+- 반영:
+  - `by_subject_mode_shot_ar` 축 추가
+  - guard 위반율 KPI 추가
+    - `guard_no_person_for_portrait_rate`
+    - `guard_no_text_signal_rate`
+    - `guard_low_blank_ratio_copyspace_rate`
+  - `router_rule_id_counts` 집계 추가
+  - proposal 주입 효과 KPI 추가
+    - `proposal_injected_rate`
+    - `teacher_seed_top1_rate_all`
+    - `proposal_rescue_rate_proxy`
+
+### 6.5 라우팅 메타 전달 경로 확장
+- 파일:
+  - `src/generate_candidates.py`
+  - `src/score_teacher.py`
+- 반영:
+  - 후보 단계에서 축약 저장하던 routing 정보를 확장 전달
+  - teacher output(`route_global/results_by_ar.routing`)에 `router_rule_id/router_signals` 포함
+
+### 6.6 짧은 A/B 권장 실행
+- 자세한 명령 템플릿은 `README_SSTK_Curation.md`의
+  - `3.10 리뷰 반영 재실험 (짧은 A/B 템플릿)` 참조
+- 핵심 비교:
+  - proposal injection on/off
+  - router guard 지표(세 가지 guard rate)
+  - scene/copyspace/text 정책 파라미터 스윕
+
+### 6.7 Stress set 자동 샘플링 도구
+- 신규: `src/scripts/build_subject_mode_stress_set.py`
+- 목적:
+  - 릴리즈별로 고정된 문제군(scene/copyspace/text/object_multi/conflict)을 동일 기준으로 재검증
+- 산출:
+  - `subject_mode_stress_set.json`
+  - `subject_mode_stress_set.csv`

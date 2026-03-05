@@ -5,3 +5,4 @@ __pycache__/
 
 .ipynb_checkpoints/
 /third_party/
+/src/scripts/third_party/

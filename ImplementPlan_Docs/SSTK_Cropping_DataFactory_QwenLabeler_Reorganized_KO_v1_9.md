@@ -92,13 +92,13 @@ Shutterstock 400M + metadata
        B2 Cheap Score (빠른 축소 N → M=20~40)
        B3 Expensive Score (정밀 스코어 + Top-K diversity)
 - **composition embedding(PICD) QA (v1.7)**:
-  - `comp24_preserve_rate` (keep_full|minimal_crop subset): \( \Pr[\arg\max p(I_b)=\arg\max p(I)] \) 또는 \( \cos(e(I),e(I_b))>\tau \) 비율
-  - `comp24_entropy`: \(\mathcal{H}(\text{comp24})\) (분포 붕괴 감시; “3분할/중앙만” 과잉 방지)
+  - `comp24_preserve_rate` (keep_full|minimal_crop subset): $ \Pr[\arg\max p(I_b)=\arg\max p(I)] $ 또는 $ \cos(e(I),e(I_b))>\tau $ 비율
+  - `comp24_entropy`: $\mathcal{H}(\text{comp24})$ (분포 붕괴 감시; “3분할/중앙만” 과잉 방지)
   - `CDA@PICD` / `CDA@semantic_interference` (아래 정의): **릴리즈 간 회귀 금지** + 목표치(초기: 공개 베이스라인 상회)로 게이팅
 
-  \[
+  $$
   \text{CDA}=\frac{1}{N}\sum_{i=1}^{N}\mathbb{I}\big(\hat{neg}_i=neg_i\big)
-  \]
+  $$
   - (운영) PICD triplet task를 그대로 돌리거나, 내부에서도 `comp24` 고신뢰 샘플로 triplet을 구성해 **일일/주간 회귀 테스트**로 사용
        B4 Qwen2.5-VL (선택/설명/검증) on TopM candidates (10~20)
        B5 Silver/Golden 라우팅 (불확실 샘플은 재판정/인간 검수)
@@ -139,7 +139,7 @@ v1.7에서는 이를 아래처럼 **데이터 팩토리의 ‘규칙→피처→
   - `PL-Pat/PL-Den/P-Scat`: pattern/dense/scatter 영역 유지 후보
 - 구현은 “선 기반(semantic line/hough) + mask PCA + CompEnc re-rank” 조합으로 충분(모든 카테고리를 완벽 검출하려 하지 말고, **후보 다양성만 늘리면** 됨)
 
-3) **Cheap/Expensive Score에 \(R_{\text{picd}}\) 추가 (B2/B3)**
+3) **Cheap/Expensive Score에 $R_{\text{picd}}$ 추가 (B2/B3)**
 - Cheap: `R_picd`를 **N→M pruning**에만 사용(과도 비용 방지 + 다양성 유지)
 - Expensive: keep-vs-crop 게이팅과 함께 `R_picd-preserve`로 “원본 구도 파괴”를 억제
 
@@ -177,15 +177,15 @@ v1.7에서는 이를 아래처럼 **데이터 팩토리의 ‘규칙→피처→
 
 ### 0) 용어/표기
 
-- 원본 이미지: \(I\), 크기 \(W\times H\)
-- 목표 종횡비(Aspect Ratio): \(r\in\mathcal{R}\) (예: 1:1, 9:16, 16:9, 3:4, 4:3, 4:5 …)
-- 크롭 박스: \(b=(x_1,y_1,x_2,y_2)\) (정규화 좌표 [0,1] 권장)
-- AR별 후보 집합: \(\mathcal{B}_r=\{b_{r,i}\}_{i=1..N}\)
-- AR별 Top-K 크롭: \(\{b_{r,1..K}\}\)
+- 원본 이미지: $I$, 크기 $W\times H$
+- 목표 종횡비(Aspect Ratio): $r\in\mathcal{R}$ (예: 1:1, 9:16, 16:9, 3:4, 4:3, 4:5 …)
+- 크롭 박스: $b=(x_1,y_1,x_2,y_2)$ (정규화 좌표 [0,1] 권장)
+- AR별 후보 집합: $\mathcal{B}_r=\{b_{r,i}\}_{i=1..N}$
+- AR별 Top-K 크롭: $\{b_{r,1..K}\}$
 - IoU:
-  \[
+  $$
   IoU(b_1,b_2)=\frac{|b_1\cap b_2|}{|b_1\cup b_2|}
-  \]
+  $$
 
 ---
 
@@ -384,19 +384,19 @@ Shutterstock tag는 도메인이 풍부하므로, 아래 카테고리 분류로 
 | `generic` | default | 기본값 |
 
 ##### 6.7.4 Headroom 파라미터 산출(메타 prior → feature로 보정)
-**정의(후보 crop \(b\)에서 관측 headroom 비율)**  
-- crop: \(b=(x_1,y_1,x_2,y_2)\) (pixel 또는 norm)  
-- 머리 최상단 \(y_{\text{head}}\)는 Stage-2 feature로 추정:
+**정의(후보 crop $b$에서 관측 headroom 비율)**  
+- crop: $b=(x_1,y_1,x_2,y_2)$ (pixel 또는 norm)  
+- 머리 최상단 $y_{\text{head}}$는 Stage-2 feature로 추정:
   - (권장) pose/landmark로 **top-of-head**가 있으면 사용
-  - (대체) face bbox 기반: \(y_{\text{head}}\approx y_{\text{face\_top}}-0.15\cdot h_{\text{face}}\)
+  - (대체) face bbox 기반: $y_{\text{head}}\approx y_{\text{face\_top}}-0.15\cdot h_{\text{face}}$
 
-\[
+$$
 r_{\text{head}}(b)=\frac{y_{\text{head}}-y_1}{y_2-y_1}
-\]
+$$
 
 **샷타입별 기본 prior(권장 시작값, 이후 GoldenSet으로 캘리브레이션)**
 
-| shot_type | \(r_{\text{head}}^{\min}\) | \(r_{\text{head}}^{*}\) (target) | \(r_{\text{head}}^{\max}\) | 비고 |
+| shot_type | $r_{\text{head}}^{\min}$ | $r_{\text{head}}^{*}$ (target) | $r_{\text{head}}^{\max}$ | 비고 |
 |---|---:|---:|---:|---|
 | headshot | 0.03 | 0.07 | 0.12 | 눈(eye-line)이 상단 1/3 근처면 자연스럽게 만족 |
 | half | 0.04 | 0.08 | 0.14 | 팔/손 cut-off와 trade-off |
@@ -404,40 +404,40 @@ r_{\text{head}}(b)=\frac{y_{\text{head}}-y_1}{y_2-y_1}
 | group | 0.03 | 0.08 | 0.14 | “최상단 머리” 기준 |
 
 **카테고리/특수태그 보정(단순 가산/감산 룰)**
-- `formal_id`/`corporate`: \(r^{\max}\leftarrow r^{\max}-0.03\), center_bias ↑
-- `beauty_fashion`: \(r^{\max}\leftarrow r^{\max}+0.05\) (헤어/헤드기어)
-- `has_copy_space`: \(r^{\max}\leftarrow \min(0.35, r^{\max}+0.15)\) (의도적 여백 허용)
+- `formal_id`/`corporate`: $r^{\max}\leftarrow r^{\max}-0.03$, center_bias ↑
+- `beauty_fashion`: $r^{\max}\leftarrow r^{\max}+0.05$ (헤어/헤드기어)
+- `has_copy_space`: $r^{\max}\leftarrow \min(0.35, r^{\max}+0.15)$ (의도적 여백 허용)
 
 **스코어 항(cheap scorer에 사용)**
-\[
+$$
 R_{\text{headroom}}(b)=
 -\frac{|r_{\text{head}}(b)-r_{\text{head}}^{*}|}{\sigma_h}
 -\gamma_h\cdot \max(0,\;r_{\text{head}}^{\min}-r_{\text{head}}(b),\;r_{\text{head}}(b)-r_{\text{head}}^{\max})
-\]
+$$
 
-권장: \(\sigma_h=0.05,\ \gamma_h=2.0\). (GoldenSet으로 튜닝)
+권장: $\sigma_h=0.05,\ \gamma_h=2.0$. (GoldenSet으로 튜닝)
 
 ##### 6.7.5 Lookroom/Nozeroom 파라미터 산출(메타 prior → gaze/headpose로 보정)
 **핵심 아이디어:** “시선/얼굴 방향” 쪽 여백을 더 준다.
 
-- Stage-2에서 `gaze_dir` 또는 `headpose_yaw`(대체)를 얻어 \(g\in\{-1,0,+1\}\)로 양자화
-  - \(g=+1\): 오른쪽을 봄, \(g=-1\): 왼쪽을 봄, \(g=0\): 정면/불명확
-- subject anchor \(x_s\): 얼굴 중심 또는 상체 중심
+- Stage-2에서 `gaze_dir` 또는 `headpose_yaw`(대체)를 얻어 $g\in\{-1,0,+1\}$로 양자화
+  - $g=+1$: 오른쪽을 봄, $g=-1$: 왼쪽을 봄, $g=0$: 정면/불명확
+- subject anchor $x_s$: 얼굴 중심 또는 상체 중심
 
-\[
+$$
 m_L = x_s-x_1,\quad m_R=x_2-x_s
-\]
-\[
+$$
+$$
 m_{\text{fwd}}=\begin{cases}m_R & g=+1\\ m_L & g=-1\end{cases},\quad
 m_{\text{back}}=\begin{cases}m_L & g=+1\\ m_R & g=-1\end{cases}
-\]
-\[
+$$
+$$
 r_{\text{look}}(b)=\frac{m_{\text{fwd}}+\epsilon}{m_{\text{back}}+\epsilon}
-\]
+$$
 
 **샷타입별 prior(권장 시작값)**
 
-| shot_type | \(r_{\text{look}}^{\min}\) | \(r_{\text{look}}^{*}\) | \(r_{\text{look}}^{\max}\) | 비고 |
+| shot_type | $r_{\text{look}}^{\min}$ | $r_{\text{look}}^{*}$ | $r_{\text{look}}^{\max}$ | 비고 |
 |---|---:|---:|---:|---|
 | headshot | 1.20 | 1.50 | 2.50 | profile이면 상향(최대 3~4 허용) |
 | half | 1.15 | 1.30 | 2.00 | |
@@ -445,20 +445,20 @@ r_{\text{look}}(b)=\frac{m_{\text{fwd}}+\epsilon}{m_{\text{back}}+\epsilon}
 | group | - | - | - | group은 “양쪽 균형”으로 대체 |
 
 **특수태그 보정**
-- `is_profile_view`: \(r^{*}\leftarrow r^{*}+0.2\), \(r^{\max}\leftarrow r^{\max}+0.5\)
-- `has_copy_space`: \(r^{\max}\leftarrow \min(4.0, r^{\max}+1.0)\) (의도적 lead space)
+- `is_profile_view`: $r^{*}\leftarrow r^{*}+0.2$, $r^{\max}\leftarrow r^{\max}+0.5$
+- `has_copy_space`: $r^{\max}\leftarrow \min(4.0, r^{\max}+1.0)$ (의도적 lead space)
 
 **스코어 항**
-\[
+$$
 R_{\text{lookroom}}(b)=\mathbb{1}[|g|=1]\cdot
 \left(
 -\frac{|r_{\text{look}}(b)-r_{\text{look}}^{*}|}{\sigma_\ell}
 -\gamma_\ell\cdot \max(0,\;r_{\text{look}}^{\min}-r_{\text{look}}(b),\;r_{\text{look}}(b)-r_{\text{look}}^{\max})
 \right)
-\]
+$$
 
-권장: \(\sigma_\ell=0.25,\ \gamma_\ell=1.0\).  
-정면(\(g=0\))이면 \(R_{\text{lookroom}}=0\)으로 두고, 대신 **center/symmetry** 항을 사용.
+권장: $\sigma_\ell=0.25,\ \gamma_\ell=1.0$.  
+정면($g=0$)이면 $R_{\text{lookroom}}=0$으로 두고, 대신 **center/symmetry** 항을 사용.
 
 ##### 6.7.6 meta_norm 출력 필드(권장)
 - `portrait.shot_type_prior ∈ {headshot, half, full, group, unknown}`
@@ -576,10 +576,10 @@ R_{\text{lookroom}}(b)=\mathbb{1}[|g|=1]\cdot
 
 ##### 7.4.1 계산식/가정
 - 계산식(유틸리티 계수 포함):
-  \[
+  $$
   t_{\text{sec}} \approx \frac{N_{\text{img}}}{(\text{img/s/GPU})\cdot N_{\text{GPU}}\cdot u}
-  \]
-  - \(u\): 파이프라인 유틸리티(전처리/후처리 포함). **권장 \(u=0.7\)** 로 보수 추정.
+  $$
+  - $u$: 파이프라인 유틸리티(전처리/후처리 포함). **권장 $u=0.7$** 로 보수 추정.
 - 트랙별 라우팅을 적용하면(권장) 전체 시간은 더 줄어듭니다.
   - 예: `C6 gaze`는 `portrait`에만, `C5 horizon`은 `landscape`에만, `C4 OCR`은 `text-heavy`에만.
 
@@ -714,17 +714,17 @@ v1.8에서 `R_teach`(teacher consensus)를 **약한 prior**로 추가했지만, 
 
 ###### (2) Proposal 주입 파이프라인(권장; AR‑조건부 Top‑K 라벨 생성용)
 
-**입력:** 이미지 \(I\), target AR 집합 \(\mathcal{R}\), baseline 후보 \(\mathcal{B}^{grid}_r\)  
-**추가 입력:** teacher set \(\mathcal{T}=\{t_1,t_2,t_3\}\)
+**입력:** 이미지 $I$, target AR 집합 $\mathcal{R}$, baseline 후보 $\mathcal{B}^{grid}_r$  
+**추가 입력:** teacher set $\mathcal{T}=\{t_1,t_2,t_3\}$
 
-**출력:** 최종 후보 \(\mathcal{B}_r=\mathcal{B}^{grid}_r \cup \mathcal{B}^{base}_r \cup \mathcal{B}^{teach\_proj+jitter}_r\)
+**출력:** 최종 후보 $\mathcal{B}_r=\mathcal{B}^{grid}_r \cup \mathcal{B}^{base}_r \cup \mathcal{B}^{teach\_proj+jitter}_r$
 
 구성 단계:
 
 1) **Teacher proposal 생성 (free‑form 또는 AR‑specific)**
-- 각 teacher \(t\)에 대해:
-  - (가능하면) \(r\in\mathcal{R}\)별로 crop을 직접 예측: \(\hat b^{t}_r\)
-  - (그렇지 않으면) free‑form crop \(\hat b^{t}_{ff}\) 1개(또는 Top‑K)만 생성
+- 각 teacher $t$에 대해:
+  - (가능하면) $r\in\mathcal{R}$별로 crop을 직접 예측: $\hat b^{t}_r$
+  - (그렇지 않으면) free‑form crop $\hat b^{t}_{ff}$ 1개(또는 Top‑K)만 생성
 
 2) **AR Projection (free‑form → target AR)**
 - teacher가 free‑form만 주는 경우, 이를 각 target AR로 사상(projection)하여 후보로 만든다.
@@ -781,9 +781,9 @@ def project_box_to_ar(b, ar_t, prefer_expand=True):
 ```
 
 3) **Local Jitter Neighborhood (seed 주변에서만 미세 탐색)**
-- projection된 seed \(\tilde b_r^t\) 주변에 shift/scale을 주어 \(K_j\)개의 근방 후보를 추가:
-  - shift: \(\Delta x,\Delta y \in \{-\alpha,0,+\alpha\}\) (권장 \(\alpha=0.03\sim0.06\))
-  - scale: \(s \in \{0.92, 1.00, 1.08\}\)
+- projection된 seed $\tilde b_r^t$ 주변에 shift/scale을 주어 $K_j$개의 근방 후보를 추가:
+  - shift: $\Delta x,\Delta y \in \{-\alpha,0,+\alpha\}$ (권장 $\alpha=0.03\sim0.06$)
+  - scale: $s \in \{0.92, 1.00, 1.08\}$
 - AR은 target AR을 유지하도록 재‑projection(또는 width/height 동시 스케일)한다.
 - 보통 teacher seed 1개당 **9~27개** 정도면 충분(quality-first는 27까지 허용).
 
@@ -803,9 +803,9 @@ def project_box_to_ar(b, ar_t, prefer_expand=True):
 
 ###### (3) “proposal 주입만” PoC에서의 핵심 지표(후보 공간 개선 확인)
 - `candidate_recall@GT(τ)` (GoldenSet 기준):  
-  \[
+  $$
   \text{Recall@GT}=\Pr\left[\max_{b\in\mathcal{B}_r}\mathrm{IoU}(b,b_{GT}) \ge \tau\right],\ \tau\in\{0.7,0.8\}
-  \]
+  $$
   - 이 값이 오르면 “스코어러가 아니라 후보 공간이 좋아졌다”는 강한 증거
 - `oracle_top1_iou`: 후보 중 GT에 가장 가까운 IoU 평균(upper bound)
 - `proposal_use_rate`: 최종 Top‑1이 teacher 계열 후보(source=teacher*)에서 나온 비율  
@@ -817,23 +817,23 @@ def project_box_to_ar(b, ar_t, prefer_expand=True):
 
 ##### 8.2.1 Grid Anchor(기본) - AR-조건부 “전역 커버리지” 확보
 - v1.6 기본 후보는 **Grid Anchor + multi-scale** 조합:
-  - 중심점 grid: \(M\times N\) (권장 `M=N=12`)
+  - 중심점 grid: $M\times N$ (권장 `M=N=12`)
   - scale(area) set: `scale_set` (권장 0.25~0.95, 8~10개)
-  - 각 후보는 목표 AR을 만족하도록 \((w,h)\)를 결정하고, 이미지 밖으로 나가는 후보는 제외
+  - 각 후보는 목표 AR을 만족하도록 $(w,h)$를 결정하고, 이미지 밖으로 나가는 후보는 제외
 - 후보 수 폭증 방지:
   - `nms_iou=0.90`로 near-duplicate 제거
   - `max_k=240` 같은 상한으로 제한 + diversity sampling(k-means)
 
 ##### 8.2.2 **Saliency-Guided Jittering(권장)** - “Grid 사이 간극”에서 좋은 구도 누락 방지
 Gemini 리뷰에서 지적한 것처럼, 순수 grid 후보는 피사체가 grid 사이에 걸리면 좋은 구도를 놓칠 수 있습니다.  
-따라서 **saliency/segmentation centroid \(c_s\)** 주변으로 **미세 이동(jitter)** 후보를 추가합니다.
+따라서 **saliency/segmentation centroid $c_s$** 주변으로 **미세 이동(jitter)** 후보를 추가합니다.
 
-- 입력: subject centroid \(c_s=(c_x,c_y)\), subject bbox size \(w_s,h_s\)
+- 입력: subject centroid $c_s=(c_x,c_y)$, subject bbox size $w_s,h_s$
 - offset set(권장):  
-  - \(\Delta x \in \{0,\pm0.03,\pm0.06\}\cdot w_s\)  
-  - \(\Delta y \in \{0,\pm0.03,\pm0.06\}\cdot h_s\)
+  - $\Delta x \in \{0,\pm0.03,\pm0.06\}\cdot w_s$  
+  - $\Delta y \in \{0,\pm0.03,\pm0.06\}\cdot h_s$
 - 적용 방법:
-  - (A) grid 후보의 중심 \((c_x,c_y)\)를 위 오프셋으로 이동한 후보를 추가
+  - (A) grid 후보의 중심 $(c_x,c_y)$를 위 오프셋으로 이동한 후보를 추가
   - (B) 또는 `b_maxarea_subject`(최대면적+주체정렬 baseline)만 jitter하여 **후보 수를 억제**
 
 ##### 8.2.3 (선택) Phi-Grid/Thirds-Target 후보 - “황금비율/3분할”을 후보 단계에서 보장
@@ -1014,18 +1014,18 @@ E2E 파이프라인 전달 옵션 (`run_phaseA_to_teacher_e2e.sh`):
 
 | Composition Rule | meta routing(추천) | Feature(Stage-2) | Score term(cheap/expensive) | QA metric / gate |
 |---|---|---|---|---|
-| Rule of Thirds(3분할) | lifestyle/landscape/일반 | subject centroid \(c_s\) | \(R_{\text{third}}\) (또는 \(R_{\text{comp}}\)) | `third_dist_p50/p90` |
-| Golden Ratio(Phi grid) | lifestyle/portrait(선택) | \(c_s\) | \(R_{\phi}\) | `phi_dist_p50` |
-| Center composition(중앙) | formal_id/corporate/대칭 | symmetry_score, \(c_s\) | \(R_{\text{center}}\) (symmetry 조건부 가중) | `center_selected_when_symmetry_high` |
-| Headroom(헤드룸) | portrait | face/pose → \(y_{\text{head}}\) | \(R_{\text{headroom}}\) | `headroom_violation_rate` (shot_type별) |
-| Lookroom/Noseroom(시선 여백) | portrait(profile 우선) | gaze/headpose → \(g\), face center | \(R_{\text{lookroom}}\) | `lookroom_violation_rate` (g≠0 subset) |
-| Joint cut-off(관절 절단 회피) | people | pose keypoints | \(P_{\text{joint}}\), \(P_{\text{cutoff}}\) (hard/soft) | `joint_cut_rate` (목/무릎/발목/손목) |
-| Horizon on Thirds(수평선 위치) | landscape/seascape | horizon(y,θ,conf) | \(R_{\text{horizon\_y}}\) | `horizon_third_dist`, `horizon_detect_rate` |
-| Leveling/Roll(수평 맞춤) | landscape/architecture | roll_deg | \(P_{\text{roll}}\) (QA 중심) | `roll_violation_rate` (|roll|>θ) |
-| Visual Balance(배경/맥락) | non-packshot | subject area ratio, caption tokens | \(R_{\text{context}}\) | `context_loss_rate` (too tight/too loose) |
-| Copy-space 의도 보존 | has_copy_space | saliency density, blank ratio | \(R_{\text{copyspace}}\) | `copyspace_preserve_rate` |
-| Text safety(텍스트 보존) | text-heavy | OCR boxes | \(P_{\text{text}}\) | `text_keep_ratio` |
-| PICD 24-class(구도 유형: 대각/삼각/곡선/방사/원근/패턴/밀집/흩뿌림 등) | intent-aware(선택) | comp-encoder(`comp24_logits/emb`), line/edge(선택), vanishing/pattern(선택) | \(R_{\text{picd-preserve}}/R_{\text{picd-target}}\) | `CDA@PICD`, `comp24_preserve_rate`, `comp24_entropy`, `CDA@semantic_interference` |
+| Rule of Thirds(3분할) | lifestyle/landscape/일반 | subject centroid $c_s$ | $R_{\text{third}}$ (또는 $R_{\text{comp}}$) | `third_dist_p50/p90` |
+| Golden Ratio(Phi grid) | lifestyle/portrait(선택) | $c_s$ | $R_{\phi}$ | `phi_dist_p50` |
+| Center composition(중앙) | formal_id/corporate/대칭 | symmetry_score, $c_s$ | $R_{\text{center}}$ (symmetry 조건부 가중) | `center_selected_when_symmetry_high` |
+| Headroom(헤드룸) | portrait | face/pose → $y_{\text{head}}$ | $R_{\text{headroom}}$ | `headroom_violation_rate` (shot_type별) |
+| Lookroom/Noseroom(시선 여백) | portrait(profile 우선) | gaze/headpose → $g$, face center | $R_{\text{lookroom}}$ | `lookroom_violation_rate` (g≠0 subset) |
+| Joint cut-off(관절 절단 회피) | people | pose keypoints | $P_{\text{joint}}$, $P_{\text{cutoff}}$ (hard/soft) | `joint_cut_rate` (목/무릎/발목/손목) |
+| Horizon on Thirds(수평선 위치) | landscape/seascape | horizon(y,θ,conf) | $R_{\text{horizon\_y}}$ | `horizon_third_dist`, `horizon_detect_rate` |
+| Leveling/Roll(수평 맞춤) | landscape/architecture | roll_deg | $P_{\text{roll}}$ (QA 중심) | `roll_violation_rate` (|roll|>θ) |
+| Visual Balance(배경/맥락) | non-packshot | subject area ratio, caption tokens | $R_{\text{context}}$ | `context_loss_rate` (too tight/too loose) |
+| Copy-space 의도 보존 | has_copy_space | saliency density, blank ratio | $R_{\text{copyspace}}$ | `copyspace_preserve_rate` |
+| Text safety(텍스트 보존) | text-heavy | OCR boxes | $P_{\text{text}}$ | `text_keep_ratio` |
+| PICD 24-class(구도 유형: 대각/삼각/곡선/방사/원근/패턴/밀집/흩뿌림 등) | intent-aware(선택) | comp-encoder(`comp24_logits/emb`), line/edge(선택), vanishing/pattern(선택) | $R_{\text{picd-preserve}}/R_{\text{picd-target}}$ | `CDA@PICD`, `comp24_preserve_rate`, `comp24_entropy`, `CDA@semantic_interference` |
 
 > **운영 원칙**  
 > - “룰”은 **피처로 측정 가능해야** 하고,  
@@ -1034,19 +1034,19 @@ E2E 파이프라인 전달 옵션 (`run_phaseA_to_teacher_e2e.sh`):
 
 
 #### 9.1 Hard Constraints (정책 매트릭스)
-위반 시 후보 \(b\)는 즉시 reject (score = -∞):
+위반 시 후보 $b$는 즉시 reject (score = -∞):
 
-- **Face hard rule**: 얼굴 bbox \(\{F_k\}\) 존재 시, 모든 \(F_k \subset b\)
+- **Face hard rule**: 얼굴 bbox $\{F_k\}$ 존재 시, 모든 $F_k \subset b$
 - **Severe keypoint cut rule(사람)**: keypoint가 경계에 너무 근접하면 reject 또는 강한 패널티
-  \[
+  $$
   m = \alpha \cdot \min(w_b,h_b), \quad \alpha=0.02\sim0.04
-  \]
-- **면적 비율**: \(a(b)\in[a_{min},a_{max}]\) (기본 0.15~0.95)
-- **AR 오차**: \(|\frac{w_b}{h_b}-r| \le \epsilon_r\) (권장 0.01)
+  $$
+- **면적 비율**: $a(b)\in[a_{min},a_{max}]$ (기본 0.15~0.95)
+- **AR 오차**: $|\frac{w_b}{h_b}-r| \le \epsilon_r$ (권장 0.01)
 
 #### 9.2 Cheap Score (빠른 후보 축소: N→M) - v1.6 확장(Headroom/Lookroom/Horizon/Symmetry/Context)
 
-\[
+$$
 \begin{aligned}
 S_{\text{cheap}}(I,b,r)=
 &\;\lambda_{\text{cov}}C_{\text{subj}}(I,b)
@@ -1061,163 +1061,163 @@ S_{\text{cheap}}(I,b,r)=
 +\lambda_{\text{picd}}R_{\text{picd}}(I,b)
 +\lambda_{\text{teach}}R_{\text{teach}}(I,b,r)
 \end{aligned}
-\]
+$$
 
 > 모든 항은 **항상 켜두는 것이 아니라**, meta_norm(§6.6~6.7)에서 추정한 `intent/shot_type/category`에 따라  
-> \(\lambda\)를 0으로 두거나(비활성) 작은 값으로 둡니다(soft).
+> $\lambda$를 0으로 두거나(비활성) 작은 값으로 둡니다(soft).
 
 ##### (A) Subject coverage / Context ratio
 - Subject coverage(주체 포함률):
-  \[
+  $$
   C_{\text{subj}}=\frac{|M\cap b|}{|M|}\quad(\text{mask}) \;\;\text{or}\;\; \frac{|B_s\cap b|}{|B_s|}\quad(\text{bbox})
-  \]
+  $$
 - Subject area ratio(주체가 crop 안에서 차지하는 비율):
-  \[
+  $$
   a_{\text{subj}}(b)=\frac{|M\cap b|}{|b|}
-  \]
-  - `portrait/headshot`에서는 \(a_{\text{subj}}\)가 상대적으로 커도 자연스럽지만,
+  $$
+  - `portrait/headshot`에서는 $a_{\text{subj}}$가 상대적으로 커도 자연스럽지만,
   - `lifestyle/landscape`에서는 너무 커지면 “배경 스토리”가 사라집니다.
 
 ##### (B) Cut-off penalty(신체/얼굴/관절 절단)
-\[
+$$
 P_{\text{cut}}=
 \alpha_f \cdot \mathbb{1}[\text{face\_cut}]
 +\alpha_j \cdot \sum_{k\in\mathcal{J}}\mathbb{1}[\text{joint}_k\ \text{near edge}]
 +\alpha_b \cdot \mathbb{1}[\text{subj\_touch\_border}]
-\]
-- \(\mathcal{J}=\{\text{neck,knee,ankle,wrist}\}\) (필요 시 elbow/hip 추가)
+$$
+- $\mathcal{J}=\{\text{neck,knee,ankle,wrist}\}$ (필요 시 elbow/hip 추가)
 - `near edge`는 keypoint가 crop 경계로부터 margin(예: 2~4% of crop) 안에 들어오면 true
 
 ##### (C) Text safety penalty(OCR 기반)
-\[
+$$
 P_{\text{text}} = 1 - \text{text\_keep\_ratio}(b)
-\]
-- `copy space`/광고 템플릿 트랙에서는 \(P_{\text{text}}\) 가중치를 키움.
+$$
+- `copy space`/광고 템플릿 트랙에서는 $P_{\text{text}}$ 가중치를 키움.
 
-##### (D) Composition prior \(R_{\text{comp}}\) (3분할/황금비율/중앙/수평선)
-\[
+##### (D) Composition prior $R_{\text{comp}}$ (3분할/황금비율/중앙/수평선)
+$$
 R_{\text{comp}} = 
 w_{\text{third}}R_{\text{third}}+
 w_{\phi}R_{\phi}+
 w_{\text{center}}(\text{sym})R_{\text{center}}+
 w_{\text{hor}}R_{\text{horizon\_y}}
-\]
+$$
 
 - Rule-of-thirds:
-  \[
+  $$
   R_{\text{third}}=-\min_{t\in T}\|c_s-t\|
-  \]
-  - \(T\): 3분할 교차점 4개(정규좌표)
+  $$
+  - $T$: 3분할 교차점 4개(정규좌표)
 - Phi grid(선택):
-  \[
+  $$
   R_{\phi}=-\min_{p\in \Phi}\|c_s-p\|,\quad \Phi=\{0.382,0.618\}^2
-  \]
+  $$
 - Center composition:
-  \[
+  $$
   R_{\text{center}}=-\|c_s-(0.5,0.5)\|
-  \]
+  $$
 - Horizon on thirds(landscape에서만 활성):
-  \[
+  $$
   R_{\text{horizon\_y}}=-\min\left(|y_h-\tfrac13|,\;|y_h-\tfrac23|\right)
-  \]
-  - horizon detector가 conf 낮으면 \(w_{\text{hor}}=0\).
+  $$
+  - horizon detector가 conf 낮으면 $w_{\text{hor}}=0$.
 
 > **중요(대칭/중앙구도 살리기)**  
-> \(w_{\text{center}}(\text{sym})\)는 symmetry_score가 높을수록 증가시켜 “3분할 점수는 낮지만 중앙이 정답”인 케이스(증명사진/건축 대칭)를 살립니다.
+> $w_{\text{center}}(\text{sym})$는 symmetry_score가 높을수록 증가시켜 “3분할 점수는 낮지만 중앙이 정답”인 케이스(증명사진/건축 대칭)를 살립니다.
 
 ##### (E) Headroom / Lookroom (portrait에서만 강하게)
-- \(R_{\text{headroom}}\), \(R_{\text{lookroom}}\) 정의는 §6.7.4~6.7.5 참조  
+- $R_{\text{headroom}}$, $R_{\text{lookroom}}$ 정의는 §6.7.4~6.7.5 참조  
 - meta_norm이 `portrait.shot_type_prior`를 주면 그 파라미터를 사용, 아니면 feature 기반(얼굴비율)으로 shot_type을 후보별 보정
 
 ##### (F) Symmetry / Visual balance
 - Symmetry reward(간단 버전):
-  \[
+  $$
   R_{\text{sym}}=\text{symmetry\_score}(I_b)\in[0,1]
-  \]
+  $$
   - cheap 단계에서는 full-image symmetry_score를 사용해도 충분(정교한 것은 expensive에서)
 - Context preservation(배경/맥락 보존):
-  \[
+  $$
   R_{\text{context}}=-\frac{|a_{\text{subj}}(b)-a_{\text{subj}}^{*}|}{\sigma_a}
-  \]
-  - \(a_{\text{subj}}^{*}\)는 intent에 따라 다르게:
+  $$
+  - $a_{\text{subj}}^{*}$는 intent에 따라 다르게:
     - headshot: 0.55~0.75
     - half: 0.40~0.65
     - lifestyle: 0.20~0.45
     - landscape: 0.05~0.25
 
 ##### (G) Copy-space 의도 보존(특수태그)
-\[
+$$
 R_{\text{copyspace}}=
 \mathbb{1}[\text{has\_copy\_space}]\cdot \text{blank\_ratio}(b)
-\]
+$$
 - blank_ratio는 “낮은 saliency 영역 비율”로 근사(세그/살리언시 기반)
 
-##### (H) PICD 기반 Composition Embedding 항 \(R_{\text{picd}}\) - v1.7 추가
+##### (H) PICD 기반 Composition Embedding 항 $R_{\text{picd}}$ - v1.7 추가
 
 PICD는 **24개 구도 카테고리**로 사진 구도를 정의하고(3분할/중앙/대각/수평/수직/삼각/곡선/방사/원근/패턴/밀집/흩뿌림 등), “구도 임베딩이 실제로 구도를 구분하는지”를 **CDA**로 평가합니다.  
 v1.7에서는 Qwen이 구도를 “판정”하기보다, **전용 composition encoder(CompEnc)**가 산출한 임베딩/로짓을 스코어러와 QA에 직접 연결합니다.
 
 - CompEnc 출력:
-  \[
+  $$
   e(I)\in\mathbb{R}^d,\quad p(I)=\text{softmax}(g(I))\in\mathbb{R}^{24}
-  \]
-  \[
+  $$
+  $$
   e(I_b),\quad p(I_b)
-  \]
+  $$
 
 - **보존(prior) 목적**: 원본의 구도 타입을 과도하게 파괴하지 않게(특히 landscape/copy-space/architecture)
-  \[
+  $$
   R_{\text{picd-preserve}}(b)=\cos(e(I),e(I_b))-\eta\cdot \mathrm{KL}\big(p(I)\,\|\,p(I_b)\big)
-  \]
-  - 권장 \(\eta=0.2\sim0.5\)
+  $$
+  - 권장 $\eta=0.2\sim0.5$
 
 - **타깃(intent) 목적**: 특정 구도(예: diagonal, symmetry, pattern)를 “의도적으로” 강화하고 싶을 때
-  \[
+  $$
   R_{\text{picd-target}}(b)=p(I_b)[c^*]
-  \]
-  - \(c^*\)는 (a) `intent.composition_target`가 있으면 그 값, (b) 없으면 `argmax p(I)`(=원본 구도)로 둔다.
+  $$
+  - $c^*$는 (a) `intent.composition_target`가 있으면 그 값, (b) 없으면 `argmax p(I)`(=원본 구도)로 둔다.
 
 - 최종:
-  \[
+  $$
   R_{\text{picd}}(b)=\gamma_{\text{keep}}R_{\text{picd-preserve}}(b)+\gamma_{\text{tgt}}R_{\text{picd-target}}(b)
-  \]
-  - 기본 권장: \(\gamma_{\text{keep}}=1,\ \gamma_{\text{tgt}}=0\) (대부분 “보존”이 우선)
-  - intent가 명확할 때만 \(\gamma_{\text{tgt}}>0\)
+  $$
+  - 기본 권장: $\gamma_{\text{keep}}=1,\ \gamma_{\text{tgt}}=0$ (대부분 “보존”이 우선)
+  - intent가 명확할 때만 $\gamma_{\text{tgt}}>0$
 
 **Cheap 단계에서의 사용 원칙**
 - `R_picd`는 **N→M 후보 축소에서만** 사용(=과도한 계산을 피하면서도 “구도 다양성”을 살림).
-- CompEnc가 없는 초기(bootstrap)에는 `R_comp(3분할/중앙/수평선)`만으로 시작하고, CompEnc가 준비되면 \(\lambda_{\text{picd}}\)를 점진적으로 올립니다.
+- CompEnc가 없는 초기(bootstrap)에는 `R_comp(3분할/중앙/수평선)`만으로 시작하고, CompEnc가 준비되면 $\lambda_{\text{picd}}$를 점진적으로 올립니다.
 
 **(중요) Qwen에 의존하지 않는 이유**
 - PICD 벤치마크는 MLLM들이 구도 구분(Triplet)에서 **랜덤에 가까운 정확도**를 보이고, **semantic interference**에 취약함을 보고합니다.  
   따라서 v1.7에서는 Qwen을 “설명 생성/체크리스트 검증”으로 제한하고, 구도 타입은 CompEnc + deterministic features를 1차로 사용합니다.
 
 ##### 출력(cheap 단계)
-- AR별 후보 \(N\rightarrow M\) 축소: **\(M=20\sim40\)** 권장
+- AR별 후보 $N\rightarrow M$ 축소: **$M=20\sim40$** 권장
 - **Top-K 다양성**을 위해 동일 후보 반복 시 패널티 또는 거리 기반 re-rank 적용
 - (학습 강화) 최종 Top-K 외에도 **점수 40~60대의 ‘애매한 후보’**를 hard negative로 저장(§13 QA에서 추적)
 
-##### (I) Cropping Teacher consensus 보너스 \(R_{\text{teach}}\) - v1.8
+##### (I) Cropping Teacher consensus 보너스 $R_{\text{teach}}$ - v1.8
 
 오픈 크롭 모델 Teacher들이 제안한 crop들과의 “합의(consensus)”를 **약한 prior**로 사용합니다.  
 목표는 **스코어러의 blind spot을 줄이되**, 특정 teacher 스타일에 과적합하지 않도록 **가중치를 작게** 두는 것입니다.
 
-- 입력: target AR \(r\)에 대해 teacher proposal 집합 \(\mathcal{B}^{teach}_r=\{b^{(m)}\}_{m=1}^M\)
+- 입력: target AR $r$에 대해 teacher proposal 집합 $\mathcal{B}^{teach}_r=\{b^{(m)}\}_{m=1}^M$
 - 1차: teacher 근접도
-  \[
+  $$
   \rho(b)=\max_{b^{(m)}\in \mathcal{B}^{teach}_r}\mathrm{IoU}(b, b^{(m)})
-  \]
-- 2차(선택): teacher 간 pairwise IoU가 \(\ge \tau_c\) 인 쌍이 1개 이상이면 consensus로 간주(권장 \(\tau_c=0.85\)).
+  $$
+- 2차(선택): teacher 간 pairwise IoU가 $\ge \tau_c$ 인 쌍이 1개 이상이면 consensus로 간주(권장 $\tau_c=0.85$).
 - 최종:
-  \[
+  $$
   R_{\text{teach}}(b)=\sigma\left(\frac{\rho(b)-\tau}{\beta}\right)\cdot \mathbb{1}[\text{consensus}]
-  \]
-  - 권장 \(\tau=0.75,\ \beta=0.05\)  
-  - consensus가 없으면 \(R_{\text{teach}}=0\) (teacher disagreement은 오히려 hard-case)
+  $$
+  - 권장 $\tau=0.75,\ \beta=0.05$  
+  - consensus가 없으면 $R_{\text{teach}}=0$ (teacher disagreement은 오히려 hard-case)
 
 **권장 가중치(초기)**  
-- Cheap: \(\lambda_{\text{teach}}=0.05\sim0.15\)  
-- Expensive: \(w_{\text{teach}}=0.05\sim0.20\)
+- Cheap: $\lambda_{\text{teach}}=0.05\sim0.15$  
+- Expensive: $w_{\text{teach}}=0.05\sim0.20$
 
 **QA 연결:** §13에 `teacher_disagreement_rate`, `teacher_consensus_rate`, `teacher_override_rate`를 추가해 회귀를 감시합니다.
 
@@ -1235,22 +1235,22 @@ v1.7에서는 Qwen이 구도를 “판정”하기보다, **전용 composition e
   - AR가 다르면 `b_base = b_maxarea_center` 또는 `b_maxarea_subject`
 
 - 최종 스코어(예시):
-  \[
+  $$
   S_{final}(b)=S_{exp}(b) + w_{area}\cdot \log(\text{area}(b)+\epsilon)
-  \]
+  $$
   - `w_area`는 “불필요한 타이트닝”을 억제(특히 landscape/copy-space에서 효과 큼)
 
 - 게이팅 규칙:
-  \[
+  $$
   \Delta = S_{final}(b_{best}) - S_{final}(b_{base})
-  \]
-  \[
+  $$
+  $$
   b^* =
   \begin{cases}
   b_{base} & \text{if } \Delta < \tau_{improve}(cat,intent,r) \\
   b_{best} & \text{otherwise}
   \end{cases}
-  \]
+  $$
 
 - 권장 시작값(예시; GoldenSet으로 반드시 재튜닝)
   - **copy_space / banner / background / panoramic / landscape**: `τ_improve = 0.04 ~ 0.07`
@@ -1269,7 +1269,7 @@ v1.7에서는 Qwen이 구도를 “판정”하기보다, **전용 composition e
 > 운영 팁: Top-K를 생성할 때도 `b_base`를 **항상 포함**시키면(Top-K 밖으로 밀려나지 않게) Student가 “필요할 때는 덜 자르는 선택지”를 학습할 수 있습니다.
 
 
-\[
+$$
 S_{\text{exp}}(I,b,r)=
 w_a A(I_b)
 + w_{ca}\cos(E_I(I_b),E_T(T))
@@ -1279,35 +1279,35 @@ w_a A(I_b)
 + w_{picd}R_{\text{picd}}(b)
 + w_{teach}R_{\text{teach}}(b)
 + w_{edge}R_{\text{edge}}
-\]
+$$
 
-- \(A(I_b)\): crop aesthetic score
-- \(\cos(\cdot)\): crop과 텍스트(meta) 의미 정합성(주제 유실 방지)
+- $A(I_b)$: crop aesthetic score
+- $\cos(\cdot)$: crop과 텍스트(meta) 의미 정합성(주제 유실 방지)
 - 경계 패널티(SBL 계열):
-  \[
+  $$
   R_{\text{edge}}=-\sum_{side}\max(0, m-d(B_s,\partial b))
-  \]
+  $$
 
 **가중치 초기값(권장)**
-- \(w_a=1.0\), \(w_{cut}=2.0\), \(w_{cov}=0.5\), \(w_{edge}=0.5\), \(w_{ca}=0.3\), \(w_{text}=0.2\), \(w_{picd}=0.2\) (보존 우선, Golden로 튜닝; v1.8에서 `w_teach`는 0.05~0.20 범위에서 시작 권장)
+- $w_a=1.0$, $w_{cut}=2.0$, $w_{cov}=0.5$, $w_{edge}=0.5$, $w_{ca}=0.3$, $w_{text}=0.2$, $w_{picd}=0.2$ (보존 우선, Golden로 튜닝; v1.8에서 `w_teach`는 0.05~0.20 범위에서 시작 권장)
 
 #### 9.4 Top-K + Diversity 선택
 - 점수 상위부터 greedy 선택
 - 다양성 제약:
-  \[
+  $$
   \max_{k\in selected} IoU(b,b_k) < \tau_{div}
-  \]
-- \(\tau_{div}=0.75\) 권장
+  $$
+- $\tau_{div}=0.75$ 권장
 - K=5(권장), K=3(초기)
 
 #### 9.5 GoldenSet 기반 스코어러 캘리브레이션
 **(A) Pairwise Logistic(Bradley-Terry)**
-- 특징 \(\phi(I,b,r)\) → 점수 \(s=f_\theta(\phi)\)
+- 특징 $\phi(I,b,r)$ → 점수 $s=f_\theta(\phi)$
 - 선호쌍 손실:
-  \[
+  $$
   \mathcal{L}(\theta)=\sum -\log \sigma(s^+-s^-)
-  \]
-- \(f_\theta\): 선형(가중치) → GBDT/XGBoost로 고도화(권장)
+  $$
+- $f_\theta$: 선형(가중치) → GBDT/XGBoost로 고도화(권장)
 - 일부 피처(monotonic constraint: cut, coverage)는 단조 제약 가능
 
 **(B) 임계치 최적화**
@@ -1389,8 +1389,8 @@ Stage-2 **출력 JSON**에는 아래 필드를 추가하는 것을 권장합니�
   - `rule_of_thirds`, `centered_subject`, `symmetry`, `leading_lines`, `balanced_negative_space`, `horizon_on_third`
   - `ar_fits_well`, `tight_crop`, `wide_crop`
 - **결정적 태깅(권장)**: Qwen이 태그를 “추론”하게 두기보다, 시스템이 numeric feature로 태그를 산출하고 Qwen은 **설명 문장만 생성**(가장 안정적).
-  - `rule_of_thirds`: `thirds_distance <= τ_third` (권장 \(τ_{third}=0.18\)) 또는 `R_third >= -0.18`
-  - `centered_subject`: `center_distance <= τ_center` (권장 \(τ_{center}=0.15\))
+  - `rule_of_thirds`: `thirds_distance <= τ_third` (권장 $τ_{third}=0.18$) 또는 `R_third >= -0.18`
+  - `centered_subject`: `center_distance <= τ_center` (권장 $τ_{center}=0.15$)
   - `copy_space_kept`: `copy_space=true` AND `empty_ratio(side)=≥ τ_empty` (권장 0.25)
   - `text_kept`: `min(text_keep_ratio)>=0.9`
   - `avoid_face_cut`: `face_cut=false`
@@ -1973,11 +1973,11 @@ v1.9의 “grid + (teacher seed + local jitter) + keep/minimal baseline” 조�
 
 ##### (B) 추천 해법(별도 모델 훈련 없이도 가능)
 1) **Seed‑based Local Search Refiner (score만으로 탐색)**
-- Top‑M 후보(cheap 통과)에서 시작해, \((cx,cy,\log s)\) 공간을 작은 step으로 탐색하며 score를 올리는 방향으로 업데이트  
+- Top‑M 후보(cheap 통과)에서 시작해, $(cx,cy,\log s)$ 공간을 작은 step으로 탐색하며 score를 올리는 방향으로 업데이트  
 - 장점: 새 모델 없이도 “grid 누락”을 메움, compute는 후보 수×step으로 통제 가능
 
 2) **Free‑form label을 별도 트랙으로 생성(선택)**
-- AR을 고정하지 않고 \(r\sim \text{Uniform}(\log r)\)로 샘플링하여 “best aesthetic crop”을 하나 더 저장  
+- AR을 고정하지 않고 $r\sim \text{Uniform}(\log r)$로 샘플링하여 “best aesthetic crop”을 하나 더 저장  
 - 이는 향후 “사용자 임의 AR/스토리텔링 크롭” UX 확장에 유리
 
 ##### (C) 공개 Cropping teacher만으로 free‑form이 충분한가?

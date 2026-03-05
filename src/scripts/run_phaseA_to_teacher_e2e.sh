@@ -135,6 +135,11 @@ Core options
 --teacher_num_workers INT       teacher multi-gpu shard worker 수
 --teacher_auto_repair 0|1       teacher shard 병합/검증 자동 복구 실행 (default: 1)
 --teacher_auto_repair_strict 0|1 expected rows 불일치 시 shard promote 금지 (default: 1)
+--teacher_hard_head_top_rule 0|1 portrait head-top(hair) 컷 하드 reject (default: 1)
+--teacher_head_top_face_expand_alpha FLOAT face 기반 head-top 추정 계수 (default: 0.35)
+--teacher_head_top_kp_expand FLOAT keypoint 기반 head-top 상방 보정 (default: 0.06)
+--teacher_head_top_min_margin FLOAT head-top 최소 안전 마진 (default: 0.008)
+--teacher_head_top_face_margin_alpha FLOAT face 높이 기반 안전 마진 계수 (default: 0.20)
 --expensive_eval_top_m INT      expensive stage에서 AR별 평가 상한(0=cheap_top_m 전체)
 --exp_preprocess_workers INT    expensive clip preprocess thread 수(0=auto)
 --exp_pin_memory 0|1            expensive batch H2D pin_memory 사용 여부 (default: 1)
@@ -287,6 +292,11 @@ DECISION_FILTER="all"
 CHEAP_TOP_M=30
 TOP_K=5
 TAU_DIV=0.75
+TEACHER_HARD_HEAD_TOP_RULE=1
+TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA=0.35
+TEACHER_HEAD_TOP_KP_EXPAND=0.06
+TEACHER_HEAD_TOP_MIN_MARGIN=0.008
+TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA=0.20
 ALIGN_MODEL_NAME=""
 ALIGN_PRETRAINED=""
 ALIGN_DEVICE="auto"
@@ -426,6 +436,11 @@ while [ "$#" -gt 0 ]; do
     --cheap_top_m) CHEAP_TOP_M="$2"; shift 2 ;;
     --top_k) TOP_K="$2"; shift 2 ;;
     --tau_div) TAU_DIV="$2"; shift 2 ;;
+    --teacher_hard_head_top_rule) TEACHER_HARD_HEAD_TOP_RULE="$2"; shift 2 ;;
+    --teacher_head_top_face_expand_alpha) TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA="$2"; shift 2 ;;
+    --teacher_head_top_kp_expand) TEACHER_HEAD_TOP_KP_EXPAND="$2"; shift 2 ;;
+    --teacher_head_top_min_margin) TEACHER_HEAD_TOP_MIN_MARGIN="$2"; shift 2 ;;
+    --teacher_head_top_face_margin_alpha) TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA="$2"; shift 2 ;;
     --align_model_name) ALIGN_MODEL_NAME="$2"; shift 2 ;;
     --align_pretrained) ALIGN_PRETRAINED="$2"; shift 2 ;;
     --align_device) ALIGN_DEVICE="$2"; shift 2 ;;
@@ -822,6 +837,7 @@ echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
 echo " teacher_auto_repair : $TEACHER_AUTO_REPAIR (strict=$TEACHER_AUTO_REPAIR_STRICT)"
 echo " teacher_accel       : exp_batch=$EXP_BATCH_SIZE exp_eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
 echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
 echo " vlm strict init     : $VLM_STRICT_BACKEND_INIT"
@@ -1334,6 +1350,11 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --qa_out_csv "$TEACHER_QA_CSV" \
         --viz_out_dir "$TEACHER_VIZ_DIR" \
         --use_real_expensive "$USE_REAL_EXPENSIVE" \
+        --hard_head_top_rule "$TEACHER_HARD_HEAD_TOP_RULE" \
+        --head_top_face_expand_alpha "$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA" \
+        --head_top_kp_expand "$TEACHER_HEAD_TOP_KP_EXPAND" \
+        --head_top_min_margin "$TEACHER_HEAD_TOP_MIN_MARGIN" \
+        --head_top_face_margin_alpha "$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA" \
         --cheap_top_m "$CHEAP_TOP_M" \
         --top_k "$TOP_K" \
         --tau_div "$TAU_DIV" \

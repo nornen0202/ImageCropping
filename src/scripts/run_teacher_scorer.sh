@@ -111,6 +111,11 @@ CHEAP_TOP_M=30
 TOP_K=5
 TAU_DIV=0.75
 USE_REAL_EXPENSIVE=1
+HARD_HEAD_TOP_RULE=1
+HEAD_TOP_FACE_EXPAND_ALPHA=0.35
+HEAD_TOP_KP_EXPAND=0.06
+HEAD_TOP_MIN_MARGIN=0.008
+HEAD_TOP_FACE_MARGIN_ALPHA=0.20
 ALIGN_MODEL_NAME=""
 ALIGN_PRETRAINED=""
 ALIGN_DEVICE="auto"
@@ -159,6 +164,11 @@ while [ "$#" -gt 0 ]; do
     --top_k) TOP_K="$2"; shift 2 ;;
     --tau_div) TAU_DIV="$2"; shift 2 ;;
     --use_real_expensive) USE_REAL_EXPENSIVE="$2"; shift 2 ;;
+    --hard_head_top_rule) HARD_HEAD_TOP_RULE="$2"; shift 2 ;;
+    --head_top_face_expand_alpha) HEAD_TOP_FACE_EXPAND_ALPHA="$2"; shift 2 ;;
+    --head_top_kp_expand) HEAD_TOP_KP_EXPAND="$2"; shift 2 ;;
+    --head_top_min_margin) HEAD_TOP_MIN_MARGIN="$2"; shift 2 ;;
+    --head_top_face_margin_alpha) HEAD_TOP_FACE_MARGIN_ALPHA="$2"; shift 2 ;;
     --align_model_name) ALIGN_MODEL_NAME="$2"; shift 2 ;;
     --align_pretrained) ALIGN_PRETRAINED="$2"; shift 2 ;;
     --align_device) ALIGN_DEVICE="$2"; shift 2 ;;
@@ -283,6 +293,7 @@ echo "[config] c1=$C1_JSONL"
 echo "[config] parquet=$PARQUET"
 echo "[config] output_jsonl=$OUTPUT_JSONL"
 echo "[config] expensive_accel: batch=$EXP_BATCH_SIZE eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo "[config] portrait_safety: hard_head_top=$HARD_HEAD_TOP_RULE face_expand=$HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$HEAD_TOP_KP_EXPAND min_margin=$HEAD_TOP_MIN_MARGIN face_margin_alpha=$HEAD_TOP_FACE_MARGIN_ALPHA"
 echo "[config] viz_image_ids=${VIZ_IMAGE_IDS:-<none>} viz_image_ids_file=${VIZ_IMAGE_IDS_FILE:-<none>}"
 
 echo "[1/3] Running teacher scorer..."
@@ -308,6 +319,11 @@ run_teacher_one() {
     --top_k "$TOP_K" \
     --tau_div "$TAU_DIV" \
     --use_real_expensive "$USE_REAL_EXPENSIVE" \
+    --hard_head_top_rule "$HARD_HEAD_TOP_RULE" \
+    --head_top_face_expand_alpha "$HEAD_TOP_FACE_EXPAND_ALPHA" \
+    --head_top_kp_expand "$HEAD_TOP_KP_EXPAND" \
+    --head_top_min_margin "$HEAD_TOP_MIN_MARGIN" \
+    --head_top_face_margin_alpha "$HEAD_TOP_FACE_MARGIN_ALPHA" \
     --align_model_name "$ALIGN_MODEL_NAME" \
     --align_pretrained "$ALIGN_PRETRAINED" \
     --align_device "$ALIGN_DEVICE" \

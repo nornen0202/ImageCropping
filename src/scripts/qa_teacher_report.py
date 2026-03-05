@@ -72,6 +72,7 @@ def make_bucket() -> Dict[str, Any]:
         "union_used_count": 0,
         "neg_final_count": 0,
         "face_cut_count": 0,
+        "head_top_cut_count": 0,
         "joint_cut_count": 0,
         "subject_cov_fail_count": 0,
         "subject_cut_risk_count": 0,
@@ -93,6 +94,8 @@ def make_bucket() -> Dict[str, Any]:
         "teacher_seed_selected_any_count": 0,
         "proposal_teacher_seed_top1_count": 0,
         "proposal_teacher_seed_selected_any_count": 0,
+        "teacher_seed_top1_risk_count": 0,
+        "proposal_teacher_seed_top1_risk_count": 0,
     }
 
 
@@ -151,18 +154,25 @@ def update_bucket(
 
     flags = top1.get("flags", {}) if isinstance(top1.get("flags"), dict) else {}
     face_cut = bool(flags.get("face_cut", False))
+    head_top_cut = bool(flags.get("head_top_cut", False))
     joint_cut = safe_float(flags.get("joint_cutoff_score", 0.0)) > 0.35
     subj_cov = safe_float(flags.get("subject_coverage", 1.0))
     subj_cov_fail = subj_cov < float(subject_coverage_fail_thr)
 
     if face_cut:
         bucket["face_cut_count"] += 1
+    if head_top_cut:
+        bucket["head_top_cut_count"] += 1
     if joint_cut:
         bucket["joint_cut_count"] += 1
     if subj_cov_fail:
         bucket["subject_cov_fail_count"] += 1
-    if face_cut or joint_cut or subj_cov_fail:
+    if face_cut or head_top_cut or joint_cut or subj_cov_fail:
         bucket["subject_cut_risk_count"] += 1
+    if teacher_seed_top1 and (face_cut or head_top_cut or joint_cut or subj_cov_fail):
+        bucket["teacher_seed_top1_risk_count"] += 1
+        if proposal_injected:
+            bucket["proposal_teacher_seed_top1_risk_count"] += 1
 
     comps = top1.get("scores", {}).get("components", {})
     if isinstance(comps, dict):
@@ -243,12 +253,10 @@ def update_bucket(
         bucket["fallback_mode"][str(fallback.get("mode", "unknown"))] += 1
 
     has_copyspace = bool(flags_route.get("has_copy_space", False))
-    has_human_evidence = bool(route_global.get("has_human_evidence", False))
-    if not has_human_evidence:
-        has_human_evidence = (
-            int(safe_float(route_global.get("num_people", 0), 0.0)) > 0
-            or int(safe_float(route_global.get("c2_person_count", 0), 0.0)) > 0
-        )
+    has_human_evidence = (
+        signal_num_person > 0
+        or int(safe_float(route_global.get("num_people", 0), 0.0)) > 0
+    )
 
     if has_copyspace:
         bucket["copyspace_subset_count"] += 1
@@ -304,11 +312,22 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
             "proposal_injected_rate": float(proposal_n) / n,
             "teacher_seed_top1_rate_all": float(bucket["teacher_seed_top1_count"]) / n,
             "teacher_seed_selected_any_rate_all": float(bucket["teacher_seed_selected_any_count"]) / n,
+            "teacher_seed_top1_risk_rate_all": float(bucket["teacher_seed_top1_risk_count"]) / n,
+            "teacher_seed_top1_risk_rate_given_seed_top1": (
+                float(bucket["teacher_seed_top1_risk_count"]) / max(1, int(bucket["teacher_seed_top1_count"]))
+            ),
             "teacher_seed_top1_win_rate_given_proposal": (
                 float(bucket["proposal_teacher_seed_top1_count"]) / max(1, proposal_n)
             ),
             "teacher_seed_selected_any_rate_given_proposal": (
                 float(bucket["proposal_teacher_seed_selected_any_count"]) / max(1, proposal_n)
+            ),
+            "proposal_teacher_seed_top1_risk_rate_given_proposal": (
+                float(bucket["proposal_teacher_seed_top1_risk_count"]) / max(1, proposal_n)
+            ),
+            "proposal_teacher_seed_top1_risk_rate_given_seed_top1": (
+                float(bucket["proposal_teacher_seed_top1_risk_count"])
+                / max(1, int(bucket["proposal_teacher_seed_top1_count"]))
             ),
             # Practical proxy for "proposal rescue": injected task where teacher-seed is selected top1.
             "proposal_rescue_rate_proxy": float(bucket["proposal_teacher_seed_top1_count"]) / max(1, proposal_n),
@@ -330,6 +349,7 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
         },
         "risk_rates": {
             "face_cut_rate": float(bucket["face_cut_count"]) / n,
+            "head_top_cut_rate": float(bucket["head_top_cut_count"]) / n,
             "joint_cut_rate": float(bucket["joint_cut_count"]) / n,
             "subject_coverage_fail_rate": float(bucket["subject_cov_fail_count"]) / n,
             "subject_cut_risk_rate": float(bucket["subject_cut_risk_count"]) / n,
@@ -377,6 +397,9 @@ def flatten_for_csv(ar: str, summary: Dict[str, Any]) -> Dict[str, Any]:
         "subject_mode_conflict_rate": summary.get("subject_mode_conf", {}).get("conflict_rate", 0.0),
         "proposal_injected_rate": summary.get("proposal_injection", {}).get("proposal_injected_rate", 0.0),
         "teacher_seed_top1_rate_all": summary.get("proposal_injection", {}).get("teacher_seed_top1_rate_all", 0.0),
+        "teacher_seed_top1_risk_rate_all": summary.get("proposal_injection", {}).get(
+            "teacher_seed_top1_risk_rate_all", 0.0
+        ),
         "proposal_rescue_rate_proxy": summary.get("proposal_injection", {}).get("proposal_rescue_rate_proxy", 0.0),
         "final_mean": summary.get("final_score", {}).get("mean", 0.0),
         "final_p50": summary.get("final_score", {}).get("p50", 0.0),
@@ -384,6 +407,7 @@ def flatten_for_csv(ar: str, summary: Dict[str, Any]) -> Dict[str, Any]:
         "final_neg_rate": summary.get("final_score", {}).get("neg_rate", 0.0),
         "delta_mean": summary.get("delta_improve", {}).get("mean", 0.0),
         "face_cut_rate": summary.get("risk_rates", {}).get("face_cut_rate", 0.0),
+        "head_top_cut_rate": summary.get("risk_rates", {}).get("head_top_cut_rate", 0.0),
         "joint_cut_rate": summary.get("risk_rates", {}).get("joint_cut_rate", 0.0),
         "subject_cov_fail_rate": summary.get("risk_rates", {}).get("subject_coverage_fail_rate", 0.0),
         "subject_cut_risk_rate": summary.get("risk_rates", {}).get("subject_cut_risk_rate", 0.0),

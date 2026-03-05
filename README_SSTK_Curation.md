@@ -809,12 +809,12 @@ bash src/scripts/run_visualize_vlm_teacher.sh \
 ### 3.9 + 3.9.1 동시에 실행
 10K_local (`base_tag=rerun1_public_e2e`) 예시:
 ```bash
-DATANAME=10K_local
-BASE_TAG=rerun1_public_e2e
-#DATANAME=10K
-#BASE_TAG=e2e_260227_r0
+#DATANAME=10K_local
+#BASE_TAG=rerun1_public_e2e
+DATANAME=10K
+BASE_TAG=e2e_260227_r0
 
-SM_TAG=${BASE_TAG}_260303
+SM_TAG=${BASE_TAG}_260304
 DATA_DIR=data/SSTK/${DATANAME}
 REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
 # C1 전략: 0=기존 c1 재활용(권장), 1=C1 재생성(HF/OpenCLIP 다운로드 가능 환경)
@@ -1144,6 +1144,9 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   - `global.subject_mode_kpi.guard_no_person_for_portrait_rate`
   - `global.subject_mode_kpi.guard_no_text_signal_rate`
   - `global.subject_mode_kpi.guard_low_blank_ratio_copyspace_rate`
+  - `global.risk_rates.head_top_cut_rate`
+  - `global.proposal_injection.teacher_seed_top1_risk_rate_given_seed_top1`
+  - `global.proposal_injection.proposal_teacher_seed_top1_risk_rate_given_proposal`
 - `global.proposal_injection.proposal_rescue_rate_proxy`
 - `by_subject_mode_shot_ar`에서 문제 모드/샷/AR 집중 여부 확인
 
@@ -1308,10 +1311,11 @@ Subject-Mode enrich(신규):
 
 로직 구성:
 - Hard constraints
-  - AR/면적 범위/face-cut/joint-cut 등 구조적 실패 필터
+  - AR/면적 범위/face-cut/joint-cut + portrait `head_top_cut`(머리 상단/헤어 컷) 구조적 실패 필터
 - Subject-Mode policy schedule
   - `subject_mode/policy_id` 기반으로 lambda/tau/w_area를 재스케줄
   - scene/copyspace/text 모드는 headroom/lookroom 비중을 낮추고 context/copyspace/text 보존 가중치를 강화
+  - portrait 모드인데 `num_person<=0`이면 scorer 단계에서 non-portrait 모드로 강등(추가 sanity guard)
 - Cheap score (N -> M)
   - subject coverage, cut penalty, composition prior(3분할/phi/center/horizon)
   - headroom/lookroom, symmetry, context, copy-space 반영
@@ -1328,6 +1332,11 @@ Subject-Mode enrich(신규):
 - `artifacts/teacher/overview/teacher_scores_overview*.json/.csv`
 - `artifacts/teacher/qa/teacher_scores_qa_report*.json/.csv`
 - `artifacts/teacher/visualizations/teacher_scorer*/`
+
+주요 QA KPI(신규 포함):
+- `global.risk_rates.head_top_cut_rate`
+- `global.proposal_injection.teacher_seed_top1_risk_rate_given_seed_top1`
+- `global.proposal_injection.proposal_teacher_seed_top1_risk_rate_given_proposal`
 
 ---
 
@@ -1412,6 +1421,11 @@ Subject-Mode enrich(신규):
 - `--teacher_num_workers`: teacher shard worker 수
 - `--teacher_auto_repair 0|1`: teacher 완료 후 shard 병합/검증 자동 복구 (기본 1)
 - `--teacher_auto_repair_strict 0|1`: expected rows 불일치 시 shard promote 금지 (기본 1)
+- `--teacher_hard_head_top_rule 0|1`: portrait head-top(hair) 컷 하드 reject (기본 1)
+- `--teacher_head_top_face_expand_alpha`: face 기반 head-top 상방 보정 계수 (기본 0.35)
+- `--teacher_head_top_kp_expand`: keypoint 기반 head-top 상방 보정 (기본 0.06)
+- `--teacher_head_top_min_margin`: head-top 최소 안전 마진 (기본 0.008)
+- `--teacher_head_top_face_margin_alpha`: face 높이 기반 안전 마진 계수 (기본 0.20)
 - `--max_images`: candidate/teacher 단계 처리 수 제한
 - `--skip_existing 0|1`: 산출물 존재 시 skip
 - `--run_tag`: 결과 파일 suffix

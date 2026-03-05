@@ -137,8 +137,13 @@ class TeacherScorerConfig:
     area_max: float = 0.95
     ar_hard_eps: float = 0.01
     hard_face_rule: bool = True
+    hard_head_top_rule: bool = True
     severe_kp_margin_alpha: float = 0.03
     hard_joint_reject_count: int = 2
+    head_top_face_expand_alpha: float = 0.35
+    head_top_kp_expand: float = 0.06
+    head_top_min_margin: float = 0.008
+    head_top_face_margin_alpha: float = 0.20
 
     # Cheap scoring weights (base)
     lambda_cov: float = 1.20
@@ -205,10 +210,13 @@ class ARStats:
 
     top1_face_cut_count: int = 0
     top1_joint_cut_count: int = 0
+    top1_head_top_cut_count: int = 0
     top1_subject_cov_fail_count: int = 0
 
     portrait_subset_count: int = 0
     headroom_violation_count: int = 0
+    head_top_subset_count: int = 0
+    head_top_violation_count: int = 0
     lookroom_subset_count: int = 0
     lookroom_violation_count: int = 0
 
@@ -254,6 +262,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--top_k", type=int, default=5)
     p.add_argument("--tau_div", type=float, default=0.75)
     p.add_argument("--use_real_expensive", type=int, default=1, help="1=real A(I_b)/cos(E_I,E_T), 0=proxy fallback")
+    p.add_argument("--hard_head_top_rule", type=int, default=1, help="1=portrait head-top(hair) cut hard reject")
+    p.add_argument("--head_top_face_expand_alpha", type=float, default=0.35, help="head-top estimate: face_y1 - alpha*face_h")
+    p.add_argument("--head_top_kp_expand", type=float, default=0.06, help="head-top estimate from keypoints: top_kp_y - value")
+    p.add_argument("--head_top_min_margin", type=float, default=0.008, help="minimum safety margin for head-top inclusion")
+    p.add_argument("--head_top_face_margin_alpha", type=float, default=0.20, help="face-height based head-top safety margin")
     p.add_argument("--align_model_name", type=str, default="", help="OpenCLIP model for E_I(I_b)")
     p.add_argument("--align_pretrained", type=str, default="", help="OpenCLIP pretrained tag for E_I(I_b)")
     p.add_argument("--align_device", type=str, default="auto", help="auto|cpu|cuda")
@@ -1207,10 +1220,12 @@ def build_subject_bbox(
     return clip_box01([x1, y1, x2, y2])
 
 
-def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int) -> Dict[str, Any]:
+def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: TeacherScorerConfig) -> Dict[str, Any]:
     c3 = feat_rec.get("c3_pose", []) or []
     face_boxes: List[List[float]] = []
     head_y_norm: List[float] = []
+    head_guard_y_norm: List[float] = []
+    head_guard_margin_norm: List[float] = []
     gaze_entries: List[Dict[str, Any]] = []
     keypoints_norm: List[List[List[float]]] = []
 
@@ -1235,8 +1250,15 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int) -> Dict[s
                 face_boxes.append(human_face_box)
                 fy1, fy2 = float(fb[1]), float(fb[3])
                 fh = max(1e-6, fy2 - fy1)
-                head_y = clamp(fy1 - 0.15 * fh, 0.0, 1.0)
+                head_y = clamp(fy1 - float(cfg.head_top_face_expand_alpha) * fh, 0.0, 1.0)
+                guard_margin = clamp(
+                    max(float(cfg.head_top_min_margin), float(cfg.head_top_face_margin_alpha) * fh),
+                    float(cfg.head_top_min_margin),
+                    0.08,
+                )
                 head_y_norm.append(head_y)
+                head_guard_y_norm.append(head_y)
+                head_guard_margin_norm.append(guard_margin)
 
         # Keypoints
         kps = human.get("keypoints")
@@ -1257,7 +1279,10 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int) -> Dict[s
                     if idx < len(kn) and kn[idx][2] >= 0.05:
                         top_candidates.append(kn[idx][1])
                 if top_candidates:
-                    head_y_norm.append(clamp(min(top_candidates) - 0.04, 0.0, 1.0))
+                    head_y_kp = clamp(min(top_candidates) - float(cfg.head_top_kp_expand), 0.0, 1.0)
+                    head_y_norm.append(head_y_kp)
+                    head_guard_y_norm.append(head_y_kp)
+                    head_guard_margin_norm.append(float(cfg.head_top_min_margin))
 
         # Gaze/headpose proxy
         hp = human.get("headpose_gaze") if isinstance(human.get("headpose_gaze"), dict) else {}
@@ -1291,6 +1316,8 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int) -> Dict[s
     return {
         "face_boxes": face_boxes,
         "head_y_norm": head_y_norm,
+        "head_guard_y_norm": head_guard_y_norm,
+        "head_guard_margin_norm": head_guard_margin_norm,
         "gaze_entries": gaze_entries,
         "keypoints_norm": keypoints_norm,
         "num_people": len(c3),
@@ -1456,6 +1483,46 @@ def compute_headroom_term(
         "pass": bool(ok),
         "target_range": [round(hmin, 4), round(hmax, 4)],
         "target": round(htar, 4),
+    }
+
+
+def compute_head_top_guard(
+    crop: Sequence[float],
+    head_y_norm_values: Sequence[float],
+    head_margin_values: Sequence[float],
+    min_margin: float,
+) -> Dict[str, Any]:
+    if not head_y_norm_values:
+        return {
+            "activated": False,
+            "pass": True,
+            "min_required_y1": None,
+            "crop_y1": round(safe_float(crop[1], 0.0), 6),
+            "violated_count": 0,
+            "head_count": 0,
+        }
+
+    y1 = safe_float(crop[1], 0.0)
+    limits: List[float] = []
+    violated = 0
+    for idx, y_head in enumerate(head_y_norm_values):
+        margin = float(min_margin)
+        if idx < len(head_margin_values):
+            margin = max(float(min_margin), safe_float(head_margin_values[idx], float(min_margin)))
+        lim = clamp(safe_float(y_head, 0.0) - margin, 0.0, 1.0)
+        limits.append(lim)
+        if y1 > lim:
+            violated += 1
+
+    min_required_y1 = min(limits) if limits else None
+    ok = (min_required_y1 is None) or (y1 <= min_required_y1)
+    return {
+        "activated": True,
+        "pass": bool(ok),
+        "min_required_y1": round(float(min_required_y1), 6) if min_required_y1 is not None else None,
+        "crop_y1": round(float(y1), 6),
+        "violated_count": int(violated),
+        "head_count": int(len(limits)),
     }
 
 
@@ -1682,6 +1749,38 @@ def _resolve_subject_routing_hint(cand_rec: Dict[str, Any], feat_rec: Dict[str, 
     return out
 
 
+def _fallback_subject_mode_when_no_person(
+    *,
+    mode: str,
+    flags: Dict[str, Any],
+    routing_hint: Dict[str, Any],
+) -> Tuple[str, str, List[str]]:
+    reasons: List[str] = ["scorer_guard_no_person_for_portrait"]
+    if not mode.startswith("portrait"):
+        return mode, "generic_v1", reasons
+
+    router_signals = routing_hint.get("router_signals", {}) if isinstance(routing_hint.get("router_signals"), dict) else {}
+    has_text_signal = bool(router_signals.get("text_signal", False)) or bool(flags.get("subject_mode_has_text_heavy", False))
+    copyspace_allowed = bool(router_signals.get("copyspace_allowed", False))
+    has_copyspace_tag = bool(flags.get("subject_mode_has_copyspace_tag", False))
+
+    if has_text_signal:
+        reasons.append("fallback_text_signal")
+        return "text_document", "text_v1", reasons
+    if copyspace_allowed or has_copyspace_tag:
+        reasons.append("fallback_copyspace_signal")
+        return "background_texture_copyspace", "copyspace_v1", reasons
+    if bool(flags.get("is_landscape_scene", False)):
+        reasons.append("fallback_scene_signal")
+        return "scene_landscape", "scene_v1", reasons
+    if bool(flags.get("is_product", False)) or bool(flags.get("is_isolated_packshot", False)):
+        reasons.append("fallback_object_signal")
+        return "object_single", "object_v1", reasons
+
+    reasons.append("fallback_ambiguous")
+    return "other_ambiguous", "generic_v1", reasons
+
+
 def apply_subject_policy_overrides(
     route: Dict[str, Any],
     subject_mode: str,
@@ -1706,6 +1805,34 @@ def apply_subject_policy_overrides(
         mode = "other_ambiguous"
     if not policy:
         policy = "generic_v1"
+
+    # Extra scorer-side sanity guard for stale/misaligned routed features.
+    # If portrait mode has no person signal, force a safer non-portrait fallback.
+    router_signals = routing_hint.get("router_signals", {}) if isinstance(routing_hint.get("router_signals"), dict) else {}
+    signal_num_person = int(
+        safe_float(
+            router_signals.get("num_person", route.get("num_people", 0)),
+            0.0,
+        )
+    )
+    if mode.startswith("portrait") and signal_num_person <= 0:
+        fb_mode, fb_policy, fb_reasons = _fallback_subject_mode_when_no_person(
+            mode=mode,
+            flags=flags,
+            routing_hint=routing_hint,
+        )
+        mode = fb_mode
+        policy = fb_policy
+        out["shot_type"] = "unknown"
+        if route.get("num_people", 0) <= 0:
+            out["num_people"] = 0
+        existing = (
+            routing_hint.get("subject_mode_reasons", [])
+            if isinstance(routing_hint.get("subject_mode_reasons"), list)
+            else []
+        )
+        out["subject_mode_reasons"] = list(existing) + fb_reasons
+        out["subject_mode_conflict"] = True
 
     # Route-level schedules tuned by subject mode.
     if mode in {"portrait_single", "portrait_group"} or policy in {"portrait_single_v1", "portrait_group_v1"}:
@@ -1756,6 +1883,9 @@ def apply_subject_policy_overrides(
         lambdas["hr"] = 0.0
         lambdas["lr"] = 0.0
 
+    if not mode.startswith("portrait"):
+        out["shot_type"] = "unknown"
+
     for k in list(lambdas.keys()):
         lambdas[k] = max(0.0, float(lambdas[k]))
 
@@ -1764,13 +1894,15 @@ def apply_subject_policy_overrides(
     out["subject_mode"] = mode
     out["policy_id"] = policy
     out["subject_mode_conf"] = safe_float(routing_hint.get("subject_mode_conf", 0.0))
-    out["subject_mode_reasons"] = (
-        routing_hint.get("subject_mode_reasons", [])
-        if isinstance(routing_hint.get("subject_mode_reasons"), list)
-        else []
-    )
+    if "subject_mode_reasons" not in out:
+        out["subject_mode_reasons"] = (
+            routing_hint.get("subject_mode_reasons", [])
+            if isinstance(routing_hint.get("subject_mode_reasons"), list)
+            else []
+        )
     out["subject_set"] = routing_hint.get("subject_set", {}) if isinstance(routing_hint.get("subject_set"), dict) else {}
-    out["subject_mode_conflict"] = bool(routing_hint.get("subject_mode_conflict", False))
+    if "subject_mode_conflict" not in out:
+        out["subject_mode_conflict"] = bool(routing_hint.get("subject_mode_conflict", False))
     out["router_rule_id"] = str(routing_hint.get("router_rule_id", ""))
     out["router_signals"] = (
         routing_hint.get("router_signals", {})
@@ -1844,7 +1976,7 @@ def _relax_joint_only_hard_reject(candidate: Dict[str, Any]) -> Optional[Dict[st
         return candidate
 
     hard_tags = set(str(x) for x in (candidate.get("hard_reject_tags") or []))
-    if any(t in hard_tags for t in ("area_violation", "ar_violation", "face_cut")):
+    if any(t in hard_tags for t in ("area_violation", "ar_violation", "face_cut", "head_top_cut")):
         return None
     if "joint_cutoff" not in hard_tags:
         return None
@@ -1885,6 +2017,21 @@ def compute_candidate_scores(
     f_cut, f_kept, f_total = face_cut_flags(c3_info["face_boxes"], crop)
     if cfg.hard_face_rule and f_total > 0 and f_cut:
         hard_reject_tags.append("face_cut")
+
+    head_top = compute_head_top_guard(
+        crop=crop,
+        head_y_norm_values=c3_info.get("head_guard_y_norm", []),
+        head_margin_values=c3_info.get("head_guard_margin_norm", []),
+        min_margin=float(cfg.head_top_min_margin),
+    )
+    is_portrait_mode = str(route.get("subject_mode", "")).startswith("portrait")
+    if (
+        bool(cfg.hard_head_top_rule)
+        and is_portrait_mode
+        and bool(head_top.get("activated", False))
+        and (not bool(head_top.get("pass", True)))
+    ):
+        hard_reject_tags.append("head_top_cut")
 
     joint = eval_joint_cut(
         keypoints_norm=c3_info["keypoints_norm"],
@@ -2004,6 +2151,8 @@ def compute_candidate_scores(
 
     if hr["value"] is not None:
         why_tags.append("headroom_ok" if hr["pass"] else "headroom_violation")
+    if bool(head_top.get("activated", False)):
+        why_tags.append("head_top_safe" if bool(head_top.get("pass", True)) else "head_top_cut_risk")
     if lr["gaze_dir"] in {"left", "right"}:
         why_tags.append("lookroom_ok" if lr["pass"] else "lookroom_violation")
     if horizon["active"]:
@@ -2022,6 +2171,8 @@ def compute_candidate_scores(
     reject_tags = list(hard_reject_tags)
     if f_cut and "face_cut" not in reject_tags:
         reject_tags.append("face_cut")
+    if bool(head_top.get("activated", False)) and (not bool(head_top.get("pass", True))) and "head_top_cut" not in reject_tags:
+        reject_tags.append("head_top_cut")
     if joint["joint_cut_score"] > 0.35 and "joint_cutoff" not in reject_tags:
         reject_tags.append("joint_cutoff")
     if lr["gaze_dir"] in {"left", "right"} and not lr["pass"]:
@@ -2063,6 +2214,7 @@ def compute_candidate_scores(
         },
         "flags": {
             "face_cut": bool(f_cut),
+            "head_top_cut": bool(head_top.get("activated", False) and (not bool(head_top.get("pass", True)))),
             "joint_cutoff_score": float(joint["joint_cut_score"]),
             "joint_severe_count": int(joint["severe_count"]),
             "subject_touch_border": bool(subj_touch),
@@ -2075,6 +2227,14 @@ def compute_candidate_scores(
                 "value": hr["value"],
                 "target_range": hr["target_range"],
                 "pass": bool(hr["pass"]),
+            },
+            "head_top": {
+                "activated": bool(head_top.get("activated", False)),
+                "pass": bool(head_top.get("pass", True)),
+                "min_required_y1": head_top.get("min_required_y1"),
+                "crop_y1": head_top.get("crop_y1"),
+                "violated_count": int(head_top.get("violated_count", 0)),
+                "head_count": int(head_top.get("head_count", 0)),
             },
             "lookroom": {
                 "value": lr["value"],
@@ -2312,6 +2472,8 @@ def update_stats(
     checks = t1.get("composition_checks", {})
     if bool(flags.get("face_cut", False)):
         stats.top1_face_cut_count += 1
+    if bool(flags.get("head_top_cut", False)):
+        stats.top1_head_top_cut_count += 1
     if safe_float(flags.get("joint_cutoff_score", 0.0)) > 0.35:
         stats.top1_joint_cut_count += 1
     if safe_float(flags.get("subject_coverage", 0.0)) < cfg.subject_coverage_fail_thr:
@@ -2327,6 +2489,11 @@ def update_stats(
         headroom = checks.get("headroom", {}) if isinstance(checks.get("headroom"), dict) else {}
         if headroom.get("value") is not None and not bool(headroom.get("pass", True)):
             stats.headroom_violation_count += 1
+        head_top = checks.get("head_top", {}) if isinstance(checks.get("head_top"), dict) else {}
+        if bool(head_top.get("activated", False)):
+            stats.head_top_subset_count += 1
+            if not bool(head_top.get("pass", True)):
+                stats.head_top_violation_count += 1
 
         lookroom = checks.get("lookroom", {}) if isinstance(checks.get("lookroom"), dict) else {}
         gaze_dir = str(lookroom.get("gaze_dir", "unknown"))
@@ -2378,10 +2545,14 @@ def summarize_stats(stats: ARStats) -> Dict[str, Any]:
             "p90": percentile(stats.delta_improve, 0.90),
         },
         "face_cut_rate": stats.top1_face_cut_count / n,
+        "head_top_cut_rate": stats.top1_head_top_cut_count / n,
         "joint_cut_rate": stats.top1_joint_cut_count / n,
         "subject_coverage_fail_rate": stats.top1_subject_cov_fail_count / n,
         "headroom_violation_rate": (
             stats.headroom_violation_count / max(1, stats.portrait_subset_count)
+        ),
+        "head_top_violation_rate": (
+            stats.head_top_violation_count / max(1, stats.head_top_subset_count)
         ),
         "lookroom_violation_rate": (
             stats.lookroom_violation_count / max(1, stats.lookroom_subset_count)
@@ -2394,6 +2565,7 @@ def summarize_stats(stats: ARStats) -> Dict[str, Any]:
         "topk_mean_iou_top1_top2": mean(stats.top1_top2_iou) if stats.top1_top2_iou else 0.0,
         "denominators": {
             "portrait_subset": stats.portrait_subset_count,
+            "head_top_subset": stats.head_top_subset_count,
             "lookroom_subset": stats.lookroom_subset_count,
             "horizon_subset": stats.horizon_subset_count,
             "roll_subset": stats.roll_subset_count,
@@ -2462,12 +2634,14 @@ def process_one_image(
     tags = tags_to_tokens(cand_rec.get("tags", []))
     routing_hint = _resolve_subject_routing_hint(cand_rec=cand_rec, feat_rec=feat_rec)
 
-    c3_info = collect_c3_info(feat_rec=feat_rec, width=width, height=height)
+    c3_info = collect_c3_info(feat_rec=feat_rec, width=width, height=height, cfg=cfg)
     c5_info = collect_c5_info(feat_rec=feat_rec)
 
     c2_person_count = count_c2_person_instances(feat_rec)
     num_people = c3_info["num_people"]
-    has_human_evidence = (num_people > 0) or (c2_person_count > 0)
+    # Routing sanity: treat C3(person/pose) as authoritative for human evidence.
+    # C2-only person signal is noisy on non-human scenes and can over-trigger portrait route.
+    has_human_evidence = num_people > 0
 
     shot_type = infer_shot_type(tags, has_human_evidence=has_human_evidence)
     portrait_category = infer_portrait_category(tags)
@@ -2860,6 +3034,11 @@ def run(args: argparse.Namespace) -> None:
         top_k=max(1, int(args.top_k)),
         tau_div=float(args.tau_div),
         use_real_expensive=bool(int(args.use_real_expensive)),
+        hard_head_top_rule=bool(int(args.hard_head_top_rule)),
+        head_top_face_expand_alpha=float(args.head_top_face_expand_alpha),
+        head_top_kp_expand=float(args.head_top_kp_expand),
+        head_top_min_margin=float(args.head_top_min_margin),
+        head_top_face_margin_alpha=float(args.head_top_face_margin_alpha),
         expensive_eval_top_m=max(0, int(args.expensive_eval_top_m)),
         exp_preprocess_workers=max(0, int(args.exp_preprocess_workers)),
         exp_pin_memory=bool(int(args.exp_pin_memory)),

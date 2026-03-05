@@ -6,7 +6,6 @@ precomputed features (C2/C3/C5) and candidate boxes.
 
 Notes
 -----
-- OCR term is intentionally disabled in this implementation.
 - Expensive stage uses lightweight deterministic proxies when full crop-level
   aesthetic/text-alignment models are unavailable in precompute inputs.
 """
@@ -148,7 +147,7 @@ class TeacherScorerConfig:
     # Cheap scoring weights (base)
     lambda_cov: float = 1.20
     lambda_cut: float = 1.80
-    lambda_text: float = 0.0  # OCR-disabled
+    lambda_text: float = 0.20
     lambda_comp: float = 1.00
     lambda_hr: float = 0.65
     lambda_lr: float = 0.55
@@ -179,13 +178,25 @@ class TeacherScorerConfig:
     w_ca: float = 0.3
     w_cov: float = 0.5
     w_cut: float = 2.0
-    w_text: float = 0.0  # OCR-disabled
+    w_text: float = 0.12
     w_edge: float = 0.5
     aesthetic_score_min: float = 1.0
     aesthetic_score_max: float = 10.0
     expensive_eval_top_m: int = 0  # 0 means evaluate all cheap_top_m in expensive stage
     exp_preprocess_workers: int = 0  # 0 means auto (bounded by CPU count)
     exp_pin_memory: bool = True
+
+    # OCR text-preservation checks (C4)
+    text_keep_min_default: float = 0.90
+    text_keep_min_overlay: float = 0.95
+    text_keep_min_text_document: float = 0.98
+    text_box_full_keep_thr: float = 0.98
+    text_box_severe_keep_thr: float = 0.60
+    text_severe_ratio_max_default: float = 0.20
+    text_severe_ratio_max_text_document: float = 0.05
+    text_penalty_keep_weight: float = 1.00
+    text_penalty_cut_weight: float = 0.35
+    text_penalty_severe_weight: float = 0.65
 
     # Keep-vs-crop
     w_area_default: float = 0.10
@@ -1222,6 +1233,16 @@ def build_subject_bbox(
 
 def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: TeacherScorerConfig) -> Dict[str, Any]:
     c3 = feat_rec.get("c3_pose", []) or []
+    c6 = feat_rec.get("c6_gaze") if isinstance(feat_rec.get("c6_gaze"), dict) else {}
+    c6_people = c6.get("people", []) if isinstance(c6.get("people"), list) else []
+    c6_by_index: Dict[int, Dict[str, Any]] = {}
+    for p in c6_people:
+        if not isinstance(p, dict):
+            continue
+        idx = int(safe_float(p.get("person_index", -1), -1.0))
+        if idx >= 0:
+            c6_by_index[idx] = p
+
     face_boxes: List[List[float]] = []
     head_y_norm: List[float] = []
     head_guard_y_norm: List[float] = []
@@ -1229,7 +1250,7 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
     gaze_entries: List[Dict[str, Any]] = []
     keypoints_norm: List[List[List[float]]] = []
 
-    for human in c3:
+    for idx, human in enumerate(c3):
         human_face_box: Optional[List[float]] = None
 
         # Face boxes
@@ -1284,8 +1305,24 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
                     head_guard_y_norm.append(head_y_kp)
                     head_guard_margin_norm.append(float(cfg.head_top_min_margin))
 
-        # Gaze/headpose proxy
+        # Gaze/headpose proxy + C6 override/fallback.
         hp = human.get("headpose_gaze") if isinstance(human.get("headpose_gaze"), dict) else {}
+        c6_person = c6_by_index.get(idx, {})
+        if isinstance(c6_person, dict) and c6_person:
+            hp_conf = safe_float(hp.get("conf", 0.0))
+            c6_conf = safe_float(c6_person.get("conf", 0.0))
+            hp_source = str(hp.get("source", "")).strip().lower()
+            prefer_c6 = (not hp) or (c6_conf >= hp_conf) or ("proxy" in hp_source)
+            if prefer_c6:
+                hp = {
+                    "yaw_proxy": safe_float(c6_person.get("yaw_proxy", 0.0)),
+                    "pitch_proxy": safe_float(c6_person.get("pitch_proxy", 0.0)),
+                    "roll_deg": safe_float(c6_person.get("roll_deg", 0.0)),
+                    "gaze_dir": str(c6_person.get("gaze_dir", "unknown")),
+                    "conf": c6_conf,
+                    "source": str(c6_person.get("source", "c6_gaze")),
+                }
+
         gaze_dir = str(hp.get("gaze_dir", "unknown"))
         conf = safe_float(hp.get("conf", 0.0))
 
@@ -1301,6 +1338,12 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
             if isinstance(hb, (list, tuple)) and len(hb) == 4:
                 hb_n = norm_box_xyxy(hb, width, height)
                 anchor_x, anchor_y = box_center(hb_n)
+            else:
+                c6_head = c6_person.get("head_bbox_norm_xyxy") if isinstance(c6_person, dict) else None
+                if isinstance(c6_head, (list, tuple)) and len(c6_head) == 4:
+                    ch = clip_box01(c6_head)
+                    if box_area(ch) > 0.0:
+                        anchor_x, anchor_y = box_center(ch)
 
         if anchor_x is not None and anchor_y is not None:
             gaze_entries.append(
@@ -1320,7 +1363,7 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
         "head_guard_margin_norm": head_guard_margin_norm,
         "gaze_entries": gaze_entries,
         "keypoints_norm": keypoints_norm,
-        "num_people": len(c3),
+        "num_people": max(len(c3), len(c6_by_index)),
     }
 
 
@@ -1338,6 +1381,185 @@ def collect_c5_info(feat_rec: Dict[str, Any]) -> Dict[str, Any]:
         "horizon_conf": safe_float(hr.get("conf", 0.0)),
         "roll_deg": hr.get("roll_deg"),
         "symmetry": clamp(safe_float(sym.get("score", 0.0)), 0.0, 1.0),
+    }
+
+
+def _norm_box_maybe_xyxy(box: Sequence[Any], width: int, height: int) -> Optional[List[float]]:
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return None
+    vals = [safe_float(v) for v in box]
+    if max(abs(v) for v in vals) <= 1.5:
+        b = clip_box01(vals)
+    else:
+        b = norm_box_xyxy(vals, width, height)
+    if box_area(b) <= 0.0:
+        return None
+    return b
+
+
+def collect_c4_info(feat_rec: Dict[str, Any], width: int, height: int) -> Dict[str, Any]:
+    raw_c4 = feat_rec.get("c4_ocr")
+    c4_meta = feat_rec.get("c4_ocr_meta") if isinstance(feat_rec.get("c4_ocr_meta"), dict) else {}
+
+    raw_boxes: List[Any] = []
+    method = str(c4_meta.get("method", "unknown"))
+    coverage_ratio = clamp(safe_float(c4_meta.get("coverage_ratio", 0.0)), 0.0, 1.0)
+    text_overlay_likely = bool(
+        feat_rec.get("text_overlay_likely")
+        or feat_rec.get("has_text_overlay")
+        or feat_rec.get("ocr_text_overlay_likely")
+    )
+
+    if isinstance(raw_c4, dict):
+        if isinstance(raw_c4.get("boxes"), list):
+            raw_boxes = list(raw_c4.get("boxes"))
+        method = str(raw_c4.get("method", method))
+        coverage_ratio = clamp(safe_float(raw_c4.get("coverage_ratio", coverage_ratio)), 0.0, 1.0)
+        text_overlay_likely = bool(raw_c4.get("text_overlay_likely", text_overlay_likely))
+    elif isinstance(raw_c4, list):
+        raw_boxes = list(raw_c4)
+
+    boxes_norm: List[List[float]] = []
+    for it in raw_boxes:
+        b: Optional[List[float]] = None
+        if isinstance(it, dict):
+            b = _norm_box_maybe_xyxy(it.get("box_norm_xyxy", []), width=width, height=height)
+            if b is None:
+                b = _norm_box_maybe_xyxy(it.get("box_xyxy", []), width=width, height=height)
+            if b is None:
+                quad = it.get("box")
+                if isinstance(quad, (list, tuple)) and len(quad) >= 4:
+                    xs = [safe_float(p[0]) for p in quad if isinstance(p, (list, tuple)) and len(p) >= 2]
+                    ys = [safe_float(p[1]) for p in quad if isinstance(p, (list, tuple)) and len(p) >= 2]
+                    if xs and ys:
+                        b = _norm_box_maybe_xyxy([min(xs), min(ys), max(xs), max(ys)], width=width, height=height)
+        else:
+            b = _norm_box_maybe_xyxy(it, width=width, height=height)
+        if b is not None:
+            boxes_norm.append(b)
+
+    count_alias = int(
+        max(
+            safe_float(feat_rec.get("ocr_text_boxes", 0), 0.0),
+            safe_float(feat_rec.get("ocr_num_boxes", 0), 0.0),
+            safe_float(feat_rec.get("ocr_box_count", 0), 0.0),
+            safe_float(feat_rec.get("c4_text_boxes", 0), 0.0),
+            safe_float(feat_rec.get("c4_ocr_boxes", 0), 0.0),
+        )
+    )
+    num_boxes = max(len(boxes_norm), max(0, count_alias))
+    if len(boxes_norm) > 0:
+        coverage_ratio = clamp(sum(box_area(b) for b in boxes_norm), 0.0, 1.0)
+    if not text_overlay_likely:
+        text_overlay_likely = bool(num_boxes >= 3 or coverage_ratio >= 0.015)
+
+    return {
+        "boxes_norm": boxes_norm,
+        "num_boxes": int(num_boxes),
+        "coverage_ratio": float(coverage_ratio),
+        "text_overlay_likely": bool(text_overlay_likely),
+        "method": method,
+    }
+
+
+def compute_text_penalty(
+    crop: Sequence[float],
+    c4_info: Dict[str, Any],
+    route: Dict[str, Any],
+    cfg: TeacherScorerConfig,
+) -> Dict[str, Any]:
+    boxes = [clip_box01(b) for b in (c4_info.get("boxes_norm", []) or []) if isinstance(b, (list, tuple)) and len(b) == 4]
+    num_boxes = int(c4_info.get("num_boxes", len(boxes)) or len(boxes))
+    text_overlay_likely = bool(c4_info.get("text_overlay_likely", False))
+    method = str(c4_info.get("method", "unknown"))
+    coverage_ratio = clamp(safe_float(c4_info.get("coverage_ratio", 0.0)), 0.0, 1.0)
+    mode = str(route.get("subject_mode", "")).strip().lower()
+    policy = str(route.get("policy_id", "")).strip().lower()
+    text_mode = (mode == "text_document") or (policy == "text_v1")
+
+    target_keep_ratio = float(cfg.text_keep_min_default)
+    if text_overlay_likely:
+        target_keep_ratio = max(target_keep_ratio, float(cfg.text_keep_min_overlay))
+    if text_mode:
+        target_keep_ratio = max(target_keep_ratio, float(cfg.text_keep_min_text_document))
+
+    severe_max = float(cfg.text_severe_ratio_max_text_document if text_mode else cfg.text_severe_ratio_max_default)
+
+    if not boxes:
+        return {
+            "p_text": 0.0,
+            "pass": True,
+            "available": False,
+            "text_keep_ratio": 1.0,
+            "cut_box_ratio": 0.0,
+            "severe_cut_ratio": 0.0,
+            "num_boxes": int(num_boxes),
+            "target_keep_ratio": float(target_keep_ratio),
+            "severe_ratio_max": float(severe_max),
+            "text_overlay_likely": bool(text_overlay_likely),
+            "coverage_ratio": float(coverage_ratio),
+            "method": method,
+        }
+
+    keep_ratios: List[float] = []
+    total_area = 0.0
+    kept_area = 0.0
+    for b in boxes:
+        a = box_area(b)
+        if a <= 0.0:
+            continue
+        k = inter_area(b, crop) / max(1e-8, a)
+        keep_ratios.append(clamp(k, 0.0, 1.0))
+        total_area += a
+        kept_area += inter_area(b, crop)
+
+    if total_area <= 0.0 or not keep_ratios:
+        return {
+            "p_text": 0.0,
+            "pass": True,
+            "available": False,
+            "text_keep_ratio": 1.0,
+            "cut_box_ratio": 0.0,
+            "severe_cut_ratio": 0.0,
+            "num_boxes": int(num_boxes),
+            "target_keep_ratio": float(target_keep_ratio),
+            "severe_ratio_max": float(severe_max),
+            "text_overlay_likely": bool(text_overlay_likely),
+            "coverage_ratio": float(coverage_ratio),
+            "method": method,
+        }
+
+    keep_ratio = clamp(kept_area / max(1e-8, total_area), 0.0, 1.0)
+    full_keep_thr = float(cfg.text_box_full_keep_thr)
+    severe_thr = float(cfg.text_box_severe_keep_thr)
+
+    full_keep_count = sum(1 for r in keep_ratios if r >= full_keep_thr)
+    severe_cut_count = sum(1 for r in keep_ratios if r < severe_thr)
+    n = max(1, len(keep_ratios))
+    cut_box_ratio = clamp(1.0 - (full_keep_count / float(n)), 0.0, 1.0)
+    severe_cut_ratio = clamp(severe_cut_count / float(n), 0.0, 1.0)
+
+    p_text = (
+        float(cfg.text_penalty_keep_weight) * (1.0 - keep_ratio)
+        + float(cfg.text_penalty_cut_weight) * cut_box_ratio
+        + float(cfg.text_penalty_severe_weight) * severe_cut_ratio
+    )
+    p_text = clamp(p_text, 0.0, 3.0)
+
+    passed = bool((keep_ratio >= target_keep_ratio) and (severe_cut_ratio <= severe_max))
+    return {
+        "p_text": float(p_text),
+        "pass": passed,
+        "available": True,
+        "text_keep_ratio": float(keep_ratio),
+        "cut_box_ratio": float(cut_box_ratio),
+        "severe_cut_ratio": float(severe_cut_ratio),
+        "num_boxes": int(num_boxes),
+        "target_keep_ratio": float(target_keep_ratio),
+        "severe_ratio_max": float(severe_max),
+        "text_overlay_likely": bool(text_overlay_likely),
+        "coverage_ratio": float(coverage_ratio),
+        "method": method,
     }
 
 
@@ -1998,6 +2220,7 @@ def compute_candidate_scores(
     subject_centroid: Tuple[float, float],
     c3_info: Dict[str, Any],
     c5_info: Dict[str, Any],
+    c4_info: Dict[str, Any],
     route: Dict[str, Any],
     cfg: TeacherScorerConfig,
 ) -> Dict[str, Any]:
@@ -2051,8 +2274,13 @@ def compute_candidate_scores(
         + cfg.alpha_subject_border * (1.0 if subj_touch else 0.0)
     )
 
-    # OCR excluded.
-    p_text = 0.0
+    text_eval = compute_text_penalty(
+        crop=crop,
+        c4_info=c4_info,
+        route=route,
+        cfg=cfg,
+    )
+    p_text = safe_float(text_eval.get("p_text", 0.0), 0.0)
 
     c_local = local_coords(crop, subject_centroid[0], subject_centroid[1])
     d_third = distance_to_thirds(c_local)
@@ -2165,6 +2393,8 @@ def compute_candidate_scores(
         why_tags.append("avoid_person_cut")
     if route["flags"].get("has_copy_space", False):
         why_tags.append("copy_space_kept" if copyspace_ratio >= 0.25 else "copy_space_lost")
+    if bool(text_eval.get("available", False)):
+        why_tags.append("text_preserved" if bool(text_eval.get("pass", True)) else "text_cut_risk")
     why_tags.append("ar_fits_well" if abs(ar - target_ar) <= cfg.ar_hard_eps else "ar_mismatch")
     why_tags.append("tight_crop" if area < 0.35 else ("wide_crop" if area > 0.75 else "balanced_crop"))
 
@@ -2175,6 +2405,8 @@ def compute_candidate_scores(
         reject_tags.append("head_top_cut")
     if joint["joint_cut_score"] > 0.35 and "joint_cutoff" not in reject_tags:
         reject_tags.append("joint_cutoff")
+    if bool(text_eval.get("available", False)) and (not bool(text_eval.get("pass", True))) and "text_cutoff" not in reject_tags:
+        reject_tags.append("text_cutoff")
     if lr["gaze_dir"] in {"left", "right"} and not lr["pass"]:
         reject_tags.append("lookroom_violation")
 
@@ -2266,9 +2498,17 @@ def compute_candidate_scores(
                 "pass": bool((not f_cut) and (joint["joint_cut_score"] <= 0.35)),
             },
             "text": {
-                "text_keep_ratio": None,
-                "pass": True,
-                "skipped": "ocr_disabled",
+                "available": bool(text_eval.get("available", False)),
+                "method": str(text_eval.get("method", "unknown")),
+                "num_boxes": int(safe_float(text_eval.get("num_boxes", 0), 0.0)),
+                "coverage_ratio": float(text_eval.get("coverage_ratio", 0.0)),
+                "text_overlay_likely": bool(text_eval.get("text_overlay_likely", False)),
+                "text_keep_ratio": float(text_eval.get("text_keep_ratio", 1.0)),
+                "cut_box_ratio": float(text_eval.get("cut_box_ratio", 0.0)),
+                "severe_cut_ratio": float(text_eval.get("severe_cut_ratio", 0.0)),
+                "target_keep_ratio": float(text_eval.get("target_keep_ratio", cfg.text_keep_min_default)),
+                "severe_ratio_max": float(text_eval.get("severe_ratio_max", cfg.text_severe_ratio_max_default)),
+                "pass": bool(text_eval.get("pass", True)),
             },
         },
         "why_tags": sorted(set(why_tags)),
@@ -2636,6 +2876,7 @@ def process_one_image(
 
     c3_info = collect_c3_info(feat_rec=feat_rec, width=width, height=height, cfg=cfg)
     c5_info = collect_c5_info(feat_rec=feat_rec)
+    c4_info = collect_c4_info(feat_rec=feat_rec, width=width, height=height)
 
     c2_person_count = count_c2_person_instances(feat_rec)
     num_people = c3_info["num_people"]
@@ -2719,6 +2960,7 @@ def process_one_image(
                     subject_centroid=subject_centroid,
                     c3_info=c3_info,
                     c5_info=c5_info,
+                    c4_info=c4_info,
                     route=route,
                     cfg=cfg,
                 )
@@ -3236,7 +3478,7 @@ def run(args: argparse.Namespace) -> None:
         s.cheap_kept_mean /= denom
 
     overview = {
-        "schema_version": "teacher_scorer_v2_real_expensive_no_ocr",
+        "schema_version": "teacher_scorer_v3_real_expensive_c4ocr",
         "config": asdict(cfg),
         "inputs": {
             "candidates_jsonl": str(cand_path),

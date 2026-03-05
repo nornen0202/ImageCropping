@@ -2,10 +2,10 @@
 # ==============================================================================
 # run_phaseA_to_teacher_e2e.sh
 # End-to-end pipeline:
-#   Phase A Filter -> Phase B Perception Precompute(C1,C2,C3,C5, enrich, merge)
+#   Phase A Filter -> Phase B Perception Precompute(C1,C2,C3,C4,C5, enrich, merge)
 #   -> Candidate Generator -> Teacher Scorer(+QA/+Viz) -> VLM Teacher Labeler(Section 10, optional)
 # ------------------------------------------------------------------------------
-# OCR(C4)는 기본적으로 제외합니다.
+# C4 OCR(PP-OCRv5 det-only) 지원.
 # ==============================================================================
 
 : <<'USAGE'
@@ -20,7 +20,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh --server_mode 1 --data_dir data/SS
 # 필터는 건너뛰고(이미 parquet 있음) 나머지만 실행
 bash src/scripts/run_phaseA_to_teacher_e2e.sh --run_filter 0 --skip_existing 1
 
-# C1/C2/C3/C5를 한 번에 추출 (기본: unified, run_c1=1일 때 C1 포함)
+# C1/C2/C3/C4/C5를 한 번에 추출 (기본: unified, run_c1=1일 때 C1 포함)
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --precompute_mode unified \
   --run_filter 0
@@ -63,7 +63,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/10K_local \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 0 \
   --run_teacher 0 \
   --run_vlm_teacher 1 \
@@ -99,7 +99,7 @@ Core options
 --cand_num_workers INT          candidate 생성 멀티프로세스 worker 수 (0=auto, 1=single)
 --cand_mp_chunksize INT         candidate 멀티프로세스 map chunksize (default: 64)
 --cand_mp_start_method STR      candidate mp 시작 방식(auto|fork|forkserver|spawn)
---run_component_viz 0|1         precompute(C2/C3/C5) 시각화 자동 생성 여부 (default: 0)
+--run_component_viz 0|1         precompute(C2/C3/C4/C5/C6) 시각화 자동 생성 여부 (default: 0)
 --component_viz_num_samples INT precompute 시각화 샘플 수 (default: 120)
 --component_viz_out_dir PATH    precompute 시각화 출력 경로 (default: <data_dir>/artifacts/precompute/visualizations/components<suffix>)
 --component_viz_image_ids CSV   precompute 시각화 대상 image_id CSV(명시 시 우선)
@@ -178,7 +178,9 @@ Advanced stage toggles
 --run_c2 0|1                    (default: 1)
 --run_c3 0|1                    (default: 1)
 --run_c3_enrich 0|1             (default: 1)
+--run_c4 0|1                    (default: 1)
 --run_c5 0|1                    (default: 1)
+--run_c6 0|1                    (default: 1)
 --run_merge 0|1                 (default: 1)
 --run_subject_routing 0|1       merged feats에 subject_mode/c2_topn 주입 (default: 1)
 --subject_routing_top_n INT     C2 top-N instance 수 (default: 5)
@@ -192,7 +194,7 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$PROJECT_ROOT"
-SCRIPT_VERSION="2026-02-27.6"
+SCRIPT_VERSION="2026-03-05.1"
 
 # ------------------------------------------------------------------------------
 # Defaults
@@ -224,8 +226,11 @@ PREFER_CURATED_IMAGES=1
 RUN_C1=-1
 RUN_C2=1
 RUN_C3=1
+RUN_C4=1
 RUN_C3_ENRICH=1
 RUN_C5=1
+RUN_C6=1
+RUN_C6_EXPLICIT=0
 RUN_MERGE=1
 RUN_SUBJECT_ROUTING=1
 SUBJECT_ROUTING_TOP_N=5
@@ -371,8 +376,10 @@ while [ "$#" -gt 0 ]; do
     --run_c1) RUN_C1="$2"; shift 2 ;;
     --run_c2) RUN_C2="$2"; shift 2 ;;
     --run_c3) RUN_C3="$2"; shift 2 ;;
+    --run_c4) RUN_C4="$2"; shift 2 ;;
     --run_c3_enrich) RUN_C3_ENRICH="$2"; shift 2 ;;
     --run_c5) RUN_C5="$2"; shift 2 ;;
+    --run_c6) RUN_C6="$2"; RUN_C6_EXPLICIT=1; shift 2 ;;
     --run_merge) RUN_MERGE="$2"; shift 2 ;;
     --run_subject_routing) RUN_SUBJECT_ROUTING="$2"; shift 2 ;;
     --subject_routing_top_n) SUBJECT_ROUTING_TOP_N="$2"; shift 2 ;;
@@ -517,6 +524,17 @@ if [ "$RUN_C1" -lt 0 ]; then
   fi
 fi
 
+# Backward-compatibility guard:
+# if user explicitly disabled C3 but did not mention C6, keep C6 off as well.
+if [ "$RUN_C6_EXPLICIT" -eq 0 ] && [ "$RUN_C3" -eq 0 ]; then
+  RUN_C6=0
+fi
+
+if [ "$RUN_C6" -eq 1 ] && [ "$RUN_C3" -eq 0 ]; then
+  echo "[warn] --run_c6=1 requires c3 poses. forcing --run_c3=1"
+  RUN_C3=1
+fi
+
 if [ "$TEACHER_MULTI_GPU" -gt 1 ]; then
   echo "[warn] --teacher_multi_gpu expects -1|0|1. got=${TEACHER_MULTI_GPU}, treating as 1"
   TEACHER_MULTI_GPU=1
@@ -590,7 +608,9 @@ FEATS_C1="${PRECOMPUTE_DIR}/feats_c1.jsonl"
 FEATS_C2="${PRECOMPUTE_DIR}/feats_c2.jsonl"
 FEATS_C3="${PRECOMPUTE_DIR}/feats_c3_v2_strict.jsonl"
 FEATS_C3_ENRICHED="${PRECOMPUTE_DIR}/feats_c3_v2_strict_enriched.jsonl"
+FEATS_C4="${PRECOMPUTE_DIR}/feats_c4.jsonl"
 FEATS_C5="${PRECOMPUTE_DIR}/feats_c5.jsonl"
+FEATS_C6="${PRECOMPUTE_DIR}/feats_c6.jsonl"
 FEATS_C2C3C5_RAW="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_raw.jsonl"
 MERGED_FEATS="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched.jsonl"
 MERGED_FEATS_ROUTED="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed.jsonl"
@@ -757,7 +777,9 @@ promote_from_legacy_or_cleanup "$FEATS_C1"
 promote_from_legacy_or_cleanup "$FEATS_C2"
 promote_from_legacy_or_cleanup "$FEATS_C3"
 promote_from_legacy_or_cleanup "$FEATS_C3_ENRICHED"
+promote_from_legacy_or_cleanup "$FEATS_C4"
 promote_from_legacy_or_cleanup "$FEATS_C5"
+promote_from_legacy_or_cleanup "$FEATS_C6"
 promote_from_legacy_or_cleanup "$FEATS_C2C3C5_RAW"
 promote_from_legacy_or_cleanup "$MERGED_FEATS"
 promote_from_legacy_or_cleanup "$MERGED_FEATS_ROUTED"
@@ -822,7 +844,7 @@ echo " run_filter          : $RUN_FILTER"
 echo " export_curated_img  : $EXPORT_CURATED_IMAGES (dir=$CURATED_IMAGE_DIR, skip_existing=$CURATED_IMAGE_SKIP_EXISTING)"
 echo " prefer_curated_img  : $PREFER_CURATED_IMAGES (effective=${EFFECTIVE_IMAGE_DIR:-<none>})"
 echo " extract_mode        : $EXTRACT_MODE (gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
-echo " run_c1/c2/c3/c5    : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C5"
+echo " run_c1/c2/c3/c4/c5/c6 : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C4/$RUN_C5/$RUN_C6"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
 echo " subject routing     : run=$RUN_SUBJECT_ROUTING top_n=$SUBJECT_ROUTING_TOP_N union_top_m=$SUBJECT_ROUTING_UNION_TOP_M det_proxy=$SUBJECT_ROUTING_ALLOW_DET_PROXY"
 echo " run_component_viz   : $RUN_COMPONENT_VIZ (out=$COMPONENT_VIZ_OUT_DIR, num_samples=$COMPONENT_VIZ_NUM_SAMPLES)"
@@ -887,8 +909,8 @@ fi
 # 2) Phase B Perception Precompute
 # ------------------------------------------------------------------------------
 if [ "$PRECOMPUTE_MODE" = "unified" ]; then
-  # Quality-first path: single pass for C1/C2/C3/C5 to avoid repeated tar traversal.
-  if [ "$RUN_C1" -eq 1 ] || [ "$RUN_C2" -eq 1 ] || [ "$RUN_C3" -eq 1 ] || [ "$RUN_C5" -eq 1 ]; then
+  # Quality-first path: single pass for C1/C2/C3/C4/C5/C6 to avoid repeated tar traversal.
+  if [ "$RUN_C1" -eq 1 ] || [ "$RUN_C2" -eq 1 ] || [ "$RUN_C3" -eq 1 ] || [ "$RUN_C4" -eq 1 ] || [ "$RUN_C5" -eq 1 ] || [ "$RUN_C6" -eq 1 ]; then
     if ! should_skip_file "$FEATS_C2C3C5_RAW"; then
       comp_args=()
       if [ "$RUN_C1" -eq 1 ]; then
@@ -900,8 +922,14 @@ if [ "$PRECOMPUTE_MODE" = "unified" ]; then
       if [ "$RUN_C3" -eq 1 ]; then
         comp_args+=("c3")
       fi
+      if [ "$RUN_C4" -eq 1 ]; then
+        comp_args+=("c4")
+      fi
       if [ "$RUN_C5" -eq 1 ]; then
         comp_args+=("c5")
+      fi
+      if [ "$RUN_C6" -eq 1 ]; then
+        comp_args+=("c6")
       fi
       if [ "${#comp_args[@]}" -gt 0 ]; then
         run_with_log_env "02_extract_precompute_unified" \
@@ -936,6 +964,7 @@ if [ "$PRECOMPUTE_MODE" = "unified" ]; then
   FEATS_C2="$MERGED_FEATS"
   FEATS_C3_ENRICHED="$MERGED_FEATS"
   FEATS_C5="$MERGED_FEATS"
+  FEATS_C6="$MERGED_FEATS"
   if [ "$RUN_C1" -eq 1 ]; then
     # Prefer unified raw jsonl as C1 source. It is generated in the same pass and
     # is not affected by stale enriched-file reuse when skip_existing=1.
@@ -980,11 +1009,27 @@ else
 
   if [ "$RUN_C3" -eq 1 ]; then
     if ! should_skip_file "$FEATS_C3"; then
-      run_with_log_env "04_extract_c3_strict" \
+      c3_comp_args=("c3")
+      c3_stage="04_extract_c3_strict"
+      if [ "$RUN_C6" -eq 1 ]; then
+        c3_comp_args=("c3" "c6")
+        c3_stage="04_extract_c3_c6_strict"
+      fi
+      run_with_log_env "$c3_stage" \
         C3_PERSON_VERIFY_STRICT="$C3_PERSON_VERIFY_STRICT" \
         bash src/scripts/run_extract_component.sh \
           "$FILTERED_PARQUET" "$BUCKET" "$FEATS_C3" \
-          --component c3 \
+          --component "${c3_comp_args[@]}" \
+          "${extract_common_args[@]}"
+    fi
+  fi
+
+  if [ "$RUN_C4" -eq 1 ]; then
+    if ! should_skip_file "$FEATS_C4"; then
+      run_with_log "05_extract_c4" \
+        bash src/scripts/run_extract_component.sh \
+          "$FILTERED_PARQUET" "$BUCKET" "$FEATS_C4" \
+          --component c4 \
           "${extract_common_args[@]}"
     fi
   fi
@@ -995,7 +1040,7 @@ else
       exit 1
     fi
     if ! should_skip_file "$FEATS_C3_ENRICHED"; then
-      run_with_log "05_enrich_c3" \
+      run_with_log "06_enrich_c3" \
         python3 src/scripts/enrich_c3_pose_jsonl.py \
           --input_c3_jsonl "$FEATS_C3" \
           --input_parquet "$FILTERED_PARQUET" \
@@ -1025,7 +1070,7 @@ else
       if [ -n "$EXTRACT_GPU_IDS" ]; then
         c5_args+=(--gpu_ids "$EXTRACT_GPU_IDS")
       fi
-      run_with_log "06_extract_c5" \
+      run_with_log "07_extract_c5" \
         bash src/scripts/run_extract_component.sh \
           "$FILTERED_PARQUET" "$BUCKET" "$FEATS_C5" \
           --component c5 \
@@ -1046,11 +1091,19 @@ else
       echo "[error] c5 jsonl not found: $FEATS_C5"
       exit 1
     fi
+    merge_inputs=("$FEATS_C2" "$FEATS_C3_ENRICHED" "$FEATS_C5")
+    if [ "$RUN_C4" -eq 1 ]; then
+      if [ ! -f "$FEATS_C4" ]; then
+        echo "[error] c4 jsonl not found: $FEATS_C4"
+        exit 1
+      fi
+      merge_inputs+=("$FEATS_C4")
+    fi
     if ! should_skip_file "$MERGED_FEATS"; then
-      run_with_log "07_merge_features" \
+      run_with_log "08_merge_features" \
         python3 src/scripts/merge_feature_jsonl.py \
           --input_parquet "$FILTERED_PARQUET" \
-          --inputs "$FEATS_C2" "$FEATS_C3_ENRICHED" "$FEATS_C5" \
+          --inputs "${merge_inputs[@]}" \
           --output_jsonl "$MERGED_FEATS"
     fi
   fi
@@ -1086,6 +1139,7 @@ fi
 FEATS_C2="$DOWNSTREAM_FEATS"
 FEATS_C3_ENRICHED="$DOWNSTREAM_FEATS"
 FEATS_C5="$DOWNSTREAM_FEATS"
+FEATS_C6="$DOWNSTREAM_FEATS"
 
 # ------------------------------------------------------------------------------
 # 2.5) Precompute Visualization (optional)
@@ -1103,7 +1157,9 @@ if [ "$RUN_COMPONENT_VIZ" -eq 1 ]; then
       --num_samples "$COMPONENT_VIZ_NUM_SAMPLES"
       --draw_c2 1
       --draw_c3 1
+      --draw_c4 1
       --draw_c5 1
+      --draw_c6 1
       --draw_combined 1
       --server_mode "$SERVER_MODE"
       --venv_path "$VENV_PATH"
@@ -1444,10 +1500,10 @@ echo " Done"
 echo "========================================================"
 echo " filtered parquet : $FILTERED_PARQUET"
 if [ "$PRECOMPUTE_MODE" = "unified" ]; then
-  echo " precompute raw    : $FEATS_C2C3C5_RAW"
+  echo " precompute raw    : $FEATS_C2C3C5_RAW (unified C1/C2/C3/C4/C5/C6)"
 fi
 echo " feats c1          : $FEATS_C1"
-echo " feats c2/c3e/c5  : $FEATS_C2 | $FEATS_C3_ENRICHED | $FEATS_C5"
+echo " feats c2/c3e/c4/c5/c6: $FEATS_C2 | $FEATS_C3_ENRICHED | $FEATS_C4 | $FEATS_C5 | $FEATS_C6"
 echo " merged feats     : $MERGED_FEATS"
 if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
   echo " routed feats     : $MERGED_FEATS_ROUTED"

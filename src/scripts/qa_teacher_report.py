@@ -76,6 +76,10 @@ def make_bucket() -> Dict[str, Any]:
         "joint_cut_count": 0,
         "subject_cov_fail_count": 0,
         "subject_cut_risk_count": 0,
+        "text_fail_count": 0,
+        "text_keep_ratio": [],
+        "text_penalty": [],
+        "text_available_count": 0,
         "copyspace_subset_count": 0,
         "copyspace_preserve_count": 0,
         "portrait_route_count": 0,
@@ -178,6 +182,15 @@ def update_bucket(
     if isinstance(comps, dict):
         src = str(comps.get("expensive_source", "unknown"))
         bucket["expensive_source"][src] += 1
+        bucket["text_penalty"].append(safe_float(comps.get("p_text", 0.0), 0.0))
+
+    text_check = top1.get("composition_checks", {}).get("text", {})
+    if isinstance(text_check, dict):
+        if bool(text_check.get("available", False)):
+            bucket["text_available_count"] += 1
+        bucket["text_keep_ratio"].append(safe_float(text_check.get("text_keep_ratio", 1.0), 1.0))
+        if not bool(text_check.get("pass", True)):
+            bucket["text_fail_count"] += 1
 
     routing = ar_res.get("routing", {}) if isinstance(ar_res.get("routing"), dict) else {}
     if not routing:
@@ -282,6 +295,8 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
     sm_conf = [float(v) for v in bucket["subject_mode_conf"]]
     c2_num_inst = [int(v) for v in bucket["c2_num_inst"]]
     proposal_n = int(bucket["proposal_injected_count"])
+    text_keep = [float(v) for v in bucket["text_keep_ratio"]]
+    text_penalty = [float(v) for v in bucket["text_penalty"]]
 
     return {
         "count": int(bucket["count"]),
@@ -353,6 +368,16 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
             "joint_cut_rate": float(bucket["joint_cut_count"]) / n,
             "subject_coverage_fail_rate": float(bucket["subject_cov_fail_count"]) / n,
             "subject_cut_risk_rate": float(bucket["subject_cut_risk_count"]) / n,
+            "text_fail_rate": float(bucket["text_fail_count"]) / n,
+            "text_available_rate": float(bucket["text_available_count"]) / n,
+        },
+        "text_quality": {
+            "text_keep_ratio_mean": mean(text_keep) if text_keep else 1.0,
+            "text_keep_ratio_p10": percentile(text_keep, 0.10),
+            "text_keep_ratio_p50": percentile(text_keep, 0.50),
+            "text_keep_ratio_p90": percentile(text_keep, 0.90),
+            "text_penalty_mean": mean(text_penalty) if text_penalty else 0.0,
+            "text_penalty_p90": percentile(text_penalty, 0.90),
         },
         "routing_consistency": {
             "portrait_route_rate": float(bucket["portrait_route_count"]) / n,

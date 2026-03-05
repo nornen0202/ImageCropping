@@ -40,7 +40,7 @@
 #   (1) INPUT_PARQUET : 필터링된 parquet 파일 경로
 #   (2) BUCKET        : 버킷명 (예: sstk_100)
 #   (3) OUTPUT_JSONL  : 결과 저장 경로
-#   --component       : 실행할 컴포넌트 목록 (c1 c2 c3 c4 c5 all) [기본: all]
+#   --component       : 실행할 컴포넌트 목록 (c1 c2 c3 c4 c5 c6 all) [기본: all]
 #   --priority        : high_efficiency | quality_first  [기본: high_efficiency]
 #   --mode            : auto | single | multi | ray      [기본: auto]
 #                       * multi = No-Ray 멀티 GPU 샤딩
@@ -88,6 +88,12 @@ bash src/scripts/run_extract_component.sh \
    data/SSTK/10K_local/filtered_sstk_100.parquet sstk_100 \
    data/SSTK/10K_local/feats_c3.jsonl \
    --component c3 --priority quality_first --server_mode 0
+
+# [로컬 — C6(gaze/headpose)만 추출]
+bash src/scripts/run_extract_component.sh \
+   data/SSTK/10K_local/filtered_sstk_100.parquet sstk_100 \
+   data/SSTK/10K_local/feats_c6.jsonl \
+   --component c6 --priority quality_first --server_mode 0
 
 # [서버 — C1+C2+C3만, quality_first]
 bash src/scripts/run_extract_component.sh \
@@ -274,7 +280,7 @@ if [ "$SERVER_MODE" -ne 1 ]; then
 fi
 
 # ── PYTHONPATH (extract_features/ + third_party 포함) ────────────────────────
-export PYTHONPATH="${SRC_DIR}/extract_features:${PROJECT_ROOT}/third_party/efficientvit:${PROJECT_ROOT}/third_party/sam2:${PYTHONPATH:-}"
+export PYTHONPATH="${SRC_DIR}/extract_features:${PROJECT_ROOT}/third_party/efficientvit:${PROJECT_ROOT}/third_party/sam2:${PROJECT_ROOT}/third_party/scalelsd:${PROJECT_ROOT}/third_party/gazelle:${PYTHONPATH:-}"
 export CUDA_DEVICE_ORDER="PCI_BUS_ID"
 export OMP_NUM_THREADS=8
 export RAY_IGNORE_UNHANDLED_ERRORS=1

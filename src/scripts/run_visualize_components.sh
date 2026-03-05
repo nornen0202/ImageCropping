@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # run_visualize_components.sh
-# C2/C3/C5 컴포넌트 및 통합(한 장에 overlay) 시각화 실행 스크립트
+# C2/C3/C4/C5/C6 컴포넌트 및 통합(한 장에 overlay) 시각화 실행 스크립트
 # ==============================================================================
 # USAGE
 #   bash src/scripts/run_visualize_components.sh <parquet> <tar_dir> <out_dir> [options...]
@@ -12,18 +12,22 @@
 #   (3) OUT_DIR   : 시각화 출력 디렉토리
 #
 # Options:
-#   --merged_jsonl PATH   : 병합 피처 jsonl (c2/c3/c5 동시 로드)
+#   --merged_jsonl PATH   : 병합 피처 jsonl (c2/c3/c4/c5/c6 동시 로드)
 #   --c2_jsonl PATH       : c2 jsonl
 #   --c3_jsonl PATH       : c3 jsonl
+#   --c4_jsonl PATH       : c4 jsonl
 #   --c5_jsonl PATH       : c5 jsonl
+#   --c6_jsonl PATH       : c6 jsonl
 #   --image_dir PATH      : curated 이미지 디렉토리(<image_id>.<ext>) 우선 로드
 #   --image_ids ...       : 시각화할 image_id 목록 (space/comma 혼합 가능)
 #   --image_ids_file PATH : 시각화할 image_id 파일(한 줄당 1개)
 #   --num_samples N       : 샘플 수
 #   --draw_c2 0|1         : c2 개별 이미지 저장 여부
 #   --draw_c3 0|1         : c3 개별 이미지 저장 여부
+#   --draw_c4 0|1         : c4 개별 이미지 저장 여부
 #   --draw_c5 0|1         : c5 개별 이미지 저장 여부
-#   --draw_combined 0|1   : c2+c3+c5 통합 overlay 저장 여부
+#   --draw_c6 0|1         : c6 개별 이미지 저장 여부
+#   --draw_combined 0|1   : c2+c3+c4+c5+c6 통합 overlay 저장 여부
 #   --max_masks_per_image N
 #   --kp_score_thr FLOAT
 #   --server_mode 0|1     : 0=로컬(venv 활성화), 1=서버
@@ -46,7 +50,9 @@
      data/SSTK/10K/artifacts/precompute/visualizations/components_v2_server \
      --c2_jsonl data/SSTK/10K/artifacts/precompute/feats_c2.jsonl \
      --c3_jsonl data/SSTK/10K/artifacts/precompute/feats_c3_v2_strict_enriched.jsonl \
+     --c4_jsonl data/SSTK/10K/artifacts/precompute/feats_c4.jsonl \
      --c5_jsonl data/SSTK/10K/artifacts/precompute/feats_c5.jsonl \
+     --c6_jsonl data/SSTK/10K/artifacts/precompute/feats_c6.jsonl \
      --draw_combined 1 --num_samples 300 --server_mode 1
 # ==============================================================================
 USAGE

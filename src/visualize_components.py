@@ -1,5 +1,5 @@
 """
-Component visualization utility for C2/C3/C5 features.
+Component visualization utility for C2/C3/C4/C5/C6 features.
 
 Examples
 --------
@@ -8,7 +8,9 @@ Local (separate jsonl):
       --parquet data/SSTK/10K_local/filtered_sstk_100.parquet \
       --c2_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c2.jsonl \
       --c3_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c3_v2_strict_enriched.jsonl \
+      --c4_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c4.jsonl \
       --c5_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c5.jsonl \
+      --c6_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c6.jsonl \
       --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
       --out_dir data/SSTK/10K_local/artifacts/precompute/visualizations/components_v2_local \
       --num_samples 100 \
@@ -172,6 +174,10 @@ def clip_pt(x: float, y: float, w: int, h: int) -> Tuple[int, int]:
     return xx, yy
 
 
+def clamp01(v: float) -> float:
+    return max(0.0, min(1.0, float(v)))
+
+
 def draw_c2_layer(
     image_bgr: np.ndarray,
     c2_list: Sequence[Dict[str, Any]],
@@ -330,6 +336,140 @@ def draw_c3_layer(
     return out
 
 
+def _box_from_quad(quad: Any) -> Optional[List[float]]:
+    if not isinstance(quad, (list, tuple)) or len(quad) < 4:
+        return None
+    xs: List[float] = []
+    ys: List[float] = []
+    for p in quad:
+        if isinstance(p, (list, tuple)) and len(p) >= 2:
+            xs.append(float(p[0]))
+            ys.append(float(p[1]))
+    if not xs or not ys:
+        return None
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def _to_abs_box_xyxy(box_any: Any, w: int, h: int) -> Optional[Tuple[int, int, int, int]]:
+    if not isinstance(box_any, (list, tuple)) or len(box_any) != 4:
+        return None
+    vals = [float(v) for v in box_any]
+    if max(abs(v) for v in vals) <= 1.5:
+        x1, y1, x2, y2 = vals
+        x1 *= float(w)
+        y1 *= float(h)
+        x2 *= float(w)
+        y2 *= float(h)
+    else:
+        x1, y1, x2, y2 = vals
+    p1 = clip_pt(x1, y1, w, h)
+    p2 = clip_pt(x2, y2, w, h)
+    return p1[0], p1[1], p2[0], p2[1]
+
+
+def to_c4_boxes(c4_value: Any) -> List[Dict[str, Any]]:
+    if isinstance(c4_value, dict):
+        boxes = c4_value.get("boxes", [])
+        return boxes if isinstance(boxes, list) else []
+    if isinstance(c4_value, list):
+        return c4_value
+    return []
+
+
+def draw_c4_layer(image_bgr: np.ndarray, c4_value: Any) -> np.ndarray:
+    out = image_bgr.copy()
+    h, w = out.shape[:2]
+    boxes = to_c4_boxes(c4_value)
+    color = (0, 255, 255)
+    kept = 0
+    for idx, item in enumerate(boxes):
+        if not isinstance(item, dict):
+            continue
+        box_abs: Optional[Tuple[int, int, int, int]] = None
+        for key in ("box_xyxy", "box_norm_xyxy", "box"):
+            if key not in item:
+                continue
+            src = item.get(key)
+            if key == "box":
+                src = _box_from_quad(src)
+            box_abs = _to_abs_box_xyxy(src, w=w, h=h)
+            if box_abs is not None:
+                break
+        if box_abs is None:
+            continue
+        x1, y1, x2, y2 = box_abs
+        cv2.rectangle(out, (x1, y1), (x2, y2), color, 2)
+        score = float(item.get("score", 0.0))
+        cv2.putText(
+            out,
+            f"t{idx} s={score:.2f}",
+            (x1, max(0, y1 - 5)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.45,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
+        kept += 1
+    cv2.putText(
+        out,
+        f"ocr_boxes={kept}",
+        (8, 18),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.45,
+        color,
+        1,
+        cv2.LINE_AA,
+    )
+    return out
+
+
+def to_c6_people(c6_value: Any) -> List[Dict[str, Any]]:
+    if isinstance(c6_value, dict):
+        people = c6_value.get("people", [])
+        return people if isinstance(people, list) else []
+    if isinstance(c6_value, list):
+        return c6_value
+    return []
+
+
+def draw_c6_layer(image_bgr: np.ndarray, c6_value: Any) -> np.ndarray:
+    out = image_bgr.copy()
+    h, w = out.shape[:2]
+    people = to_c6_people(c6_value)
+    head_color = (0, 165, 255)
+    gaze_color = (255, 80, 80)
+    for idx, p in enumerate(people):
+        if not isinstance(p, dict):
+            continue
+        head_box = p.get("head_bbox_norm_xyxy")
+        if isinstance(head_box, (list, tuple)) and len(head_box) == 4:
+            box_abs = _to_abs_box_xyxy([clamp01(v) for v in head_box], w=w, h=h)
+            if box_abs is not None:
+                x1, y1, x2, y2 = box_abs
+                cv2.rectangle(out, (x1, y1), (x2, y2), head_color, 2)
+        else:
+            x1 = y1 = x2 = y2 = None
+
+        gaze_xy = p.get("gaze_target_norm_xy")
+        origin: Optional[Tuple[int, int]] = None
+        if all(v is not None for v in (x1, y1, x2, y2)):
+            origin = to_int_pt((x1 + x2) * 0.5, (y1 + y2) * 0.5)
+        if isinstance(gaze_xy, (list, tuple)) and len(gaze_xy) == 2 and origin is not None:
+            gx = clamp01(float(gaze_xy[0])) * float(w)
+            gy = clamp01(float(gaze_xy[1])) * float(h)
+            target = clip_pt(gx, gy, w, h)
+            cv2.arrowedLine(out, origin, target, gaze_color, 2, cv2.LINE_AA, tipLength=0.22)
+
+        gdir = str(p.get("gaze_dir", "unknown"))
+        conf = float(p.get("conf", 0.0))
+        pid = int(p.get("person_index", idx))
+        txt = f"p{pid} g={gdir} c={conf:.2f}"
+        text_y = 18 + idx * 16
+        cv2.putText(out, txt, (8, min(h - 6, text_y)), cv2.FONT_HERSHEY_SIMPLEX, 0.45, head_color, 1, cv2.LINE_AA)
+    return out
+
+
 def _denorm_line(line_norm_xyxy: Sequence[float], w: int, h: int) -> Tuple[Tuple[int, int], Tuple[int, int]]:
     x1n, yn1, x2n, yn2 = [float(v) for v in line_norm_xyxy]
     p1 = clip_pt(x1n * w, yn1 * h, w, h)
@@ -416,10 +556,14 @@ def load_component_map(path: str, key: str) -> Dict[str, Any]:
     return out
 
 
-def load_feature_maps(args: argparse.Namespace) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
+def load_feature_maps(
+    args: argparse.Namespace,
+) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any], Dict[str, Any]]:
     c2_map: Dict[str, Any] = {}
     c3_map: Dict[str, Any] = {}
+    c4_map: Dict[str, Any] = {}
     c5_map: Dict[str, Any] = {}
+    c6_map: Dict[str, Any] = {}
 
     # 1) merged map (if provided)
     if args.merged_jsonl and Path(args.merged_jsonl).exists():
@@ -436,37 +580,53 @@ def load_feature_maps(args: argparse.Namespace) -> Tuple[Dict[str, Any], Dict[st
                     c2_map[img_id] = d.get("c2_seg", [])
                 if "c3_pose" in d:
                     c3_map[img_id] = d.get("c3_pose", [])
+                if "c4_ocr" in d:
+                    c4_map[img_id] = d.get("c4_ocr", [])
                 if "c5_geom" in d:
                     c5_map[img_id] = d.get("c5_geom", {})
+                if "c6_gaze" in d:
+                    c6_map[img_id] = d.get("c6_gaze", {})
 
     # 2) dedicated component maps override merged for explicit control.
     if args.c2_jsonl:
         c2_map.update(load_component_map(args.c2_jsonl, "c2_seg"))
     if args.c3_jsonl:
         c3_map.update(load_component_map(args.c3_jsonl, "c3_pose"))
+    if args.c4_jsonl:
+        c4_map.update(load_component_map(args.c4_jsonl, "c4_ocr"))
     if args.c5_jsonl:
         c5_map.update(load_component_map(args.c5_jsonl, "c5_geom"))
+    if args.c6_jsonl:
+        c6_map.update(load_component_map(args.c6_jsonl, "c6_gaze"))
 
-    return c2_map, c3_map, c5_map
+    return c2_map, c3_map, c4_map, c5_map, c6_map
 
 
 def should_use_image(
     image_id: str,
     c2_map: Dict[str, Any],
     c3_map: Dict[str, Any],
+    c4_map: Dict[str, Any],
     c5_map: Dict[str, Any],
+    c6_map: Dict[str, Any],
     draw_c2: bool,
     draw_c3: bool,
+    draw_c4: bool,
     draw_c5: bool,
+    draw_c6: bool,
 ) -> bool:
     if draw_c2 and len(c2_map.get(image_id, [])) > 0:
         return True
     if draw_c3 and len(c3_map.get(image_id, [])) > 0:
         return True
+    if draw_c4 and len(to_c4_boxes(c4_map.get(image_id, []))) > 0:
+        return True
     if draw_c5:
         c5 = to_c5_dict(c5_map.get(image_id, {}))
         if bool(c5):
             return True
+    if draw_c6 and len(to_c6_people(c6_map.get(image_id, {}))) > 0:
+        return True
     return False
 
 
@@ -475,12 +635,16 @@ def save_visualizations_for_image(
     raw_bgr: np.ndarray,
     c2_map: Dict[str, Any],
     c3_map: Dict[str, Any],
+    c4_map: Dict[str, Any],
     c5_map: Dict[str, Any],
+    c6_map: Dict[str, Any],
     args: argparse.Namespace,
 ) -> None:
     c2 = c2_map.get(image_id, [])
     c3 = c3_map.get(image_id, [])
+    c4 = c4_map.get(image_id, [])
     c5 = c5_map.get(image_id, {})
+    c6 = c6_map.get(image_id, {})
 
     if as_bool_flag(args.draw_c2):
         vis = draw_c2_layer(raw_bgr, c2, max_masks=args.max_masks_per_image)
@@ -490,9 +654,17 @@ def save_visualizations_for_image(
         vis = draw_c3_layer(raw_bgr, c3, kp_thr=args.kp_score_thr)
         cv2.imwrite(str(Path(args.out_dir) / "c3_pose" / f"{image_id}.jpg"), vis)
 
+    if as_bool_flag(args.draw_c4):
+        vis = draw_c4_layer(raw_bgr, c4)
+        cv2.imwrite(str(Path(args.out_dir) / "c4_ocr" / f"{image_id}.jpg"), vis)
+
     if as_bool_flag(args.draw_c5):
         vis = draw_c5_layer(raw_bgr, c5)
         cv2.imwrite(str(Path(args.out_dir) / "c5_geom" / f"{image_id}.jpg"), vis)
+
+    if as_bool_flag(args.draw_c6):
+        vis = draw_c6_layer(raw_bgr, c6)
+        cv2.imwrite(str(Path(args.out_dir) / "c6_gaze" / f"{image_id}.jpg"), vis)
 
     if as_bool_flag(args.draw_combined):
         vis = raw_bgr.copy()
@@ -500,18 +672,24 @@ def save_visualizations_for_image(
             vis = draw_c2_layer(vis, c2, max_masks=args.max_masks_per_image)
         if as_bool_flag(args.draw_c3):
             vis = draw_c3_layer(vis, c3, kp_thr=args.kp_score_thr)
+        if as_bool_flag(args.draw_c4):
+            vis = draw_c4_layer(vis, c4)
         if as_bool_flag(args.draw_c5):
             vis = draw_c5_layer(vis, c5)
+        if as_bool_flag(args.draw_c6):
+            vis = draw_c6_layer(vis, c6)
         cv2.imwrite(str(Path(args.out_dir) / "combined_all" / f"{image_id}.jpg"), vis)
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Visualize C2/C3/C5 features")
+    parser = argparse.ArgumentParser(description="Visualize C2/C3/C4/C5/C6 features")
     parser.add_argument("--parquet", type=str, default="data/SSTK/10K_local/filtered_sstk_100.parquet")
     parser.add_argument("--merged_jsonl", type=str, default="")
     parser.add_argument("--c2_jsonl", type=str, default="")
     parser.add_argument("--c3_jsonl", type=str, default="")
+    parser.add_argument("--c4_jsonl", type=str, default="")
     parser.add_argument("--c5_jsonl", type=str, default="")
+    parser.add_argument("--c6_jsonl", type=str, default="")
     parser.add_argument("--tar_dir", type=str, required=True)
     parser.add_argument("--image_dir", type=str, default="", help="optional local curated image dir (<image_id>.<ext>)")
     parser.add_argument(
@@ -530,8 +708,10 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--draw_c2", type=int, default=1, help="1=save c2 layer, 0=skip")
     parser.add_argument("--draw_c3", type=int, default=1, help="1=save c3 layer, 0=skip")
+    parser.add_argument("--draw_c4", type=int, default=1, help="1=save c4 layer, 0=skip")
     parser.add_argument("--draw_c5", type=int, default=1, help="1=save c5 layer, 0=skip")
-    parser.add_argument("--draw_combined", type=int, default=0, help="1=save combined C2+C3+C5 overlay")
+    parser.add_argument("--draw_c6", type=int, default=1, help="1=save c6 layer, 0=skip")
+    parser.add_argument("--draw_combined", type=int, default=0, help="1=save combined C2+C3+C4+C5+C6 overlay")
 
     parser.add_argument("--max_masks_per_image", type=int, default=8)
     parser.add_argument("--kp_score_thr", type=float, default=0.05)
@@ -547,8 +727,12 @@ def main() -> None:
         (out_dir / "c2_seg").mkdir(parents=True, exist_ok=True)
     if as_bool_flag(args.draw_c3):
         (out_dir / "c3_pose").mkdir(parents=True, exist_ok=True)
+    if as_bool_flag(args.draw_c4):
+        (out_dir / "c4_ocr").mkdir(parents=True, exist_ok=True)
     if as_bool_flag(args.draw_c5):
         (out_dir / "c5_geom").mkdir(parents=True, exist_ok=True)
+    if as_bool_flag(args.draw_c6):
+        (out_dir / "c6_gaze").mkdir(parents=True, exist_ok=True)
     if as_bool_flag(args.draw_combined):
         (out_dir / "combined_all").mkdir(parents=True, exist_ok=True)
 
@@ -560,11 +744,11 @@ def main() -> None:
         mapping = df.set_index("image_id")[["tar_name"]].to_dict("index")
 
     print("Loading features...")
-    c2_map, c3_map, c5_map = load_feature_maps(args)
+    c2_map, c3_map, c4_map, c5_map, c6_map = load_feature_maps(args)
 
-    if not c2_map and not c3_map and not c5_map:
+    if not c2_map and not c3_map and not c4_map and not c5_map and not c6_map:
         raise RuntimeError(
-            "No features loaded. Provide --merged_jsonl or at least one of --c2_jsonl/--c3_jsonl/--c5_jsonl"
+            "No features loaded. Provide --merged_jsonl or at least one of --c2_jsonl/--c3_jsonl/--c4_jsonl/--c5_jsonl/--c6_jsonl"
         )
 
     print("Selecting samples...")
@@ -590,10 +774,14 @@ def main() -> None:
                 image_id=image_id,
                 c2_map=c2_map,
                 c3_map=c3_map,
+                c4_map=c4_map,
                 c5_map=c5_map,
+                c6_map=c6_map,
                 draw_c2=as_bool_flag(args.draw_c2),
                 draw_c3=as_bool_flag(args.draw_c3),
+                draw_c4=as_bool_flag(args.draw_c4),
                 draw_c5=as_bool_flag(args.draw_c5),
+                draw_c6=as_bool_flag(args.draw_c6),
             ):
                 selected_ids.append(image_id)
                 if args.num_samples > 0 and len(selected_ids) >= args.num_samples:
@@ -610,7 +798,7 @@ def main() -> None:
         if orig_path.exists():
             raw = cv2.imread(str(orig_path))
             if raw is not None:
-                save_visualizations_for_image(image_id, raw, c2_map, c3_map, c5_map, args)
+                save_visualizations_for_image(image_id, raw, c2_map, c3_map, c4_map, c5_map, c6_map, args)
                 rendered_ids.append(image_id)
                 continue
 
@@ -619,7 +807,7 @@ def main() -> None:
             raw = cv2.imread(str(local_img_path))
             if raw is not None:
                 cv2.imwrite(str(orig_path), raw)
-                save_visualizations_for_image(image_id, raw, c2_map, c3_map, c5_map, args)
+                save_visualizations_for_image(image_id, raw, c2_map, c3_map, c4_map, c5_map, c6_map, args)
                 rendered_ids.append(image_id)
                 continue
 
@@ -658,7 +846,7 @@ def main() -> None:
                     raw_bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
                     cv2.imwrite(str(out_dir / "original" / f"{base}.jpg"), raw_bgr)
 
-                    save_visualizations_for_image(base, raw_bgr, c2_map, c3_map, c5_map, args)
+                    save_visualizations_for_image(base, raw_bgr, c2_map, c3_map, c4_map, c5_map, c6_map, args)
                     rendered_ids.append(base)
 
                     id_set.remove(base)
@@ -676,7 +864,9 @@ def main() -> None:
             "merged_jsonl": str(args.merged_jsonl),
             "c2_jsonl": str(args.c2_jsonl),
             "c3_jsonl": str(args.c3_jsonl),
+            "c4_jsonl": str(args.c4_jsonl),
             "c5_jsonl": str(args.c5_jsonl),
+            "c6_jsonl": str(args.c6_jsonl),
             "tar_dir": str(args.tar_dir),
             "image_dir": str(args.image_dir),
         },

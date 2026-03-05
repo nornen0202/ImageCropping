@@ -13,7 +13,8 @@
 #   - EfficientViT / SAM2: NON-editable install, SAM2 CUDA ext 기본 비활성화
 #   - numpy<2.0.0 global constraints 적용
 #   - Qwen3-VL 런타임 심볼(Qwen3VLForConditionalGeneration) 자동 검증/보정
-#   - PaddleOCR: C4 OCR 비필수이므로 기본 비활성화 (주석 해제로 설치 가능)
+#     (PyPI 최신 우선 시도 후, 필요 시 GitHub fallback)
+#   - PaddleOCR: C4 OCR용 기본 활성화(필요 시 ENABLE_C4_OCR=0으로 비활성화)
 #
 # ==============================================================================
 # USAGE
@@ -53,6 +54,16 @@ NUMPY_CONSTRAINT="numpy<2.0.0"
 TRANSFORMERS_CONSTRAINT="transformers>=4.49.0,<4.53.0"
 # 1이면 Qwen3-VL 심볼을 강제 보장한다.
 ENABLE_QWEN3_VL="${ENABLE_QWEN3_VL:-1}"
+# 1이면 Qwen3 심볼 누락 시 먼저 PyPI/mirror에서 최신 transformers로 재시도한다.
+QWEN3_TRY_PYPI_LATEST="${QWEN3_TRY_PYPI_LATEST:-1}"
+# 1이면 PyPI 최신 재시도 후에도 실패할 때 GitHub source fallback을 허용한다.
+QWEN3_ALLOW_GITHUB_FALLBACK="${QWEN3_ALLOW_GITHUB_FALLBACK:-1}"
+# 1이면 C4 quality_first용 PaddleOCR(PP-OCRv5 runtime)를 설치한다.
+ENABLE_C4_OCR="${ENABLE_C4_OCR:-1}"
+# 1이면 C5 quality_first용 ScaleLSD를 설치 시도한다.
+ENABLE_SCALELSD="${ENABLE_SCALELSD:-1}"
+# 1이면 C6 quality_first용 Gazelle(Gaze-LLE)를 설치 시도한다.
+ENABLE_GAZELLE="${ENABLE_GAZELLE:-1}"
 
 # -----------------------------
 PYTHON="${PYTHON:-python}"
@@ -119,6 +130,20 @@ pip_install_noc() {
   $PIP install "${PIP_INSTALL_ARGS[@]}" "$@"
 }
 
+check_qwen3_symbol() {
+  $PYTHON - <<'PY'
+import sys
+try:
+    import transformers
+    has_qwen3 = hasattr(transformers, "Qwen3VLForConditionalGeneration")
+    print(f"  transformers={transformers.__version__} has_qwen3={has_qwen3}")
+    sys.exit(0 if has_qwen3 else 2)
+except Exception as exc:
+    print(f"  transformers import failed: {exc}")
+    sys.exit(3)
+PY
+}
+
 # -----------------------------
 # 0) Tooling (do NOT use openmim)
 # -----------------------------
@@ -164,42 +189,50 @@ pip_install -U "${NUMPY_CONSTRAINT}"
 pip_install -U \
   "${TRANSFORMERS_CONSTRAINT}" \
   "tokenizers>=0.21.0,<0.22.0" \
-  "huggingface-hub>=0.26.0"
+  "huggingface-hub>=0.26.0" \
+  "accelerate>=0.30.0"
 
 echo "2a) Verifying Qwen3-VL runtime symbol..."
 QWEN3_OK=0
-$PYTHON - <<'PY' || QWEN3_OK=$?
-import sys
-try:
-    import transformers
-    has_qwen3 = hasattr(transformers, "Qwen3VLForConditionalGeneration")
-    print(f"  transformers={transformers.__version__} has_qwen3={has_qwen3}")
-    sys.exit(0 if has_qwen3 else 2)
-except Exception as exc:
-    print(f"  transformers import failed: {exc}")
-    sys.exit(3)
-PY
+check_qwen3_symbol || QWEN3_OK=$?
 
 if [[ "${ENABLE_QWEN3_VL}" == "1" ]] && [[ "${QWEN3_OK}" -ne 0 ]]; then
-  echo "  [Fixup] Qwen3-VL class missing. Upgrading transformers from git head..."
-  # NOTE:
-  # - This step intentionally bypasses constraints(-c). Qwen3-VL 지원 심볼을 우선 보장한다.
-  # - 운영 환경에서 git 설치가 불가하면 ENABLE_QWEN3_VL=0으로 실행 후
-  #   Stage10 모델을 Qwen2.5-VL로 사용한다.
-  pip_install_noc -U \
-    "git+https://github.com/huggingface/transformers" \
-    "tokenizers>=0.21.0" \
-    "huggingface-hub>=0.26.0" \
-    "accelerate>=0.30.0"
+  if [[ "${QWEN3_TRY_PYPI_LATEST}" == "1" ]]; then
+    echo "  [Fixup-A] Qwen3-VL class missing. Trying latest transformers from PyPI/mirror..."
+    # NOTE:
+    # - This step intentionally bypasses constraints(-c). 사내 PyPI mirror를 통한 최신판을 우선 시도한다.
+    pip_install_noc -U \
+      "transformers" \
+      "tokenizers>=0.21.0" \
+      "huggingface-hub>=0.26.0" \
+      "accelerate>=0.30.0"
+    QWEN3_OK=0
+    check_qwen3_symbol || QWEN3_OK=$?
+  fi
 
-  $PYTHON - <<'PY'
-import sys
-import transformers
-has_qwen3 = hasattr(transformers, "Qwen3VLForConditionalGeneration")
-print(f"  transformers(after fixup)={transformers.__version__} has_qwen3={has_qwen3}")
-if not has_qwen3:
-    raise SystemExit("ERROR: Qwen3VLForConditionalGeneration still missing after fixup.")
-PY
+  if [[ "${QWEN3_OK}" -ne 0 ]] && [[ "${QWEN3_ALLOW_GITHUB_FALLBACK}" == "1" ]]; then
+    echo "  [Fixup-B] PyPI/mirror 최신판으로도 미해결. Trying transformers git head..."
+    # NOTE:
+    # - GitHub source fallback은 방화벽/정책 환경에서 실패할 수 있다.
+    pip_install_noc -U \
+      "git+https://github.com/huggingface/transformers" \
+      "tokenizers>=0.21.0" \
+      "huggingface-hub>=0.26.0" \
+      "accelerate>=0.30.0"
+    QWEN3_OK=0
+    check_qwen3_symbol || QWEN3_OK=$?
+  fi
+
+  if [[ "${QWEN3_OK}" -ne 0 ]]; then
+    echo "ERROR: Qwen3VLForConditionalGeneration still missing."
+    echo "  - ENABLE_QWEN3_VL=${ENABLE_QWEN3_VL}"
+    echo "  - QWEN3_TRY_PYPI_LATEST=${QWEN3_TRY_PYPI_LATEST}"
+    echo "  - QWEN3_ALLOW_GITHUB_FALLBACK=${QWEN3_ALLOW_GITHUB_FALLBACK}"
+    echo "Retry example:"
+    echo "  python -m pip install -U transformers \"tokenizers>=0.21.0\" \"huggingface-hub>=0.26.0\" \"accelerate>=0.30.0\""
+    echo "Or disable enforcement with ENABLE_QWEN3_VL=0 and use Qwen2.5-VL."
+    exit 1
+  fi
 elif [[ "${ENABLE_QWEN3_VL}" != "1" ]]; then
   echo "  [Info] ENABLE_QWEN3_VL=${ENABLE_QWEN3_VL}: skipping qwen3 symbol enforcement."
 fi
@@ -371,16 +404,33 @@ fi
 cd "${WORK_DIR}"
 
 # -----------------------------
-# 4) PaddleOCR
+# 4) PaddleOCR (default ON, C4 quality_first)
 # -----------------------------
-#echo "4) Installing PaddlePaddle-GPU + PaddleOCR..."
-#PADDLE_INSTALLED="$($PYTHON -m pip show paddlepaddle-gpu 2>/dev/null | awk '/^Version:/{print $2}' || true)"
-#if [[ "${PADDLE_INSTALLED}" == "${PADDLE_GPU_VER}" ]]; then
-#  echo "  [SKIP] paddlepaddle-gpu already installed: ${PADDLE_INSTALLED}"
-#else
-#  pip_install --no-cache-dir -i "${PADDLE_CUDA_INDEX}" "paddlepaddle-gpu==${PADDLE_GPU_VER}"
-#fi
-#pip_install "paddleocr>=2.0.1" imgaug "PyMuPDF<1.21.0"
+if [[ "${ENABLE_C4_OCR}" == "1" ]]; then
+  echo "4) Installing PaddlePaddle-GPU + PaddleOCR (C4 default ON)..."
+
+  # paddleocr 구버전 transitive 의존에서 jinja2 soft_unicode 이슈가 나는 환경 방지
+  pip_install_noc -U "jinja2>=3.1.4"
+
+  PADDLE_INSTALLED="$($PYTHON -m pip show paddlepaddle-gpu 2>/dev/null | awk '/^Version:/{print $2}' || true)"
+  if [[ "${PADDLE_INSTALLED}" == "${PADDLE_GPU_VER}" ]]; then
+    echo "  [SKIP] paddlepaddle-gpu already installed: ${PADDLE_INSTALLED}"
+  else
+    pip_install_noc --no-cache-dir -i "${PADDLE_CUDA_INDEX}" "paddlepaddle-gpu==${PADDLE_GPU_VER}"
+  fi
+
+  # PP-OCRv5 runtime API(TextDetection) 포함 버전 범위
+  pip_install_noc -U "paddleocr>=3.0.0"
+
+  $PYTHON - <<'PY'
+import paddle
+from paddleocr import TextDetection
+print("Paddle:", paddle.__version__)
+print("PaddleOCR TextDetection: OK")
+PY
+else
+  echo "4) Skipping PaddleOCR install (ENABLE_C4_OCR=${ENABLE_C4_OCR})"
+fi
 
 # -----------------------------
 # 5) EfficientViT
@@ -443,6 +493,46 @@ fi
 cd "${WORK_DIR}"
 
 # -----------------------------
+# 7) ScaleLSD (optional, C5 quality_first)
+# -----------------------------
+if [[ "${ENABLE_SCALELSD}" == "1" ]]; then
+  echo "7) Installing ScaleLSD (optional, C5 quality_first)..."
+  cd "${TP_DIR}"
+  if [[ ! -d "scalelsd" ]]; then
+    git clone --depth 1 https://github.com/ant-research/scalelsd.git
+  fi
+  cd "${TP_DIR}/scalelsd"
+
+  if ! install_filtered_requirements "requirements.txt"; then
+    echo "  [WARN] ScaleLSD requirements install failed. Continue anyway."
+  fi
+  if ! pip_install -v . --no-build-isolation; then
+    echo "  [WARN] ScaleLSD package install failed. C5 quality_first will fallback to Hough."
+  fi
+  cd "${WORK_DIR}"
+else
+  echo "7) Skipping ScaleLSD install (ENABLE_SCALELSD=${ENABLE_SCALELSD})"
+fi
+
+# -----------------------------
+# 8) Gazelle / Gaze-LLE (optional, C6 quality_first)
+# -----------------------------
+if [[ "${ENABLE_GAZELLE}" == "1" ]]; then
+  echo "8) Installing Gazelle (Gaze-LLE, optional, C6 quality_first)..."
+  cd "${TP_DIR}"
+  if [[ ! -d "gazelle" ]]; then
+    git clone --depth 1 https://github.com/fkryan/gazelle.git
+  fi
+  cd "${TP_DIR}/gazelle"
+  if ! pip_install -v . --no-build-isolation; then
+    echo "  [WARN] Gazelle package install failed. C6 quality_first will fallback to proxy."
+  fi
+  cd "${WORK_DIR}"
+else
+  echo "8) Skipping Gazelle install (ENABLE_GAZELLE=${ENABLE_GAZELLE})"
+fi
+
+# -----------------------------
 # Verify
 # -----------------------------
 echo "=============================================="
@@ -468,8 +558,24 @@ import mmdet
 import mmpose
 print("MMDet/MMPose OK:", mmdet.__version__, mmpose.__version__)
 
-#from paddleocr import PaddleOCR
-#print("PaddleOCR OK")
+try:
+    import scalelsd  # noqa: F401
+    print("ScaleLSD import: OK")
+except Exception as e:
+    print(f"ScaleLSD import: WARN ({e})")
+
+try:
+    import gazelle  # noqa: F401
+    print("Gazelle import: OK")
+except Exception as e:
+    print(f"Gazelle import: WARN ({e})")
+
+try:
+    import paddle  # noqa: F401
+    from paddleocr import TextDetection  # noqa: F401
+    print("PaddleOCR import: OK")
+except Exception as e:
+    print(f"PaddleOCR import: WARN ({e})")
 
 print("All Good")
 PY
@@ -479,4 +585,6 @@ echo "NOTE:"
 echo " - Constraints active: ${CONSTRAINTS_FILE} (numpy<2.0.0 enforced)"
 echo " - mmdet/mmpose installed NON-editable (pip 26 PEP660 issue avoided)"
 echo " - SAM2 CUDA build default OFF (SAM2_BUILD_CUDA=${SAM2_BUILD_CUDA})"
+echo " - Qwen3 enforcement: ENABLE_QWEN3_VL=${ENABLE_QWEN3_VL}, QWEN3_TRY_PYPI_LATEST=${QWEN3_TRY_PYPI_LATEST}, QWEN3_ALLOW_GITHUB_FALLBACK=${QWEN3_ALLOW_GITHUB_FALLBACK}"
+echo " - C4 OCR install: ENABLE_C4_OCR=${ENABLE_C4_OCR}"
 echo "=============================================="

@@ -2,7 +2,7 @@
 # ============================================================================
 # run_teacher_scorer.sh
 # Teacher Scorer (Section 9): Cheap -> Expensive -> Top-K Diversity
-# * OCR 항은 의도적으로 제외하여 실행합니다.
+# * C4 OCR 기반 text-preservation 항을 cheap/expensive scoring에 반영합니다.
 # ============================================================================
 
 : <<'USAGE'

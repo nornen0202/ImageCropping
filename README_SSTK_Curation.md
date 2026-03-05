@@ -3,8 +3,8 @@
 이 문서는 `SSTK_Cropping_DataFactory_QwenLabeler_Reorganized_KO_v1_9.md` 기준으로, 현재 코드베이스에서 **Phase A(Filter) → Phase B(Perception/Candidate) → 9) Teacher Scorer → 10) VLM/MLLM Teacher Labeler**까지를 처음부터 재현하는 실전 운영 가이드입니다.
 
 범위:
-- 포함: `3) Phase A`, `5) Phase B`, `9) Teacher Scorer`, `10) VLM/MLLM Teacher`
-- 제외: `C4 OCR`, `v1.7 PICD`, `11) UNIC View Adjustment`
+- 포함: `3) Phase A`, `5) Phase B(C1~C6, C4 OCR 포함)`, `9) Teacher Scorer`, `10) VLM/MLLM Teacher`
+- 제외: `v1.7 PICD`, `11) UNIC View Adjustment`
 
 ---
 
@@ -16,9 +16,12 @@
   - `src/scripts/run_phaseA_to_teacher_e2e.sh`
   - Filter → Precompute → Candidate → Teacher(+QA/+Viz) → VLM Teacher(옵션)까지 1개 커맨드로 실행
 - Precompute 통합 모드(`--precompute_mode unified`) 도입
-  - C1/C2/C3(+C5)를 1-pass로 추출 가능 (`run_c1=1`일 때 C1 포함)
+  - C1/C2/C3/C4/C5/C6를 1-pass로 추출 가능 (`run_c1=1`일 때 C1 포함)
   - `enrich_c3_pose_jsonl.py`로 face/gaze proxy 보강 후 최종 병합 피처 직접 생성
   - 분리 실행 대비 I/O/재로딩 오버헤드 감소
+- C4 OCR 품질우선 경로 추가
+  - `quality_first`에서 PP-OCRv5 server detector(`PP-OCRv5_server_det`)를 1순위로 사용
+  - 추출 결과에 `ocr_text_boxes`/`text_overlay_likely` 신호를 동시 기록해 subject routing(`text_document`)과 직접 연동
 - 실행 스크립트 품질 개선
   - 멀티 GPU 기본 경로를 Ray 의존에서 **No-Ray 샤딩 병렬**로 전환
   - Ray는 `--mode ray`로 명시한 경우에만 사용(레거시)
@@ -50,6 +53,72 @@
 export SDP_DIR=/your/sdp
 export TRAIN_DIR=/your/train_json
 export TAR_DIR=/your/tar_root
+```
+
+### 2.1 초기 환경 세팅(품질최우선 전체 파이프라인용)
+`3.6 처음부터 끝까지(명시형 풀 옵션 템플릿)` 실행 전, 아래 의존성 설치를 먼저 1회 수행하세요.
+
+1) venv 생성/활성화
+```bash
+python3 -m venv /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+```
+
+2) 기본 의존성 설치(권장 스크립트)
+```bash
+cd /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping
+bash src/scripts/install_features_deps_torch251_cu121_stable.sh
+```
+
+스크립트 기본 정책:
+- Torch 2.5.1 + cu121, OpenMMLab(mmcv/mmengine/mmdet/mmpose), SAM2, EfficientViT 설치
+- C5 quality_first용 ScaleLSD 설치 시도(`ENABLE_SCALELSD=1` 기본)
+- C6 quality_first용 Gazelle(Gaze-LLE) 설치 시도(`ENABLE_GAZELLE=1` 기본)
+- Qwen3-VL 심볼 누락 시 `PyPI/사내 미러 최신 transformers`를 먼저 시도하고, 필요 시 GitHub 소스 fallback 수행
+- C4 OCR용 PaddleOCR(PP-OCRv5 런타임) 기본 설치(`ENABLE_C4_OCR=1` 기본)
+
+3) 품질최우선 모듈 import 검증
+```bash
+python - <<'PY'
+import torch
+print("torch:", torch.__version__, "cuda:", torch.version.cuda)
+
+try:
+    import scalelsd  # C5 quality_first
+    print("scalelsd: OK")
+except Exception as e:
+    print("scalelsd: WARN", e)
+
+try:
+    import gazelle   # C6 quality_first
+    print("gazelle: OK")
+except Exception as e:
+    print("gazelle: WARN", e)
+
+import paddle
+from paddleocr import TextDetection  # C4 quality_first
+print("paddle:", paddle.__version__)
+print("TextDetection: OK")
+PY
+```
+
+4) (선택) 설치 정책 토글
+```bash
+# 기본값은 1. 설치를 스킵하려면 0으로 설정 후 installer 실행.
+export ENABLE_C4_OCR=1
+export ENABLE_SCALELSD=1
+export ENABLE_GAZELLE=1
+export ENABLE_QWEN3_VL=1
+export QWEN3_TRY_PYPI_LATEST=1
+# GitHub 차단 환경이면 0 권장 (PyPI/사내 미러만 사용)
+export QWEN3_ALLOW_GITHUB_FALLBACK=0
+```
+
+참고: C4를 수동 재설치해야 하는 경우에만 아래를 별도 실행하세요.
+```bash
+pip install -U "jinja2>=3.1.4"
+pip install --no-cache-dir -i https://www.paddlepaddle.org.cn/packages/stable/cu126/ paddlepaddle-gpu==3.3.0
+pip install -U "paddleocr>=3.0.0"
 ```
 
 ---
@@ -95,7 +164,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
   --run_candidates 0 \
-  --run_c1 1 --run_c2 1 --run_c3 1 --run_c3_enrich 1 --run_c5 1 --run_merge 1 \
+  --run_c1 1 --run_c2 1 --run_c3 1 --run_c4 1 --run_c3_enrich 1 --run_c5 1 --run_merge 1 \
   --run_teacher 1 \
   --precompute_mode unified \
   --curated_image_dir data/SSTK/${DATANAME}/images \
@@ -191,7 +260,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 0 \
   --run_teacher 1 \
   --prefer_curated_images 1 \
@@ -215,7 +284,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 1 --run_teacher 1 \
   --use_real_expensive 1 \
   --align_device cuda --aesthetic_device cuda --exp_batch_size 12 \
@@ -225,6 +294,26 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - full (전량): `--max_images 0`
 
 ### 3.6 처음부터 끝까지(명시형 풀 옵션 템플릿)
+선행 조건: `2.1 초기 환경 세팅(품질최우선 전체 파이프라인용)`을 완료한 상태에서 실행하세요.
+
+아래 템플릿은 **현재 구현된 품질 최우선 모듈(C4=PP-OCRv5 server, C5=ScaleLSD 우선, C6=Gaze-LLE/Gazelle 우선)**까지 포함한 end-to-end 실행 템플릿입니다.
+
+품질 최우선 백엔드 강제(권장):
+```bash
+# C4 OCR
+export C4_BACKEND=ppocrv5_server
+export C4_PPOCR_SERVER_MODEL=PP-OCRv5_server_det
+export C4_PPOCR_DEVICE=gpu:0
+
+# C5 Horizon/Leveling
+export C5_BACKEND=scalelsd
+export C5_SCALELSD_AUTO_DOWNLOAD=1
+
+# C6 Gaze/HeadPose
+export C6_BACKEND=gazelle
+export C6_GAZELLE_DEVICE=cuda
+```
+
 ```bash
 DATANAME=10K
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
@@ -241,13 +330,14 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --skip_existing 1 \
   --precompute_mode unified \
   --run_c1 -1 \
-  --run_c2 1 --run_c3 1 --run_c3_enrich 1 --run_c5 1 --run_merge 1 \
+  --run_c2 1 --run_c3 1 --run_c4 1 --run_c5 1 --run_c6 1 --run_c3_enrich 1 --run_merge 1 \
   --run_subject_routing 1 \
   --subject_routing_top_n 5 \
   --subject_routing_union_top_m 3 \
   --subject_routing_allow_det_proxy 1 \
   --extract_mode auto \
   --extract_priority quality_first \
+  --c5_priority quality_first \
   --batch_size 16 \
   --c3_person_verify_strict 1 \
   --run_candidates 1 \
@@ -287,6 +377,42 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_fallback_backend heuristic \
   --run_tag full_260226
 ```
+
+정리:
+- 위 `3.6` 템플릿 1회 실행으로 `Filter -> Precompute(C1~C6) -> Subject Routing -> Candidate -> Teacher -> VLM` 전체가 수행됩니다.
+
+실행 후 품질 최우선 모듈 적용 여부 점검:
+```bash
+DATANAME=10K
+export DATANAME
+python - <<'PY'
+import json
+import os
+from collections import Counter
+
+dname = os.environ.get("DATANAME", "10K")
+path = f"data/SSTK/{dname}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl"
+c4 = Counter(); c5 = Counter(); c6 = Counter()
+with open(path, "r", encoding="utf-8") as f:
+    for ln in f:
+        d = json.loads(ln)
+        m4 = (d.get("c4_ocr_meta", {}) or {}).get("method", "none")
+        m5 = (d.get("c5_geom", {}) or {}).get("horizon_roll", {}).get("method", "none")
+        m6 = (d.get("c6_gaze", {}) or {}).get("method", "none")
+        c4[m4] += 1
+        c5[m5] += 1
+        c6[m6] += 1
+print("c4 methods:", dict(c4))
+print("c5 methods:", dict(c5))
+print("c6 methods:", dict(c6))
+PY
+```
+
+판정 기준:
+- C4: `ppocrv5_server_det` 비중이 주류인지 확인
+- C5: `scalelsd_*` 또는 `scalelsd_ransac` 계열이 사용되는지 확인
+- C6: `gazelle_gaze_lle`가 의미 있게 관측되는지 확인(인물 없는 샘플은 `skipped` 가능)
+- fallback(`legacy_fallback`, `houghp_fallback`, `proxy_fallback`)이 과도하면 모델/체크포인트 경로를 점검
 
 ### 3.7 filtered parquet만 있고 images가 없을 때: images만 생성 후 4.2 실행
 
@@ -376,7 +502,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 0 \
   --run_teacher 0 \
   --run_vlm_teacher 1 \
@@ -405,7 +531,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 0 \
   --run_teacher 0 \
   --run_vlm_teacher 1 \
@@ -773,7 +899,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir "${DATA_DIR}" \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 0 \
   --run_teacher 0 \
   --run_vlm_teacher 1 \
@@ -927,7 +1053,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir "${DATA_DIR}" \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 0 \
   --run_teacher 0 \
   --run_vlm_teacher 1 \
@@ -1095,7 +1221,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir "${DATA_DIR}" \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_subject_routing 1 \
   --run_candidates 1 \
   --run_teacher 1 \
@@ -1112,7 +1238,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir "${DATA_DIR}" \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_subject_routing 1 \
   --run_candidates 1 \
   --run_teacher 1 \
@@ -1132,7 +1258,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir "${DATA_DIR}" \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_subject_routing 1 \
   --run_candidates 1 \
   --run_teacher 1 \
@@ -1162,7 +1288,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/10K_local \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_subject_routing 1 \
   --run_candidates 1 \
   --run_teacher 1 \
@@ -1228,7 +1354,7 @@ cp -f data/SSTK/10K/artifacts/reports/${BASE_TAG}/REPORT_DRAFT_KO.md \
 
 ---
 
-## 4.2 Phase B-1: Perception Precompute (C1/C2/C3/C5)
+## 4.2 Phase B-1: Perception Precompute (C1/C2/C3/C4/C5/C6)
 
 공통 실행기:
 - `src/scripts/run_extract_component.sh`
@@ -1269,6 +1395,7 @@ Subject-Mode enrich(신규):
 
 권장 결과물:
 - `data/SSTK/<DATANAME>/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl`
+  - 파일명은 레거시 네이밍이지만, `run_c4=1/run_c6=1`이면 내부 레코드에 `c4_ocr`, `c6_gaze`도 함께 포함됩니다.
 
 ---
 
@@ -1377,19 +1504,19 @@ Subject-Mode enrich(신규):
 - `--curated_image_skip_existing 0|1`: 이미지 추출 시 기존 파일 skip
 - `--prefer_curated_images 0|1`: 4.2~ 단계에서 curated image dir 우선 로드
 - `--precompute_mode unified|split`:
-  - `unified` 권장 (C1/C2/C3/C5를 조건부 1-pass)
-  - `run_c1=1`이면 C1 포함, `run_c1=0`이면 C2/C3/C5만 수행
+  - `unified` 권장 (C1/C2/C3/C4/C5/C6를 조건부 1-pass)
+  - `run_c1=1`이면 C1 포함, `run_c1=0`이면 C2/C3/C4/C5/C6만 수행
   - `split` 레거시(컴포넌트별 분리)
 - `--extract_mode auto|single|multi|ray`:
   - `multi` = No-Ray 멀티 GPU 샤딩
   - `ray` = 명시적 레거시 Ray 모드
 - `--extract_gpu_ids`: precompute에 사용할 GPU 목록 CSV
-- `--run_c1 --run_c2 --run_c3 --run_c3_enrich --run_c5 --run_merge`
+- `--run_c1 --run_c2 --run_c3 --run_c4 --run_c5 --run_c6 --run_c3_enrich --run_merge`
 - `--run_subject_routing 0|1`: merged precompute에 subject_mode + c2 topN 주입(기본 1)
 - `--subject_routing_top_n`: c2 top-N instance 수(기본 5)
 - `--subject_routing_union_top_m`: union box 계산용 상위 instance 수(기본 3)
 - `--subject_routing_allow_det_proxy 0|1`: c2_det proxy로 topN 보강(기본 1)
-- `--run_component_viz 0|1`: precompute(C2/C3/C5) 시각화 자동 생성
+- `--run_component_viz 0|1`: precompute(C2/C3/C4/C5/C6) 시각화 자동 생성
 - `--component_viz_num_samples`: precompute 시각화 샘플 수
 - `--component_viz_out_dir`: precompute 시각화 출력 경로
 - `--component_viz_image_ids`: precompute 시각화 대상 image_id CSV
@@ -1581,18 +1708,18 @@ Qwen3-VL(기본) 필수 런타임:
 - 현재 환경에서 `Qwen3VLForConditionalGeneration` 심볼이 없으면 로드가 실패합니다.
 - 대표 에러: `current=4.44.2, has_qwen3_vl_class=False`
 
-업그레이드 예시(Qwen3-VL):
+업그레이드 예시(Qwen3-VL, 1순위: 사내 PyPI 미러/기본 인덱스):
 ```bash
 python -m pip install -U \
-  "git+https://github.com/huggingface/transformers" \
+  transformers \
   "tokenizers>=0.21.0" \
   "huggingface-hub>=0.26.0" \
   "accelerate>=0.30.0"
 ```
-GitHub 경로 말고, 사내 PyPI 미러에서 최신 transformers 시도
+업그레이드 예시(Qwen3-VL, 2순위 fallback: GitHub 소스):
 ```bash
 python -m pip install -U \
-  transformers \
+  "git+https://github.com/huggingface/transformers" \
   "tokenizers>=0.21.0" \
   "huggingface-hub>=0.26.0" \
   "accelerate>=0.30.0"
@@ -1603,7 +1730,14 @@ python -m pip install -U \
 # 1) Stage10이 사용할 venv 활성화
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
-# 2) Qwen3-VL 호환 런타임 업그레이드
+# 2) Qwen3-VL 호환 런타임 업그레이드 (PyPI/사내 미러 우선)
+python -m pip install -U \
+  transformers \
+  "tokenizers>=0.21.0" \
+  "huggingface-hub>=0.26.0" \
+  "accelerate>=0.30.0"
+
+# 2-2) (선택) 여전히 심볼이 없을 때만 GitHub fallback
 python -m pip install -U \
   "git+https://github.com/huggingface/transformers" \
   "tokenizers>=0.21.0" \
@@ -1675,7 +1809,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --data_dir data/SSTK/10K_local \
   --run_filter 0 \
   --teacher_proposals_jsonl data/SSTK/10K_local/artifacts/public_teachers/proposals/teacher_proposals_public_manual.jsonl \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 1 \
   --run_teacher 0 \
   --skip_existing 0 \
@@ -1688,7 +1822,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 0 \
   --data_dir data/SSTK/10K_local \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 0 \
   --run_teacher 1 \
   --skip_existing 0 \
@@ -1701,7 +1835,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 0 \
   --data_dir data/SSTK/10K_local \
   --run_filter 0 \
-  --run_c1 0 --run_c2 0 --run_c3 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_merge 0 \
   --run_candidates 0 \
   --run_teacher 1 \
   --use_real_expensive 1 \
@@ -1767,13 +1901,235 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 아래 순서로 수동 실행 가능:
 
 1. Filter: `run_filter.sh`
-2. C2/C3/C5 각각 `run_extract_component.sh`
+2. C2/C3/C4/C5 각각 `run_extract_component.sh`
 3. C3 enrich: `enrich_c3_pose_jsonl.py`
 4. merge: `merge_feature_jsonl.py`
 5. Candidate: `run_generate_candidates.sh`
 6. Teacher: `run_teacher_scorer.sh`
 
 단, 신규 운영은 `run_phaseA_to_teacher_e2e.sh --precompute_mode unified`를 기본으로 권장합니다.
+
+---
+
+## 8.1 C5/C6만 재실행 후 Teacher/VLM 업데이트 (증분 운영)
+
+아래는 **기존 Candidate를 재사용**하면서 `C5/C6`만 갱신하고, 이후 `Teacher Scorer`와 `VLM Teacher`를 다시 생성하는 절차입니다.
+
+사전 변수:
+```bash
+DATANAME=10K_local
+REFRESH_TAG=c5c6_refresh_260305
+
+PARQUET=data/SSTK/${DATANAME}/filtered_sstk_100.parquet
+IMAGE_DIR=data/SSTK/${DATANAME}/images
+
+# 기존 기준 feature (이미 만들어져 있는 파일)
+BASE_FEATS=data/SSTK/${DATANAME}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+
+# 이번에 재생성할 파일
+FEATS_C5C6=data/SSTK/${DATANAME}/artifacts/precompute/feats_c5c6_${REFRESH_TAG}.jsonl
+FEATS_REFRESHED=data/SSTK/${DATANAME}/artifacts/precompute/feats_c2c3c5c6_${REFRESH_TAG}.jsonl
+
+# 고정 venv
+VENV_ACT=/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+```
+
+### 1) C5/C6만 quality_first로 재실행
+```bash
+bash src/scripts/run_extract_component.sh \
+  "$PARQUET" sstk_100 "$FEATS_C5C6" \
+  --component c5 c6 \
+  --priority quality_first \
+  --server_mode 0 \
+  --venv_path "$VENV_ACT" \
+  --image_dir "$IMAGE_DIR" \
+  --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
+  --batch_size 8
+```
+
+검증 포인트(예: ScaleLSD/Gazelle 경로):
+```bash
+python - <<'PY'
+import json
+import os
+from collections import Counter
+path = os.environ["FEATS_C5C6"]
+c5 = Counter(); c6 = Counter()
+with open(path, "r", encoding="utf-8") as f:
+    for ln in f:
+        d = json.loads(ln)
+        c5[d.get("c5_geom", {}).get("horizon_roll", {}).get("method", "none")] += 1
+        c6[d.get("c6_gaze", {}).get("method", "none")] += 1
+print("c5 methods:", dict(c5))
+print("c6 methods:", dict(c6))
+PY
+```
+
+### 2) 기존 feature와 병합(증분 반영)
+```bash
+python src/scripts/merge_feature_jsonl.py \
+  --input_parquet "$PARQUET" \
+  --inputs "$BASE_FEATS" "$FEATS_C5C6" \
+  --output_jsonl "$FEATS_REFRESHED"
+```
+
+중요:
+- 현재 `score_teacher.py`는 `c5_geom`을 직접 참조합니다.
+- 현재 `score_teacher.py`의 lookroom/gaze는 `c3_pose[].headpose_gaze`를 기본으로 사용하고, 보조적으로 `c6_gaze.people`를 fallback/override로 참조합니다.
+- 즉, 권장 경로는 여전히 **`c3+c6` 동시 재추출**이며, 그 결과가 scorer에 자동 반영됩니다.
+- `score_teacher.py`의 `p_text`는 C4 OCR box(`c4_ocr` + alias)를 직접 사용해 계산되므로, C4 재추출/병합 결과가 cheap/expensive score 모두에 반영됩니다.
+
+### 3) Teacher Scorer 재실행 (Candidate 재사용)
+```bash
+bash src/scripts/run_teacher_scorer.sh \
+  --server_mode 0 \
+  --venv_path "$VENV_ACT" \
+  --features_jsonl "$FEATS_REFRESHED" \
+  --candidates_jsonl data/SSTK/${DATANAME}/artifacts/candidates/candidates_ar.jsonl \
+  --c1_jsonl data/SSTK/${DATANAME}/artifacts/precompute/feats_c1.jsonl \
+  --output_jsonl data/SSTK/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${REFRESH_TAG}.jsonl \
+  --output_overview_json data/SSTK/${DATANAME}/artifacts/teacher/overview/teacher_scores_overview_${REFRESH_TAG}.json \
+  --output_overview_csv data/SSTK/${DATANAME}/artifacts/teacher/overview/teacher_scores_overview_by_ar_${REFRESH_TAG}.csv \
+  --qa_out_json data/SSTK/${DATANAME}/artifacts/teacher/qa/teacher_scores_qa_report_${REFRESH_TAG}.json \
+  --qa_out_csv data/SSTK/${DATANAME}/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_${REFRESH_TAG}.csv \
+  --run_viz 0 \
+  --run_qa 1
+```
+
+### 4) VLM Teacher 라벨 재생성
+```bash
+bash src/scripts/run_vlm_teacher_labeler.sh \
+  --server_mode 0 \
+  --venv_path "$VENV_ACT" \
+  --teacher_scores_jsonl data/SSTK/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${REFRESH_TAG}.jsonl \
+  --image_dir "$IMAGE_DIR" \
+  --output_jsonl data/SSTK/${DATANAME}/artifacts/vlm_teacher/labels/crop_label_${REFRESH_TAG}.jsonl \
+  --output_meta_jsonl data/SSTK/${DATANAME}/artifacts/vlm_teacher/meta/meta_norm_${REFRESH_TAG}.jsonl \
+  --summary_json data/SSTK/${DATANAME}/artifacts/vlm_teacher/summary/vlm_teacher_summary_${REFRESH_TAG}.json \
+  --backend qwen25_vl \
+  --model_id Qwen/Qwen3-VL-4B-Instruct \
+  --device auto \
+  --dtype auto \
+  --top_m 12 \
+  --top_k 5
+```
+
+요약:
+- `C5/C6` 재실행만으로도 `teacher_scores`/`vlm labels`는 증분 갱신 가능
+- Candidate는 재생성하지 않아도 됨(후보 로직 변경이 없다면)
+- 단, C6을 scorer의 gaze/lookroom 로직에 직접 반영하려면 `c3` 갱신까지 포함
+
+---
+
+## 8.2 C4 OCR(PP-OCRv5) 재실행 후 Routing/Teacher/VLM 갱신
+
+현재 C4는 아래 정책으로 동작합니다.
+- `priority=quality_first`: `PP-OCRv5_server_det` 1순위
+- `priority=high_efficiency`: `PP-OCRv5_mobile_det` 1순위
+- fallback: legacy PaddleOCR det-only
+
+`worker_core.py`에서 C4 결과를 다음 alias로 자동 기록합니다.
+- `c4_ocr`, `c4_ocr_meta`
+- `ocr_text_boxes`, `ocr_num_boxes`, `ocr_box_count`, `c4_text_boxes`, `c4_ocr_boxes`
+- `text_overlay_likely`, `has_text_overlay`, `ocr_text_overlay_likely`
+
+사전 확인(venv):
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+# ImportError: soft_unicode 이슈가 있으면 선행 설치
+pip install -U "jinja2>=3.1.4"
+python - <<'PY'
+import paddle
+from paddleocr import TextDetection
+print("paddle:", paddle.__version__)
+print("TextDetection: OK")
+PY
+```
+
+선택 환경변수:
+```bash
+# 백엔드 강제: auto|ppocrv5_server|ppocrv5_mobile|legacy_paddleocr|disabled
+export C4_BACKEND=auto
+# 기본 모델 override
+export C4_PPOCR_SERVER_MODEL=PP-OCRv5_server_det
+export C4_PPOCR_MOBILE_MODEL=PP-OCRv5_mobile_det
+# 디바이스 override (예: gpu:0, cpu)
+export C4_PPOCR_DEVICE=gpu:0
+```
+
+### 1) C4만 quality_first로 재실행
+```bash
+DATANAME=10K_local
+REFRESH_TAG=c4_refresh_260305
+PARQUET=data/SSTK/${DATANAME}/filtered_sstk_100.parquet
+IMAGE_DIR=data/SSTK/${DATANAME}/images
+FEATS_C4=data/SSTK/${DATANAME}/artifacts/precompute/feats_c4_${REFRESH_TAG}.jsonl
+export FEATS_C4
+
+bash src/scripts/run_extract_component.sh \
+  "$PARQUET" sstk_100 "$FEATS_C4" \
+  --component c4 \
+  --priority quality_first \
+  --server_mode 0 \
+  --venv_path /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate \
+  --image_dir "$IMAGE_DIR" \
+  --tar_dir /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
+  --batch_size 8
+```
+
+검증(메서드/박스 수):
+```bash
+python - <<'PY'
+import json, os
+from collections import Counter
+path = os.environ["FEATS_C4"]
+m = Counter(); b = 0
+with open(path, "r", encoding="utf-8") as f:
+    for ln in f:
+        d = json.loads(ln)
+        meta = d.get("c4_ocr_meta", {}) if isinstance(d.get("c4_ocr_meta"), dict) else {}
+        m[meta.get("method", "none")] += 1
+        b += int(d.get("ocr_text_boxes", 0) or 0)
+print("c4 methods:", dict(m))
+print("sum ocr_text_boxes:", b)
+PY
+```
+
+### 2) 기존 feature와 병합 + subject routing 재생성
+```bash
+BASE_FEATS=data/SSTK/${DATANAME}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+FEATS_REFRESHED=data/SSTK/${DATANAME}/artifacts/precompute/feats_c2c3c4c5_${REFRESH_TAG}.jsonl
+FEATS_ROUTED=data/SSTK/${DATANAME}/artifacts/precompute/feats_c2c3c4c5_${REFRESH_TAG}_routed.jsonl
+
+python src/scripts/merge_feature_jsonl.py \
+  --input_parquet "$PARQUET" \
+  --inputs "$BASE_FEATS" "$FEATS_C4" \
+  --output_jsonl "$FEATS_REFRESHED"
+
+python src/scripts/enrich_subject_mode_jsonl.py \
+  --input_feats_jsonl "$FEATS_REFRESHED" \
+  --input_filtered_parquet "$PARQUET" \
+  --output_jsonl "$FEATS_ROUTED" \
+  --c2_top_n 5 \
+  --c2_union_top_m 3 \
+  --allow_det_proxy 1
+```
+
+### 3) Teacher/VLM 재생성
+`8.1`의 3)~4)와 동일하게 실행하되 `--features_jsonl`에 `"$FEATS_ROUTED"`를 넣으면 됩니다.
+
+### 4) e2e 스크립트 토글
+`run_phaseA_to_teacher_e2e.sh`는 `--run_c4`, `--run_c6`를 지원합니다(기본 1).
+```bash
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 0 \
+  --data_dir data/SSTK/10K_local \
+  --run_filter 0 \
+  --precompute_mode unified \
+  --run_c4 1 \
+  --run_c6 1 \
+  --extract_priority quality_first
+```
 
 ---
 

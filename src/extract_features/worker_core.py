@@ -43,6 +43,7 @@ class FeatureWorker:
         run_c3: bool = True,
         run_c4: bool = True,
         run_c5: bool = True,
+        run_c6: bool = False,
         weights_dir: str = "",   # C2(SAM2.1 ckpt) + C3(SCRFD/ViTPose ckpt) 가중치 디렉토리
         c4_lang: str = "en",
         priority: str = "high_efficiency",
@@ -53,6 +54,7 @@ class FeatureWorker:
         self.run_c3 = run_c3
         self.run_c4 = run_c4
         self.run_c5 = run_c5
+        self.run_c6 = run_c6
         self.priority = priority
 
         print(f"[FeatureWorker] Initializing models with priority='{priority}' ...")
@@ -105,9 +107,17 @@ class FeatureWorker:
         # ---- C5 Geometry (horizon/roll + symmetry) -------------------------------
         if run_c5:
             from c5_geom import GeoFeatureExtractor
-            self.c5 = GeoFeatureExtractor()
+            self.c5 = GeoFeatureExtractor(priority=priority)
         else:
             self.c5 = None
+
+        # ---- C6 Gaze/HeadPose (quality-first: Gazelle/Gaze-LLE) -------------------
+        if run_c6:
+            from c6_gaze import GazeFeatureExtractor
+
+            self.c6 = GazeFeatureExtractor(priority=priority, device=device)
+        else:
+            self.c6 = None
 
     # ------------------------------------------------------------------
     def process_batch(
@@ -180,8 +190,68 @@ class FeatureWorker:
                     # Backward-compatible path if extractor does not expose person priors.
                     res["c3_pose"] = self.c3.process_image(img, run_anyway=run_anyway, tags=tags)
 
+            if self.c6:
+                c3_pose_items = res.get("c3_pose", [])
+                if not isinstance(c3_pose_items, list):
+                    c3_pose_items = []
+                c6_out = self.c6.process_image(
+                    image=img,
+                    pose_items=c3_pose_items,
+                    tags=tags,
+                )
+                res["c6_gaze"] = c6_out
+
+                # If C6 produced per-person estimates, overwrite C3 headpose_gaze
+                # with higher-quality C6 outputs while keeping C3 pose geometry.
+                if isinstance(c3_pose_items, list) and isinstance(c6_out, dict):
+                    c6_people = c6_out.get("people", [])
+                    if isinstance(c6_people, list) and c6_people:
+                        for p in c6_people:
+                            if not isinstance(p, dict):
+                                continue
+                            idx = int(p.get("person_index", -1))
+                            if idx < 0 or idx >= len(c3_pose_items):
+                                continue
+                            merged = {
+                                "yaw_proxy": float(p.get("yaw_proxy", 0.0) or 0.0),
+                                "pitch_proxy": float(p.get("pitch_proxy", 0.0) or 0.0),
+                                "roll_deg": float(p.get("roll_deg", 0.0) or 0.0),
+                                "gaze_dir": str(p.get("gaze_dir", "unknown")),
+                                "conf": float(p.get("conf", 0.0) or 0.0),
+                                "source": str(p.get("source", "c6_gaze")),
+                            }
+                            c3_pose_items[idx]["headpose_gaze"] = merged
+
             if self.c4:
-                res["c4_ocr"] = self.c4.process_image(img, tags=tags)
+                c4_out = self.c4.process_image(img, tags=tags)
+                if isinstance(c4_out, dict):
+                    boxes = c4_out.get("boxes", [])
+                    if not isinstance(boxes, list):
+                        boxes = []
+                    num_boxes = int(c4_out.get("num_boxes", len(boxes)) or len(boxes))
+                    text_overlay = bool(c4_out.get("text_overlay_likely", False))
+
+                    # Backward-compatible field: keep raw OCR boxes under c4_ocr.
+                    res["c4_ocr"] = boxes
+                    # Rich metadata for debugging/QA.
+                    res["c4_ocr_meta"] = {
+                        "method": c4_out.get("method"),
+                        "requested_backend": c4_out.get("requested_backend"),
+                        "backend_runtime": c4_out.get("backend_runtime"),
+                        "model_name": c4_out.get("model_name"),
+                        "coverage_ratio": c4_out.get("coverage_ratio"),
+                    }
+                    # Route-enricher recognized aliases.
+                    res["ocr_text_boxes"] = num_boxes
+                    res["ocr_num_boxes"] = num_boxes
+                    res["ocr_box_count"] = num_boxes
+                    res["c4_text_boxes"] = num_boxes
+                    res["c4_ocr_boxes"] = num_boxes
+                    res["text_overlay_likely"] = text_overlay
+                    res["has_text_overlay"] = text_overlay
+                    res["ocr_text_overlay_likely"] = text_overlay
+                else:
+                    res["c4_ocr"] = c4_out if isinstance(c4_out, list) else []
 
             if self.c5:
                 res["c5_geom"] = self.c5.process_image(img)

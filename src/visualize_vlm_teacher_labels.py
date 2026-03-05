@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tar_dir", required=True)
     p.add_argument("--image_dir", default="", help="optional local curated image dir (<image_id>.<ext>)")
     p.add_argument("--out_dir", required=True)
-    p.add_argument("--target_ar", default="all", help="all or one of 1:1,9:16,16:9,3:4,4:3")
+    p.add_argument("--target_ar", default="all", help="all or one of FREE,1:1,9:16,16:9,3:4,4:3")
     p.add_argument("--num_samples", type=int, default=120, help="0=all selected tasks")
     p.add_argument(
         "--image_ids",
@@ -810,4 +810,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

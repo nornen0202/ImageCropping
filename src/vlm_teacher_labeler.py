@@ -39,7 +39,7 @@ from tqdm import tqdm
 from packaging.version import Version, InvalidVersion
 
 
-AR_ORDER = ["1:1", "9:16", "16:9", "3:4", "4:3"]
+AR_ORDER = ["FREE", "1:1", "9:16", "16:9", "3:4", "4:3"]
 SUBJECT_STOP_TAG_KEYWORDS = (
     "background",
     "copy space",
@@ -72,6 +72,12 @@ ALLOWED_WHY_TAGS = {
     "balanced_negative_space",
     "horizon_on_third",
     "ar_fits_well",
+    "ar_choice_freeform",
+    "ar_extreme_penalty",
+    "ar_choice_portrait_focus",
+    "ar_choice_context_wide",
+    "ar_choice_symmetry_balance",
+    "ar_choice_copyspace",
     "tight_crop",
     "wide_crop",
     "headroom_ok",

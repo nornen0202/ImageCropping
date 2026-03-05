@@ -1,7 +1,7 @@
 #!/bin/bash
 # ==============================================================================
 # run_generate_candidates.sh
-# Phase B1: AR-conditioned candidate generator runner
+# Phase B1: AR-conditioned + FREE-form candidate generator runner
 # ==============================================================================
 # Usage:
 #   bash src/scripts/run_generate_candidates.sh \

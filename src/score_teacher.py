@@ -1,8 +1,8 @@
 """
 Teacher Scorer (Section 9): cheap -> expensive -> Top-K diversity.
 
-Implements a deterministic scorer pipeline for AR-conditioned candidates using
-precomputed features (C2/C3/C5) and candidate boxes.
+Implements a deterministic scorer pipeline for AR-conditioned + FREE-form
+candidates using precomputed features (C2/C3/C5/C6) and candidate boxes.
 
 Notes
 -----
@@ -154,6 +154,7 @@ class TeacherScorerConfig:
     lambda_sym: float = 0.25
     lambda_ctx: float = 0.45
     lambda_cs: float = 0.35
+    lambda_ar_free: float = 0.12
 
     # Cut penalty composition
     alpha_face_cut: float = 2.0
@@ -180,6 +181,7 @@ class TeacherScorerConfig:
     w_cut: float = 2.0
     w_text: float = 0.12
     w_edge: float = 0.5
+    w_ar_free: float = 0.20
     aesthetic_score_min: float = 1.0
     aesthetic_score_max: float = 10.0
     expensive_eval_top_m: int = 0  # 0 means evaluate all cheap_top_m in expensive stage
@@ -197,6 +199,13 @@ class TeacherScorerConfig:
     text_penalty_keep_weight: float = 1.00
     text_penalty_cut_weight: float = 0.35
     text_penalty_severe_weight: float = 0.65
+
+    # FREE-form AR prior (weak regularizer, not hard constraint)
+    free_ar_log_tau: float = 0.90
+    free_ar_portrait_max: float = 1.20
+    free_ar_scene_min: float = 0.80
+    free_ar_bias_scale: float = 0.20
+    free_topk_ar_log_gap: float = 0.18
 
     # Keep-vs-crop
     w_area_default: float = 0.10
@@ -316,10 +325,20 @@ def safe_float(v: Any, default: float = 0.0) -> float:
 
 def parse_ar(ar_text: str) -> float:
     t = str(ar_text).strip()
+    if t.upper() in {"FREE", "AR_FREE", "FREEFORM", "FREE_FORM"}:
+        # Backward-compatible numeric fallback for generic analytics codepaths.
+        return 1.0
     if ":" in t:
         a, b = t.split(":", 1)
         return float(a) / float(b)
     return float(t)
+
+
+def parse_target_ar(ar_text: str) -> Optional[float]:
+    t = str(ar_text).strip()
+    if t.upper() in {"FREE", "AR_FREE", "FREEFORM", "FREE_FORM"}:
+        return None
+    return parse_ar(t)
 
 
 def box_area(b: Sequence[float]) -> float:
@@ -1929,6 +1948,7 @@ def effective_lambdas(
         "sym": cfg.lambda_sym,
         "ctx": cfg.lambda_ctx,
         "cs": cfg.lambda_cs,
+        "ar_free": cfg.lambda_ar_free,
     }
 
     if not has_people:
@@ -1956,6 +1976,27 @@ def effective_lambdas(
     for k in lam:
         lam[k] = max(0.0, float(lam[k]))
     return lam
+
+
+def free_ar_prior_penalty(
+    *,
+    ar: float,
+    route: Dict[str, Any],
+    cfg: TeacherScorerConfig,
+) -> float:
+    if not math.isfinite(ar) or ar <= 1e-8:
+        return 0.0
+
+    # Base weak regularizer: penalize only very extreme AR in log-space.
+    p = max(0.0, abs(math.log(ar)) - float(cfg.free_ar_log_tau))
+    mode = str(route.get("subject_mode", "")).strip().lower()
+
+    # Route-aware asymmetry.
+    if mode.startswith("portrait") and ar > float(cfg.free_ar_portrait_max):
+        p += float(cfg.free_ar_bias_scale) * (ar - float(cfg.free_ar_portrait_max))
+    if mode.startswith("scene") and ar < float(cfg.free_ar_scene_min):
+        p += float(cfg.free_ar_bias_scale) * (float(cfg.free_ar_scene_min) - ar)
+    return float(max(0.0, p))
 
 
 def _resolve_subject_routing_hint(cand_rec: Dict[str, Any], feat_rec: Dict[str, Any]) -> Dict[str, Any]:
@@ -2144,6 +2185,7 @@ def apply_expensive_score(
     cov = safe_float(comps.get("cov", 0.0))
     p_cut = safe_float(comps.get("p_cut", 0.0))
     p_text = safe_float(comps.get("p_text", 0.0))
+    p_ar_free = safe_float(comps.get("p_ar_free", 0.0))
     r_edge = safe_float(comps.get("r_edge", 0.0))
     area = safe_float(candidate.get("area_ratio", 0.0))
 
@@ -2164,6 +2206,7 @@ def apply_expensive_score(
         + cfg.w_cov * cov
         - cfg.w_cut * p_cut
         - cfg.w_text * p_text
+        - cfg.w_ar_free * p_ar_free
         + cfg.w_edge * r_edge
     )
     final_score = exp_score + float(w_area) * math.log(max(1e-8, area))
@@ -2214,7 +2257,7 @@ def _relax_joint_only_hard_reject(candidate: Dict[str, Any]) -> Optional[Dict[st
 
 def compute_candidate_scores(
     candidate: Dict[str, Any],
-    target_ar: float,
+    target_ar: Optional[float],
     image_ar: float,
     subject_box: Sequence[float],
     subject_centroid: Tuple[float, float],
@@ -2234,7 +2277,8 @@ def compute_candidate_scores(
     # Structural hard checks.
     if not (cfg.area_min <= area <= cfg.area_max):
         hard_reject_tags.append("area_violation")
-    if abs(ar - target_ar) > cfg.ar_hard_eps:
+    is_freeform = target_ar is None
+    if (target_ar is not None) and (abs(ar - target_ar) > cfg.ar_hard_eps):
         hard_reject_tags.append("ar_violation")
 
     f_cut, f_kept, f_total = face_cut_flags(c3_info["face_boxes"], crop)
@@ -2340,6 +2384,7 @@ def compute_candidate_scores(
     copyspace_ratio = clamp(1.0 - subj_area_ratio, 0.0, 1.0)
     r_copyspace = copyspace_ratio if route["flags"].get("has_copy_space", False) else 0.0
 
+    p_ar_free = free_ar_prior_penalty(ar=ar, route=route, cfg=cfg) if is_freeform else 0.0
     lam = route["lambdas"]
 
     cheap = (
@@ -2352,6 +2397,7 @@ def compute_candidate_scores(
         + lam["sym"] * sym
         + lam["ctx"] * r_context
         + lam["cs"] * r_copyspace
+        - lam.get("ar_free", 0.0) * p_ar_free
     )
 
     # Expensive priors (used as fallback when real expensive model is unavailable).
@@ -2395,7 +2441,12 @@ def compute_candidate_scores(
         why_tags.append("copy_space_kept" if copyspace_ratio >= 0.25 else "copy_space_lost")
     if bool(text_eval.get("available", False)):
         why_tags.append("text_preserved" if bool(text_eval.get("pass", True)) else "text_cut_risk")
-    why_tags.append("ar_fits_well" if abs(ar - target_ar) <= cfg.ar_hard_eps else "ar_mismatch")
+    if is_freeform:
+        why_tags.append("ar_choice_freeform")
+        if p_ar_free > 1e-6:
+            why_tags.append("ar_extreme_penalty")
+    else:
+        why_tags.append("ar_fits_well" if abs(ar - float(target_ar)) <= cfg.ar_hard_eps else "ar_mismatch")
     why_tags.append("tight_crop" if area < 0.35 else ("wide_crop" if area > 0.75 else "balanced_crop"))
 
     reject_tags = list(hard_reject_tags)
@@ -2413,6 +2464,7 @@ def compute_candidate_scores(
     out = {
         "candidate_id": candidate.get("candidate_id"),
         "bbox_norm_xyxy": crop,
+        "ar": round(ar, 6),
         "area_ratio": round(area, 6),
         "source": candidate.get("source"),
         "source_types": candidate.get("source_types", []),
@@ -2435,6 +2487,7 @@ def compute_candidate_scores(
                 "r_sym": float(sym),
                 "r_context": float(r_context),
                 "r_copyspace": float(r_copyspace),
+                "p_ar_free": float(p_ar_free),
                 "r_edge": float(r_edge),
                 "aesthetic_proxy": float(aesthetic_proxy),
                 "ca_proxy": float(ca_proxy),
@@ -2452,7 +2505,8 @@ def compute_candidate_scores(
             "subject_touch_border": bool(subj_touch),
             "subject_coverage": float(cov),
             "subject_area": float(subj_area_ratio),
-            "ar_error": float(abs(ar - target_ar)),
+            "ar_error": (None if is_freeform else float(abs(ar - float(target_ar)))),
+            "ar_free_prior_penalty": float(p_ar_free),
         },
         "composition_checks": {
             "headroom": {
@@ -2599,6 +2653,7 @@ def select_topk_diverse(
     k: int,
     tau_div: float,
     force_ids: Optional[Sequence[str]] = None,
+    ar_log_gap_thr: Optional[float] = None,
 ) -> List[Dict[str, Any]]:
     if k <= 0:
         return []
@@ -2622,7 +2677,25 @@ def select_topk_diverse(
         if any(str(x.get("candidate_id")) == cid for x in selected):
             continue
         if selected:
-            if max(iou_xyxy(c["bbox_norm_xyxy"], s["bbox_norm_xyxy"]) for s in selected) >= tau_div:
+            suppress = False
+            for s in selected:
+                iou = iou_xyxy(c["bbox_norm_xyxy"], s["bbox_norm_xyxy"])
+                if iou < tau_div:
+                    continue
+                if ar_log_gap_thr is None:
+                    suppress = True
+                    break
+
+                ar_c = safe_float(c.get("ar", 0.0), 0.0)
+                ar_s = safe_float(s.get("ar", 0.0), 0.0)
+                if ar_c <= 1e-8 or ar_s <= 1e-8:
+                    suppress = True
+                    break
+                ar_gap = abs(math.log(max(ar_c, 1e-8) / max(ar_s, 1e-8)))
+                if ar_gap < float(ar_log_gap_thr):
+                    suppress = True
+                    break
+            if suppress:
                 continue
         selected.append(c)
         if len(selected) >= k:
@@ -2651,6 +2724,7 @@ def candidate_brief(c: Dict[str, Any], rank: Optional[int] = None) -> Dict[str, 
     out = {
         "candidate_id": c.get("candidate_id"),
         "bbox_norm_xyxy": [round(float(v), 6) for v in c.get("bbox_norm_xyxy", [0, 0, 1, 1])],
+        "ar": round(safe_float(c.get("ar", 0.0), 0.0), 6),
         "area_ratio": round(safe_float(c.get("area_ratio", 0.0)), 6),
         "source": c.get("source"),
         "must_keep": bool(c.get("must_keep", False)),
@@ -2945,7 +3019,8 @@ def process_one_image(
     per_ar_tmp: Dict[str, Dict[str, Any]] = {}
 
     for ar_text, cands in (cand_rec.get("candidates_by_ar", {}) or {}).items():
-        target_ar = parse_ar(ar_text)
+        target_ar = parse_target_ar(ar_text)
+        is_freeform = target_ar is None
         if not isinstance(cands, list) or not cands:
             continue
 
@@ -3059,6 +3134,7 @@ def process_one_image(
 
         per_ar_tmp[ar_text] = {
             "target_ar": target_ar,
+            "is_freeform": bool(is_freeform),
             "scored": scored,
             "baseline": baseline,
             "ref_center": ref_center,
@@ -3099,7 +3175,8 @@ def process_one_image(
         cheap_top_m = tmp["cheap_top_m"]
         expensive_eval_pool = tmp.get("expensive_eval_pool", cheap_top_m)
         fallback_info = tmp["fallback_info"]
-        target_ar = float(tmp["target_ar"])
+        target_ar = tmp.get("target_ar")
+        is_freeform = bool(tmp.get("is_freeform", False))
 
         normalize_final_scores(cheap_top_m)
         exp_sorted = sorted(cheap_top_m, key=lambda x: safe_float(x["scores"].get("final", -1e9)), reverse=True)
@@ -3132,6 +3209,7 @@ def process_one_image(
             k=cfg.top_k,
             tau_div=cfg.tau_div,
             force_ids=force_ids,
+            ar_log_gap_thr=(cfg.free_topk_ar_log_gap if is_freeform else None),
         )
         if len(selected_topk) < cfg.top_k and rank_pool is not exp_sorted:
             already = {str(x.get("candidate_id", "")) for x in selected_topk}
@@ -3142,6 +3220,7 @@ def process_one_image(
                     k=cfg.top_k - len(selected_topk),
                     tau_div=cfg.tau_div,
                     force_ids=None,
+                    ar_log_gap_thr=(cfg.free_topk_ar_log_gap if is_freeform else None),
                 )
                 selected_topk.extend(fill)
         selected_topk = selected_topk[: cfg.top_k]
@@ -3158,7 +3237,8 @@ def process_one_image(
 
         ar_result = {
             "target_ar": ar_text,
-            "target_ar_value": target_ar,
+            "target_ar_value": (None if is_freeform else float(target_ar)),
+            "is_freeform": bool(is_freeform),
             "num_input_candidates": len(scored),
             "num_valid_candidates": int(fallback_info.get("strict_valid_count", 0)),
             "num_effective_candidates": int(fallback_info.get("effective_valid_count", 0)),
@@ -3170,6 +3250,7 @@ def process_one_image(
                 "tau_improve": route["tau_improve"],
                 "w_area": route["w_area"],
                 "force_include_baseline_in_topm": True,
+                "is_freeform": bool(is_freeform),
             },
             "fallback": fallback_info,
             "decision": decision,
@@ -3478,7 +3559,7 @@ def run(args: argparse.Namespace) -> None:
         s.cheap_kept_mean /= denom
 
     overview = {
-        "schema_version": "teacher_scorer_v3_real_expensive_c4ocr",
+        "schema_version": "teacher_scorer_v4_real_expensive_c4ocr_freeform",
         "config": asdict(cfg),
         "inputs": {
             "candidates_jsonl": str(cand_path),

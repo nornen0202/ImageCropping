@@ -42,7 +42,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--tar_dir", required=True)
     p.add_argument("--image_dir", default="", help="optional local curated image dir (<image_id>.<ext>)")
     p.add_argument("--out_dir", required=True)
-    p.add_argument("--target_ar", default="all", help="e.g. 1:1 or all")
+    p.add_argument("--target_ar", default="all", help="e.g. FREE,1:1 or all")
     p.add_argument("--decision_filter", default="all", help="all|keep_full|minimal_crop|crop")
     p.add_argument("--num_samples", type=int, default=100)
     p.add_argument(

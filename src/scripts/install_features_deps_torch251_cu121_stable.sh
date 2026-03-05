@@ -64,6 +64,8 @@ ENABLE_C4_OCR="${ENABLE_C4_OCR:-1}"
 ENABLE_SCALELSD="${ENABLE_SCALELSD:-1}"
 # 1이면 C6 quality_first용 Gazelle(Gaze-LLE)를 설치 시도한다.
 ENABLE_GAZELLE="${ENABLE_GAZELLE:-1}"
+# 1이면 quality_first 모듈(C4/C5/C6) import 검증 실패 시 즉시 종료한다.
+STRICT_QUALITY_IMPORTS="${STRICT_QUALITY_IMPORTS:-1}"
 
 # -----------------------------
 PYTHON="${PYTHON:-python}"
@@ -141,6 +143,32 @@ try:
 except Exception as exc:
     print(f"  transformers import failed: {exc}")
     sys.exit(3)
+PY
+}
+
+check_paddle_import() {
+  $PYTHON - <<'PY'
+import sys
+try:
+    import paddle
+    print(f"  paddle={paddle.__version__}")
+    sys.exit(0)
+except Exception as exc:
+    print(f"  paddle import failed: {exc}")
+    sys.exit(2)
+PY
+}
+
+check_paddleocr_textdet_import() {
+  $PYTHON - <<'PY'
+import sys
+try:
+    from paddleocr import TextDetection
+    print("  paddleocr.TextDetection: OK")
+    sys.exit(0)
+except Exception as exc:
+    print(f"  paddleocr.TextDetection import failed: {exc}")
+    sys.exit(2)
 PY
 }
 
@@ -412,22 +440,40 @@ if [[ "${ENABLE_C4_OCR}" == "1" ]]; then
   # paddleocr 구버전 transitive 의존에서 jinja2 soft_unicode 이슈가 나는 환경 방지
   pip_install_noc -U "jinja2>=3.1.4"
 
-  PADDLE_INSTALLED="$($PYTHON -m pip show paddlepaddle-gpu 2>/dev/null | awk '/^Version:/{print $2}' || true)"
-  if [[ "${PADDLE_INSTALLED}" == "${PADDLE_GPU_VER}" ]]; then
-    echo "  [SKIP] paddlepaddle-gpu already installed: ${PADDLE_INSTALLED}"
+  PADDLE_IMPORT_OK=0
+  check_paddle_import || PADDLE_IMPORT_OK=$?
+  if [[ "${PADDLE_IMPORT_OK}" -eq 0 ]]; then
+    echo "  [SKIP] paddle import already healthy."
   else
-    pip_install_noc --no-cache-dir -i "${PADDLE_CUDA_INDEX}" "paddlepaddle-gpu==${PADDLE_GPU_VER}"
+    echo "  [Fixup] paddle import failed. reinstalling paddle packages..."
+    pip_uninstall paddlepaddle paddlepaddle-gpu paddlepaddle-cpu || true
+
+    if ! pip_install_noc --no-cache-dir -i "${PADDLE_CUDA_INDEX}" "paddlepaddle-gpu==${PADDLE_GPU_VER}"; then
+      echo "  [WARN] paddlepaddle-gpu install from Paddle index failed. trying default index/mirror..."
+      if ! pip_install_noc --no-cache-dir "paddlepaddle-gpu==${PADDLE_GPU_VER}"; then
+        echo "  [WARN] paddlepaddle-gpu install from default index failed. trying paddlepaddle fallback..."
+        pip_install_noc --no-cache-dir "paddlepaddle==${PADDLE_GPU_VER}" || true
+      fi
+    fi
+  fi
+
+  if ! check_paddle_import; then
+    echo "ERROR: paddle import is still failing after installation attempts."
+    echo "  python executable: $($PYTHON -c 'import sys; print(sys.executable)')"
+    echo "  pip executable   : $($PYTHON -m pip --version)"
+    $PYTHON -m pip show paddlepaddle-gpu paddlepaddle paddleocr || true
+    exit 1
   fi
 
   # PP-OCRv5 runtime API(TextDetection) 포함 버전 범위
   pip_install_noc -U "paddleocr>=3.0.0"
 
-  $PYTHON - <<'PY'
-import paddle
-from paddleocr import TextDetection
-print("Paddle:", paddle.__version__)
-print("PaddleOCR TextDetection: OK")
-PY
+  if ! check_paddleocr_textdet_import; then
+    echo "ERROR: paddleocr.TextDetection import failed after install."
+    echo "  python executable: $($PYTHON -c 'import sys; print(sys.executable)')"
+    $PYTHON -m pip show paddleocr paddlepaddle-gpu paddlepaddle || true
+    exit 1
+  fi
 else
   echo "4) Skipping PaddleOCR install (ENABLE_C4_OCR=${ENABLE_C4_OCR})"
 fi
@@ -506,7 +552,7 @@ if [[ "${ENABLE_SCALELSD}" == "1" ]]; then
   if ! install_filtered_requirements "requirements.txt"; then
     echo "  [WARN] ScaleLSD requirements install failed. Continue anyway."
   fi
-  if ! pip_install -v . --no-build-isolation; then
+  if ! pip_install_noc -v -e . --no-build-isolation; then
     echo "  [WARN] ScaleLSD package install failed. C5 quality_first will fallback to Hough."
   fi
   cd "${WORK_DIR}"
@@ -524,7 +570,7 @@ if [[ "${ENABLE_GAZELLE}" == "1" ]]; then
     git clone --depth 1 https://github.com/fkryan/gazelle.git
   fi
   cd "${TP_DIR}/gazelle"
-  if ! pip_install -v . --no-build-isolation; then
+  if ! pip_install_noc -v -e . --no-build-isolation; then
     echo "  [WARN] Gazelle package install failed. C6 quality_first will fallback to proxy."
   fi
   cd "${WORK_DIR}"
@@ -532,12 +578,14 @@ else
   echo "8) Skipping Gazelle install (ENABLE_GAZELLE=${ENABLE_GAZELLE})"
 fi
 
+QUALITY_PYTHONPATH="${TP_DIR}/scalelsd:${TP_DIR}/gazelle:${PYTHONPATH:-}"
+
 # -----------------------------
 # Verify
 # -----------------------------
 echo "=============================================="
 echo "Verifying imports..."
-$PYTHON - <<'PY'
+PYTHONPATH="${QUALITY_PYTHONPATH}" $PYTHON - <<'PY'
 import numpy as np
 import torch
 print("numpy:", np.__version__)
@@ -559,26 +607,63 @@ import mmpose
 print("MMDet/MMPose OK:", mmdet.__version__, mmpose.__version__)
 
 try:
-    import scalelsd  # noqa: F401
-    print("ScaleLSD import: OK")
+    from scalelsd.ssl.misc.train_utils import load_scalelsd_model  # noqa: F401
+    from scalelsd.ssl.models.detector import ScaleLSD  # noqa: F401
+    print("ScaleLSD import(path used in C5): OK")
 except Exception as e:
-    print(f"ScaleLSD import: WARN ({e})")
+    print(f"ScaleLSD import(path used in C5): WARN ({e})")
 
 try:
-    import gazelle  # noqa: F401
-    print("Gazelle import: OK")
+    from gazelle.model import get_gazelle_model  # noqa: F401
+    print("Gazelle import(path used in C6): OK")
 except Exception as e:
-    print(f"Gazelle import: WARN ({e})")
+    print(f"Gazelle import(path used in C6): WARN ({e})")
 
 try:
     import paddle  # noqa: F401
     from paddleocr import TextDetection  # noqa: F401
-    print("PaddleOCR import: OK")
+    print("PaddleOCR import(path used in C4): OK")
 except Exception as e:
-    print(f"PaddleOCR import: WARN ({e})")
+    print(f"PaddleOCR import(path used in C4): WARN ({e})")
 
 print("All Good")
 PY
+
+if [[ "${STRICT_QUALITY_IMPORTS}" == "1" ]]; then
+  echo "Verifying quality_first paths in strict mode..."
+  if [[ "${ENABLE_SCALELSD}" == "1" ]]; then
+    if ! PYTHONPATH="${QUALITY_PYTHONPATH}" $PYTHON - <<'PY'
+from scalelsd.ssl.misc.train_utils import load_scalelsd_model  # noqa: F401
+from scalelsd.ssl.models.detector import ScaleLSD  # noqa: F401
+print("strict check: C5 ScaleLSD path OK")
+PY
+    then
+      echo "ERROR: strict C5 ScaleLSD import check failed."
+      exit 1
+    fi
+  fi
+  if [[ "${ENABLE_GAZELLE}" == "1" ]]; then
+    if ! PYTHONPATH="${QUALITY_PYTHONPATH}" $PYTHON - <<'PY'
+from gazelle.model import get_gazelle_model  # noqa: F401
+print("strict check: C6 Gazelle path OK")
+PY
+    then
+      echo "ERROR: strict C6 Gazelle import check failed."
+      exit 1
+    fi
+  fi
+  if [[ "${ENABLE_C4_OCR}" == "1" ]]; then
+    if ! $PYTHON - <<'PY'
+import paddle
+from paddleocr import TextDetection  # noqa: F401
+print("strict check: C4 paddle/paddleocr OK", paddle.__version__)
+PY
+    then
+      echo "ERROR: strict C4 paddle/paddleocr import check failed."
+      exit 1
+    fi
+  fi
+fi
 echo "=============================================="
 echo "Installation complete!"
 echo "NOTE:"
@@ -587,4 +672,5 @@ echo " - mmdet/mmpose installed NON-editable (pip 26 PEP660 issue avoided)"
 echo " - SAM2 CUDA build default OFF (SAM2_BUILD_CUDA=${SAM2_BUILD_CUDA})"
 echo " - Qwen3 enforcement: ENABLE_QWEN3_VL=${ENABLE_QWEN3_VL}, QWEN3_TRY_PYPI_LATEST=${QWEN3_TRY_PYPI_LATEST}, QWEN3_ALLOW_GITHUB_FALLBACK=${QWEN3_ALLOW_GITHUB_FALLBACK}"
 echo " - C4 OCR install: ENABLE_C4_OCR=${ENABLE_C4_OCR}"
+echo " - strict quality import checks: STRICT_QUALITY_IMPORTS=${STRICT_QUALITY_IMPORTS}"
 echo "=============================================="

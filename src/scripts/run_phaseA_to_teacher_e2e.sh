@@ -96,6 +96,7 @@ Core options
 --skip_existing 0|1             output 파일이 있으면 단계 skip (default: 1)
 --run_tag TAG                   candidates/teacher 출력 suffix (default: "")
 --max_images INT                0=all, >0=앞에서 n장(candidate/teacher) (default: 0)
+--cand_ar_list CSV              candidate target AR 목록 (예: FREE,1:1,9:16,16:9,3:4,4:3)
 --cand_num_workers INT          candidate 생성 멀티프로세스 worker 수 (0=auto, 1=single)
 --cand_mp_chunksize INT         candidate 멀티프로세스 map chunksize (default: 64)
 --cand_mp_start_method STR      candidate mp 시작 방식(auto|fork|forkserver|spawn)
@@ -125,7 +126,9 @@ Core options
 --public_infer_gpu_ids CSV 공개 teacher multi-gpu 대상 GPU 목록 (예: 0,1)
 --public_infer_num_workers INT 공개 teacher shard worker 수 (default: gpu 개수)
 --precompute_mode MODE          unified|split (default: unified)
+--extract_multi_gpu -1|0|1      precompute multi-gpu on/off (-1=auto, 0=single, 1=multi; ray는 별도 --extract_mode ray)
 --extract_gpu_ids CSV           precompute에서 사용할 GPU 목록 (예: 0,1,2,3)
+--num_workers INT               precompute shard worker 수 (multi 모드에서 권장: gpu 개수)
 
 --use_real_expensive 0|1        teacher expensive real model 사용 (default: 0)
 --run_qa 0|1                    QA report 생성 여부 (default: 1)
@@ -237,6 +240,9 @@ SUBJECT_ROUTING_TOP_N=5
 SUBJECT_ROUTING_UNION_TOP_M=3
 SUBJECT_ROUTING_ALLOW_DET_PROXY=1
 EXTRACT_MODE="auto"
+EXTRACT_MULTI_GPU=-1
+EXTRACT_MODE_EXPLICIT=0
+EXTRACT_MULTI_GPU_EXPLICIT=0
 EXTRACT_PRIORITY="quality_first"
 C5_PRIORITY="quality_first"
 BATCH_SIZE=16
@@ -246,6 +252,7 @@ C3_PERSON_VERIFY_STRICT=1
 
 # Candidate
 RUN_CANDIDATES=1
+CAND_AR_LIST="FREE,1:1,9:16,16:9,3:4,4:3"
 USE_ACTUAL_IMAGE_SIZE=1
 STRICT_ACTUAL_SIZE=1
 ACTUAL_SIZE_CACHE_JSON=""
@@ -385,7 +392,8 @@ while [ "$#" -gt 0 ]; do
     --subject_routing_top_n) SUBJECT_ROUTING_TOP_N="$2"; shift 2 ;;
     --subject_routing_union_top_m) SUBJECT_ROUTING_UNION_TOP_M="$2"; shift 2 ;;
     --subject_routing_allow_det_proxy) SUBJECT_ROUTING_ALLOW_DET_PROXY="$2"; shift 2 ;;
-    --extract_mode) EXTRACT_MODE="$2"; shift 2 ;;
+    --extract_mode) EXTRACT_MODE="$2"; EXTRACT_MODE_EXPLICIT=1; shift 2 ;;
+    --extract_multi_gpu) EXTRACT_MULTI_GPU="$2"; EXTRACT_MULTI_GPU_EXPLICIT=1; shift 2 ;;
     --extract_priority) EXTRACT_PRIORITY="$2"; shift 2 ;;
     --c5_priority) C5_PRIORITY="$2"; shift 2 ;;
     --batch_size) BATCH_SIZE="$2"; shift 2 ;;
@@ -402,6 +410,7 @@ while [ "$#" -gt 0 ]; do
     --strict_actual_size) STRICT_ACTUAL_SIZE="$2"; shift 2 ;;
     --actual_size_cache_json) ACTUAL_SIZE_CACHE_JSON="$2"; shift 2 ;;
     --max_images) MAX_IMAGES="$2"; shift 2 ;;
+    --cand_ar_list) CAND_AR_LIST="$2"; shift 2 ;;
     --cand_num_workers) CAND_NUM_WORKERS="$2"; shift 2 ;;
     --cand_mp_chunksize) CAND_MP_CHUNKSIZE="$2"; shift 2 ;;
     --cand_mp_start_method) CAND_MP_START_METHOD="$2"; shift 2 ;;
@@ -506,6 +515,26 @@ done
 if [ "$PRECOMPUTE_MODE" != "unified" ] && [ "$PRECOMPUTE_MODE" != "split" ]; then
   echo "[error] --precompute_mode must be one of: unified, split"
   exit 1
+fi
+
+if [ "$EXTRACT_MULTI_GPU" -gt 1 ]; then
+  echo "[warn] --extract_multi_gpu expects -1|0|1. got=${EXTRACT_MULTI_GPU}, treating as 1"
+  EXTRACT_MULTI_GPU=1
+fi
+if [ "$EXTRACT_MULTI_GPU" -lt -1 ]; then
+  echo "[warn] --extract_multi_gpu expects -1|0|1. got=${EXTRACT_MULTI_GPU}, treating as -1"
+  EXTRACT_MULTI_GPU=-1
+fi
+if [ "$EXTRACT_MULTI_GPU_EXPLICIT" -eq 1 ]; then
+  if [ "$EXTRACT_MODE_EXPLICIT" -eq 1 ]; then
+    echo "[info] both --extract_mode and --extract_multi_gpu provided. keeping --extract_mode=${EXTRACT_MODE}"
+  else
+    if [ "$EXTRACT_MULTI_GPU" -eq 1 ]; then
+      EXTRACT_MODE="multi"
+    elif [ "$EXTRACT_MULTI_GPU" -eq 0 ]; then
+      EXTRACT_MODE="single"
+    fi
+  fi
 fi
 
 if [ -z "$TAR_DIR" ]; then
@@ -843,7 +872,7 @@ echo " precompute_mode     : $PRECOMPUTE_MODE"
 echo " run_filter          : $RUN_FILTER"
 echo " export_curated_img  : $EXPORT_CURATED_IMAGES (dir=$CURATED_IMAGE_DIR, skip_existing=$CURATED_IMAGE_SKIP_EXISTING)"
 echo " prefer_curated_img  : $PREFER_CURATED_IMAGES (effective=${EFFECTIVE_IMAGE_DIR:-<none>})"
-echo " extract_mode        : $EXTRACT_MODE (gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
+echo " extract_mode        : $EXTRACT_MODE (extract_multi_gpu=${EXTRACT_MULTI_GPU}, gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
 echo " run_c1/c2/c3/c4/c5/c6 : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C4/$RUN_C5/$RUN_C6"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
 echo " subject routing     : run=$RUN_SUBJECT_ROUTING top_n=$SUBJECT_ROUTING_TOP_N union_top_m=$SUBJECT_ROUTING_UNION_TOP_M det_proxy=$SUBJECT_ROUTING_ALLOW_DET_PROXY"
@@ -853,6 +882,7 @@ echo " public raw/proposal : $PUBLIC_TEACHER_RAW_JSONL | $PUBLIC_TEACHER_PROPOSA
 echo " public infer multi  : multi_gpu=$PUBLIC_INFER_MULTI_GPU gpu_ids=${PUBLIC_INFER_GPU_IDS:-auto} workers=${PUBLIC_INFER_NUM_WORKERS:-auto}"
 echo " proposal gate       : enable=$PROPOSAL_INJECTION_GATE min_rate=$PROPOSAL_INJECTION_MIN_RATE strict=$PROPOSAL_INJECTION_GATE_STRICT"
 echo " run_candidates      : $RUN_CANDIDATES"
+echo " candidate_ar_list   : $CAND_AR_LIST"
 echo " candidate_mp       : workers=$CAND_NUM_WORKERS chunksize=$CAND_MP_CHUNKSIZE start=$CAND_MP_START_METHOD"
 echo " teacher proposals   : ${TEACHER_PROPOSALS_JSONL:-<none>}"
 echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
@@ -1336,6 +1366,26 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
         done
       fi
     fi
+    cand_ar_args=()
+    IFS_OLD="$IFS"
+    IFS=',' read -r -a cand_ar_arr <<< "$CAND_AR_LIST"
+    IFS="$IFS_OLD"
+    cand_ar_values=()
+    if [ "${#cand_ar_arr[@]}" -gt 0 ]; then
+      for av in "${cand_ar_arr[@]}"; do
+        av_trim="$(echo "$av" | xargs)"
+        if [ -n "$av_trim" ]; then
+          cand_ar_values+=("$av_trim")
+        fi
+      done
+    fi
+    if [ "${#cand_ar_values[@]}" -gt 0 ]; then
+      cand_ar_args+=(--ar_list)
+      for av in "${cand_ar_values[@]}"; do
+        cand_ar_args+=("$av")
+      done
+    fi
+
     run_with_log "09_generate_candidates" \
       bash src/scripts/run_generate_candidates.sh \
         "$FILTERED_PARQUET" \
@@ -1352,6 +1402,7 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
         --num_workers "$CAND_NUM_WORKERS" \
         --mp_chunksize "$CAND_MP_CHUNKSIZE" \
         --mp_start_method "$CAND_MP_START_METHOD" \
+        "${cand_ar_args[@]}" \
         "${cand_extra_args[@]}"
   fi
 

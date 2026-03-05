@@ -79,28 +79,35 @@ bash src/scripts/install_features_deps_torch251_cu121_stable.sh
 
 3) 품질최우선 모듈 import 검증
 ```bash
+export PYTHONPATH="$(pwd)/third_party/scalelsd:$(pwd)/third_party/gazelle:${PYTHONPATH}"
+
 python - <<'PY'
 import torch
 print("torch:", torch.__version__, "cuda:", torch.version.cuda)
 
 try:
-    import scalelsd  # C5 quality_first
-    print("scalelsd: OK")
+    from scalelsd.ssl.misc.train_utils import load_scalelsd_model  # C5 quality_first
+    from scalelsd.ssl.models.detector import ScaleLSD
+    print("scalelsd(path used in C5): OK")
 except Exception as e:
-    print("scalelsd: WARN", e)
+    print("scalelsd(path used in C5): WARN", e)
 
 try:
-    import gazelle   # C6 quality_first
-    print("gazelle: OK")
+    from gazelle.model import get_gazelle_model  # C6 quality_first
+    print("gazelle(path used in C6): OK")
 except Exception as e:
-    print("gazelle: WARN", e)
+    print("gazelle(path used in C6): WARN", e)
 
 import paddle
 from paddleocr import TextDetection  # C4 quality_first
 print("paddle:", paddle.__version__)
-print("TextDetection: OK")
+print("TextDetection(path used in C4): OK")
 PY
 ```
+
+`ModuleNotFoundError: No module named 'paddle'`가 나오면:
+- `paddleocr`만 설치되고 `paddlepaddle-gpu`가 실제로 설치/로딩되지 않은 상태입니다.
+- 최신 `install_features_deps_torch251_cu121_stable.sh`는 이 경우 자동 재설치 후 `import paddle`를 강제 검증하고, 실패 시 즉시 종료하도록 보강되어 있습니다.
 
 4) (선택) 설치 정책 토글
 ```bash
@@ -170,11 +177,11 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
   --extract_mode auto \
-  --extract_gpu_ids 0,1,2,3,4,5,6 \
+  --extract_gpu_ids 0,1,2,3,4,5,6,7 \
   --num_workers 7 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3,4,5,6 \
+  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
   --teacher_num_workers 7 \
   --align_device cuda \
   --aesthetic_device cuda \
@@ -315,7 +322,8 @@ export C6_GAZELLE_DEVICE=cuda
 ```
 
 ```bash
-DATANAME=10K
+DATANAME=10K_local
+RUN_TAG=260305_v1
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --bucket sstk_100 \
   --data_dir data/SSTK/${DATANAME} \
@@ -336,11 +344,15 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --subject_routing_union_top_m 3 \
   --subject_routing_allow_det_proxy 1 \
   --extract_mode auto \
+  --extract_multi_gpu 1 \
+  --extract_gpu_ids 0,1,2,3,4,5,6,7 \
+  --num_workers 8 \
   --extract_priority quality_first \
   --c5_priority quality_first \
-  --batch_size 16 \
+  --batch_size 512 \
   --c3_person_verify_strict 1 \
   --run_candidates 1 \
+  --cand_ar_list FREE,1:1,9:16,16:9,3:4,4:3 \
   --use_actual_image_size 1 \
   --strict_actual_size 1 \
   --enable_public_teacher_proposals 1 \
@@ -351,8 +363,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teacher_device auto \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --public_infer_multi_gpu 1 \
-  --public_infer_gpu_ids 0,1,2,3,4,5,6 \
-  --public_infer_num_workers 4 \
+  --public_infer_gpu_ids 0,1,2,3,4,5,6,7 \
+  --public_infer_num_workers 8 \
   --public_infer_skip_on_oom 1 \
   --public_infer_fallback_cpu_on_oom 1 \
   --public_infer_fallback_cpu_max_images 3 \
@@ -364,7 +376,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --tau_div 0.75 \
   --align_device cuda \
   --aesthetic_device cuda \
-  --exp_batch_size 12 \
+  --exp_batch_size 512 \
   --run_qa 1 \
   --run_viz 1 \
   --num_viz 120 \
@@ -380,6 +392,9 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 정리:
 - 위 `3.6` 템플릿 1회 실행으로 `Filter -> Precompute(C1~C6) -> Subject Routing -> Candidate -> Teacher -> VLM` 전체가 수행됩니다.
+- 기본 candidate AR 세트는 `FREE`를 포함합니다. (`--cand_ar_list`로 조정 가능)
+- `teacher_scores_jsonl`의 `results_by_ar`에 `FREE` 키가 함께 생성되며, `--vlm_target_ar all`이면 Stage10도 `FREE`를 포함해 라벨을 생성합니다.
+- `FREE`는 AR 하드제약 타겟이 아니라 AR 비조건부 후보 모드입니다. (다중 AR 후보를 생성하고 scorer에서 FREE 전용 prior만 약하게 적용)
 
 실행 후 품질 최우선 모듈 적용 여부 점검:
 ```bash
@@ -413,6 +428,38 @@ PY
 - C5: `scalelsd_*` 또는 `scalelsd_ransac` 계열이 사용되는지 확인
 - C6: `gazelle_gaze_lle`가 의미 있게 관측되는지 확인(인물 없는 샘플은 `skipped` 가능)
 - fallback(`legacy_fallback`, `houghp_fallback`, `proxy_fallback`)이 과도하면 모델/체크포인트 경로를 점검
+
+FREE 파이프라인 반영 여부 빠른 점검:
+```bash
+python - <<'PY'
+import json
+from collections import Counter
+
+cand = "data/SSTK/10K_local/artifacts/candidates/candidates_ar_<run_tag>.jsonl"
+teach = "data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_<run_tag>.jsonl"
+vlm = "data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_<run_tag>.jsonl"
+
+with open(cand, "r", encoding="utf-8") as f:
+    ck = Counter()
+    for ln in f:
+        for k in (json.loads(ln).get("candidates_by_ar") or {}).keys():
+            ck[k] += 1
+print("candidate keys:", dict(ck))
+
+with open(teach, "r", encoding="utf-8") as f:
+    tk = Counter()
+    for ln in f:
+        rb = ((json.loads(ln).get("teacher_scorer") or {}).get("results_by_ar") or {})
+        for k in rb.keys():
+            tk[k] += 1
+print("teacher keys:", dict(tk))
+
+with open(vlm, "r", encoding="utf-8") as f:
+    vk = Counter(str(json.loads(ln).get("target_ar", "")) for ln in f)
+print("vlm target_ar:", dict(vk))
+PY
+```
+위 스니펫의 `<run_tag>`는 실제 실행 태그(예: `full_260226`)로 바꿔서 사용합니다.
 
 ### 3.7 filtered parquet만 있고 images가 없을 때: images만 생성 후 4.2 실행
 
@@ -1510,7 +1557,12 @@ Subject-Mode enrich(신규):
 - `--extract_mode auto|single|multi|ray`:
   - `multi` = No-Ray 멀티 GPU 샤딩
   - `ray` = 명시적 레거시 Ray 모드
+- `--extract_multi_gpu -1|0|1`:
+  - `1` = precompute를 No-Ray `multi`로 강제
+  - `0` = precompute를 `single`로 강제
+  - `-1` = `--extract_mode` 설정값 사용(기본)
 - `--extract_gpu_ids`: precompute에 사용할 GPU 목록 CSV
+- `--num_workers`: precompute shard worker 수 (`multi`에서 보통 GPU 개수와 동일)
 - `--run_c1 --run_c2 --run_c3 --run_c4 --run_c5 --run_c6 --run_c3_enrich --run_merge`
 - `--run_subject_routing 0|1`: merged precompute에 subject_mode + c2 topN 주입(기본 1)
 - `--subject_routing_top_n`: c2 top-N instance 수(기본 5)
@@ -1522,6 +1574,7 @@ Subject-Mode enrich(신규):
 - `--component_viz_image_ids`: precompute 시각화 대상 image_id CSV
 - `--component_viz_image_ids_file`: precompute 시각화 대상 image_id 파일(한 줄 1개)
 - `--run_candidates --run_teacher`
+- `--cand_ar_list`: candidate target AR CSV (기본: `FREE,1:1,9:16,16:9,3:4,4:3`)
 - `--teacher_proposals_jsonl`: Candidate 단계에 수동 proposal jsonl 주입(CSV)
 - `--enable_public_teacher_proposals 0|1`: 5.5(공개 Teacher setup+infer+build) 자동 수행 후 Candidate에 자동 주입
 - `--proposal_injection_gate 0|1`: 공개 proposal 주입률 QA gate 수행(기본 1)
@@ -1582,6 +1635,7 @@ Subject-Mode enrich(신규):
 - `--use_actual_image_size 1`
 - `--strict_actual_size 1`
 - `--max_images`, `--max_candidates_per_ar`, `--ar_list ...`
+- `--ar_list` 기본값은 `FREE`를 포함합니다.
 
 v1.9 proposal 주입 관련:
 - `--teacher_proposals_jsonl <jsonl...>`

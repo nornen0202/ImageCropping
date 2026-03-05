@@ -6,6 +6,8 @@
 # GPU 수에 따라 자동으로 모드를 선택:
 #   GPU 1장  →  extract_features_single.py (single)
 #   GPU 2장+ →  extract_features_single.py 샤딩 병렬 (multi, No-Ray)
+#              (각 shard는 CUDA_VISIBLE_DEVICES를 1개 GPU로 제한하고
+#               C4/C5/C6 디바이스를 shard-local 0번으로 자동 정규화)
 # Ray는 --mode ray로 명시적으로 요청한 경우에만 사용.
 #
 # ==============================================================================
@@ -362,6 +364,28 @@ elif [ "$MODE" = "multi" ]; then
         csv="${csv// /}"
         echo "$csv"
     }
+    # shard 프로세스는 CUDA_VISIBLE_DEVICES로 단일 GPU만 보이도록 제한한다.
+    # 모델별 디바이스 env가 절대 인덱스(gpu:3/cuda:3)로 들어오더라도 shard-local
+    # 인덱스(0)로 강제 정규화하여 C4/C5/C6가 올바른 GPU를 사용하도록 한다.
+    normalize_paddle_gpu_dev() {
+        local raw="$1"
+        local s="${raw// /}"
+        if [[ "$s" == gpu:* ]] || [ "$s" = "gpu" ]; then
+            echo "gpu:0"
+            return
+        fi
+        echo "$s"
+    }
+
+    normalize_torch_cuda_dev() {
+        local raw="$1"
+        local s="${raw// /}"
+        if [[ "$s" == cuda:* ]] || [ "$s" = "cuda" ]; then
+            echo "cuda:0"
+            return
+        fi
+        echo "$s"
+    }
 
     GPU_CSV="$(resolve_gpu_ids)"
     IFS=',' read -r -a GPU_ARR <<< "$GPU_CSV"
@@ -395,7 +419,11 @@ elif [ "$MODE" = "multi" ]; then
         mkdir -p "$TMP_DIR"
         PIDS=()
         SHARD_FILES=()
+        C4_DEVICE_SHARD="$(normalize_paddle_gpu_dev "${C4_PPOCR_DEVICE:-gpu:0}")"
+        C5_DEVICE_SHARD="$(normalize_torch_cuda_dev "${C5_SCALELSD_DEVICE:-cuda}")"
+        C6_DEVICE_SHARD="$(normalize_torch_cuda_dev "${C6_GAZELLE_DEVICE:-cuda}")"
         echo "[multi] gpu_ids=${GPU_CSV} workers=${WORKERS}"
+        echo "[multi] shard-local devices: C4_PPOCR_DEVICE=${C4_DEVICE_SHARD}, C5_SCALELSD_DEVICE=${C5_DEVICE_SHARD}, C6_GAZELLE_DEVICE=${C6_DEVICE_SHARD}"
 
         i=0
         while [ "$i" -lt "$WORKERS" ]; do
@@ -404,7 +432,11 @@ elif [ "$MODE" = "multi" ]; then
             SHARD_LOG="${TMP_DIR}/part_${i}.log"
             SHARD_FILES+=("$SHARD_OUT")
             echo "[multi] launch shard=$i/$WORKERS gpu=$GPU_ID -> $SHARD_OUT"
-            CUDA_VISIBLE_DEVICES="$GPU_ID" python3 "${SRC_DIR}/extract_features_single.py" \
+            CUDA_VISIBLE_DEVICES="$GPU_ID" \
+            C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" \
+            C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" \
+            C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" \
+            python3 "${SRC_DIR}/extract_features_single.py" \
                 --input_parquet  "$INPUT_PARQUET" \
                 --bucket         "$BUCKET" \
                 --tar_dir        "$TAR_DIR" \

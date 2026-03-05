@@ -1,6 +1,6 @@
 """
 generate_candidates.py
-AR-conditioned candidate generator (Phase B1).
+AR-conditioned + FREE-form candidate generator (Phase B1).
 
 Input:
 - filtered parquet (image_id, width, height, tags, ...)
@@ -38,7 +38,7 @@ from PIL import Image
 from tqdm import tqdm
 
 
-DEFAULT_AR_LIST = ("1:1", "9:16", "16:9", "3:4", "4:3")
+DEFAULT_AR_LIST = ("FREE", "1:1", "9:16", "16:9", "3:4", "4:3")
 DEFAULT_SCALE_SET = (0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95)
 DEFAULT_JITTER_FRACS = (0.0, 0.03, 0.06)
 DEFAULT_JITTER_SCALES = (0.45, 0.55, 0.65)
@@ -46,6 +46,13 @@ DEFAULT_PHI_SCALES = (0.35, 0.55, 0.75)
 DEFAULT_OBJ_TEMPLATE_SCALES = (1.1, 1.25, 1.45)
 DEFAULT_TEACHER_JITTER_SHIFT_FRACS = (0.03,)
 DEFAULT_TEACHER_JITTER_SCALES = (0.92, 1.00, 1.08)
+DEFAULT_FREE_AR_VALUES = (0.67, 0.75, 1.0, 1.33, 1.5)
+DEFAULT_FREE_AR_LOG_JITTER = (0.0, -0.12, 0.12)
+DEFAULT_FREE_JITTER_FRACS = (0.0, 0.04)
+DEFAULT_FREE_JITTER_SCALES = (0.45, 0.65)
+DEFAULT_FREE_SCALE_SET = (0.45, 0.65, 0.85)
+DEFAULT_FREE_PHI_SCALES = (0.55,)
+DEFAULT_FREE_TEACHER_AR_JITTER = (0.85, 1.0, 1.15)
 
 COPYSPACE_HINT_WORDS = (
     "copy space",
@@ -99,6 +106,19 @@ class CandidateGenConfig:
     teacher_jitter_scales: Tuple[float, ...] = DEFAULT_TEACHER_JITTER_SCALES
     teacher_seed_priority: float = 6.5
     teacher_jitter_priority: float = 6.2
+    # FREE-form generation (AR-unconditioned)
+    free_ar_values: Tuple[float, ...] = DEFAULT_FREE_AR_VALUES
+    free_ar_log_jitter: Tuple[float, ...] = DEFAULT_FREE_AR_LOG_JITTER
+    free_grid_m: int = 4
+    free_grid_n: int = 4
+    free_scale_set: Tuple[float, ...] = DEFAULT_FREE_SCALE_SET
+    free_jitter_fracs: Tuple[float, ...] = DEFAULT_FREE_JITTER_FRACS
+    free_jitter_scales: Tuple[float, ...] = DEFAULT_FREE_JITTER_SCALES
+    free_phi_scales: Tuple[float, ...] = DEFAULT_FREE_PHI_SCALES
+    free_nms_iou: float = 0.85
+    free_bucket_portrait_max: float = 0.90
+    free_bucket_square_max: float = 1.10
+    free_teacher_ar_jitter: Tuple[float, ...] = DEFAULT_FREE_TEACHER_AR_JITTER
 
 
 def _init_build_worker(
@@ -395,6 +415,16 @@ def parse_ar(ar_text: str) -> float:
         a, b = t.split(":", 1)
         return float(a) / float(b)
     return float(t)
+
+
+def is_free_ar_text(ar_text: str) -> bool:
+    return str(ar_text).strip().upper() in {"FREE", "AR_FREE", "FREEFORM", "FREE_FORM"}
+
+
+def parse_target_ar(ar_text: str) -> Optional[float]:
+    if is_free_ar_text(ar_text):
+        return None
+    return parse_ar(ar_text)
 
 
 def parse_ar_loose(ar_text: str) -> float:
@@ -842,6 +872,88 @@ def diversity_sample(candidates: Sequence[Dict[str, Any]], k: int) -> List[Dict[
     return [candidates[i] for i in picked]
 
 
+def free_ar_sample_values(cfg: CandidateGenConfig) -> List[float]:
+    out: List[float] = []
+    for base in cfg.free_ar_values:
+        b = max(0.2, min(5.0, float(base)))
+        for lj in cfg.free_ar_log_jitter:
+            ar = b * math.exp(float(lj))
+            ar = max(0.2, min(5.0, ar))
+            out.append(round(ar, 6))
+    uniq = sorted(set(out))
+    return uniq if uniq else [1.0]
+
+
+def _free_bucket_of_ar(ar: float, cfg: CandidateGenConfig) -> str:
+    if ar < float(cfg.free_bucket_portrait_max):
+        return "portrait"
+    if ar <= float(cfg.free_bucket_square_max):
+        return "square"
+    return "landscape"
+
+
+def diversity_sample_free(
+    candidates: Sequence[Dict[str, Any]],
+    k: int,
+    cfg: CandidateGenConfig,
+) -> List[Dict[str, Any]]:
+    if k <= 0:
+        return []
+    if len(candidates) <= k:
+        return list(candidates)
+
+    buckets: Dict[str, List[Dict[str, Any]]] = {"portrait": [], "square": [], "landscape": []}
+    for c in candidates:
+        ar = safe_float(c.get("ar", 1.0), 1.0)
+        buckets[_free_bucket_of_ar(ar, cfg)].append(c)
+
+    # Keep stronger candidates first inside each bucket.
+    for key in list(buckets.keys()):
+        buckets[key] = sorted(
+            buckets[key],
+            key=lambda x: (
+                safe_float(x.get("priority", 0.0), 0.0),
+                safe_float(x.get("area_ratio", 0.0), 0.0),
+            ),
+            reverse=True,
+        )
+
+    picked: List[Dict[str, Any]] = []
+    picked_keys: set[Tuple[float, float, float, float]] = set()
+
+    def _append_unique(arr: Sequence[Dict[str, Any]]) -> None:
+        for c in arr:
+            if len(picked) >= k:
+                return
+            box = c.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])
+            key = tuple(round(float(v), 6) for v in box)
+            if key in picked_keys:
+                continue
+            picked.append(c)
+            picked_keys.add(key)
+
+    n_buckets = 3
+    quota = max(1, int(math.ceil(float(k) / float(n_buckets))))
+    for bname in ("portrait", "square", "landscape"):
+        if len(picked) >= k:
+            break
+        part = diversity_sample(buckets[bname], min(quota, len(buckets[bname])))
+        _append_unique(part)
+
+    if len(picked) < k:
+        remain = []
+        for c in candidates:
+            box = c.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])
+            key = tuple(round(float(v), 6) for v in box)
+            if key in picked_keys:
+                continue
+            remain.append(c)
+        fill = diversity_sample(remain, min(k - len(picked), len(remain)))
+        _append_unique(fill)
+
+    return picked[:k]
+
+
 def ensure_jsonable_tags(raw_tags: Any) -> List[str]:
     if raw_tags is None:
         return []
@@ -998,7 +1110,7 @@ def add_candidate(
     out: List[Dict[str, Any]],
     box: Sequence[float],
     image_ar: float,
-    target_ar: float,
+    target_ar: Optional[float],
     ar_tol: float,
     a_min: float,
     a_max: float,
@@ -1017,13 +1129,16 @@ def add_candidate(
     b = [x1, y1, x2, y2]
     area = box_area(b)
     if area < a_min or area > a_max:
-        return None
+        allow_full_baseline = bool(must_keep) and str(source).startswith("baseline_full") and area <= 1.000001
+        if not allow_full_baseline:
+            return None
     ar_val = actual_ar(b, image_ar)
-    if abs(ar_val - target_ar) > ar_tol:
+    if target_ar is not None and abs(ar_val - target_ar) > ar_tol:
         return None
     cand = {
         "bbox_norm_xyxy": [round(x1, 6), round(y1, 6), round(x2, 6), round(y2, 6)],
         "area_ratio": round(area, 6),
+        "ar": round(ar_val, 6),
         "source_types": list(source_types) if source_types else [source],
         "source": source,
         "scale_idx": str(scale_idx),
@@ -1435,6 +1550,396 @@ def inject_teacher_proposals(
             used += 1
 
 
+def _teacher_jitter_boxes_free(
+    seed_box: Sequence[float],
+    cfg: CandidateGenConfig,
+) -> List[List[float]]:
+    cx, cy = box_center(seed_box)
+    sw, sh = box_wh(seed_box)
+    sw = max(sw, 1e-6)
+    sh = max(sh, 1e-6)
+
+    shift_vals = [0.0]
+    for frac in cfg.teacher_jitter_shift_fracs:
+        f = abs(float(frac))
+        if f <= 0:
+            continue
+        shift_vals.extend([-f, f])
+    shift_vals = sorted(set(round(v, 6) for v in shift_vals))
+
+    ar_jitter = [float(x) for x in cfg.free_teacher_ar_jitter if float(x) > 0]
+    if not ar_jitter:
+        ar_jitter = [1.0]
+
+    out: List[List[float]] = []
+    for s in cfg.teacher_jitter_scales:
+        s = float(s)
+        if s <= 0:
+            continue
+        for ar_mul in ar_jitter:
+            ar_mul = max(0.2, min(5.0, float(ar_mul)))
+            ar_sqrt = math.sqrt(ar_mul)
+            w2 = sw * s * ar_sqrt
+            h2 = sh * s / ar_sqrt
+            for dx in shift_vals:
+                for dy in shift_vals:
+                    if abs(dx) <= 1e-12 and abs(dy) <= 1e-12 and abs(s - 1.0) <= 1e-12 and abs(ar_mul - 1.0) <= 1e-12:
+                        continue
+                    cx2 = cx + dx * sw
+                    cy2 = cy + dy * sh
+                    box0 = clip_box01(
+                        [
+                            cx2 - 0.5 * w2,
+                            cy2 - 0.5 * h2,
+                            cx2 + 0.5 * w2,
+                            cy2 + 0.5 * h2,
+                        ]
+                    )
+                    if box_area(box0) <= 1e-8:
+                        continue
+                    out.append([round(v, 6) for v in box0])
+    return out
+
+
+def inject_teacher_proposals_freeform(
+    out: List[Dict[str, Any]],
+    *,
+    target_ar_text: str,
+    image_ar: float,
+    teacher_proposals: Optional[Dict[str, Dict[str, Any]]],
+    cfg: CandidateGenConfig,
+    teacher_meta_out: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    """
+    FREE-form proposal injection:
+    - keep teacher boxes in native AR (no target-AR projection)
+    - explore local shift/scale/ar-jitter neighborhoods
+    """
+    if not teacher_proposals:
+        return
+
+    for teacher_id in sorted(teacher_proposals.keys()):
+        payload = teacher_proposals.get(teacher_id, {})
+        if not isinstance(payload, dict):
+            continue
+
+        free_form = payload.get("free_form", [])
+        by_ar = payload.get("by_ar", {})
+        if not isinstance(by_ar, dict):
+            by_ar = {}
+
+        seed_budget = max(0, int(cfg.teacher_max_seeds_per_teacher))
+        if seed_budget <= 0:
+            continue
+
+        raw_seed_items: List[Tuple[int, Any]] = []
+        if isinstance(free_form, list):
+            for idx, item in enumerate(free_form):
+                raw_seed_items.append((idx, item))
+
+        if by_ar:
+            offset = len(raw_seed_items)
+            # Deterministic order for reproducibility.
+            for ar_text in sorted(by_ar.keys()):
+                arr = by_ar.get(ar_text, [])
+                if not isinstance(arr, list):
+                    continue
+                for j, item in enumerate(arr):
+                    raw_seed_items.append((offset + j, item))
+                offset += len(arr)
+
+        if not raw_seed_items:
+            continue
+
+        uniq: Dict[Tuple[float, float, float, float], Tuple[float, int, List[float]]] = {}
+        for order_idx, item in raw_seed_items:
+            box = normalize_teacher_box(item)
+            if box is None:
+                continue
+            score = extract_teacher_score(item)
+            score_v = safe_float(score, -1e9)
+            key = tuple(round(float(v), 6) for v in box)
+            prev = uniq.get(key)
+            if prev is None or score_v > prev[0]:
+                uniq[key] = (score_v, int(order_idx), [round(float(v), 6) for v in box])
+
+        seed_list = sorted(
+            uniq.values(),
+            key=lambda x: (
+                x[0],          # higher teacher score first
+                -x[1],         # stable: earlier raw item first when same score
+            ),
+            reverse=True,
+        )
+
+        for seed_idx, (score_v, _ord, seed_box) in enumerate(seed_list[:seed_budget]):
+            teacher_score = None if score_v <= -1e8 else float(score_v)
+            seed_cand = add_candidate(
+                out=out,
+                box=seed_box,
+                image_ar=image_ar,
+                target_ar=None,
+                ar_tol=cfg.ar_tol,
+                a_min=cfg.a_min,
+                a_max=cfg.a_max,
+                source=f"teacher:{teacher_id}",
+                source_types=[f"teacher:{teacher_id}"],
+                scale_idx=f"teach_{teacher_id}_seed{seed_idx}",
+                must_keep=False,
+                priority=cfg.teacher_seed_priority,
+                extra={
+                    "teacher_id": teacher_id,
+                    "teacher_score": teacher_score,
+                    "teacher_stage": "seed",
+                },
+            )
+            if seed_cand is not None and teacher_meta_out is not None:
+                teacher_meta_out.append(
+                    {
+                        "teacher_id": teacher_id,
+                        "target_ar": target_ar_text,
+                        "stage": "seed",
+                        "bbox_norm_xyxy": seed_cand["bbox_norm_xyxy"],
+                        "bbox_norm": seed_cand["bbox_norm_xyxy"],
+                        "teacher_score": teacher_score,
+                    }
+                )
+
+            jitter_boxes = _teacher_jitter_boxes_free(seed_box=seed_box, cfg=cfg)
+            for j_idx, jb in enumerate(jitter_boxes):
+                jit_cand = add_candidate(
+                    out=out,
+                    box=jb,
+                    image_ar=image_ar,
+                    target_ar=None,
+                    ar_tol=cfg.ar_tol,
+                    a_min=cfg.a_min,
+                    a_max=cfg.a_max,
+                    source="teacher:jitter",
+                    source_types=["teacher:jitter", f"teacher:{teacher_id}"],
+                    scale_idx=f"teach_{teacher_id}_jit{seed_idx}_{j_idx}",
+                    must_keep=False,
+                    priority=cfg.teacher_jitter_priority,
+                    extra={
+                        "teacher_id": teacher_id,
+                        "teacher_score": teacher_score,
+                        "teacher_stage": "jitter",
+                    },
+                )
+                if jit_cand is not None and teacher_meta_out is not None:
+                    teacher_meta_out.append(
+                        {
+                            "teacher_id": teacher_id,
+                            "target_ar": target_ar_text,
+                            "stage": "jitter",
+                            "bbox_norm_xyxy": jit_cand["bbox_norm_xyxy"],
+                            "bbox_norm": jit_cand["bbox_norm_xyxy"],
+                            "teacher_score": teacher_score,
+                        }
+                    )
+
+
+def generate_freeform_candidates(
+    target_ar_text: str,
+    image_ar: float,
+    subject_centroid: Tuple[float, float],
+    subject_size: Tuple[float, float],
+    has_copy_hint: bool,
+    cfg: CandidateGenConfig,
+    teacher_proposals: Optional[Dict[str, Dict[str, Any]]] = None,
+    teacher_meta_out: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    cx_subj, cy_subj = subject_centroid
+    ws, hs = subject_size
+    all_cands: List[Dict[str, Any]] = []
+
+    # (A) FREE baselines: full-frame keep anchor + max-area family over sampled ARs.
+    add_candidate(
+        out=all_cands,
+        box=[0.0, 0.0, 1.0, 1.0],
+        image_ar=image_ar,
+        target_ar=None,
+        ar_tol=cfg.ar_tol,
+        a_min=cfg.a_min,
+        a_max=cfg.a_max,
+        source="baseline_full",
+        scale_idx="free_full",
+        must_keep=True,
+        priority=10.0,
+    )
+
+    ar_samples = free_ar_sample_values(cfg)
+    for i, ar_t in enumerate(ar_samples):
+        bs = generate_baseline_candidates(
+            target_ar=float(ar_t),
+            image_ar=image_ar,
+            subject_centroid=subject_centroid,
+            has_copy_hint=has_copy_hint,
+            cfg=cfg,
+        )
+        for c in bs:
+            c["scale_idx"] = f"freeb{i}_{c.get('scale_idx', 'x')}"
+            all_cands.append(c)
+
+    # (B) Grid + multi-scale over sampled ARs.
+    xs = [i / cfg.free_grid_m for i in range(cfg.free_grid_m + 1)]
+    ys = [j / cfg.free_grid_n for j in range(cfg.free_grid_n + 1)]
+    for ar_idx, ar_t in enumerate(ar_samples):
+        for s_idx, area_t in enumerate(cfg.free_scale_set):
+            if not (cfg.a_min <= float(area_t) <= cfg.a_max):
+                continue
+            for cx in xs:
+                for cy in ys:
+                    add_center_area_box(
+                        out=all_cands,
+                        cx=cx,
+                        cy=cy,
+                        area_t=float(area_t),
+                        image_ar=image_ar,
+                        target_ar=float(ar_t),
+                        cfg=cfg,
+                        source="grid",
+                        scale_idx=f"fgrid{ar_idx}_{s_idx}",
+                        must_keep=False,
+                        priority=3.0,
+                    )
+
+    # (C) Subject templates + local jitter with AR sampling.
+    subj_area = max(cfg.a_min, min(cfg.a_max, ws * hs))
+    for ar_idx, ar_t in enumerate(ar_samples):
+        for i, m in enumerate(cfg.object_template_scales):
+            area_t = max(cfg.a_min, min(cfg.a_max, subj_area * (float(m) ** 2)))
+            add_center_area_box(
+                out=all_cands,
+                cx=cx_subj,
+                cy=cy_subj,
+                area_t=area_t,
+                image_ar=image_ar,
+                target_ar=float(ar_t),
+                cfg=cfg,
+                source="object_template",
+                scale_idx=f"fobj{ar_idx}_{i}",
+                must_keep=False,
+                priority=6.0,
+            )
+
+    dxs = [0.0]
+    dys = [0.0]
+    for frac in cfg.free_jitter_fracs:
+        if float(frac) <= 0:
+            continue
+        dxs.extend([-float(frac) * ws, float(frac) * ws])
+        dys.extend([-float(frac) * hs, float(frac) * hs])
+    dxs = sorted(set(round(v, 6) for v in dxs))
+    dys = sorted(set(round(v, 6) for v in dys))
+
+    for ar_idx, ar_t in enumerate(ar_samples):
+        for j_idx, area_t in enumerate(cfg.free_jitter_scales):
+            if not (cfg.a_min <= float(area_t) <= cfg.a_max):
+                continue
+            for dx in dxs:
+                for dy in dys:
+                    add_center_area_box(
+                        out=all_cands,
+                        cx=cx_subj + dx,
+                        cy=cy_subj + dy,
+                        area_t=float(area_t),
+                        image_ar=image_ar,
+                        target_ar=float(ar_t),
+                        cfg=cfg,
+                        source="jitter",
+                        scale_idx=f"fjit{ar_idx}_{j_idx}",
+                        must_keep=False,
+                        priority=5.0,
+                    )
+
+    # (D) Composition anchors (thirds/phi).
+    if cfg.use_phi_thirds:
+        third = [1 / 3, 2 / 3]
+        phi = [0.382, 0.618]
+        centers = [(x, y) for x in third + phi for y in third + phi]
+        for ar_idx, ar_t in enumerate(ar_samples):
+            for p_idx, area_t in enumerate(cfg.free_phi_scales):
+                for c_idx, (cx, cy) in enumerate(centers):
+                    add_center_area_box(
+                        out=all_cands,
+                        cx=cx,
+                        cy=cy,
+                        area_t=float(area_t),
+                        image_ar=image_ar,
+                        target_ar=float(ar_t),
+                        cfg=cfg,
+                        source="phi_thirds",
+                        scale_idx=f"fphi{ar_idx}_{p_idx}_{c_idx}",
+                        must_keep=False,
+                        priority=4.0,
+                    )
+
+    # (E) FREE teacher seed injection (native AR + local/ar jitter).
+    inject_teacher_proposals_freeform(
+        out=all_cands,
+        target_ar_text=target_ar_text,
+        image_ar=image_ar,
+        teacher_proposals=teacher_proposals,
+        cfg=cfg,
+        teacher_meta_out=teacher_meta_out,
+    )
+
+    # (F) Dedupe/NMS and FREE-specific diversity (position + AR buckets).
+    all_cands = dedupe_by_rounded_box(all_cands, ndigits=6)
+    must_keep = [c for c in all_cands if c.get("must_keep", False)]
+    non_keep = [c for c in all_cands if not c.get("must_keep", False)]
+    teacher_non_keep = [
+        c
+        for c in non_keep
+        if str(c.get("source", "")).startswith("teacher:")
+        or "teacher:jitter" in set(c.get("source_types", []))
+    ]
+    other_non_keep = [
+        c
+        for c in non_keep
+        if not (
+            str(c.get("source", "")).startswith("teacher:")
+            or "teacher:jitter" in set(c.get("source_types", []))
+        )
+    ]
+
+    must_keep = nms_candidates(must_keep, iou_thr=0.98)
+    teacher_non_keep = nms_candidates(
+        teacher_non_keep,
+        iou_thr=cfg.teacher_nms_iou,
+        existing=must_keep,
+    )
+    other_non_keep = nms_candidates(other_non_keep, iou_thr=cfg.free_nms_iou, existing=must_keep)
+    non_keep = teacher_non_keep + other_non_keep
+
+    if len(must_keep) >= cfg.max_candidates_per_ar:
+        final_cands = sorted(
+            must_keep,
+            key=lambda c: (safe_float(c.get("priority", 0.0), 0.0), safe_float(c.get("area_ratio", 0.0), 0.0)),
+            reverse=True,
+        )[: cfg.max_candidates_per_ar]
+    else:
+        rem = cfg.max_candidates_per_ar - len(must_keep)
+        sampled_non_keep = diversity_sample_free(non_keep, k=rem, cfg=cfg)
+        final_cands = must_keep + sampled_non_keep
+
+    final_cands = sorted(
+        final_cands,
+        key=lambda c: (
+            1 if c.get("must_keep", False) else 0,
+            safe_float(c.get("priority", 0.0), 0.0),
+            safe_float(c.get("area_ratio", 0.0), 0.0),
+        ),
+        reverse=True,
+    )
+
+    token = ar_token(target_ar_text)
+    for i, c in enumerate(final_cands, start=1):
+        c["candidate_id"] = f"{token}_g{cfg.free_grid_m}x{cfg.free_grid_n}_s{c['scale_idx']}_i{i:04d}"
+    return final_cands
+
+
 def generate_candidates_for_ar(
     target_ar: float,
     target_ar_text: str,
@@ -1644,7 +2149,7 @@ def load_jsonl_map(path: Path, value_key: str) -> Dict[str, Any]:
 
 def config_hash(cfg: CandidateGenConfig) -> str:
     payload = asdict(cfg)
-    payload["impl_version"] = "candidate_gen_v1_9"
+    payload["impl_version"] = "candidate_gen_v1_10_free"
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(blob).hexdigest()[:16]
 
@@ -1709,25 +2214,40 @@ def build_output_record(
     teacher_candidates: List[Dict[str, Any]] = []
     total_candidates = 0
     for ar_text in cfg.ar_list:
-        ar_t = parse_ar(ar_text)
+        ar_text_norm = str(ar_text).strip()
         teacher_meta_ar: List[Dict[str, Any]] = []
-        cands = generate_candidates_for_ar(
-            target_ar=ar_t,
-            target_ar_text=ar_text,
-            image_ar=image_ar,
-            subject_centroid=(cx, cy),
-            subject_size=(ws, hs),
-            has_copy_hint=copy_hint,
-            cfg=cfg,
-            teacher_proposals=teacher_payload,
-            teacher_meta_out=teacher_meta_ar,
-        )
-        candidates_by_ar[ar_text] = cands
-        per_ar_count[ar_text] = len(cands)
+        if is_free_ar_text(ar_text_norm):
+            cands = generate_freeform_candidates(
+                target_ar_text="FREE",
+                image_ar=image_ar,
+                subject_centroid=(cx, cy),
+                subject_size=(ws, hs),
+                has_copy_hint=copy_hint,
+                cfg=cfg,
+                teacher_proposals=teacher_payload,
+                teacher_meta_out=teacher_meta_ar,
+            )
+            ar_key = "FREE"
+        else:
+            ar_t = parse_ar(ar_text_norm)
+            cands = generate_candidates_for_ar(
+                target_ar=ar_t,
+                target_ar_text=ar_text_norm,
+                image_ar=image_ar,
+                subject_centroid=(cx, cy),
+                subject_size=(ws, hs),
+                has_copy_hint=copy_hint,
+                cfg=cfg,
+                teacher_proposals=teacher_payload,
+                teacher_meta_out=teacher_meta_ar,
+            )
+            ar_key = ar_text_norm
+        candidates_by_ar[ar_key] = cands
+        per_ar_count[ar_key] = len(cands)
         total_candidates += len(cands)
         if teacher_meta_ar:
             teacher_candidates.extend(teacher_meta_ar)
-            per_ar_teacher_count[ar_text] = len(teacher_meta_ar)
+            per_ar_teacher_count[ar_key] = len(teacher_meta_ar)
             seed_boxes = [
                 m["bbox_norm_xyxy"]
                 for m in teacher_meta_ar
@@ -1735,12 +2255,12 @@ def build_output_record(
             ]
             if seed_boxes and cands:
                 top1_box = cands[0]["bbox_norm_xyxy"]
-                iou_to_teacher_top1_by_ar[ar_text] = round(
+                iou_to_teacher_top1_by_ar[ar_key] = round(
                     max(iou_xyxy(top1_box, b) for b in seed_boxes),
                     6,
                 )
             else:
-                iou_to_teacher_top1_by_ar[ar_text] = 0.0
+                iou_to_teacher_top1_by_ar[ar_key] = 0.0
 
     return {
         "image_id": img_id,
@@ -2131,7 +2651,7 @@ def save_candidate_visualizations(
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="AR-conditioned candidate generator (Phase B1)")
+    p = argparse.ArgumentParser(description="AR-conditioned + FREE-form candidate generator (Phase B1)")
     p.add_argument("--input_parquet", required=True)
     p.add_argument("--feats_c2_jsonl", required=True)
     p.add_argument("--feats_c3_jsonl", required=True)
@@ -2176,6 +2696,22 @@ def parse_args() -> argparse.Namespace:
         nargs="+",
         type=float,
         default=list(DEFAULT_TEACHER_JITTER_SCALES),
+    )
+    p.add_argument("--free_ar_values", nargs="+", type=float, default=list(DEFAULT_FREE_AR_VALUES))
+    p.add_argument("--free_ar_log_jitter", nargs="+", type=float, default=list(DEFAULT_FREE_AR_LOG_JITTER))
+    p.add_argument("--free_grid_m", type=int, default=4)
+    p.add_argument("--free_grid_n", type=int, default=4)
+    p.add_argument("--free_scale_set", nargs="+", type=float, default=list(DEFAULT_FREE_SCALE_SET))
+    p.add_argument("--free_jitter_fracs", nargs="+", type=float, default=list(DEFAULT_FREE_JITTER_FRACS))
+    p.add_argument("--free_jitter_scales", nargs="+", type=float, default=list(DEFAULT_FREE_JITTER_SCALES))
+    p.add_argument("--free_phi_scales", nargs="+", type=float, default=list(DEFAULT_FREE_PHI_SCALES))
+    p.add_argument("--free_nms_iou", type=float, default=0.85)
+    p.add_argument(
+        "--free_teacher_ar_jitter",
+        nargs="+",
+        type=float,
+        default=list(DEFAULT_FREE_TEACHER_AR_JITTER),
+        help="FREE teacher jitter AR multipliers",
     )
 
     # Post-processing outputs: overview tables + visualization images.
@@ -2223,6 +2759,16 @@ def main() -> None:
         teacher_prefer_expand=bool(int(args.teacher_prefer_expand)),
         teacher_jitter_shift_fracs=tuple(float(x) for x in args.teacher_jitter_shift_fracs),
         teacher_jitter_scales=tuple(float(x) for x in args.teacher_jitter_scales),
+        free_ar_values=tuple(float(x) for x in args.free_ar_values),
+        free_ar_log_jitter=tuple(float(x) for x in args.free_ar_log_jitter),
+        free_grid_m=max(1, int(args.free_grid_m)),
+        free_grid_n=max(1, int(args.free_grid_n)),
+        free_scale_set=tuple(float(x) for x in args.free_scale_set),
+        free_jitter_fracs=tuple(float(x) for x in args.free_jitter_fracs),
+        free_jitter_scales=tuple(float(x) for x in args.free_jitter_scales),
+        free_phi_scales=tuple(float(x) for x in args.free_phi_scales),
+        free_nms_iou=float(args.free_nms_iou),
+        free_teacher_ar_jitter=tuple(float(x) for x in args.free_teacher_ar_jitter),
     )
     cfg_hash = config_hash(cfg)
 

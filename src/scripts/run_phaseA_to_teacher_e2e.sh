@@ -89,6 +89,15 @@ Core options
 --run_filter 0|1                Phase A filter 실행 여부 (default: 1)
 --curated_pool_size INT         filter curated pool size (default: 10000)
 --top_percentile FLOAT          filter top percentile per category (default: 0.2)
+--filter_require_train_match 0|1  filter에서 TRAIN_DIR 매칭 파일만 처리 (default: 1)
+--filter_tag_embed_multi_gpu -1|0|1  filter tag 임베딩 multi-gpu (-1=auto, default: -1)
+--filter_tag_embed_gpu_ids CSV  filter tag 임베딩 GPU 목록 (예: 0,1,2,3)
+--filter_tag_embed_batch_size INT filter tag 임베딩 batch size (default: 128)
+--filter_tag_embed_chunk_size INT filter multi-gpu chunk size (0=auto, default: 0)
+--filter_tag_embed_device STR   filter 단일 device (auto|cuda|cuda:0|cpu, default: auto)
+--filter_category_map_workers INT  filter category mapping CPU workers (-1=all, 0=auto, default: 0)
+--filter_category_map_chunk_size INT filter category mapping chunk size (default: 4096)
+--filter_sample_extract_workers INT filter sample extraction thread workers (-1=all, 0=auto, default: 0)
 --export_curated_images 0|1     filter 후 curated 이미지를 로컬 dir로 추출 (default: 0)
 --curated_image_dir PATH        curated 이미지 디렉토리 (default: <data_dir>/images)
 --curated_image_skip_existing 0|1  이미지 추출 시 기존 파일 skip (default: 1)
@@ -168,6 +177,8 @@ Core options
 --vlm_fallback_cpu_max_images N OOM 후 CPU fallback 이미지 수 상한 (default: 3)
 --vlm_skip_if_fallback_failed 0|1 fallback 실패 task skip 여부 (default: 1)
 --vlm_strict_backend_init 0|1   primary backend init 실패 시 즉시 종료 (default: 1)
+--vlm_autofix_qwen3_runtime 0|1 Qwen3 runtime(transformers) 자동 보정 시도 (default: 1)
+--vlm_qwen3_allow_github_fallback 0|1 auto-fix 시 GitHub transformers fallback 허용 (default: 0)
 --vlm_multi_gpu -1|0|1          -1=auto(qwen+cuda+multi-gpu면 on), default -1
 --vlm_gpu_ids CSV               VLM multi-gpu에서 사용할 GPU 목록
 --vlm_num_workers INT           VLM shard worker 수
@@ -220,6 +231,15 @@ PRECOMPUTE_MODE="unified"
 RUN_FILTER=1
 CURATED_POOL_SIZE=10000
 TOP_PERCENTILE=0.2
+FILTER_REQUIRE_TRAIN_MATCH=1
+FILTER_TAG_EMBED_MULTI_GPU=-1
+FILTER_TAG_EMBED_GPU_IDS=""
+FILTER_TAG_EMBED_BATCH_SIZE=128
+FILTER_TAG_EMBED_CHUNK_SIZE=0
+FILTER_TAG_EMBED_DEVICE="auto"
+FILTER_CATEGORY_MAP_WORKERS=0
+FILTER_CATEGORY_MAP_CHUNK_SIZE=4096
+FILTER_SAMPLE_EXTRACT_WORKERS=0
 EXPORT_CURATED_IMAGES=0
 CURATED_IMAGE_DIR=""
 CURATED_IMAGE_SKIP_EXISTING=1
@@ -313,12 +333,18 @@ ALIGN_MODEL_NAME=""
 ALIGN_PRETRAINED=""
 ALIGN_DEVICE="auto"
 AESTHETIC_DEVICE="auto"
+AESTHETIC_BACKEND="hybrid"
+AESTHETIC_PRIOR_LAION_WEIGHT=0.15
 EXP_BATCH_SIZE=24
 EXPENSIVE_EVAL_TOP_M=0
 EXP_PREPROCESS_WORKERS=0
 EXP_PIN_MEMORY=1
 AESTHETIC_MLP_PATH="weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth"
 AESTHETIC_MLP_URL="https://raw.githubusercontent.com/christophschuhmann/improved-aesthetic-predictor/main/sac+logos+ava1-l14-linearMSE.pth"
+NIMA_MODEL_PATH="weights/nima/NIMA_VGG16_ava-dc4e8265.pth"
+NIMA_MODEL_URL=""
+NIMA_USE_IMAGENET_BACKBONE=1
+NIMA_REQUIRE_CKPT=1
 TEACHER_MULTI_GPU=-1
 TEACHER_GPU_IDS=""
 TEACHER_NUM_WORKERS=""
@@ -347,6 +373,8 @@ VLM_FALLBACK_CPU_ON_OOM=1
 VLM_FALLBACK_CPU_MAX_IMAGES=3
 VLM_SKIP_IF_FALLBACK_FAILED=1
 VLM_STRICT_BACKEND_INIT=1
+VLM_AUTOFIX_QWEN3_RUNTIME=1
+VLM_QWEN3_ALLOW_GITHUB_FALLBACK=0
 VLM_MULTI_GPU=-1
 VLM_GPU_IDS=""
 VLM_NUM_WORKERS=""
@@ -375,6 +403,15 @@ while [ "$#" -gt 0 ]; do
     --run_filter) RUN_FILTER="$2"; shift 2 ;;
     --curated_pool_size) CURATED_POOL_SIZE="$2"; shift 2 ;;
     --top_percentile) TOP_PERCENTILE="$2"; shift 2 ;;
+    --filter_require_train_match) FILTER_REQUIRE_TRAIN_MATCH="$2"; shift 2 ;;
+    --filter_tag_embed_multi_gpu) FILTER_TAG_EMBED_MULTI_GPU="$2"; shift 2 ;;
+    --filter_tag_embed_gpu_ids) FILTER_TAG_EMBED_GPU_IDS="$2"; shift 2 ;;
+    --filter_tag_embed_batch_size) FILTER_TAG_EMBED_BATCH_SIZE="$2"; shift 2 ;;
+    --filter_tag_embed_chunk_size) FILTER_TAG_EMBED_CHUNK_SIZE="$2"; shift 2 ;;
+    --filter_tag_embed_device) FILTER_TAG_EMBED_DEVICE="$2"; shift 2 ;;
+    --filter_category_map_workers) FILTER_CATEGORY_MAP_WORKERS="$2"; shift 2 ;;
+    --filter_category_map_chunk_size) FILTER_CATEGORY_MAP_CHUNK_SIZE="$2"; shift 2 ;;
+    --filter_sample_extract_workers) FILTER_SAMPLE_EXTRACT_WORKERS="$2"; shift 2 ;;
     --export_curated_images) EXPORT_CURATED_IMAGES="$2"; shift 2 ;;
     --curated_image_dir) CURATED_IMAGE_DIR="$2"; shift 2 ;;
     --curated_image_skip_existing) CURATED_IMAGE_SKIP_EXISTING="$2"; shift 2 ;;
@@ -461,12 +498,18 @@ while [ "$#" -gt 0 ]; do
     --align_pretrained) ALIGN_PRETRAINED="$2"; shift 2 ;;
     --align_device) ALIGN_DEVICE="$2"; shift 2 ;;
     --aesthetic_device) AESTHETIC_DEVICE="$2"; shift 2 ;;
+    --aesthetic_backend) AESTHETIC_BACKEND="$2"; shift 2 ;;
+    --aesthetic_prior_laion_weight) AESTHETIC_PRIOR_LAION_WEIGHT="$2"; shift 2 ;;
     --exp_batch_size) EXP_BATCH_SIZE="$2"; shift 2 ;;
     --expensive_eval_top_m) EXPENSIVE_EVAL_TOP_M="$2"; shift 2 ;;
     --exp_preprocess_workers) EXP_PREPROCESS_WORKERS="$2"; shift 2 ;;
     --exp_pin_memory) EXP_PIN_MEMORY="$2"; shift 2 ;;
     --aesthetic_mlp_path) AESTHETIC_MLP_PATH="$2"; shift 2 ;;
     --aesthetic_mlp_url) AESTHETIC_MLP_URL="$2"; shift 2 ;;
+    --nima_model_path) NIMA_MODEL_PATH="$2"; shift 2 ;;
+    --nima_model_url) NIMA_MODEL_URL="$2"; shift 2 ;;
+    --nima_use_imagenet_backbone) NIMA_USE_IMAGENET_BACKBONE="$2"; shift 2 ;;
+    --nima_require_ckpt) NIMA_REQUIRE_CKPT="$2"; shift 2 ;;
     --teacher_multi_gpu) TEACHER_MULTI_GPU="$2"; shift 2 ;;
     --teacher_gpu_ids) TEACHER_GPU_IDS="$2"; shift 2 ;;
     --teacher_num_workers) TEACHER_NUM_WORKERS="$2"; shift 2 ;;
@@ -494,6 +537,8 @@ while [ "$#" -gt 0 ]; do
     --vlm_fallback_cpu_max_images) VLM_FALLBACK_CPU_MAX_IMAGES="$2"; shift 2 ;;
     --vlm_skip_if_fallback_failed) VLM_SKIP_IF_FALLBACK_FAILED="$2"; shift 2 ;;
     --vlm_strict_backend_init) VLM_STRICT_BACKEND_INIT="$2"; shift 2 ;;
+    --vlm_autofix_qwen3_runtime) VLM_AUTOFIX_QWEN3_RUNTIME="$2"; shift 2 ;;
+    --vlm_qwen3_allow_github_fallback) VLM_QWEN3_ALLOW_GITHUB_FALLBACK="$2"; shift 2 ;;
     --vlm_multi_gpu) VLM_MULTI_GPU="$2"; shift 2 ;;
     --vlm_gpu_ids) VLM_GPU_IDS="$2"; shift 2 ;;
     --vlm_num_workers) VLM_NUM_WORKERS="$2"; shift 2 ;;
@@ -870,6 +915,9 @@ echo " run_tag             : ${RUN_TAG:-<none>}"
 echo " skip_existing       : $SKIP_EXISTING"
 echo " precompute_mode     : $PRECOMPUTE_MODE"
 echo " run_filter          : $RUN_FILTER"
+echo " filter_train_match  : $FILTER_REQUIRE_TRAIN_MATCH"
+echo " filter_tag_embed    : mgpu=$FILTER_TAG_EMBED_MULTI_GPU gpu_ids=${FILTER_TAG_EMBED_GPU_IDS:-auto} bs=$FILTER_TAG_EMBED_BATCH_SIZE chunk=$FILTER_TAG_EMBED_CHUNK_SIZE device=$FILTER_TAG_EMBED_DEVICE"
+echo " filter_cpu_map      : workers=$FILTER_CATEGORY_MAP_WORKERS chunk=$FILTER_CATEGORY_MAP_CHUNK_SIZE sample_extract_workers=$FILTER_SAMPLE_EXTRACT_WORKERS"
 echo " export_curated_img  : $EXPORT_CURATED_IMAGES (dir=$CURATED_IMAGE_DIR, skip_existing=$CURATED_IMAGE_SKIP_EXISTING)"
 echo " prefer_curated_img  : $PREFER_CURATED_IMAGES (effective=${EFFECTIVE_IMAGE_DIR:-<none>})"
 echo " extract_mode        : $EXTRACT_MODE (extract_multi_gpu=${EXTRACT_MULTI_GPU}, gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
@@ -889,10 +937,12 @@ echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
 echo " teacher_auto_repair : $TEACHER_AUTO_REPAIR (strict=$TEACHER_AUTO_REPAIR_STRICT)"
 echo " teacher_accel       : exp_batch=$EXP_BATCH_SIZE exp_eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC_PRIOR_LAION_WEIGHT nima_ckpt=$NIMA_MODEL_PATH require_ckpt=$NIMA_REQUIRE_CKPT"
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
 echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
 echo " vlm strict init     : $VLM_STRICT_BACKEND_INIT"
+echo " vlm qwen3 autofix   : $VLM_AUTOFIX_QWEN3_RUNTIME (github_fallback=$VLM_QWEN3_ALLOW_GITHUB_FALLBACK)"
 echo " vlm multi_gpu       : $VLM_MULTI_GPU (gpu_ids=${VLM_GPU_IDS:-auto}, workers=${VLM_NUM_WORKERS:-auto})"
 echo " vlm out/meta/sum    : $VLM_OUTPUT_JSONL | $VLM_OUTPUT_META_JSONL | $VLM_SUMMARY_JSON"
 echo "========================================================"
@@ -906,6 +956,15 @@ if [ "$RUN_FILTER" -eq 1 ]; then
       SDP_DIR="$SDP_DIR" \
       TRAIN_DIR="$TRAIN_DIR" \
       TAR_DIR="$TAR_DIR" \
+      FILTER_REQUIRE_TRAIN_MATCH="$FILTER_REQUIRE_TRAIN_MATCH" \
+      FILTER_TAG_EMBED_MULTI_GPU="$FILTER_TAG_EMBED_MULTI_GPU" \
+      FILTER_TAG_EMBED_GPU_IDS="$FILTER_TAG_EMBED_GPU_IDS" \
+      FILTER_TAG_EMBED_BATCH_SIZE="$FILTER_TAG_EMBED_BATCH_SIZE" \
+      FILTER_TAG_EMBED_CHUNK_SIZE="$FILTER_TAG_EMBED_CHUNK_SIZE" \
+      FILTER_TAG_EMBED_DEVICE="$FILTER_TAG_EMBED_DEVICE" \
+      FILTER_CATEGORY_MAP_WORKERS="$FILTER_CATEGORY_MAP_WORKERS" \
+      FILTER_CATEGORY_MAP_CHUNK_SIZE="$FILTER_CATEGORY_MAP_CHUNK_SIZE" \
+      FILTER_SAMPLE_EXTRACT_WORKERS="$FILTER_SAMPLE_EXTRACT_WORKERS" \
       bash src/scripts/run_filter.sh \
         "$BUCKET" \
         "$FILTERED_PARQUET" \
@@ -1469,12 +1528,18 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --align_pretrained "$ALIGN_PRETRAINED" \
         --align_device "$ALIGN_DEVICE" \
         --aesthetic_device "$AESTHETIC_DEVICE" \
+        --aesthetic_backend "$AESTHETIC_BACKEND" \
+        --aesthetic_prior_laion_weight "$AESTHETIC_PRIOR_LAION_WEIGHT" \
         --exp_batch_size "$EXP_BATCH_SIZE" \
         --expensive_eval_top_m "$EXPENSIVE_EVAL_TOP_M" \
         --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
         --exp_pin_memory "$EXP_PIN_MEMORY" \
         --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \
         --aesthetic_mlp_url "$AESTHETIC_MLP_URL" \
+        --nima_model_path "$NIMA_MODEL_PATH" \
+        --nima_model_url "$NIMA_MODEL_URL" \
+        --nima_use_imagenet_backbone "$NIMA_USE_IMAGENET_BACKBONE" \
+        --nima_require_ckpt "$NIMA_REQUIRE_CKPT" \
         --max_images "$MAX_IMAGES" \
         --run_qa "$RUN_QA" \
         --run_viz "$RUN_VIZ" \
@@ -1539,6 +1604,8 @@ if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
         --fallback_cpu_max_images "$VLM_FALLBACK_CPU_MAX_IMAGES" \
         --skip_if_fallback_failed "$VLM_SKIP_IF_FALLBACK_FAILED" \
         --strict_backend_init "$VLM_STRICT_BACKEND_INIT" \
+        --autofix_qwen3_runtime "$VLM_AUTOFIX_QWEN3_RUNTIME" \
+        --qwen3_allow_github_fallback "$VLM_QWEN3_ALLOW_GITHUB_FALLBACK" \
         --multi_gpu "$VLM_MULTI_GPU" \
         --gpu_ids "$VLM_GPU_IDS" \
         --num_workers "$VLM_NUM_WORKERS" \

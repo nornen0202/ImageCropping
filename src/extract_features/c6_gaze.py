@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
+import time
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
@@ -23,6 +25,38 @@ POSITIVE_GAZE_TAGS = {
     "group",
     "couple",
 }
+
+
+@contextlib.contextmanager
+def _file_lock(path: str):
+    """
+    Process-level lock for torch.hub initialization.
+    Prevents concurrent workers from racing on ~/.cache/torch/hub/main.zip.
+    """
+    lock_path = str(path).strip()
+    if not lock_path:
+        yield
+        return
+
+    os.makedirs(os.path.dirname(os.path.abspath(lock_path)), exist_ok=True)
+    fp = open(lock_path, "a+")
+    try:
+        try:
+            import fcntl  # Linux/Unix
+
+            fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
+        except Exception:
+            # Best effort: continue without lock on unsupported platforms.
+            pass
+        yield
+    finally:
+        try:
+            import fcntl
+
+            fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
+        except Exception:
+            pass
+        fp.close()
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -156,11 +190,17 @@ class _GazelleBackend:
                 if os.path.isdir(cand_abs):
                     self.repo_dir = cand_abs
                     break
+        env_use_torchhub = os.environ.get("C6_GAZELLE_USE_TORCHHUB", "").strip().lower()
+        if env_use_torchhub in {"0", "false", "no"}:
+            use_torchhub = False
+        elif env_use_torchhub in {"1", "true", "yes"}:
+            use_torchhub = True
         self.use_torchhub = bool(use_torchhub)
         self.init_error: Optional[str] = None
         self._torch = None
         self._model = None
         self._transform = None
+        self._hub_dir = ""
 
         try:
             import torch
@@ -171,6 +211,12 @@ class _GazelleBackend:
         except Exception as e:
             self.init_error = f"torch import failed: {e}"
             return
+
+        # Keep torch.hub cache deterministic and writable across workers.
+        self._hub_dir = str(os.environ.get("C6_TORCH_HUB_DIR", "")).strip()
+        if not self._hub_dir:
+            home = os.path.expanduser("~")
+            self._hub_dir = os.path.join(home, ".cache", "torch", "hub")
 
         if self.repo_dir and os.path.isdir(self.repo_dir) and self.repo_dir not in sys.path:
             sys.path.insert(0, self.repo_dir)
@@ -185,7 +231,68 @@ class _GazelleBackend:
             self.init_error = str(e)
             self.available = False
 
+    @staticmethod
+    def _is_torchhub_transient_error(exc: Exception) -> bool:
+        s = str(exc)
+        needles = [
+            "main.zip",
+            "No such file or directory",
+            "Connection reset by peer",
+            "timed out",
+            "Temporary failure in name resolution",
+        ]
+        return any(n in s for n in needles)
+
+    def _gazelle_ckpt_url(self) -> str:
+        return {
+            "gazelle_dinov2_vitb14": "https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitb14_hub.pt",
+            "gazelle_dinov2_vitl14": "https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitl14.pt",
+            "gazelle_dinov2_vitb14_inout": "https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitb14_inout.pt",
+            "gazelle_dinov2_vitl14_inout": "https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitl14_inout.pt",
+        }.get(self.model_name, "")
+
+    def _resolve_local_ckpt_path(self) -> str:
+        candidates: List[str] = []
+        if self.ckpt_path:
+            candidates.append(self.ckpt_path)
+        if self._hub_dir:
+            candidates.append(os.path.join(self._hub_dir, "checkpoints", f"{self.model_name}.pt"))
+        for cand in candidates:
+            cand_norm = str(cand).strip()
+            if cand_norm and os.path.isfile(cand_norm):
+                return cand_norm
+        return ""
+
     def _init_model(self) -> None:
+        assert self._torch is not None
+        torch = self._torch
+
+        if self._hub_dir:
+            os.makedirs(self._hub_dir, exist_ok=True)
+            torch.hub.set_dir(self._hub_dir)
+
+        retries = int(os.environ.get("C6_GAZELLE_INIT_RETRIES", "3"))
+        retries = max(1, retries)
+        lock_path = str(os.environ.get("C6_GAZELLE_HUB_LOCK", "")).strip()
+        if not lock_path:
+            lock_path = os.path.join(self._hub_dir, ".gazelle_hub.lock")
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, retries + 1):
+            try:
+                with _file_lock(lock_path):
+                    self._init_model_once()
+                return
+            except Exception as e:
+                last_exc = e
+                if attempt < retries and self._is_torchhub_transient_error(e):
+                    time.sleep(min(2.0 * attempt, 5.0))
+                    continue
+                raise
+        if last_exc is not None:
+            raise last_exc
+
+    def _init_model_once(self) -> None:
         assert self._torch is not None
         torch = self._torch
         validate_backup = getattr(torch.hub, "_validate_not_a_forked_repo", None)
@@ -193,27 +300,22 @@ class _GazelleBackend:
             torch.hub._validate_not_a_forked_repo = lambda *args, **kwargs: None
 
         local_loaded = False
+        local_exc: Optional[Exception] = None
         try:
             try:
                 from gazelle.model import get_gazelle_model
 
                 model, transform = get_gazelle_model(self.model_name)
                 local_loaded = True
-                if self.ckpt_path:
-                    if not os.path.isfile(self.ckpt_path):
-                        raise FileNotFoundError(f"gazelle checkpoint not found: {self.ckpt_path}")
-                    state = torch.load(self.ckpt_path, map_location="cpu")
+                ckpt_path = self._resolve_local_ckpt_path()
+                if ckpt_path:
+                    state = torch.load(ckpt_path, map_location="cpu")
                     if hasattr(model, "load_gazelle_state_dict"):
                         model.load_gazelle_state_dict(state)
                     else:
                         model.load_state_dict(state, strict=False)
                 elif self.use_torchhub:
-                    ckpt_url = {
-                        "gazelle_dinov2_vitb14": "https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitb14_hub.pt",
-                        "gazelle_dinov2_vitl14": "https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitl14.pt",
-                        "gazelle_dinov2_vitb14_inout": "https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitb14_inout.pt",
-                        "gazelle_dinov2_vitl14_inout": "https://github.com/fkryan/gazelle/releases/download/v1.0.0/gazelle_dinov2_vitl14_inout.pt",
-                    }.get(self.model_name, "")
+                    ckpt_url = self._gazelle_ckpt_url()
                     if not ckpt_url:
                         raise ValueError(f"unsupported model_name: {self.model_name}")
                     state = torch.hub.load_state_dict_from_url(ckpt_url, map_location="cpu")
@@ -225,6 +327,7 @@ class _GazelleBackend:
                 self._transform = transform
             except Exception:
                 local_loaded = False
+                local_exc = sys.exc_info()[1]
         finally:
             if callable(validate_backup):
                 torch.hub._validate_not_a_forked_repo = validate_backup
@@ -233,15 +336,44 @@ class _GazelleBackend:
             return
 
         if not self.use_torchhub:
-            raise RuntimeError("gazelle local package unavailable and torchhub disabled")
+            msg = "gazelle local package unavailable and torchhub disabled"
+            if local_exc is not None:
+                msg = f"{msg}; local_error={local_exc}"
+            raise RuntimeError(msg)
 
-        model, transform = torch.hub.load(
-            "fkryan/gazelle",
-            self.model_name,
-            pretrained=True,
-            trust_repo=True,
-            skip_validation=True,
-        )
+        local_hub_exc: Optional[Exception] = None
+        if self.repo_dir and os.path.isfile(os.path.join(self.repo_dir, "hubconf.py")):
+            try:
+                model, transform = torch.hub.load(
+                    self.repo_dir,
+                    self.model_name,
+                    pretrained=True,
+                    source="local",
+                    trust_repo=True,
+                    skip_validation=True,
+                )
+                self._model = model
+                self._transform = transform
+                return
+            except Exception as e:
+                local_hub_exc = e
+
+        try:
+            model, transform = torch.hub.load(
+                "fkryan/gazelle",
+                self.model_name,
+                pretrained=True,
+                trust_repo=True,
+                skip_validation=True,
+            )
+        except Exception as e:
+            details: List[str] = []
+            if local_exc is not None:
+                details.append(f"local_error={local_exc}")
+            if local_hub_exc is not None:
+                details.append(f"local_hub_error={local_hub_exc}")
+            details.append(f"hub_error={e}")
+            raise RuntimeError(f"gazelle init failed ({'; '.join(details)})")
         self._model = model
         self._transform = transform
 

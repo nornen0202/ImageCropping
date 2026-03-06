@@ -105,6 +105,8 @@ AESTHETIC_DEFAULT_URL = (
     "https://raw.githubusercontent.com/christophschuhmann/"
     "improved-aesthetic-predictor/main/sac+logos+ava1-l14-linearMSE.pth"
 )
+NIMA_DEFAULT_PATH = "weights/nima/NIMA_VGG16_ava-dc4e8265.pth"
+NIMA_DEFAULT_URL = ""
 
 DEFAULT_IMAGE_EXTS = ("jpg", "jpeg", "png", "webp")
 
@@ -154,6 +156,7 @@ class TeacherScorerConfig:
     lambda_sym: float = 0.25
     lambda_ctx: float = 0.45
     lambda_cs: float = 0.35
+    lambda_teach: float = 0.10
     lambda_ar_free: float = 0.12
 
     # Cut penalty composition
@@ -181,6 +184,7 @@ class TeacherScorerConfig:
     w_cut: float = 2.0
     w_text: float = 0.12
     w_edge: float = 0.5
+    w_teach: float = 0.10
     w_ar_free: float = 0.20
     aesthetic_score_min: float = 1.0
     aesthetic_score_max: float = 10.0
@@ -207,9 +211,18 @@ class TeacherScorerConfig:
     free_ar_bias_scale: float = 0.20
     free_topk_ar_log_gap: float = 0.18
 
+    # Teacher-consensus prior (v1.8)
+    enable_r_teach: bool = True
+    teach_rho_tau: float = 0.75
+    teach_rho_beta: float = 0.05
+    teach_consensus_pair_iou_thr: float = 0.85
+    teach_require_consensus: bool = True
+
     # Keep-vs-crop
     w_area_default: float = 0.10
     tau_improve_default: float = 0.035
+    teacher_tau_boost_delta: float = 0.02
+    teacher_tau_boost_baseline_iou: float = 0.90
 
     # QA thresholds
     horizon_third_tau: float = 0.08
@@ -282,6 +295,15 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--top_k", type=int, default=5)
     p.add_argument("--tau_div", type=float, default=0.75)
     p.add_argument("--use_real_expensive", type=int, default=1, help="1=real A(I_b)/cos(E_I,E_T), 0=proxy fallback")
+    p.add_argument("--enable_r_teach", type=int, default=1, help="1=enable teacher-consensus prior R_teach")
+    p.add_argument("--teach_rho_tau", type=float, default=0.75)
+    p.add_argument("--teach_rho_beta", type=float, default=0.05)
+    p.add_argument("--teach_consensus_pair_iou_thr", type=float, default=0.85)
+    p.add_argument("--teach_require_consensus", type=int, default=1, help="1=gate R_teach by consensus")
+    p.add_argument("--lambda_teach", type=float, default=0.10, help="cheap-stage R_teach weight")
+    p.add_argument("--w_teach", type=float, default=0.10, help="expensive-stage R_teach weight")
+    p.add_argument("--teacher_tau_boost_delta", type=float, default=0.02, help="tau_improve boost when baseline aligns with teacher consensus")
+    p.add_argument("--teacher_tau_boost_baseline_iou", type=float, default=0.90, help="baseline IoU threshold for tau boost")
     p.add_argument("--hard_head_top_rule", type=int, default=1, help="1=portrait head-top(hair) cut hard reject")
     p.add_argument("--head_top_face_expand_alpha", type=float, default=0.35, help="head-top estimate: face_y1 - alpha*face_h")
     p.add_argument("--head_top_kp_expand", type=float, default=0.06, help="head-top estimate from keypoints: top_kp_y - value")
@@ -291,6 +313,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--align_pretrained", type=str, default="", help="OpenCLIP pretrained tag for E_I(I_b)")
     p.add_argument("--align_device", type=str, default="auto", help="auto|cpu|cuda")
     p.add_argument("--aesthetic_device", type=str, default="auto", help="auto|cpu|cuda")
+    p.add_argument(
+        "--aesthetic_backend",
+        type=str,
+        default="hybrid",
+        help="laion|nima|hybrid (hybrid: NIMA primary + LAION prior)",
+    )
+    p.add_argument(
+        "--aesthetic_prior_laion_weight",
+        type=float,
+        default=0.15,
+        help="LAION prior mixing weight for hybrid backend",
+    )
     p.add_argument("--exp_batch_size", type=int, default=24)
     p.add_argument("--expensive_eval_top_m", type=int, default=0, help="0=all cheap_top_m, >0=capped expensive eval")
     p.add_argument("--exp_preprocess_workers", type=int, default=0, help="0=auto, >0=thread workers for clip preprocess")
@@ -301,6 +335,20 @@ def parse_args() -> argparse.Namespace:
         default="weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth",
     )
     p.add_argument("--aesthetic_mlp_url", type=str, default=AESTHETIC_DEFAULT_URL)
+    p.add_argument("--nima_model_path", type=str, default=NIMA_DEFAULT_PATH)
+    p.add_argument("--nima_model_url", type=str, default=NIMA_DEFAULT_URL)
+    p.add_argument(
+        "--nima_use_imagenet_backbone",
+        type=int,
+        default=1,
+        help="1=initialize VGG16 backbone from ImageNet weights when NIMA ckpt is absent",
+    )
+    p.add_argument(
+        "--nima_require_ckpt",
+        type=int,
+        default=1,
+        help="1=require NIMA checkpoint to activate NIMA backend",
+    )
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--max_images", type=int, default=0, help="0 means all")
     p.add_argument("--num_shards", type=int, default=1, help="Shard count for multi-GPU/process execution")
@@ -321,6 +369,16 @@ def safe_float(v: Any, default: float = 0.0) -> float:
     if not math.isfinite(x):
         return float(default)
     return x
+
+
+def safe_optional_float(v: Any) -> Optional[float]:
+    try:
+        x = float(v)
+    except Exception:
+        return None
+    if not math.isfinite(x):
+        return None
+    return float(x)
 
 
 def parse_ar(ar_text: str) -> float:
@@ -534,6 +592,135 @@ class LocalImageLoader:
             return None
 
 
+def normalize_ar_key(ar_text: Any) -> str:
+    t = str(ar_text).strip()
+    if parse_target_ar(t) is None:
+        return "FREE"
+    return t
+
+
+def sigmoid(x: float) -> float:
+    z = float(x)
+    if z >= 0.0:
+        e = math.exp(-z)
+        return 1.0 / (1.0 + e)
+    e = math.exp(z)
+    return e / (1.0 + e)
+
+
+def build_teacher_consensus_context(
+    *,
+    cand_rec: Dict[str, Any],
+    ar_text: str,
+    cfg: TeacherScorerConfig,
+) -> Dict[str, Any]:
+    raw = cand_rec.get("teacher_candidates", [])
+    if not isinstance(raw, list) or not raw:
+        return {
+            "enabled": False,
+            "available": False,
+            "num_teachers": 0,
+            "num_boxes": 0,
+            "consensus": False,
+            "max_pair_iou": 0.0,
+            "boxes": [],
+            "teachers": [],
+        }
+
+    target_key = normalize_ar_key(ar_text)
+    per_teacher: Dict[str, Dict[str, Any]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        stage = str(item.get("stage", "")).strip().lower()
+        if stage not in {"seed", "proj"}:
+            continue
+        if normalize_ar_key(item.get("target_ar", "")) != target_key:
+            continue
+        b = item.get("bbox_norm_xyxy")
+        if not isinstance(b, (list, tuple)) or len(b) != 4:
+            continue
+        bb = clip_box01([safe_float(v) for v in b])
+        if box_area(bb) <= 0.0:
+            continue
+        tid = str(item.get("teacher_id", "unknown")).strip() or "unknown"
+        score = safe_float(item.get("teacher_score", -1e9), -1e9)
+        prev = per_teacher.get(tid)
+        if prev is None or score > safe_float(prev.get("teacher_score", -1e9), -1e9):
+            per_teacher[tid] = {
+                "teacher_id": tid,
+                "teacher_score": float(score),
+                "bbox_norm_xyxy": bb,
+            }
+
+    teachers = list(per_teacher.values())
+    boxes = [t["bbox_norm_xyxy"] for t in teachers]
+    num_teachers = len(teachers)
+    enabled = bool(num_teachers > 0)
+    max_pair_iou = 0.0
+    for i in range(num_teachers):
+        bi = boxes[i]
+        for j in range(i + 1, num_teachers):
+            bj = boxes[j]
+            max_pair_iou = max(max_pair_iou, iou_xyxy(bi, bj))
+
+    if bool(cfg.teach_require_consensus):
+        consensus = (num_teachers >= 2) and (max_pair_iou >= float(cfg.teach_consensus_pair_iou_thr))
+    else:
+        consensus = enabled
+
+    return {
+        "enabled": bool(enabled),
+        "available": bool(num_teachers >= 2),
+        "num_teachers": int(num_teachers),
+        "num_boxes": int(len(boxes)),
+        "consensus": bool(consensus),
+        "max_pair_iou": float(max_pair_iou),
+        "boxes": boxes,
+        "teachers": teachers,
+    }
+
+
+def compute_teacher_consensus_reward(
+    *,
+    crop: Sequence[float],
+    teacher_ctx: Optional[Dict[str, Any]],
+    cfg: TeacherScorerConfig,
+) -> Dict[str, Any]:
+    if (not bool(cfg.enable_r_teach)) or (not isinstance(teacher_ctx, dict)):
+        return {
+            "enabled": False,
+            "available": False,
+            "consensus": False,
+            "rho": 0.0,
+            "r_teach": 0.0,
+        }
+
+    boxes = teacher_ctx.get("boxes", []) if isinstance(teacher_ctx.get("boxes"), list) else []
+    if not boxes:
+        return {
+            "enabled": bool(teacher_ctx.get("enabled", False)),
+            "available": bool(teacher_ctx.get("available", False)),
+            "consensus": bool(teacher_ctx.get("consensus", False)),
+            "rho": 0.0,
+            "r_teach": 0.0,
+        }
+
+    rho = max(iou_xyxy(crop, b) for b in boxes)
+    consensus_gate = bool(teacher_ctx.get("consensus", False))
+    beta = max(1e-6, float(cfg.teach_rho_beta))
+    r = sigmoid((float(rho) - float(cfg.teach_rho_tau)) / beta)
+    if bool(cfg.teach_require_consensus) and (not consensus_gate):
+        r = 0.0
+    return {
+        "enabled": bool(teacher_ctx.get("enabled", False)),
+        "available": bool(teacher_ctx.get("available", False)),
+        "consensus": bool(consensus_gate),
+        "rho": float(rho),
+        "r_teach": float(r),
+    }
+
+
 class TarImageLoader:
     """
     Lightweight TAR image loader with one-open-tar cache.
@@ -716,10 +903,66 @@ class AestheticMLP:
         )
 
 
+class NIMAVGG16Model:
+    """
+    NIMA reference head (AVA style):
+    - VGG16 feature backbone
+    - Dropout(0.75) + Linear(25088->10) + Softmax
+    """
+
+    def __init__(self, torch_mod: Any, base_features: Any):
+        class _NIMAImpl(torch_mod.nn.Module):
+            def __init__(self, features: Any):
+                super().__init__()
+                nn = torch_mod.nn
+                self.features = features
+                self.classifier = nn.Sequential(
+                    nn.Dropout(p=0.75),
+                    nn.Linear(in_features=25088, out_features=10),
+                    nn.Softmax(dim=1),
+                )
+
+            def forward(self, x: Any) -> Any:
+                out = self.features(x)
+                out = out.view(out.size(0), -1)
+                return self.classifier(out)
+
+        self.model = _NIMAImpl(base_features)
+
+
+class NIMAVGG16GAPModel:
+    """
+    NIMA VGG16 variant used by `NIMA_VGG16_ava-dc4e8265.pth`:
+    - VGG16 features
+    - AdaptiveAvgPool2d(1) -> Flatten -> Linear(512->10) -> Softmax
+    """
+
+    def __init__(self, torch_mod: Any, base_features: Any):
+        class _NIMAImpl(torch_mod.nn.Module):
+            def __init__(self, features: Any):
+                super().__init__()
+                nn = torch_mod.nn
+                self.features = features
+                self.classifier = nn.Sequential(
+                    nn.AdaptiveAvgPool2d((1, 1)),
+                    nn.Flatten(),
+                    nn.Linear(in_features=512, out_features=10),
+                    nn.Softmax(dim=1),
+                )
+
+            def forward(self, x: Any) -> Any:
+                out = self.features(x)
+                return self.classifier(out)
+
+        self.model = _NIMAImpl(base_features)
+
+
 class ExpensiveModels:
     """
     Real expensive scorer bundle:
-    - A(I_b): improved-aesthetic-predictor
+    - A(I_b):
+      * NIMA (primary A_gen)
+      * LAION aesthetic predictor (demoted to optional prior)
     - cos(E_I(I_b), E_T): crop image embedding vs C1 text embedding
     """
 
@@ -734,8 +977,14 @@ class ExpensiveModels:
         batch_size: int,
         preprocess_workers: int,
         pin_memory: bool,
+        aesthetic_backend: str,
+        aesthetic_prior_laion_weight: float,
         aesthetic_mlp_path: Path,
         aesthetic_mlp_url: str,
+        nima_model_path: Path,
+        nima_model_url: str,
+        nima_use_imagenet_backbone: bool,
+        nima_require_ckpt: bool,
     ):
         import torch
         import open_clip
@@ -754,6 +1003,20 @@ class ExpensiveModels:
 
         self.align_device = pick_device(align_device)
         self.aes_device = pick_device(aesthetic_device)
+        self.nima_device = self.aes_device
+        self.aesthetic_backend_requested = self._normalize_aesthetic_backend(aesthetic_backend)
+        self.aesthetic_backend_effective = "none"
+        self.laion_prior_weight = clamp(float(aesthetic_prior_laion_weight), 0.0, 1.0)
+        self.laion_prior_weight_effective = 0.0
+        self.nima_ckpt_loaded = False
+
+        self.aes_clip = None
+        self.aes_preprocess = None
+        self.aes_mlp = None
+        self.nima_model = None
+        self.nima_preprocess = None
+        self._laion_ready = False
+        self._nima_ready = False
 
         # Align model for cos(E_I(I_b), E_T): match C1 text embedding dimension.
         if not align_model_name or not align_pretrained:
@@ -782,28 +1045,248 @@ class ExpensiveModels:
         if self.align_device != "cpu":
             self.align_model = self.align_model.half()
 
-        # Aesthetic predictor (repo: improved-aesthetic-predictor)
-        maybe_download_file(aesthetic_mlp_url, aesthetic_mlp_path)
-        self.aes_clip, self.aes_preprocess, self.aes_device = self._create_clip_with_fallback(
-            model_name="ViT-L-14",
-            pretrained="openai",
-            preferred_device=self.aes_device,
-        )
-        self.aes_clip.eval()
-        if self.aes_device != "cpu":
-            self.aes_clip = self.aes_clip.half()
+        use_laion_requested = self.aesthetic_backend_requested in {"laion", "hybrid"}
+        use_nima_requested = self.aesthetic_backend_requested in {"nima", "hybrid"}
 
-        mlp = AestheticMLP(torch, input_size=768)
+        if use_laion_requested:
+            try:
+                maybe_download_file(aesthetic_mlp_url, aesthetic_mlp_path)
+                self.aes_clip, self.aes_preprocess, self.aes_device = self._create_clip_with_fallback(
+                    model_name="ViT-L-14",
+                    pretrained="openai",
+                    preferred_device=self.aes_device,
+                )
+                self.aes_clip.eval()
+                if self.aes_device != "cpu":
+                    self.aes_clip = self.aes_clip.half()
+
+                mlp = AestheticMLP(torch, input_size=768)
+                try:
+                    state = torch.load(str(aesthetic_mlp_path), map_location="cpu", weights_only=True)
+                except TypeError:
+                    state = torch.load(str(aesthetic_mlp_path), map_location="cpu")
+                if isinstance(state, dict) and state and all(str(k).startswith("layers.") for k in state.keys()):
+                    state = {str(k)[7:]: v for k, v in state.items()}
+                mlp.model.load_state_dict(state)
+                mlp.model.to(self.aes_device)
+                mlp.model.eval()
+                self.aes_mlp = mlp.model
+                self._laion_ready = True
+            except Exception as e:
+                print(f"[expensive][warn] failed to initialize LAION aesthetic predictor: {e}")
+                self._laion_ready = False
+                if self.aesthetic_backend_requested == "laion":
+                    raise
+
+        if use_nima_requested:
+            try:
+                (
+                    self.nima_model,
+                    self.nima_preprocess,
+                    self.nima_device,
+                    self.nima_ckpt_loaded,
+                ) = self._create_nima_with_fallback(
+                    preferred_device=self.nima_device,
+                    nima_model_path=nima_model_path,
+                    nima_model_url=nima_model_url,
+                    use_imagenet_backbone=bool(nima_use_imagenet_backbone),
+                )
+                self._nima_ready = self.nima_model is not None
+                if bool(nima_require_ckpt) and (not bool(self.nima_ckpt_loaded)):
+                    print(
+                        "[expensive][warn] NIMA checkpoint required but unavailable; "
+                        "NIMA backend deactivated."
+                    )
+                    self._nima_ready = False
+                    self.nima_model = None
+                    self.nima_preprocess = None
+            except Exception as e:
+                print(f"[expensive][warn] failed to initialize NIMA aesthetic predictor: {e}")
+                self._nima_ready = False
+                if self.aesthetic_backend_requested == "nima":
+                    raise
+
+        if self.aesthetic_backend_requested == "hybrid":
+            if self._nima_ready and self._laion_ready:
+                self.aesthetic_backend_effective = "hybrid"
+                self.laion_prior_weight_effective = float(self.laion_prior_weight)
+            elif self._nima_ready:
+                self.aesthetic_backend_effective = "nima"
+                self.laion_prior_weight_effective = 0.0
+            elif self._laion_ready:
+                self.aesthetic_backend_effective = "laion"
+                self.laion_prior_weight_effective = 1.0
+            else:
+                raise RuntimeError("Neither NIMA nor LAION aesthetic backend initialized successfully")
+        elif self.aesthetic_backend_requested == "nima":
+            if not self._nima_ready:
+                raise RuntimeError("NIMA aesthetic backend requested but initialization failed")
+            self.aesthetic_backend_effective = "nima"
+            self.laion_prior_weight_effective = 0.0
+        else:
+            if not self._laion_ready:
+                raise RuntimeError("LAION aesthetic backend requested but initialization failed")
+            self.aesthetic_backend_effective = "laion"
+            self.laion_prior_weight_effective = 1.0
+
+        print(
+            "[expensive] aesthetic backend: "
+            f"requested={self.aesthetic_backend_requested} "
+            f"effective={self.aesthetic_backend_effective} "
+            f"nima_ready={self._nima_ready}(ckpt_loaded={self.nima_ckpt_loaded}) "
+            f"laion_ready={self._laion_ready} "
+            f"laion_prior_w={self.laion_prior_weight_effective:.3f}"
+        )
+
+    @staticmethod
+    def _normalize_aesthetic_backend(v: str) -> str:
+        s = str(v).strip().lower()
+        if s not in {"laion", "nima", "hybrid"}:
+            raise ValueError(f"Unsupported --aesthetic_backend={v}. Use one of: laion|nima|hybrid")
+        return s
+
+    def _build_nima_model(self, use_imagenet_backbone: bool, variant: str) -> Any:
+        from torchvision import models as tv_models
+
+        base = None
+        if bool(use_imagenet_backbone):
+            try:
+                weights = tv_models.VGG16_Weights.IMAGENET1K_V1
+                base = tv_models.vgg16(weights=weights)
+            except Exception:
+                try:
+                    base = tv_models.vgg16(pretrained=True)
+                except Exception as e:
+                    print(f"[expensive][warn] failed to load ImageNet VGG16 backbone for NIMA: {e}")
+                    base = None
+        if base is None:
+            try:
+                base = tv_models.vgg16(weights=None)
+            except TypeError:
+                base = tv_models.vgg16(pretrained=False)
+
+        if str(variant).lower() == "gap":
+            return NIMAVGG16GAPModel(self.torch, base.features).model
+        return NIMAVGG16Model(self.torch, base.features).model
+
+    def _detect_nima_variant(self, state_dict: Dict[str, Any]) -> str:
+        if not isinstance(state_dict, dict):
+            return "flatten"
+        if any(str(k).startswith("base_model.features_") for k in state_dict.keys()):
+            return "gap"
+        gap_key = state_dict.get("classifier.2.weight")
+        if hasattr(gap_key, "shape"):
+            try:
+                if len(gap_key.shape) == 2 and int(gap_key.shape[1]) == 512:
+                    return "gap"
+            except Exception:
+                pass
+        return "flatten"
+
+    def _load_torch_state_dict(self, path: Path) -> Tuple[Dict[str, Any], str]:
         try:
-            state = torch.load(str(aesthetic_mlp_path), map_location="cpu", weights_only=True)
+            state = self.torch.load(str(path), map_location="cpu", weights_only=True)
         except TypeError:
-            state = torch.load(str(aesthetic_mlp_path), map_location="cpu")
-        if isinstance(state, dict) and state and all(str(k).startswith("layers.") for k in state.keys()):
-            state = {str(k)[7:]: v for k, v in state.items()}
-        mlp.model.load_state_dict(state)
-        mlp.model.to(self.aes_device)
-        mlp.model.eval()
-        self.aes_mlp = mlp.model
+            state = self.torch.load(str(path), map_location="cpu")
+
+        if isinstance(state, dict):
+            for k in ("state_dict", "model_state_dict", "model", "net", "params"):
+                v = state.get(k)
+                if isinstance(v, dict):
+                    state = v
+                    break
+        if not isinstance(state, dict):
+            raise ValueError(f"checkpoint is not a state-dict: {path}")
+
+        variant = self._detect_nima_variant(state)
+
+        cleaned: Dict[str, Any] = {}
+        for k, v in state.items():
+            kk = str(k)
+            if kk.startswith("module."):
+                kk = kk[7:]
+            if kk.startswith("model."):
+                kk = kk[6:]
+            if kk.startswith("base_model."):
+                kk = kk[11:]
+            if kk.startswith("features_"):
+                rem = kk[9:]
+                if "." in rem:
+                    idx, tail = rem.split(".", 1)
+                    if idx.isdigit():
+                        kk = f"features.{idx}.{tail}"
+            if variant == "flatten" and kk.startswith("classifier.2."):
+                kk = "classifier.1." + kk[len("classifier.2.") :]
+            cleaned[kk] = v
+        return cleaned, variant
+
+    def _create_nima_with_fallback(
+        self,
+        *,
+        preferred_device: str,
+        nima_model_path: Path,
+        nima_model_url: str,
+        use_imagenet_backbone: bool,
+    ) -> Tuple[Any, Any, str, bool]:
+        from torchvision import transforms as tv_transforms
+
+        nima_variant = "flatten"
+        state: Optional[Dict[str, Any]] = None
+        ckpt_loaded = False
+
+        if (not nima_model_path.exists()) and str(nima_model_url).strip():
+            maybe_download_file(str(nima_model_url).strip(), nima_model_path)
+        if nima_model_path.exists():
+            state, nima_variant = self._load_torch_state_dict(nima_model_path)
+        model = self._build_nima_model(
+            use_imagenet_backbone=bool(use_imagenet_backbone),
+            variant=nima_variant,
+        )
+        if state is not None:
+            missing, unexpected = model.load_state_dict(state, strict=False)
+            ckpt_loaded = True
+            print(f"[expensive] NIMA checkpoint variant={nima_variant}")
+            if missing:
+                print(f"[expensive][warn] NIMA missing keys: {len(missing)}")
+            if unexpected:
+                print(f"[expensive][warn] NIMA unexpected keys: {len(unexpected)}")
+        else:
+            print(
+                "[expensive][warn] NIMA checkpoint not found; "
+                "using ImageNet-backed VGG16 + randomly initialized NIMA head."
+            )
+
+        try:
+            interp = tv_transforms.InterpolationMode.BILINEAR
+            resize = tv_transforms.Resize(256, interpolation=interp)
+        except Exception:
+            resize = tv_transforms.Resize(256)
+
+        preprocess = tv_transforms.Compose(
+            [
+                resize,
+                tv_transforms.CenterCrop(224),
+                tv_transforms.ToTensor(),
+                tv_transforms.Normalize(
+                    mean=(0.485, 0.456, 0.406),
+                    std=(0.229, 0.224, 0.225),
+                ),
+            ]
+        )
+
+        actual_device = preferred_device
+        try:
+            model.to(actual_device)
+        except Exception as e:
+            msg = str(e).lower()
+            if actual_device != "cpu" and ("out of memory" in msg or "cuda" in msg):
+                print(f"[expensive][warn] failed to place NIMA on {actual_device}: {e} -> retry on CPU")
+                model.to("cpu")
+                actual_device = "cpu"
+            else:
+                raise
+        model.eval()
+        return model, preprocess, actual_device, ckpt_loaded
 
     def close(self) -> None:
         if self._preprocess_pool is not None:
@@ -816,6 +1299,7 @@ class ExpensiveModels:
         batch_imgs: Sequence["Image.Image"],
         preprocess_fn: Callable[[Any], Any],
         device: str,
+        use_half: bool = True,
     ) -> Any:
         if self._preprocess_pool is not None and len(batch_imgs) > 1:
             tensors = list(self._preprocess_pool.map(preprocess_fn, batch_imgs))
@@ -827,9 +1311,11 @@ class ExpensiveModels:
             if self.pin_memory:
                 batch = batch.pin_memory()
             batch = batch.to(device, non_blocking=True)
-            batch = batch.half()
+            batch = batch.half() if bool(use_half) else batch.float()
         else:
             batch = batch.to(device)
+            if not bool(use_half):
+                batch = batch.float()
         return batch
 
     def _create_clip_with_fallback(
@@ -874,6 +1360,7 @@ class ExpensiveModels:
                         batch_imgs=batch_imgs,
                         preprocess_fn=self.align_preprocess,
                         device=self.align_device,
+                        use_half=True,
                     )
                     emb = self.align_model.encode_image(batch)
                     emb = emb / emb.norm(dim=-1, keepdim=True)
@@ -891,8 +1378,8 @@ class ExpensiveModels:
             raise
         return np.concatenate(all_out, axis=0).astype(np.float32, copy=False)
 
-    def _batched_predict_aesthetic(self, crops: Sequence["Image.Image"]) -> np.ndarray:
-        if not crops:
+    def _batched_predict_laion_aesthetic(self, crops: Sequence["Image.Image"]) -> np.ndarray:
+        if (not crops) or (not self._laion_ready) or self.aes_clip is None or self.aes_mlp is None:
             return np.zeros((0,), dtype=np.float32)
 
         all_out: List[np.ndarray] = []
@@ -904,6 +1391,7 @@ class ExpensiveModels:
                         batch_imgs=batch_imgs,
                         preprocess_fn=self.aes_preprocess,
                         device=self.aes_device,
+                        use_half=True,
                     )
                     emb = self.aes_clip.encode_image(batch)
                     emb = emb.float()
@@ -920,9 +1408,55 @@ class ExpensiveModels:
                 self.aes_clip.to("cpu")
                 self.aes_mlp.to("cpu")
                 self.aes_device = "cpu"
-                return self._batched_predict_aesthetic(crops)
+                return self._batched_predict_laion_aesthetic(crops)
             raise
         return np.concatenate(all_out, axis=0).astype(np.float32, copy=False)
+
+    def _batched_predict_nima(self, crops: Sequence["Image.Image"]) -> Tuple[np.ndarray, np.ndarray]:
+        if (not crops) or (not self._nima_ready) or self.nima_model is None or self.nima_preprocess is None:
+            return np.zeros((0,), dtype=np.float32), np.zeros((0,), dtype=np.float32)
+
+        means: List[np.ndarray] = []
+        stds: List[np.ndarray] = []
+        try:
+            with self.torch.inference_mode():
+                for i in range(0, len(crops), self.batch_size):
+                    batch_imgs = crops[i : i + self.batch_size]
+                    batch = self._preprocess_batch(
+                        batch_imgs=batch_imgs,
+                        preprocess_fn=self.nima_preprocess,
+                        device=self.nima_device,
+                        use_half=False,
+                    )
+                    dist = self.nima_model(batch).float()
+                    dist = self.torch.clamp(dist, min=1e-8)
+                    dist = dist / dist.sum(dim=1, keepdim=True)
+
+                    bins = self.torch.arange(
+                        1, 11, dtype=dist.dtype, device=dist.device
+                    ).view(1, -1)
+                    mean_val = (dist * bins).sum(dim=1)
+                    var_val = (dist * (bins - mean_val.unsqueeze(1)) ** 2).sum(dim=1)
+                    std_val = self.torch.sqrt(self.torch.clamp(var_val, min=0.0))
+                    means.append(mean_val.detach().cpu().numpy().astype(np.float32, copy=False))
+                    stds.append(std_val.detach().cpu().numpy().astype(np.float32, copy=False))
+        except Exception as e:
+            if self.nima_device != "cpu" and "out of memory" in str(e).lower():
+                print("[expensive][warn] NIMA batch OOM on GPU -> switching NIMA to CPU")
+                try:
+                    self.torch.cuda.empty_cache()
+                except Exception:
+                    pass
+                self.nima_model.to("cpu")
+                self.nima_device = "cpu"
+                return self._batched_predict_nima(crops)
+            raise
+        if not means:
+            return np.zeros((0,), dtype=np.float32), np.zeros((0,), dtype=np.float32)
+        return (
+            np.concatenate(means, axis=0).astype(np.float32, copy=False),
+            np.concatenate(stds, axis=0).astype(np.float32, copy=False),
+        )
 
     @staticmethod
     def _crop_from_norm_box(image: "Image.Image", box_norm: Sequence[float]) -> Optional["Image.Image"]:
@@ -950,7 +1484,7 @@ class ExpensiveModels:
         candidates: Sequence[Dict[str, Any]],
         text_embed: Optional[np.ndarray],
         cfg: TeacherScorerConfig,
-    ) -> Dict[str, Dict[str, float]]:
+    ) -> Dict[str, Dict[str, Any]]:
         """
         Returns candidate_id -> expensive signals.
         """
@@ -989,13 +1523,35 @@ class ExpensiveModels:
         crops = [boxkey_to_crop[k] for k in keys]
 
         align_emb = self._batched_encode_align(crops)
-        aes_raw = self._batched_predict_aesthetic(crops)
+        a_den = max(1e-8, cfg.aesthetic_score_max - cfg.aesthetic_score_min)
 
-        # Match paper/repo scale to [0,1] for stable weighting.
-        aes_norm = (aes_raw - cfg.aesthetic_score_min) / max(1e-8, cfg.aesthetic_score_max - cfg.aesthetic_score_min)
-        aes_norm = np.clip(aes_norm, 0.0, 1.0)
+        if self._laion_ready:
+            laion_raw = self._batched_predict_laion_aesthetic(crops)
+            laion_norm = np.clip((laion_raw - cfg.aesthetic_score_min) / a_den, 0.0, 1.0)
+        else:
+            laion_raw = np.zeros((len(crops),), dtype=np.float32)
+            laion_norm = np.zeros((len(crops),), dtype=np.float32)
 
-        boxkey_to_signal: Dict[Tuple[float, float, float, float], Dict[str, float]] = {}
+        if self._nima_ready:
+            nima_mean, nima_std = self._batched_predict_nima(crops)
+            nima_norm = np.clip((nima_mean - cfg.aesthetic_score_min) / a_den, 0.0, 1.0)
+        else:
+            nima_mean = np.zeros((len(crops),), dtype=np.float32)
+            nima_std = np.zeros((len(crops),), dtype=np.float32)
+            nima_norm = np.zeros((len(crops),), dtype=np.float32)
+
+        if self.aesthetic_backend_effective == "nima":
+            aes_raw = nima_mean
+            aes_norm = nima_norm
+        elif self.aesthetic_backend_effective == "laion":
+            aes_raw = laion_raw
+            aes_norm = laion_norm
+        else:
+            w_laion = float(self.laion_prior_weight_effective)
+            aes_raw = (1.0 - w_laion) * nima_mean + w_laion * laion_raw
+            aes_norm = (1.0 - w_laion) * nima_norm + w_laion * laion_norm
+
+        boxkey_to_signal: Dict[Tuple[float, float, float, float], Dict[str, Any]] = {}
         for i, k in enumerate(keys):
             if text_vec is None or align_emb.shape[1] != text_vec.shape[0]:
                 cos_val = 0.0
@@ -1004,10 +1560,17 @@ class ExpensiveModels:
             boxkey_to_signal[k] = {
                 "aesthetic_raw": float(aes_raw[i]),
                 "aesthetic_norm": float(aes_norm[i]),
+                "aesthetic_backend": str(self.aesthetic_backend_effective),
+                "aesthetic_prior_laion_weight": float(self.laion_prior_weight_effective),
+                "aesthetic_raw_laion": (float(laion_raw[i]) if self._laion_ready else None),
+                "aesthetic_norm_laion": (float(laion_norm[i]) if self._laion_ready else None),
+                "aesthetic_mean_nima": (float(nima_mean[i]) if self._nima_ready else None),
+                "aesthetic_std_nima": (float(nima_std[i]) if self._nima_ready else None),
+                "aesthetic_norm_nima": (float(nima_norm[i]) if self._nima_ready else None),
                 "cosine_img_text": float(cos_val),
             }
 
-        out: Dict[str, Dict[str, float]] = {}
+        out: Dict[str, Dict[str, Any]] = {}
         for cid, k in cid_to_boxkey.items():
             if k in boxkey_to_signal:
                 out[cid] = boxkey_to_signal[k]
@@ -1948,6 +2511,7 @@ def effective_lambdas(
         "sym": cfg.lambda_sym,
         "ctx": cfg.lambda_ctx,
         "cs": cfg.lambda_cs,
+        "teach": cfg.lambda_teach,
         "ar_free": cfg.lambda_ar_free,
     }
 
@@ -2179,7 +2743,7 @@ def apply_expensive_score(
     candidate: Dict[str, Any],
     cfg: TeacherScorerConfig,
     w_area: float,
-    expensive_signal: Optional[Dict[str, float]],
+    expensive_signal: Optional[Dict[str, Any]],
 ) -> None:
     comps = candidate.get("scores", {}).get("components", {})
     cov = safe_float(comps.get("cov", 0.0))
@@ -2187,12 +2751,29 @@ def apply_expensive_score(
     p_text = safe_float(comps.get("p_text", 0.0))
     p_ar_free = safe_float(comps.get("p_ar_free", 0.0))
     r_edge = safe_float(comps.get("r_edge", 0.0))
+    r_teach = safe_float(comps.get("r_teach", 0.0))
     area = safe_float(candidate.get("area_ratio", 0.0))
 
+    a_backend = "proxy"
+    a_prior_laion_w = None
+    a_raw_laion = None
+    a_norm_laion = None
+    a_mean_nima = None
+    a_std_nima = None
+    a_norm_nima = None
     if expensive_signal is not None:
         a_raw = safe_float(expensive_signal.get("aesthetic_raw", 0.0))
         a_norm = clamp(safe_float(expensive_signal.get("aesthetic_norm", 0.0)), 0.0, 1.0)
         ca_val = clamp(safe_float(expensive_signal.get("cosine_img_text", 0.0)), -1.0, 1.0)
+        a_backend = str(expensive_signal.get("aesthetic_backend", "real")).strip().lower() or "real"
+        a_prior_laion_w = safe_optional_float(expensive_signal.get("aesthetic_prior_laion_weight"))
+        a_raw_laion = safe_optional_float(expensive_signal.get("aesthetic_raw_laion"))
+        laion_norm_val = safe_optional_float(expensive_signal.get("aesthetic_norm_laion"))
+        a_norm_laion = None if laion_norm_val is None else clamp(laion_norm_val, 0.0, 1.0)
+        a_mean_nima = safe_optional_float(expensive_signal.get("aesthetic_mean_nima"))
+        a_std_nima = safe_optional_float(expensive_signal.get("aesthetic_std_nima"))
+        nima_norm_val = safe_optional_float(expensive_signal.get("aesthetic_norm_nima"))
+        a_norm_nima = None if nima_norm_val is None else clamp(nima_norm_val, 0.0, 1.0)
         source = "real"
     else:
         a_raw = None
@@ -2208,6 +2789,7 @@ def apply_expensive_score(
         - cfg.w_text * p_text
         - cfg.w_ar_free * p_ar_free
         + cfg.w_edge * r_edge
+        + cfg.w_teach * r_teach
     )
     final_score = exp_score + float(w_area) * math.log(max(1e-8, area))
 
@@ -2217,6 +2799,15 @@ def apply_expensive_score(
     comps["aesthetic_norm"] = float(a_norm)
     comps["cosine_img_text"] = float(ca_val)
     comps["expensive_source"] = source
+    comps["aesthetic_backend"] = str(a_backend)
+    comps["aesthetic_prior_laion_weight"] = (
+        None if a_prior_laion_w is None else float(clamp(a_prior_laion_w, 0.0, 1.0))
+    )
+    comps["aesthetic_raw_laion"] = None if a_raw_laion is None else float(a_raw_laion)
+    comps["aesthetic_norm_laion"] = None if a_norm_laion is None else float(a_norm_laion)
+    comps["aesthetic_mean_nima"] = None if a_mean_nima is None else float(a_mean_nima)
+    comps["aesthetic_std_nima"] = None if a_std_nima is None else float(max(0.0, a_std_nima))
+    comps["aesthetic_norm_nima"] = None if a_norm_nima is None else float(a_norm_nima)
 
 
 def _has_hard_tag(candidate: Dict[str, Any], tag: str) -> bool:
@@ -2265,6 +2856,7 @@ def compute_candidate_scores(
     c5_info: Dict[str, Any],
     c4_info: Dict[str, Any],
     route: Dict[str, Any],
+    teacher_ctx: Optional[Dict[str, Any]],
     cfg: TeacherScorerConfig,
 ) -> Dict[str, Any]:
     crop = clip_box01(candidate.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]))
@@ -2273,16 +2865,18 @@ def compute_candidate_scores(
     ar = (c_w * image_ar / max(1e-8, c_h)) if c_h > 0 else 0.0
 
     hard_reject_tags: List[str] = []
+    is_baseline_full = bool(candidate.get("must_keep", False)) and str(candidate.get("source", "")).startswith("baseline_full")
 
     # Structural hard checks.
-    if not (cfg.area_min <= area <= cfg.area_max):
+    allow_full_baseline = is_baseline_full and area <= 1.000001
+    if (not (cfg.area_min <= area <= cfg.area_max)) and (not allow_full_baseline):
         hard_reject_tags.append("area_violation")
     is_freeform = target_ar is None
     if (target_ar is not None) and (abs(ar - target_ar) > cfg.ar_hard_eps):
         hard_reject_tags.append("ar_violation")
 
     f_cut, f_kept, f_total = face_cut_flags(c3_info["face_boxes"], crop)
-    if cfg.hard_face_rule and f_total > 0 and f_cut:
+    if (not is_baseline_full) and cfg.hard_face_rule and f_total > 0 and f_cut:
         hard_reject_tags.append("face_cut")
 
     head_top = compute_head_top_guard(
@@ -2293,7 +2887,8 @@ def compute_candidate_scores(
     )
     is_portrait_mode = str(route.get("subject_mode", "")).startswith("portrait")
     if (
-        bool(cfg.hard_head_top_rule)
+        (not is_baseline_full)
+        and bool(cfg.hard_head_top_rule)
         and is_portrait_mode
         and bool(head_top.get("activated", False))
         and (not bool(head_top.get("pass", True)))
@@ -2305,7 +2900,7 @@ def compute_candidate_scores(
         crop=crop,
         margin_alpha=cfg.severe_kp_margin_alpha,
     )
-    if joint["severe_count"] >= cfg.hard_joint_reject_count:
+    if (not is_baseline_full) and joint["severe_count"] >= cfg.hard_joint_reject_count:
         hard_reject_tags.append("joint_cutoff")
 
     # Cheap terms
@@ -2385,6 +2980,8 @@ def compute_candidate_scores(
     r_copyspace = copyspace_ratio if route["flags"].get("has_copy_space", False) else 0.0
 
     p_ar_free = free_ar_prior_penalty(ar=ar, route=route, cfg=cfg) if is_freeform else 0.0
+    teach_eval = compute_teacher_consensus_reward(crop=crop, teacher_ctx=teacher_ctx, cfg=cfg)
+    r_teach = safe_float(teach_eval.get("r_teach", 0.0), 0.0)
     lam = route["lambdas"]
 
     cheap = (
@@ -2397,6 +2994,7 @@ def compute_candidate_scores(
         + lam["sym"] * sym
         + lam["ctx"] * r_context
         + lam["cs"] * r_copyspace
+        + lam.get("teach", 0.0) * r_teach
         - lam.get("ar_free", 0.0) * p_ar_free
     )
 
@@ -2441,6 +3039,12 @@ def compute_candidate_scores(
         why_tags.append("copy_space_kept" if copyspace_ratio >= 0.25 else "copy_space_lost")
     if bool(text_eval.get("available", False)):
         why_tags.append("text_preserved" if bool(text_eval.get("pass", True)) else "text_cut_risk")
+    if bool(teach_eval.get("consensus", False)):
+        why_tags.append("teacher_consensus")
+        if safe_float(teach_eval.get("rho", 0.0), 0.0) >= float(cfg.teach_rho_tau):
+            why_tags.append("teacher_aligned")
+        else:
+            why_tags.append("teacher_mismatch")
     if is_freeform:
         why_tags.append("ar_choice_freeform")
         if p_ar_free > 1e-6:
@@ -2487,12 +3091,21 @@ def compute_candidate_scores(
                 "r_sym": float(sym),
                 "r_context": float(r_context),
                 "r_copyspace": float(r_copyspace),
+                "r_teach": float(r_teach),
+                "teacher_rho": float(safe_float(teach_eval.get("rho", 0.0), 0.0)),
                 "p_ar_free": float(p_ar_free),
                 "r_edge": float(r_edge),
                 "aesthetic_proxy": float(aesthetic_proxy),
                 "ca_proxy": float(ca_proxy),
                 "aesthetic_raw": None,
                 "aesthetic_norm": None,
+                "aesthetic_backend": "pending",
+                "aesthetic_prior_laion_weight": None,
+                "aesthetic_raw_laion": None,
+                "aesthetic_norm_laion": None,
+                "aesthetic_mean_nima": None,
+                "aesthetic_std_nima": None,
+                "aesthetic_norm_nima": None,
                 "cosine_img_text": None,
                 "expensive_source": "pending",
             },
@@ -2564,6 +3177,13 @@ def compute_candidate_scores(
                 "severe_ratio_max": float(text_eval.get("severe_ratio_max", cfg.text_severe_ratio_max_default)),
                 "pass": bool(text_eval.get("pass", True)),
             },
+            "teacher_consensus": {
+                "enabled": bool(teach_eval.get("enabled", False)),
+                "available": bool(teach_eval.get("available", False)),
+                "consensus": bool(teach_eval.get("consensus", False)),
+                "rho": float(safe_float(teach_eval.get("rho", 0.0), 0.0)),
+                "pass": bool(safe_float(teach_eval.get("rho", 0.0), 0.0) >= float(cfg.teach_rho_tau)),
+            },
         },
         "why_tags": sorted(set(why_tags)),
         "reject_tags": sorted(set(reject_tags)),
@@ -2581,8 +3201,15 @@ def pick_baseline_candidates(cands: Sequence[Dict[str, Any]]) -> Tuple[Optional[
     if not cands:
         return None, None
 
-    def key_priority(c: Dict[str, Any]) -> Tuple[float, float]:
-        return (safe_float(c.get("priority", 0.0)), safe_float(c.get("area_ratio", 0.0)))
+    def key_priority(c: Dict[str, Any]) -> Tuple[float, float, float, float]:
+        final_score = safe_float(c.get("scores", {}).get("final", -1e9), -1e9)
+        has_final = 1.0 if final_score > -1e8 else 0.0
+        return (
+            has_final,
+            final_score,
+            safe_float(c.get("priority", 0.0)),
+            safe_float(c.get("area_ratio", 0.0)),
+        )
 
     baseline_full = [c for c in cands if str(c.get("source", "")).startswith("baseline_full")]
     baseline_center = [c for c in cands if str(c.get("source", "")) == "baseline_maxarea_center"]
@@ -2591,10 +3218,16 @@ def pick_baseline_candidates(cands: Sequence[Dict[str, Any]]) -> Tuple[Optional[
     must_keep = [c for c in cands if bool(c.get("must_keep", False))]
 
     baseline = None
-    for pool in (baseline_full, baseline_center, baseline_subject, baseline_slide, must_keep):
-        if pool:
-            baseline = max(pool, key=key_priority)
-            break
+    if baseline_full:
+        baseline = max(baseline_full, key=key_priority)
+    else:
+        maxarea_pool = baseline_center + baseline_subject
+        if maxarea_pool:
+            baseline = max(maxarea_pool, key=key_priority)
+        elif baseline_slide:
+            baseline = max(baseline_slide, key=key_priority)
+        elif must_keep:
+            baseline = max(must_keep, key=key_priority)
     if baseline is None:
         baseline = max(cands, key=key_priority)
 
@@ -3023,6 +3656,7 @@ def process_one_image(
         is_freeform = target_ar is None
         if not isinstance(cands, list) or not cands:
             continue
+        teacher_ctx = build_teacher_consensus_context(cand_rec=cand_rec, ar_text=ar_text, cfg=cfg)
 
         scored: List[Dict[str, Any]] = []
         for c in cands:
@@ -3037,6 +3671,7 @@ def process_one_image(
                     c5_info=c5_info,
                     c4_info=c4_info,
                     route=route,
+                    teacher_ctx=teacher_ctx,
                     cfg=cfg,
                 )
             )
@@ -3141,6 +3776,7 @@ def process_one_image(
             "cheap_top_m": cheap_top_m,
             "expensive_eval_pool": expensive_eval_pool,
             "fallback_info": fallback_info,
+            "teacher_ctx": teacher_ctx,
         }
 
     # Real expensive stage on union(M candidates across AR), if resources are ready.
@@ -3175,6 +3811,7 @@ def process_one_image(
         cheap_top_m = tmp["cheap_top_m"]
         expensive_eval_pool = tmp.get("expensive_eval_pool", cheap_top_m)
         fallback_info = tmp["fallback_info"]
+        teacher_ctx = tmp.get("teacher_ctx", {}) if isinstance(tmp.get("teacher_ctx"), dict) else {}
         target_ar = tmp.get("target_ar")
         is_freeform = bool(tmp.get("is_freeform", False))
 
@@ -3197,10 +3834,26 @@ def process_one_image(
         if baseline_effective is None:
             baseline_effective = best
 
+        teacher_boxes = teacher_ctx.get("boxes", []) if isinstance(teacher_ctx.get("boxes"), list) else []
+        baseline_iou_to_teacher = 0.0
+        if baseline_effective is not None and teacher_boxes:
+            baseline_iou_to_teacher = max(
+                iou_xyxy(baseline_effective.get("bbox_norm_xyxy", [0, 0, 1, 1]), tb) for tb in teacher_boxes
+            )
+        tau_base = float(route["tau_improve"])
+        tau_effective = tau_base
+        tau_boost_applied = False
+        if (
+            bool(teacher_ctx.get("consensus", False))
+            and baseline_iou_to_teacher >= float(cfg.teacher_tau_boost_baseline_iou)
+        ):
+            tau_effective = tau_base + float(cfg.teacher_tau_boost_delta)
+            tau_boost_applied = True
+
         decision = decide_keep_vs_crop(
             best=best,
             baseline=baseline_effective,
-            tau_improve=route["tau_improve"],
+            tau_improve=tau_effective,
         )
 
         force_ids = [decision["chosen_candidate_id"], baseline_effective.get("candidate_id")]
@@ -3247,10 +3900,18 @@ def process_one_image(
             "baseline_candidate": candidate_brief(baseline_effective),
             "best_candidate": candidate_brief(best),
             "keep_policy": {
-                "tau_improve": route["tau_improve"],
+                "tau_improve": tau_effective,
+                "tau_improve_base": tau_base,
                 "w_area": route["w_area"],
                 "force_include_baseline_in_topm": True,
                 "is_freeform": bool(is_freeform),
+                "teacher_tau_boost": {
+                    "applied": bool(tau_boost_applied),
+                    "delta": float(cfg.teacher_tau_boost_delta),
+                    "baseline_iou": float(baseline_iou_to_teacher),
+                    "baseline_iou_thr": float(cfg.teacher_tau_boost_baseline_iou),
+                    "consensus_required": bool(cfg.teach_require_consensus),
+                },
             },
             "fallback": fallback_info,
             "decision": decision,
@@ -3288,6 +3949,15 @@ def process_one_image(
                 "enabled": bool(proposal_injected),
                 "num_teacher_candidates_ar": int(safe_float(teacher_cands_by_ar.get(ar_text, 0), 0.0)),
                 "candidate_top1_iou_to_teacher_seed": safe_float(iou_to_teacher_top1_by_ar.get(ar_text, 0.0), 0.0),
+                "teacher_consensus": {
+                    "available": bool(teacher_ctx.get("available", False)),
+                    "num_teachers": int(safe_float(teacher_ctx.get("num_teachers", 0), 0.0)),
+                    "num_boxes": int(safe_float(teacher_ctx.get("num_boxes", 0), 0.0)),
+                    "consensus": bool(teacher_ctx.get("consensus", False)),
+                    "max_pair_iou": float(safe_float(teacher_ctx.get("max_pair_iou", 0.0), 0.0)),
+                    "baseline_iou": float(baseline_iou_to_teacher),
+                    "tau_boost_applied": bool(tau_boost_applied),
+                },
             },
         }
         results_by_ar[ar_text] = ar_result
@@ -3357,6 +4027,15 @@ def run(args: argparse.Namespace) -> None:
         top_k=max(1, int(args.top_k)),
         tau_div=float(args.tau_div),
         use_real_expensive=bool(int(args.use_real_expensive)),
+        enable_r_teach=bool(int(args.enable_r_teach)),
+        teach_rho_tau=float(args.teach_rho_tau),
+        teach_rho_beta=float(args.teach_rho_beta),
+        teach_consensus_pair_iou_thr=float(args.teach_consensus_pair_iou_thr),
+        teach_require_consensus=bool(int(args.teach_require_consensus)),
+        lambda_teach=float(args.lambda_teach),
+        w_teach=float(args.w_teach),
+        teacher_tau_boost_delta=float(args.teacher_tau_boost_delta),
+        teacher_tau_boost_baseline_iou=float(args.teacher_tau_boost_baseline_iou),
         hard_head_top_rule=bool(int(args.hard_head_top_rule)),
         head_top_face_expand_alpha=float(args.head_top_face_expand_alpha),
         head_top_kp_expand=float(args.head_top_kp_expand),
@@ -3435,8 +4114,14 @@ def run(args: argparse.Namespace) -> None:
             batch_size=int(args.exp_batch_size),
             preprocess_workers=int(args.exp_preprocess_workers),
             pin_memory=bool(int(args.exp_pin_memory)),
+            aesthetic_backend=str(args.aesthetic_backend),
+            aesthetic_prior_laion_weight=float(args.aesthetic_prior_laion_weight),
             aesthetic_mlp_path=Path(args.aesthetic_mlp_path),
             aesthetic_mlp_url=str(args.aesthetic_mlp_url),
+            nima_model_path=Path(args.nima_model_path),
+            nima_model_url=str(args.nima_model_url),
+            nima_use_imagenet_backbone=bool(int(args.nima_use_imagenet_backbone)),
+            nima_require_ckpt=bool(int(args.nima_require_ckpt)),
         )
         expensive_ready = True
 
@@ -3559,7 +4244,7 @@ def run(args: argparse.Namespace) -> None:
         s.cheap_kept_mean /= denom
 
     overview = {
-        "schema_version": "teacher_scorer_v4_real_expensive_c4ocr_freeform",
+        "schema_version": "teacher_scorer_v6_nima_primary_laion_prior",
         "config": asdict(cfg),
         "inputs": {
             "candidates_jsonl": str(cand_path),
@@ -3588,6 +4273,7 @@ def run(args: argparse.Namespace) -> None:
             ),
             "align_device_requested": str(args.align_device),
             "aesthetic_device_requested": str(args.aesthetic_device),
+            "aesthetic_backend_requested": str(args.aesthetic_backend),
             "align_device_actual": (
                 str(expensive_models.align_device)
                 if expensive_models is not None
@@ -3598,7 +4284,30 @@ def run(args: argparse.Namespace) -> None:
                 if expensive_models is not None
                 else None
             ),
+            "aesthetic_backend_effective": (
+                str(expensive_models.aesthetic_backend_effective)
+                if expensive_models is not None
+                else None
+            ),
+            "aesthetic_prior_laion_weight_requested": float(args.aesthetic_prior_laion_weight),
+            "aesthetic_prior_laion_weight_effective": (
+                float(expensive_models.laion_prior_weight_effective)
+                if expensive_models is not None
+                else None
+            ),
             "aesthetic_mlp_path": str(args.aesthetic_mlp_path),
+            "nima_model_path": str(args.nima_model_path),
+            "nima_require_ckpt": bool(int(args.nima_require_ckpt)),
+            "nima_ckpt_loaded": (
+                bool(expensive_models.nima_ckpt_loaded)
+                if expensive_models is not None
+                else False
+            ),
+            "nima_device_actual": (
+                str(expensive_models.nima_device)
+                if expensive_models is not None
+                else None
+            ),
             "image_loader_type": (type(image_loader).__name__ if image_loader is not None else None),
             "local_hits": int(getattr(image_loader, "local_hits", 0)) if image_loader is not None else 0,
             "tar_hits": int(getattr(image_loader, "tar_hits", 0)) if image_loader is not None else 0,

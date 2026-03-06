@@ -52,6 +52,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--negative_score_thr", type=float, default=0.0)
     p.add_argument("--subject_coverage_fail_thr", type=float, default=0.9)
     p.add_argument("--copyspace_keep_thr", type=float, default=0.25)
+    p.add_argument("--teacher_override_iou_thr", type=float, default=0.60)
     return p.parse_args()
 
 
@@ -100,6 +101,11 @@ def make_bucket() -> Dict[str, Any]:
         "proposal_teacher_seed_selected_any_count": 0,
         "teacher_seed_top1_risk_count": 0,
         "proposal_teacher_seed_top1_risk_count": 0,
+        "teacher_consensus_available_count": 0,
+        "teacher_consensus_count": 0,
+        "teacher_disagreement_count": 0,
+        "teacher_override_count": 0,
+        "teacher_tau_boost_count": 0,
     }
 
 
@@ -112,6 +118,7 @@ def update_bucket(
     negative_score_thr: float,
     subject_coverage_fail_thr: float,
     copyspace_keep_thr: float,
+    teacher_override_iou_thr: float,
 ) -> None:
     bucket["count"] += 1
 
@@ -123,6 +130,22 @@ def update_bucket(
     )
     if proposal_injected:
         bucket["proposal_injected_count"] += 1
+
+    proposal_info = ar_res.get("proposal_injection", {}) if isinstance(ar_res.get("proposal_injection"), dict) else {}
+    teacher_cons = proposal_info.get("teacher_consensus", {}) if isinstance(proposal_info.get("teacher_consensus"), dict) else {}
+    consensus_available = bool(teacher_cons.get("available", False))
+    consensus = bool(teacher_cons.get("consensus", False))
+    top1_iou_to_teacher = safe_float(proposal_info.get("candidate_top1_iou_to_teacher_seed", 0.0), 0.0)
+    if consensus_available:
+        bucket["teacher_consensus_available_count"] += 1
+        if consensus:
+            bucket["teacher_consensus_count"] += 1
+        else:
+            bucket["teacher_disagreement_count"] += 1
+    if consensus and (top1_iou_to_teacher < float(teacher_override_iou_thr)):
+        bucket["teacher_override_count"] += 1
+    if consensus and bool(teacher_cons.get("tau_boost_applied", False)):
+        bucket["teacher_tau_boost_count"] += 1
 
     decision = ar_res.get("decision", {}) if isinstance(ar_res.get("decision"), dict) else {}
     decision_type = str(decision.get("decision_type", "unknown"))
@@ -295,6 +318,8 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
     sm_conf = [float(v) for v in bucket["subject_mode_conf"]]
     c2_num_inst = [int(v) for v in bucket["c2_num_inst"]]
     proposal_n = int(bucket["proposal_injected_count"])
+    consensus_n = int(bucket["teacher_consensus_count"])
+    consensus_avail_n = int(bucket["teacher_consensus_available_count"])
     text_keep = [float(v) for v in bucket["text_keep_ratio"]]
     text_penalty = [float(v) for v in bucket["text_penalty"]]
 
@@ -346,6 +371,12 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
             ),
             # Practical proxy for "proposal rescue": injected task where teacher-seed is selected top1.
             "proposal_rescue_rate_proxy": float(bucket["proposal_teacher_seed_top1_count"]) / max(1, proposal_n),
+            "teacher_consensus_rate": float(bucket["teacher_consensus_count"]) / max(1, consensus_avail_n),
+            "teacher_disagreement_rate": float(bucket["teacher_disagreement_count"]) / max(1, consensus_avail_n),
+            "teacher_override_rate_given_consensus": float(bucket["teacher_override_count"]) / max(1, consensus_n),
+            "teacher_override_rate_all": float(bucket["teacher_override_count"]) / n,
+            "teacher_tau_boost_rate_given_consensus": float(bucket["teacher_tau_boost_count"]) / max(1, consensus_n),
+            "teacher_consensus_available_rate": float(consensus_avail_n) / n,
         },
         "decision_counts": dict(bucket["decision"]),
         "decision_rates": {k: float(v) / n for k, v in bucket["decision"].items()},
@@ -424,6 +455,11 @@ def flatten_for_csv(ar: str, summary: Dict[str, Any]) -> Dict[str, Any]:
         "teacher_seed_top1_rate_all": summary.get("proposal_injection", {}).get("teacher_seed_top1_rate_all", 0.0),
         "teacher_seed_top1_risk_rate_all": summary.get("proposal_injection", {}).get(
             "teacher_seed_top1_risk_rate_all", 0.0
+        ),
+        "teacher_consensus_rate": summary.get("proposal_injection", {}).get("teacher_consensus_rate", 0.0),
+        "teacher_disagreement_rate": summary.get("proposal_injection", {}).get("teacher_disagreement_rate", 0.0),
+        "teacher_override_rate_given_consensus": summary.get("proposal_injection", {}).get(
+            "teacher_override_rate_given_consensus", 0.0
         ),
         "proposal_rescue_rate_proxy": summary.get("proposal_injection", {}).get("proposal_rescue_rate_proxy", 0.0),
         "final_mean": summary.get("final_score", {}).get("mean", 0.0),
@@ -513,6 +549,7 @@ def main() -> None:
                     negative_score_thr=float(args.negative_score_thr),
                     subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
                     copyspace_keep_thr=float(args.copyspace_keep_thr),
+                    teacher_override_iou_thr=float(args.teacher_override_iou_thr),
                 )
                 update_bucket(
                     per_ar[ar_text],
@@ -522,6 +559,7 @@ def main() -> None:
                     negative_score_thr=float(args.negative_score_thr),
                     subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
                     copyspace_keep_thr=float(args.copyspace_keep_thr),
+                    teacher_override_iou_thr=float(args.teacher_override_iou_thr),
                 )
                 update_bucket(
                     per_mode[mode_key],
@@ -531,6 +569,7 @@ def main() -> None:
                     negative_score_thr=float(args.negative_score_thr),
                     subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
                     copyspace_keep_thr=float(args.copyspace_keep_thr),
+                    teacher_override_iou_thr=float(args.teacher_override_iou_thr),
                 )
                 update_bucket(
                     per_mode_ar[mode_ar_key],
@@ -540,6 +579,7 @@ def main() -> None:
                     negative_score_thr=float(args.negative_score_thr),
                     subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
                     copyspace_keep_thr=float(args.copyspace_keep_thr),
+                    teacher_override_iou_thr=float(args.teacher_override_iou_thr),
                 )
                 update_bucket(
                     per_mode_shot_ar[mode_shot_ar_key],
@@ -549,6 +589,7 @@ def main() -> None:
                     negative_score_thr=float(args.negative_score_thr),
                     subject_coverage_fail_thr=float(args.subject_coverage_fail_thr),
                     copyspace_keep_thr=float(args.copyspace_keep_thr),
+                    teacher_override_iou_thr=float(args.teacher_override_iou_thr),
                 )
 
     global_summary = summarize_bucket(global_bucket)
@@ -565,6 +606,7 @@ def main() -> None:
             "negative_score_thr": float(args.negative_score_thr),
             "subject_coverage_fail_thr": float(args.subject_coverage_fail_thr),
             "copyspace_keep_thr": float(args.copyspace_keep_thr),
+            "teacher_override_iou_thr": float(args.teacher_override_iou_thr),
         },
         "global": global_summary,
         "by_ar": by_ar_summary,

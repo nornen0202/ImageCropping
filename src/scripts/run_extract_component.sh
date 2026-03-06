@@ -224,6 +224,7 @@ IMAGE_DIR=""
 WEIGHTS_DIR=""
 C4_LANG="en"
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 # ── 옵션 파싱 ─────────────────────────────────────────────────────────────────
 while [ "$#" -gt 0 ]; do
@@ -281,11 +282,113 @@ if [ "$SERVER_MODE" -ne 1 ]; then
     fi
 fi
 
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+    echo "Error: python binary not found: $PYTHON_BIN"
+    exit 1
+fi
+echo "[info] python_bin: $PYTHON_BIN"
+
 # ── PYTHONPATH (extract_features/ + third_party 포함) ────────────────────────
 export PYTHONPATH="${SRC_DIR}/extract_features:${PROJECT_ROOT}/third_party/efficientvit:${PROJECT_ROOT}/third_party/sam2:${PROJECT_ROOT}/third_party/scalelsd:${PROJECT_ROOT}/third_party/gazelle:${PYTHONPATH:-}"
 export CUDA_DEVICE_ORDER="PCI_BUS_ID"
-export OMP_NUM_THREADS=8
 export RAY_IGNORE_UNHANDLED_ERRORS=1
+
+# C5/C6 quality-first offline robustness defaults
+export C5_SCALELSD_CKPT="${C5_SCALELSD_CKPT:-${PROJECT_ROOT}/weights/scalelsd/scalelsd-vitbase-v1-train-sa1b.pt}"
+export C6_GAZELLE_REPO="${C6_GAZELLE_REPO:-${PROJECT_ROOT}/third_party/gazelle}"
+export C6_TORCH_HUB_DIR="${C6_TORCH_HUB_DIR:-${PROJECT_ROOT}/.cache/torch/hub}"
+export C6_GAZELLE_USE_TORCHHUB="${C6_GAZELLE_USE_TORCHHUB:-1}"
+
+C6_GAZELLE_CKPT_DEFAULT="${PROJECT_ROOT}/weights/gazelle/gazelle_dinov2_vitb14_inout.pt"
+C6_GAZELLE_CKPT_CACHE="${PROJECT_ROOT}/.cache/torch/hub/checkpoints/gazelle_dinov2_vitb14_inout.pt"
+if [ -z "${C6_GAZELLE_CKPT:-}" ]; then
+    if [ -f "${C6_GAZELLE_CKPT_DEFAULT}" ]; then
+        export C6_GAZELLE_CKPT="${C6_GAZELLE_CKPT_DEFAULT}"
+    elif [ -f "${C6_GAZELLE_CKPT_CACHE}" ]; then
+        export C6_GAZELLE_CKPT="${C6_GAZELLE_CKPT_CACHE}"
+    else
+        export C6_GAZELLE_CKPT="${C6_GAZELLE_CKPT_DEFAULT}"
+    fi
+fi
+
+mkdir -p "${C6_TORCH_HUB_DIR}" || true
+echo "[quality-defaults] C5_SCALELSD_CKPT=${C5_SCALELSD_CKPT}"
+echo "[quality-defaults] C6_GAZELLE_REPO=${C6_GAZELLE_REPO}"
+echo "[quality-defaults] C6_GAZELLE_CKPT=${C6_GAZELLE_CKPT}"
+echo "[quality-defaults] C6_TORCH_HUB_DIR=${C6_TORCH_HUB_DIR}"
+echo "[quality-defaults] C6_GAZELLE_USE_TORCHHUB=${C6_GAZELLE_USE_TORCHHUB}"
+
+component_enabled() {
+    local needle="$1"
+    if [[ " ${COMPONENT} " == *" all "* ]]; then
+        return 0
+    fi
+    if [[ " ${COMPONENT} " == *" ${needle} "* ]]; then
+        return 0
+    fi
+    return 1
+}
+
+# C4(PaddleOCR) preflight:
+# - If Paddle CUDA runtime is unavailable in current python, C4는 SIGFPE를 유발할 수 있다.
+# - 이 경우 C4_BACKEND=disabled로 강등하여 전체 파이프라인 실패를 방지한다.
+c4_runtime_cuda_ready() {
+    "$PYTHON_BIN" - <<'PY'
+import sys
+
+try:
+    import paddle
+except Exception as e:
+    print(f"[c4-preflight] paddle import failed: {e}")
+    sys.exit(2)
+
+compiled_cuda = False
+try:
+    compiled_cuda = bool(paddle.is_compiled_with_cuda())
+except Exception:
+    compiled_cuda = False
+
+device_count = 0
+if compiled_cuda:
+    try:
+        device_count = int(paddle.device.cuda.device_count())
+    except Exception:
+        device_count = 0
+
+print(
+    f"[c4-preflight] paddle={getattr(paddle, '__version__', '?')} "
+    f"compiled_cuda={compiled_cuda} cuda_device_count={device_count}"
+)
+
+if (not compiled_cuda) or (device_count <= 0):
+    sys.exit(3)
+sys.exit(0)
+PY
+}
+
+# Paddle CPU fallback + OpenBLAS 환경에서 OMP>1이면 SIGFPE가 발생할 수 있으므로
+# C4가 포함된 실행에서는 안전한 기본값(1 thread)을 강제한다.
+if component_enabled "c4"; then
+    export OMP_NUM_THREADS="${OMP_NUM_THREADS:-1}"
+    export OPENBLAS_NUM_THREADS="${OPENBLAS_NUM_THREADS:-1}"
+    export MKL_NUM_THREADS="${MKL_NUM_THREADS:-1}"
+else
+    export OMP_NUM_THREADS="${OMP_NUM_THREADS:-8}"
+fi
+
+if component_enabled "c4"; then
+    if [ "${C4_BACKEND:-auto}" != "disabled" ]; then
+        if c4_runtime_cuda_ready; then
+            echo "[c4-preflight] Paddle CUDA runtime ready. keeping C4 backend=${C4_BACKEND:-auto}"
+        else
+            rc=$?
+            echo "[warn] [c4-preflight] Paddle CUDA runtime not ready (rc=${rc}). forcing C4_BACKEND=disabled to avoid SIGFPE."
+            export C4_BACKEND="disabled"
+        fi
+    else
+        echo "[c4-preflight] C4 backend already disabled by env."
+    fi
+fi
 
 # ── GPU 수 감지 ───────────────────────────────────────────────────────────────
 NUM_GPUS=$(nvidia-smi -L 2>/dev/null | wc -l || echo 0)
@@ -321,6 +424,8 @@ echo "  Mode     : $MODE  (Detected GPUs: $NUM_GPUS)"
 echo "  Tar Dir  : $TAR_DIR"
 echo "  Image Dir: ${IMAGE_DIR:-<none>}"
 echo "  WeightsDir: $WEIGHTS_DIR"
+echo "  Threads  : OMP=${OMP_NUM_THREADS:-<unset>} OPENBLAS=${OPENBLAS_NUM_THREADS:-<unset>} MKL=${MKL_NUM_THREADS:-<unset>}"
+echo "  C4 backend env: ${C4_BACKEND:-auto}"
 echo "=============================================="
 
 IMAGE_DIR_ARGS=()
@@ -331,7 +436,7 @@ fi
 # ── 실행 ─────────────────────────────────────────────────────────────────────
 if [ "$MODE" = "single" ]; then
     echo "[MODE] Single-GPU (No Ray)"
-    python3 "${SRC_DIR}/extract_features_single.py" \
+    "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" \
         --input_parquet  "$INPUT_PARQUET" \
         --bucket         "$BUCKET" \
         --tar_dir        "$TAR_DIR" \
@@ -403,7 +508,7 @@ elif [ "$MODE" = "multi" ]; then
     fi
     if [ "$WORKERS" -le 1 ]; then
         echo "Warning: effective workers <= 1. falling back to single mode."
-        python3 "${SRC_DIR}/extract_features_single.py" \
+        "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" \
             --input_parquet  "$INPUT_PARQUET" \
             --bucket         "$BUCKET" \
             --tar_dir        "$TAR_DIR" \
@@ -419,6 +524,7 @@ elif [ "$MODE" = "multi" ]; then
         mkdir -p "$TMP_DIR"
         PIDS=()
         SHARD_FILES=()
+        SHARD_LOGS=()
         C4_DEVICE_SHARD="$(normalize_paddle_gpu_dev "${C4_PPOCR_DEVICE:-gpu:0}")"
         C5_DEVICE_SHARD="$(normalize_torch_cuda_dev "${C5_SCALELSD_DEVICE:-cuda}")"
         C6_DEVICE_SHARD="$(normalize_torch_cuda_dev "${C6_GAZELLE_DEVICE:-cuda}")"
@@ -431,12 +537,13 @@ elif [ "$MODE" = "multi" ]; then
             SHARD_OUT="${TMP_DIR}/part_${i}.jsonl"
             SHARD_LOG="${TMP_DIR}/part_${i}.log"
             SHARD_FILES+=("$SHARD_OUT")
+            SHARD_LOGS+=("$SHARD_LOG")
             echo "[multi] launch shard=$i/$WORKERS gpu=$GPU_ID -> $SHARD_OUT"
             CUDA_VISIBLE_DEVICES="$GPU_ID" \
             C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" \
             C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" \
             C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" \
-            python3 "${SRC_DIR}/extract_features_single.py" \
+            "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" \
                 --input_parquet  "$INPUT_PARQUET" \
                 --bucket         "$BUCKET" \
                 --tar_dir        "$TAR_DIR" \
@@ -455,13 +562,33 @@ elif [ "$MODE" = "multi" ]; then
         done
 
         FAIL=0
-        for pid in "${PIDS[@]}"; do
-            if ! wait "$pid"; then
+        i=0
+        while [ "$i" -lt "${#PIDS[@]}" ]; do
+            pid="${PIDS[$i]}"
+            log_path="${SHARD_LOGS[$i]}"
+            if wait "$pid"; then
+                :
+            else
+                rc=$?
                 FAIL=1
+                echo "[error] shard=${i} pid=${pid} exit_code=${rc} log=${log_path}"
+                if [ "$rc" -eq 136 ]; then
+                    echo "[hint] shard=${i} terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log."
+                fi
             fi
+            i=$((i + 1))
         done
         if [ "$FAIL" -ne 0 ]; then
             echo "Error: one or more shard workers failed. logs under: $TMP_DIR"
+            i=0
+            while [ "$i" -lt "${#SHARD_LOGS[@]}" ]; do
+                log_path="${SHARD_LOGS[$i]}"
+                if [ -f "$log_path" ]; then
+                    echo "----- tail: ${log_path} -----"
+                    tail -n 120 "$log_path" || true
+                fi
+                i=$((i + 1))
+            done
             exit 1
         fi
 
@@ -480,7 +607,7 @@ else
     if [ -n "$NUM_WORKERS" ]; then
         WORKERS_ARG="--num_workers $NUM_WORKERS"
     fi
-    python3 "${SRC_DIR}/extract_features_pipeline.py" \
+    "$PYTHON_BIN" "${SRC_DIR}/extract_features_pipeline.py" \
         --input_parquet  "$INPUT_PARQUET" \
         --bucket         "$BUCKET" \
         --tar_dir        "$TAR_DIR" \

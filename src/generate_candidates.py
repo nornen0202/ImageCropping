@@ -324,18 +324,36 @@ def build_actual_size_map(
     from TAR-resized images; C2/C3 pixel boxes are on TAR image scale, so
     candidate normalization must use these actual TAR sizes.
     """
-    if cache_json is not None and use_cache_if_available and cache_json.exists():
-        out: Dict[str, Tuple[int, int]] = {}
-        with cache_json.open("r", encoding="utf-8") as f:
-            payload = json.load(f)
-        for k, v in payload.items():
-            if isinstance(v, (list, tuple)) and len(v) == 2:
-                out[str(k)] = (int(v[0]), int(v[1]))
-        if out:
-            return out
+    target_ids = {str(x) for x in df["image_id"].astype(str).tolist()}
+
+    # Cache is used as a seed only. Partial cache must NOT short-circuit.
+    cache_all: Dict[str, Tuple[int, int]] = {}
+    if cache_json is not None and cache_json.exists():
+        try:
+            with cache_json.open("r", encoding="utf-8") as f:
+                payload = json.load(f)
+            if isinstance(payload, dict):
+                for k, v in payload.items():
+                    if not isinstance(v, (list, tuple)) or len(v) != 2:
+                        continue
+                    try:
+                        w = int(v[0])
+                        h = int(v[1])
+                    except Exception:
+                        continue
+                    if w > 0 and h > 0:
+                        cache_all[str(k)] = (w, h)
+        except Exception:
+            cache_all = {}
 
     out: Dict[str, Tuple[int, int]] = {}
-    remaining = {str(x) for x in df["image_id"].astype(str).tolist()}
+    if use_cache_if_available and cache_all:
+        for img_id in target_ids:
+            wh = cache_all.get(img_id)
+            if wh is not None and wh[0] > 0 and wh[1] > 0:
+                out[img_id] = (int(wh[0]), int(wh[1]))
+
+    remaining = set(target_ids - set(out.keys()))
 
     local_index = build_local_image_index(image_dir)
     if local_index:
@@ -353,8 +371,10 @@ def build_actual_size_map(
     if not remaining:
         if cache_json is not None:
             cache_json.parent.mkdir(parents=True, exist_ok=True)
+            merged = dict(cache_all)
+            merged.update(out)
             with cache_json.open("w", encoding="utf-8") as f:
-                json.dump({k: [int(v[0]), int(v[1])] for k, v in out.items()}, f, ensure_ascii=False)
+                json.dump({k: [int(v[0]), int(v[1])] for k, v in merged.items()}, f, ensure_ascii=False)
         return out
 
     if not str(tar_dir).strip():
@@ -373,21 +393,25 @@ def build_actual_size_map(
         by_tar[tar_name].append((img_id, bucket))
 
     for tar_name, items in tqdm(by_tar.items(), total=len(by_tar), desc="size-map"):
+        wanted_ids = {img_id for img_id, _ in items if img_id in remaining}
+        if not wanted_ids:
+            continue
         bucket = items[0][1] if items else ""
         tar_path = resolve_tar_path(tar_dir=tar_dir, bucket=bucket, tar_name=tar_name)
         if tar_path is None:
             continue
-        wanted = {f"{img_id}.jpg": img_id for img_id, _ in items}
-        wanted.update({f"{img_id}.jpeg": img_id for img_id, _ in items})
-        wanted.update({f"{img_id}.png": img_id for img_id, _ in items})
-        wanted.update({f"{img_id}.webp": img_id for img_id, _ in items})
-
         try:
             with tarfile.open(tar_path, "r") as tf:
-                members = {os.path.basename(m.name): m for m in tf.getmembers() if m.isfile()}
-                for fname, img_id in wanted.items():
-                    m = members.get(fname)
-                    if m is None:
+                for m in tf.getmembers():
+                    if not m.isfile():
+                        continue
+                    base = os.path.basename(m.name)
+                    stem, ext = os.path.splitext(base)
+                    if stem not in wanted_ids:
+                        continue
+                    if ext.lower() not in DEFAULT_IMAGE_EXTS:
+                        continue
+                    if stem in out:
                         continue
                     fobj = tf.extractfile(m)
                     if fobj is None:
@@ -395,16 +419,21 @@ def build_actual_size_map(
                     data = fobj.read()
                     try:
                         im = Image.open(io.BytesIO(data))
-                        out[img_id] = (int(im.width), int(im.height))
+                        out[stem] = (int(im.width), int(im.height))
                     except Exception:
                         continue
         except Exception:
             continue
+        remaining = set(target_ids - set(out.keys()))
+        if not remaining:
+            break
 
     if cache_json is not None:
         cache_json.parent.mkdir(parents=True, exist_ok=True)
+        merged = dict(cache_all)
+        merged.update(out)
         with cache_json.open("w", encoding="utf-8") as f:
-            json.dump({k: [int(v[0]), int(v[1])] for k, v in out.items()}, f, ensure_ascii=False)
+            json.dump({k: [int(v[0]), int(v[1])] for k, v in merged.items()}, f, ensure_ascii=False)
 
     return out
 
@@ -1236,6 +1265,20 @@ def generate_baseline_candidates(
             must_keep=True,
             priority=9.0,
         )
+        x1_subj = clamp(cx_subj - bw * 0.5, 0.0, slack)
+        add_candidate(
+            out=cands,
+            box=[x1_subj, 0.0, x1_subj + bw, 1.0],
+            image_ar=image_ar,
+            target_ar=target_ar,
+            ar_tol=cfg.ar_tol,
+            a_min=cfg.a_min,
+            a_max=cfg.a_max,
+            source="baseline_maxarea_subject",
+            scale_idx="maxs",
+            must_keep=True,
+            priority=9.1,
+        )
 
         for i, frac in enumerate(offsets):
             x1s = clamp(cx_subj - bw * 0.5 + frac * slack, 0.0, slack)
@@ -1286,6 +1329,20 @@ def generate_baseline_candidates(
         scale_idx="maxc",
         must_keep=True,
         priority=9.0,
+    )
+    y1_subj = clamp(cy_subj - bh * 0.5, 0.0, slack)
+    add_candidate(
+        out=cands,
+        box=[0.0, y1_subj, 1.0, y1_subj + bh],
+        image_ar=image_ar,
+        target_ar=target_ar,
+        ar_tol=cfg.ar_tol,
+        a_min=cfg.a_min,
+        a_max=cfg.a_max,
+        source="baseline_maxarea_subject",
+        scale_idx="maxs",
+        must_keep=True,
+        priority=9.1,
     )
 
     for i, frac in enumerate(offsets):
@@ -2847,6 +2904,17 @@ def main() -> None:
         if not actual_size_map:
             raise RuntimeError("Failed to build actual_size_map (empty result)")
         print(f"[CandidateGen] actual_size_map loaded: {len(actual_size_map)} images")
+        strict_actual = bool(int(args.strict_actual_size))
+        missing_actual = [str(r.get("image_id", "")) for r in rows if str(r.get("image_id", "")) not in actual_size_map]
+        if missing_actual:
+            head = ", ".join(missing_actual[:5])
+            msg = (
+                f"actual_size_map incomplete: missing={len(missing_actual)}/{len(rows)} "
+                f"(e.g., {head})"
+            )
+            if strict_actual:
+                raise ValueError(msg)
+            print(f"[CandidateGen] WARN: {msg} -> fallback to parquet size for missing ids")
 
     num_written = 0
     avg_total = 0.0

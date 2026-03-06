@@ -37,6 +37,15 @@ TOP_PERCENTILE=${4:-0.5}
 SERVER_MODE=${5:-1}
 CURATED_IMAGE_DIR=${6:-""}
 CURATED_IMAGE_SKIP_EXISTING=${7:-1}
+FILTER_REQUIRE_TRAIN_MATCH=${FILTER_REQUIRE_TRAIN_MATCH:-1}
+FILTER_TAG_EMBED_MULTI_GPU=${FILTER_TAG_EMBED_MULTI_GPU:--1}
+FILTER_TAG_EMBED_GPU_IDS=${FILTER_TAG_EMBED_GPU_IDS:-""}
+FILTER_TAG_EMBED_BATCH_SIZE=${FILTER_TAG_EMBED_BATCH_SIZE:-128}
+FILTER_TAG_EMBED_CHUNK_SIZE=${FILTER_TAG_EMBED_CHUNK_SIZE:-0}
+FILTER_TAG_EMBED_DEVICE=${FILTER_TAG_EMBED_DEVICE:-auto}
+FILTER_CATEGORY_MAP_WORKERS=${FILTER_CATEGORY_MAP_WORKERS:-0}
+FILTER_CATEGORY_MAP_CHUNK_SIZE=${FILTER_CATEGORY_MAP_CHUNK_SIZE:-4096}
+FILTER_SAMPLE_EXTRACT_WORKERS=${FILTER_SAMPLE_EXTRACT_WORKERS:-0}
 
 # 가상환경 활성화 (서버 모드가 아닐 경우에만)
 if [ "$SERVER_MODE" -ne 1 ]; then
@@ -72,6 +81,12 @@ echo "Curated Pool Size : $POOL_SIZE"
 # bash bc 활용 (혹은 awk)
 PCT=$(awk -v pr="$TOP_PERCENTILE" 'BEGIN {print (pr * 100)}')
 echo "Top Percentile    : ${PCT}%"
+echo "Train Match Only  : $FILTER_REQUIRE_TRAIN_MATCH"
+echo "TagEmbed MGPU     : $FILTER_TAG_EMBED_MULTI_GPU (gpu_ids=${FILTER_TAG_EMBED_GPU_IDS:-auto})"
+echo "TagEmbed BS/Chunk : $FILTER_TAG_EMBED_BATCH_SIZE / $FILTER_TAG_EMBED_CHUNK_SIZE"
+echo "TagEmbed Device   : $FILTER_TAG_EMBED_DEVICE"
+echo "CatMap Workers    : $FILTER_CATEGORY_MAP_WORKERS (chunk=$FILTER_CATEGORY_MAP_CHUNK_SIZE)"
+echo "SampleX Workers   : $FILTER_SAMPLE_EXTRACT_WORKERS"
 if [ -n "$CURATED_IMAGE_DIR" ]; then
   echo "Curated Image Dir : $CURATED_IMAGE_DIR"
   echo "Curated Img Skip  : $CURATED_IMAGE_SKIP_EXISTING"
@@ -96,6 +111,15 @@ python3 -u "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
     --curated_pool_size "$POOL_SIZE" \
     --top_percentile "$TOP_PERCENTILE" \
     --server_mode "$SERVER_MODE" \
+    --require_train_match "$FILTER_REQUIRE_TRAIN_MATCH" \
+    --tag_embed_multi_gpu "$FILTER_TAG_EMBED_MULTI_GPU" \
+    --tag_embed_gpu_ids "$FILTER_TAG_EMBED_GPU_IDS" \
+    --tag_embed_batch_size "$FILTER_TAG_EMBED_BATCH_SIZE" \
+    --tag_embed_chunk_size "$FILTER_TAG_EMBED_CHUNK_SIZE" \
+    --tag_embed_device "$FILTER_TAG_EMBED_DEVICE" \
+    --category_map_workers "$FILTER_CATEGORY_MAP_WORKERS" \
+    --category_map_chunk_size "$FILTER_CATEGORY_MAP_CHUNK_SIZE" \
+    --sample_extract_workers "$FILTER_SAMPLE_EXTRACT_WORKERS" \
     "${EXTRA_ARGS[@]}"
 
 echo "Filtering completed."

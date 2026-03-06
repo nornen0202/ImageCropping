@@ -74,8 +74,9 @@ bash src/scripts/install_features_deps_torch251_cu121_stable.sh
 - Torch 2.5.1 + cu121, OpenMMLab(mmcv/mmengine/mmdet/mmpose), SAM2, EfficientViT 설치
 - C5 quality_first용 ScaleLSD 설치 시도(`ENABLE_SCALELSD=1` 기본)
 - C6 quality_first용 Gazelle(Gaze-LLE) 설치 시도(`ENABLE_GAZELLE=1` 기본)
-- Qwen3-VL 심볼 누락 시 `PyPI/사내 미러 최신 transformers`를 먼저 시도하고, 필요 시 GitHub 소스 fallback 수행
-- C4 OCR용 PaddleOCR(PP-OCRv5 런타임) 기본 설치(`ENABLE_C4_OCR=1` 기본)
+- C4 OCR용 PaddleOCR(PP-OCRv5 런타임) 기본 비활성(`ENABLE_C4_OCR=0` 기본)
+- 기본 파이프라인 환경은 `ENABLE_QWEN3_VL=0`(기본)으로 유지되어, C3/mmpretrain과의 버전 충돌을 피함
+- Qwen3-VL은 **별도 환경**에서 `QWEN3_RUNTIME_ONLY=1` 모드로 설치/운영 권장
 
 3) 품질최우선 모듈 import 검증
 ```bash
@@ -115,10 +116,22 @@ PY
 export ENABLE_C4_OCR=1
 export ENABLE_SCALELSD=1
 export ENABLE_GAZELLE=1
-export ENABLE_QWEN3_VL=1
+export ENABLE_QWEN3_VL=0
 export QWEN3_TRY_PYPI_LATEST=1
 # GitHub 차단 환경이면 0 권장 (PyPI/사내 미러만 사용)
 export QWEN3_ALLOW_GITHUB_FALLBACK=0
+```
+
+5) (권장) Qwen3-VL 전용 별도 환경 준비 (Stage-10 전용)
+```bash
+# 5-1) 별도 venv 생성
+python3 -m venv /group-volume/jaden.ju/Venvs/qwen3_vlm
+
+# 5-2) Qwen3 runtime-only 설치 (파이프라인 deps는 건너뜀)
+QWEN3_RUNTIME_ONLY=1 \
+QWEN3_ALLOW_GITHUB_FALLBACK=0 \
+PYTHON=/group-volume/jaden.ju/Venvs/qwen3_vlm/bin/python \
+bash src/scripts/install_features_deps_torch251_cu121_stable.sh
 ```
 
 참고: C4를 수동 재설치해야 하는 경우에만 아래를 별도 실행하세요.
@@ -209,6 +222,29 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --precompute_mode unified \
   --run_tag rerun1
 ```
+
+Filter만 재실행하면서 태그 임베딩 멀티 GPU를 강제하려면:
+```bash
+DATANAME=10K
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/${DATANAME} \
+  --run_filter 1 \
+  --run_c1 0 --run_c2 0 --run_c3 0 --run_c4 0 --run_c3_enrich 0 --run_c5 0 --run_c6 0 --run_merge 0 \
+  --run_candidates 0 --run_teacher 0 --run_vlm_teacher 0 \
+  --filter_require_train_match 1 \
+  --filter_tag_embed_multi_gpu 1 \
+  --filter_tag_embed_gpu_ids 0,1,2,3,4,5,6,7 \
+  --filter_tag_embed_batch_size 128 \
+  --filter_tag_embed_chunk_size 0 \
+  --filter_tag_embed_device auto \
+  --skip_existing 0 \
+  --run_tag filter_only_tag_mgpu
+```
+
+주의:
+- `filter` 단계 캐시(`tag_cat_probs_cache_*.pkl`, `df_mapped_cache_*.parquet`)가 남아 있으면 태그 임베딩 단계가 skip될 수 있습니다.
+- 실제 재임베딩을 강제하려면 `data/SSTK/<DATANAME>/cache/filter/`의 관련 캐시를 정리한 뒤 실행하세요.
 
 `5.5 공개 Teacher 추론/변환(설치 포함)`까지 같은 실행에서 자동 적용하려면:
 ```bash
@@ -322,20 +358,26 @@ export C6_GAZELLE_DEVICE=cuda
 ```
 
 ```bash
-DATANAME=10K_local
-RUN_TAG=260305_v1
+DATANAME=Test_100
+RUN_TAG=260306_r0
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --bucket sstk_100 \
   --data_dir data/SSTK/${DATANAME} \
   --server_mode 1 \
   --tar_dir /sstk/20230916/sstk_100 \
-  --run_filter 1 \
-  --curated_pool_size 10000 \
+  --run_filter 0 \
+  --curated_pool_size 100 \
   --top_percentile 0.2 \
+  --filter_require_train_match 1 \
+  --filter_tag_embed_multi_gpu 1 \
+  --filter_tag_embed_gpu_ids 0,1,2,3,4,5,6,7 \
+  --filter_tag_embed_batch_size 128 \
+  --filter_tag_embed_chunk_size 0 \
+  --filter_tag_embed_device auto \
   --export_curated_images 1 \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
-  --skip_existing 1 \
+  --skip_existing 0 \
   --precompute_mode unified \
   --run_c1 -1 \
   --run_c2 1 --run_c3 1 --run_c4 1 --run_c5 1 --run_c6 1 --run_c3_enrich 1 --run_merge 1 \
@@ -380,15 +422,33 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_qa 1 \
   --run_viz 1 \
   --num_viz 120 \
-  --run_vlm_teacher 1 \
+  --run_vlm_teacher 0 \
   --vlm_backend qwen25_vl \
   --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
   --vlm_device auto \
   --vlm_top_m 12 \
   --vlm_top_k 5 \
   --vlm_fallback_backend heuristic \
-  --run_tag full_260226
+  --run_tag ${RUN_TAG} \
+  | tee src/scripts/logs/run_phaseA_to_teacher_10K_local_${RUN_TAG}.log
 ```
+
+Filter 태그 임베딩 멀티 GPU 옵션 설명:
+- `--filter_tag_embed_multi_gpu -1|0|1`
+  - `-1`: auto (GPU 2개 이상이면 멀티 GPU, 아니면 단일 디바이스)
+  - `0`: 단일 디바이스 강제
+  - `1`: 멀티 GPU 강제
+- `--filter_tag_embed_gpu_ids`: 사용할 GPU 목록(CSV). 예: `0,1,2,3`
+- `--filter_tag_embed_batch_size`: 태그 임베딩 배치 크기
+- `--filter_tag_embed_chunk_size`: 멀티프로세스 chunk 크기(`0`이면 auto)
+- `--filter_tag_embed_device`: 단일 디바이스 모드에서의 모델 로드 디바이스(`auto|cuda|cuda:0|cpu`)
+
+참고:
+- 로그에서 아래 문구가 보이면 멀티 GPU 경로가 적용된 상태입니다.
+  - `[tag-embed] runtime ... multi_gpu=1 ...`
+  - `[tag-embed] Encoding dataset unique tags with multi-GPU ...`
+- 멀티 GPU 실행 중 오류가 나면 자동으로 단일 디바이스 encode로 fallback 됩니다.
+- `tag_cat_probs_cache_*.pkl`가 이미 유효하면 태그 임베딩 단계 자체가 skip됩니다.
 
 정리:
 - 위 `3.6` 템플릿 1회 실행으로 `Filter -> Precompute(C1~C6) -> Subject Routing -> Candidate -> Teacher -> VLM` 전체가 수행됩니다.
@@ -537,6 +597,41 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - 리포트 사용 전: Stage 10 재실행 산출물 기준으로 `REPORT_DRAFT_KO.md` 갱신
 - 상세 원인/검증 스크립트: `3.8.2` 참고
 - 단계별 재실행 절차: `3.8.3` 체크리스트 참고
+
+### 3.8.0 Qwen3 전용 환경 래퍼 실행(권장)
+
+`C1~C6/Teacher`와 `Qwen3-VL` 간 `transformers` 버전 충돌을 피하려면, Stage-10은 전용 래퍼를 사용하세요.
+
+신규 래퍼:
+- `src/scripts/run_vlm_teacher_labeler_qwen3_env.sh`
+- 동작: Qwen3 전용 venv 검사/부트스트랩(`QWEN3_RUNTIME_ONLY`) 후, `run_vlm_teacher_labeler.sh`를 해당 venv python으로 강제 실행
+
+예시:
+```bash
+DATANAME=10K_local
+RUNTAG=rerun1_public_e2e_subject_mode
+
+bash src/scripts/run_vlm_teacher_labeler_qwen3_env.sh \
+  --qwen3_venv_path /group-volume/jaden.ju/Venvs/qwen3_vlm \
+  --qwen3_allow_github_fallback 0 \
+  --teacher_scores_jsonl data/SSTK/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${RUNTAG}.jsonl \
+  --image_dir data/SSTK/${DATANAME}/images \
+  --output_jsonl data/SSTK/${DATANAME}/artifacts/vlm_teacher/labels/crop_label_v1_${RUNTAG}.jsonl \
+  --output_meta_jsonl data/SSTK/${DATANAME}/artifacts/vlm_teacher/meta/meta_norm_v1_${RUNTAG}.jsonl \
+  --summary_json data/SSTK/${DATANAME}/artifacts/vlm_teacher/summary/vlm_teacher_summary_${RUNTAG}.json \
+  --backend qwen25_vl \
+  --model_id Qwen/Qwen3-VL-4B-Instruct \
+  --device auto \
+  --top_m 12 \
+  --top_k 5 \
+  --multi_gpu 1 \
+  --gpu_ids 0,1,2,3,4,5,6,7 \
+  --num_workers 8
+```
+
+참고:
+- 최초 1회 강제 재설치가 필요하면 `--reinstall_qwen3_runtime 1` 추가
+- `run_phaseA_to_teacher_e2e.sh`는 `--run_vlm_teacher 0`으로 두고, Stage-10만 래퍼로 분리 실행 권장
 
 Teacher Scorer 결과가 이미 있을 때(재추론 없이 10단계만 실행):
 - 기본 권장 모델: `Qwen/Qwen3-VL-4B-Instruct`
@@ -1546,6 +1641,12 @@ Subject-Mode enrich(신규):
 - `--server_mode 0|1`: 로컬/서버 모드
 - `--data_dir`: 출력 루트
 - `--run_filter 0|1`: Filter 수행 여부
+- `--filter_require_train_match 0|1`: Filter에서 `TRAIN_DIR/<bucket>/<same_file>.json` 매칭 파일만 처리(기본 1)
+- `--filter_tag_embed_multi_gpu -1|0|1`: Filter 태그 임베딩 멀티 GPU 제어(`-1` auto, 기본 -1)
+- `--filter_tag_embed_gpu_ids`: Filter 태그 임베딩용 GPU 목록 CSV(예: `0,1,2,3`)
+- `--filter_tag_embed_batch_size`: Filter 태그 임베딩 배치 크기(기본 128)
+- `--filter_tag_embed_chunk_size`: Filter 멀티 GPU encode chunk 크기(기본 0=auto)
+- `--filter_tag_embed_device`: Filter 단일 디바이스 모드 장치(`auto|cuda|cuda:0|cpu`)
 - `--export_curated_images 0|1`: Filter 후 curated 이미지를 로컬 디렉토리로 추출
 - `--curated_image_dir`: curated 이미지 디렉토리 (예: `data/SSTK/10K_local/images`)
 - `--curated_image_skip_existing 0|1`: 이미지 추출 시 기존 파일 skip
@@ -1758,7 +1859,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   - `--debug_dir <path>`
 
 Qwen3-VL(기본) 필수 런타임:
-- `Qwen/Qwen3-VL-4B-Instruct`는 Hugging Face 공식 카드 기준으로 최신 `transformers` 소스 빌드를 권장합니다.
+- `Qwen/Qwen3-VL-4B-Instruct`는 별도 전용 환경으로 분리 운영을 권장합니다.
+- 기본 파이프라인 환경은 `ENABLE_QWEN3_VL=0`으로 유지하여 C3/mmpretrain 안정성을 우선합니다.
 - 현재 환경에서 `Qwen3VLForConditionalGeneration` 심볼이 없으면 로드가 실패합니다.
 - 대표 에러: `current=4.44.2, has_qwen3_vl_class=False`
 
@@ -1779,32 +1881,25 @@ python -m pip install -U \
   "accelerate>=0.30.0"
 ```
 
-서버 즉시 복구 절차(권장):
+서버 즉시 복구 절차(권장, Stage-10 전용 env):
 ```bash
-# 1) Stage10이 사용할 venv 활성화
-source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+# 1) 전용 venv 생성
+python3 -m venv /group-volume/jaden.ju/Venvs/qwen3_vlm
 
-# 2) Qwen3-VL 호환 런타임 업그레이드 (PyPI/사내 미러 우선)
-python -m pip install -U \
-  transformers \
-  "tokenizers>=0.21.0" \
-  "huggingface-hub>=0.26.0" \
-  "accelerate>=0.30.0"
+# 2) Qwen3 runtime-only 설치
+QWEN3_RUNTIME_ONLY=1 \
+QWEN3_ALLOW_GITHUB_FALLBACK=0 \
+PYTHON=/group-volume/jaden.ju/Venvs/qwen3_vlm/bin/python \
+bash src/scripts/install_features_deps_torch251_cu121_stable.sh
 
-# 2-2) (선택) 여전히 심볼이 없을 때만 GitHub fallback
-python -m pip install -U \
-  "git+https://github.com/huggingface/transformers" \
-  "tokenizers>=0.21.0" \
-  "huggingface-hub>=0.26.0" \
-  "accelerate>=0.30.0"
-
-# 3) 심볼 확인 (True여야 함)
-python - <<'PY'
-import transformers, sys
-print("python:", sys.executable)
-print("transformers:", transformers.__version__)
-print("has_qwen3:", hasattr(transformers, "Qwen3VLForConditionalGeneration"))
-PY
+# 3) 래퍼로 Stage-10 실행
+bash src/scripts/run_vlm_teacher_labeler_qwen3_env.sh \
+  --qwen3_venv_path /group-volume/jaden.ju/Venvs/qwen3_vlm \
+  --teacher_scores_jsonl <teacher_scores.jsonl> \
+  --image_dir <images_dir> \
+  --output_jsonl <labels.jsonl> \
+  --output_meta_jsonl <meta.jsonl> \
+  --summary_json <summary.json>
 ```
 
 참고:
@@ -1947,6 +2042,31 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - C3 품질 이슈
   - `C3_PERSON_VERIFY_STRICT=1` 유지
   - 가능하면 `unified` 모드(C2 person hint 동시 사용) 권장
+
+### 7.1 C6(Gazelle) 오프라인 서버 대응
+1.최신 코드 반영 후 설치 스크립트 재실행:
+```bash
+PYTHON=python3 ENABLE_C4_OCR=0 STRICT_QUALITY_IMPORTS=1 \
+bash src/scripts/install_features_deps_torch251_cu121_stable.sh
+```
+
+2.pythonjsonlogger 즉시 보정(필요 시):
+```bash
+python3 -m pip install -U python-json-logger
+```
+
+3. 서버가 오프라인이면 로컬에서 아래 자산 업로드:
+- `third_party/gazelle`
+- `.cache/torch/hub/facebookresearch_dinov2_main`
+- `.cache/torch/hub/checkpoints/dinov2_vitb14_pretrain.pth`
+- `.cache/torch/hub/checkpoints/gazelle_dinov2_vitb14_inout.pt`
+
+4. 실행 전 환경 고정:
+```bash
+export C6_TORCH_HUB_DIR=$PWD/.cache/torch/hub
+export C6_GAZELLE_REPO=$PWD/third_party/gazelle
+export C6_GAZELLE_CKPT=$PWD/.cache/torch/hub/checkpoints/gazelle_dinov2_vitb14_inout.pt
+```
 
 ---
 

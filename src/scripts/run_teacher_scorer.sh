@@ -25,6 +25,7 @@ bash src/scripts/run_teacher_scorer.sh \
 # 실모델 Expensive 강제 (Aesthetic + cos(E_I,E_T))
 bash src/scripts/run_teacher_scorer.sh \
   --use_real_expensive 1 \
+  --aesthetic_backend hybrid \
   --c1_jsonl data/SSTK/10K_local/artifacts/precompute/feats_c1.jsonl \
   --align_device auto --aesthetic_device auto \
   --exp_batch_size 128 \
@@ -120,12 +121,18 @@ ALIGN_MODEL_NAME=""
 ALIGN_PRETRAINED=""
 ALIGN_DEVICE="auto"
 AESTHETIC_DEVICE="auto"
+AESTHETIC_BACKEND="hybrid"
+AESTHETIC_PRIOR_LAION_WEIGHT=0.15
 EXP_BATCH_SIZE=24
 EXPENSIVE_EVAL_TOP_M=0
 EXP_PREPROCESS_WORKERS=0
 EXP_PIN_MEMORY=1
 AESTHETIC_MLP_PATH="weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth"
 AESTHETIC_MLP_URL="https://raw.githubusercontent.com/christophschuhmann/improved-aesthetic-predictor/main/sac+logos+ava1-l14-linearMSE.pth"
+NIMA_MODEL_PATH="weights/nima/NIMA_VGG16_ava-dc4e8265.pth"
+NIMA_MODEL_URL=""
+NIMA_USE_IMAGENET_BACKBONE=1
+NIMA_REQUIRE_CKPT=1
 MAX_IMAGES=0
 SEED=42
 
@@ -173,12 +180,18 @@ while [ "$#" -gt 0 ]; do
     --align_pretrained) ALIGN_PRETRAINED="$2"; shift 2 ;;
     --align_device) ALIGN_DEVICE="$2"; shift 2 ;;
     --aesthetic_device) AESTHETIC_DEVICE="$2"; shift 2 ;;
+    --aesthetic_backend) AESTHETIC_BACKEND="$2"; shift 2 ;;
+    --aesthetic_prior_laion_weight) AESTHETIC_PRIOR_LAION_WEIGHT="$2"; shift 2 ;;
     --exp_batch_size) EXP_BATCH_SIZE="$2"; shift 2 ;;
     --expensive_eval_top_m) EXPENSIVE_EVAL_TOP_M="$2"; shift 2 ;;
     --exp_preprocess_workers) EXP_PREPROCESS_WORKERS="$2"; shift 2 ;;
     --exp_pin_memory) EXP_PIN_MEMORY="$2"; shift 2 ;;
     --aesthetic_mlp_path) AESTHETIC_MLP_PATH="$2"; shift 2 ;;
     --aesthetic_mlp_url) AESTHETIC_MLP_URL="$2"; shift 2 ;;
+    --nima_model_path) NIMA_MODEL_PATH="$2"; shift 2 ;;
+    --nima_model_url) NIMA_MODEL_URL="$2"; shift 2 ;;
+    --nima_use_imagenet_backbone) NIMA_USE_IMAGENET_BACKBONE="$2"; shift 2 ;;
+    --nima_require_ckpt) NIMA_REQUIRE_CKPT="$2"; shift 2 ;;
     --max_images) MAX_IMAGES="$2"; shift 2 ;;
     --seed) SEED="$2"; shift 2 ;;
     --qa_out_json) QA_OUT_JSON="$2"; shift 2 ;;
@@ -293,6 +306,7 @@ echo "[config] c1=$C1_JSONL"
 echo "[config] parquet=$PARQUET"
 echo "[config] output_jsonl=$OUTPUT_JSONL"
 echo "[config] expensive_accel: batch=$EXP_BATCH_SIZE eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo "[config] aesthetic: backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC_PRIOR_LAION_WEIGHT nima_ckpt=$NIMA_MODEL_PATH require_ckpt=$NIMA_REQUIRE_CKPT"
 echo "[config] portrait_safety: hard_head_top=$HARD_HEAD_TOP_RULE face_expand=$HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$HEAD_TOP_KP_EXPAND min_margin=$HEAD_TOP_MIN_MARGIN face_margin_alpha=$HEAD_TOP_FACE_MARGIN_ALPHA"
 echo "[config] viz_image_ids=${VIZ_IMAGE_IDS:-<none>} viz_image_ids_file=${VIZ_IMAGE_IDS_FILE:-<none>}"
 
@@ -328,12 +342,18 @@ run_teacher_one() {
     --align_pretrained "$ALIGN_PRETRAINED" \
     --align_device "$ALIGN_DEVICE" \
     --aesthetic_device "$AESTHETIC_DEVICE" \
+    --aesthetic_backend "$AESTHETIC_BACKEND" \
+    --aesthetic_prior_laion_weight "$AESTHETIC_PRIOR_LAION_WEIGHT" \
     --exp_batch_size "$EXP_BATCH_SIZE" \
     --expensive_eval_top_m "$EXPENSIVE_EVAL_TOP_M" \
     --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
     --exp_pin_memory "$EXP_PIN_MEMORY" \
     --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \
     --aesthetic_mlp_url "$AESTHETIC_MLP_URL" \
+    --nima_model_path "$NIMA_MODEL_PATH" \
+    --nima_model_url "$NIMA_MODEL_URL" \
+    --nima_use_imagenet_backbone "$NIMA_USE_IMAGENET_BACKBONE" \
+    --nima_require_ckpt "$NIMA_REQUIRE_CKPT" \
     --max_images "$MAX_IMAGES" \
     --seed "$SEED" \
     --num_shards "$num_shards" \

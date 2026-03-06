@@ -43,9 +43,12 @@ STRICT_BACKEND_INIT=1
 MULTI_GPU=-1
 GPU_IDS=""
 NUM_WORKERS=""
+AUTOFIX_QWEN3_RUNTIME=1
+QWEN3_ALLOW_GITHUB_FALLBACK=0
 
 SERVER_MODE=0
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
+PYTHON_BIN="${PYTHON_BIN:-python3}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -83,6 +86,8 @@ while [ "$#" -gt 0 ]; do
     --multi_gpu) MULTI_GPU="$2"; shift 2 ;;
     --gpu_ids) GPU_IDS="$2"; shift 2 ;;
     --num_workers) NUM_WORKERS="$2"; shift 2 ;;
+    --autofix_qwen3_runtime) AUTOFIX_QWEN3_RUNTIME="$2"; shift 2 ;;
+    --qwen3_allow_github_fallback) QWEN3_ALLOW_GITHUB_FALLBACK="$2"; shift 2 ;;
 
     --server_mode) SERVER_MODE="$2"; shift 2 ;;
     --venv_path) VENV_PATH="$2"; shift 2 ;;
@@ -112,6 +117,12 @@ else
   echo "[info] server_mode=1 and venv not found: $VENV_PATH (using current python)"
 fi
 
+if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
+  echo "[error] python binary not found: $PYTHON_BIN"
+  exit 1
+fi
+echo "[info] python_bin=$PYTHON_BIN"
+
 mkdir -p "$(dirname "$OUTPUT_JSONL")" "$(dirname "$OUTPUT_META_JSONL")" "$(dirname "$SUMMARY_JSON")"
 if [ -n "$DEBUG_DIR" ]; then
   mkdir -p "$DEBUG_DIR"
@@ -134,10 +145,34 @@ echo "  max_images/retries   : $MAX_IMAGES / $MAX_RETRIES"
 echo "  oom policy           : skip=$SKIP_ON_OOM cpu_fallback=$FALLBACK_CPU_ON_OOM cpu_max_images=$FALLBACK_CPU_MAX_IMAGES"
 echo "  strict_backend_init  : $STRICT_BACKEND_INIT"
 echo "  multi_gpu            : $MULTI_GPU (gpu_ids=${GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
+echo "  qwen3 runtime fixup  : autofix=$AUTOFIX_QWEN3_RUNTIME github_fallback=$QWEN3_ALLOW_GITHUB_FALLBACK"
 echo "=============================================="
 
+check_qwen3_symbol() {
+  "$PYTHON_BIN" - <<'PY'
+import sys
+try:
+    import transformers
+except Exception as exc:
+    print(f"[env] transformers import failed: {exc}")
+    sys.exit(3)
+
+has_q3 = hasattr(transformers, "Qwen3VLForConditionalGeneration")
+has_q25 = hasattr(transformers, "Qwen2_5_VLForConditionalGeneration")
+has_q2 = hasattr(transformers, "Qwen2VLForConditionalGeneration")
+print(
+    "[env] transformers="
+    f"{transformers.__version__} "
+    f"has_qwen3={has_q3} "
+    f"has_qwen2_5={has_q25} "
+    f"has_qwen2={has_q2}"
+)
+sys.exit(0 if has_q3 else 2)
+PY
+}
+
 if [[ "$BACKEND" == "qwen25_vl" || "$BACKEND" == "qwen25_vl_hf" ]]; then
-  python - <<'PY'
+  "$PYTHON_BIN" - <<'PY'
 import sys
 print(f"[env] python={sys.executable}")
 try:
@@ -152,6 +187,40 @@ try:
 except Exception as exc:
     print(f"[env] transformers import failed: {exc}")
 PY
+
+  NEED_QWEN3=0
+  case "$MODEL_ID" in
+    *Qwen3*|*qwen3*) NEED_QWEN3=1 ;;
+  esac
+  if [ "$NEED_QWEN3" -eq 1 ]; then
+    Q3_OK=0
+    check_qwen3_symbol || Q3_OK=$?
+    if [ "$Q3_OK" -ne 0 ] && [ "$AUTOFIX_QWEN3_RUNTIME" -eq 1 ]; then
+      echo "[fixup] Qwen3 runtime symbol missing. trying latest transformers/tokenizers/hf-hub/accelerate from current index..."
+      "$PYTHON_BIN" -m pip install -U \
+        "transformers" \
+        "tokenizers>=0.21.0" \
+        "huggingface-hub>=0.26.0" \
+        "accelerate>=0.30.0" || true
+      Q3_OK=0
+      check_qwen3_symbol || Q3_OK=$?
+    fi
+    if [ "$Q3_OK" -ne 0 ] && [ "$AUTOFIX_QWEN3_RUNTIME" -eq 1 ] && [ "$QWEN3_ALLOW_GITHUB_FALLBACK" -eq 1 ]; then
+      echo "[fixup] still missing after index upgrade. trying transformers git head fallback..."
+      "$PYTHON_BIN" -m pip install -U \
+        "git+https://github.com/huggingface/transformers" \
+        "tokenizers>=0.21.0" \
+        "huggingface-hub>=0.26.0" \
+        "accelerate>=0.30.0" || true
+      Q3_OK=0
+      check_qwen3_symbol || Q3_OK=$?
+    fi
+    if [ "$Q3_OK" -ne 0 ] && [ "$STRICT_BACKEND_INIT" -eq 1 ]; then
+      echo "[error] Qwen3 runtime unresolved (model_id=$MODEL_ID, strict_backend_init=1)."
+      echo "        Provide working venv via --venv_path or preinstall compatible transformers in current python."
+      exit 1
+    fi
+  fi
 fi
 
 normalize_csv_ids() {
@@ -251,7 +320,7 @@ COMMON_ARGS=(
 )
 
 if [ "$ENABLE_MULTI" -eq 0 ]; then
-  python3 src/vlm_teacher_labeler.py \
+  "$PYTHON_BIN" src/vlm_teacher_labeler.py \
     "${COMMON_ARGS[@]}" \
     --output_jsonl "$OUTPUT_JSONL" \
     --output_meta_jsonl "$OUTPUT_META_JSONL" \
@@ -280,7 +349,7 @@ else
     SHARD_LOG="${SHARD_DIR}/shard_${i}.log"
 
     echo "[multi] launch shard=$i/$WORKER_COUNT gpu=$GPU_ID -> $SHARD_OUT_JSONL"
-    CUDA_VISIBLE_DEVICES="$GPU_ID" python3 src/vlm_teacher_labeler.py \
+    CUDA_VISIBLE_DEVICES="$GPU_ID" "$PYTHON_BIN" src/vlm_teacher_labeler.py \
       "${COMMON_ARGS[@]}" \
       --device "cuda:0" \
       --output_jsonl "$SHARD_OUT_JSONL" \
@@ -323,7 +392,7 @@ else
     fi
   done
 
-  python - "$SHARD_DIR" "$WORKER_COUNT" "$EFFECTIVE_GPU_IDS" "$SUMMARY_JSON" "$OUTPUT_JSONL" "$OUTPUT_META_JSONL" <<'PY'
+  "$PYTHON_BIN" - "$SHARD_DIR" "$WORKER_COUNT" "$EFFECTIVE_GPU_IDS" "$SUMMARY_JSON" "$OUTPUT_JSONL" "$OUTPUT_META_JSONL" <<'PY'
 import json
 import sys
 from collections import Counter

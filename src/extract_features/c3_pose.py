@@ -1,11 +1,203 @@
 from __future__ import annotations
 
+import importlib
 import math
+import sys
+import types
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import cv2
 import numpy as np
 from PIL import Image
+
+
+def _fallback_apply_chunking_to_forward(forward_fn, chunk_size, chunk_dim, *input_tensors):
+    if chunk_size <= 0:
+        return forward_fn(*input_tensors)
+    if len(input_tensors) == 0:
+        return forward_fn()
+    dim_size = input_tensors[0].shape[chunk_dim]
+    if dim_size % chunk_size != 0:
+        raise ValueError(
+            f"chunk_size={chunk_size} must divide input size {dim_size} at dim={chunk_dim}"
+        )
+    num_chunks = dim_size // chunk_size
+    import torch
+
+    input_chunks = tuple(t.chunk(num_chunks, dim=chunk_dim) for t in input_tensors)
+    output_chunks = tuple(forward_fn(*chunk_args) for chunk_args in zip(*input_chunks))
+    return torch.cat(output_chunks, dim=chunk_dim)
+
+
+def _fallback_find_pruneable_heads_and_indices(
+    heads, n_heads: int, head_size: int, already_pruned_heads
+):
+    import torch
+
+    heads = set(int(h) for h in heads) - set(int(h) for h in already_pruned_heads)
+    mask = torch.ones(n_heads, head_size, dtype=torch.bool)
+    for head in heads:
+        head = head - sum(1 if h < head else 0 for h in already_pruned_heads)
+        if 0 <= head < n_heads:
+            mask[head] = False
+    mask = mask.view(-1)
+    index = torch.arange(mask.numel(), dtype=torch.long)[mask]
+    return heads, index
+
+
+def _fallback_prune_linear_layer(layer, index, dim: int = 0):
+    import torch
+    import torch.nn as nn
+
+    index = index.to(layer.weight.device)
+    weight = layer.weight.index_select(dim, index).clone().detach()
+    if layer.bias is not None:
+        if dim == 1:
+            bias = layer.bias.clone().detach()
+        else:
+            bias = layer.bias.index_select(0, index).clone().detach()
+    else:
+        bias = None
+
+    new_size = list(layer.weight.size())
+    new_size[dim] = int(index.numel())
+    new_layer = nn.Linear(new_size[1], new_size[0], bias=layer.bias is not None).to(
+        layer.weight.device
+    )
+    new_layer.weight.requires_grad = False
+    new_layer.weight.copy_(weight.contiguous())
+    new_layer.weight.requires_grad = True
+
+    if bias is not None:
+        new_layer.bias.requires_grad = False
+        new_layer.bias.copy_(bias.contiguous())
+        new_layer.bias.requires_grad = True
+    return new_layer
+
+
+def _patch_transformers_generation_compat() -> None:
+    """
+    mmpretrain(ofa/blip) imports several symbols from transformers.modeling_utils.
+    Newer transformers versions may move or rename some of them, causing
+    mmpretrain to set PreTrainedModel=None and fail during class definition.
+    Provide backward-compatible aliases when possible.
+    """
+    try:
+        import transformers.modeling_utils as modeling_utils
+    except Exception:
+        # Best-effort compatibility shim; if unavailable, downstream path handles it.
+        return
+
+    # Generation symbols (moved across transformers versions).
+    try:
+        gen_mod = importlib.import_module("transformers.generation")
+    except Exception:
+        gen_mod = None
+    generation_mixin = getattr(gen_mod, "GenerationMixin", None) if gen_mod is not None else None
+    generation_config = getattr(gen_mod, "GenerationConfig", None) if gen_mod is not None else None
+    if getattr(modeling_utils, "GenerationMixin", None) is None and generation_mixin is not None:
+        modeling_utils.GenerationMixin = generation_mixin
+    if getattr(modeling_utils, "GenerationConfig", None) is None and generation_config is not None:
+        modeling_utils.GenerationConfig = generation_config
+
+    # Some mmpretrain paths import these helpers from modeling_utils, but in
+    # newer transformers they may live in pytorch_utils.
+    try:
+        pytorch_utils = importlib.import_module("transformers.pytorch_utils")
+    except Exception:
+        pytorch_utils = None
+
+    helper_fallbacks = {
+        "apply_chunking_to_forward": _fallback_apply_chunking_to_forward,
+        "find_pruneable_heads_and_indices": _fallback_find_pruneable_heads_and_indices,
+        "prune_linear_layer": _fallback_prune_linear_layer,
+    }
+    for name in ("apply_chunking_to_forward", "find_pruneable_heads_and_indices", "prune_linear_layer"):
+        if getattr(modeling_utils, name, None) is not None:
+            continue
+        sym = getattr(pytorch_utils, name, None) if pytorch_utils is not None else None
+        if sym is None:
+            sym = helper_fallbacks[name]
+        setattr(modeling_utils, name, sym)
+
+    # Backfill modeling_outputs aliases used by mmpretrain BLIP in some
+    # transformers version ranges.
+    try:
+        modeling_outputs = importlib.import_module("transformers.modeling_outputs")
+    except Exception:
+        modeling_outputs = None
+    if modeling_outputs is not None:
+        alias_map = {
+            "BaseModelOutputWithPastAndCrossAttentions": "BaseModelOutputWithPast",
+            "BaseModelOutputWithPoolingAndCrossAttentions": "BaseModelOutputWithPooling",
+            "CausalLMOutputWithCrossAttentions": "CausalLMOutputWithPast",
+        }
+        for dst, src in alias_map.items():
+            if getattr(modeling_outputs, dst, None) is not None:
+                continue
+            src_obj = getattr(modeling_outputs, src, None)
+            if src_obj is not None:
+                setattr(modeling_outputs, dst, src_obj)
+
+    # Keep ACT2FN importable even in minimal/legacy builds.
+    try:
+        activations_mod = importlib.import_module("transformers.activations")
+    except Exception:
+        activations_mod = None
+    if activations_mod is not None and getattr(activations_mod, "ACT2FN", None) is None:
+        activations_mod.ACT2FN = {}
+
+    # Ensure PreTrainedModel exists and is a class on modeling_utils namespace.
+    # In some broken envs, symbol exists but is None. Reload first, then backfill.
+    if getattr(modeling_utils, "PreTrainedModel", None) is None:
+        try:
+            modeling_utils = importlib.reload(modeling_utils)
+        except Exception:
+            pass
+    if getattr(modeling_utils, "PreTrainedModel", None) is None:
+        try:
+            from transformers import PreTrainedModel  # type: ignore
+
+            if PreTrainedModel is not None:
+                modeling_utils.PreTrainedModel = PreTrainedModel
+        except Exception:
+            pass
+
+    # Backfill transformers.models.bert.configuration_bert.BertConfig when missing.
+    try:
+        importlib.import_module("transformers.models.bert.configuration_bert")
+    except Exception:
+        try:
+            from transformers import BertConfig  # type: ignore
+
+            mod = types.ModuleType("transformers.models.bert.configuration_bert")
+            mod.BertConfig = BertConfig
+            sys.modules["transformers.models.bert.configuration_bert"] = mod
+        except Exception:
+            pass
+
+    # Verify the exact import tuple mmpretrain.blip.language_model expects.
+    # If this check fails, C3 should still degrade gracefully (model init fallback),
+    # but we print an explicit reason to avoid opaque "NoneType takes no arguments".
+    try:
+        from transformers.activations import ACT2FN  # noqa: F401
+        from transformers.modeling_outputs import (  # noqa: F401
+            BaseModelOutputWithPastAndCrossAttentions,
+            BaseModelOutputWithPoolingAndCrossAttentions,
+            CausalLMOutputWithCrossAttentions,
+        )
+        from transformers.modeling_utils import (  # noqa: F401
+            PreTrainedModel,
+            apply_chunking_to_forward,
+            find_pruneable_heads_and_indices,
+            prune_linear_layer,
+        )
+        from transformers.models.bert.configuration_bert import BertConfig  # noqa: F401
+    except Exception as e:
+        print(f"[C3 Pose] transformers compatibility shim warning: {e}")
+
+
+_patch_transformers_generation_compat()
 
 try:
     from mmpose.apis import inference_topdown, init_model as init_pose_model

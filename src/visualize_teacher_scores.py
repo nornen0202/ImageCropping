@@ -38,6 +38,7 @@ IMAGE_EXTS: Tuple[str, ...] = (".jpg", ".jpeg", ".png", ".webp")
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Visualize teacher scorer results")
     p.add_argument("--teacher_scores_jsonl", required=True)
+    p.add_argument("--features_jsonl", default="", help="optional routed/merged features jsonl for subject mask overlay")
     p.add_argument("--parquet", required=True, help="filtered parquet with tar_name/bucket")
     p.add_argument("--tar_dir", required=True)
     p.add_argument("--image_dir", default="", help="optional local curated image dir (<image_id>.<ext>)")
@@ -54,6 +55,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--image_ids_file", default="", help="text file with image_id entries (1 per line)")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--draw_subject_box", type=int, default=1)
+    p.add_argument("--draw_subject_mask", type=int, default=1)
     return p.parse_args()
 
 
@@ -132,6 +134,46 @@ def denorm_box(box_norm: Sequence[float], w: int, h: int) -> Tuple[int, int, int
     return x1, y1, x2, y2
 
 
+def decode_rle(rle_string: str, shape: Tuple[int, int]) -> np.ndarray:
+    h, w = shape
+    if not rle_string:
+        return np.zeros((h, w), dtype=bool)
+    try:
+        runs = np.asarray([int(x) for x in str(rle_string).split()], dtype=np.int64)
+    except Exception:
+        return np.zeros((h, w), dtype=bool)
+    if runs.size == 0 or (runs.size % 2) != 0:
+        return np.zeros((h, w), dtype=bool)
+    starts = runs[0::2] - 1
+    lengths = runs[1::2]
+    ends = starts + lengths
+    flat = np.zeros(h * w, dtype=np.uint8)
+    for lo, hi in zip(starts, ends):
+        lo_i = int(max(0, min(lo, flat.size)))
+        hi_i = int(max(0, min(hi, flat.size)))
+        if hi_i > lo_i:
+            flat[lo_i:hi_i] = 1
+    return flat.reshape((h, w)).astype(bool)
+
+
+def iou_xyxy(a: Sequence[float], b: Sequence[float]) -> float:
+    ax1, ay1, ax2, ay2 = [float(v) for v in a]
+    bx1, by1, bx2, by2 = [float(v) for v in b]
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    iw = max(0.0, ix2 - ix1)
+    ih = max(0.0, iy2 - iy1)
+    inter = iw * ih
+    if inter <= 0.0:
+        return 0.0
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    denom = area_a + area_b - inter
+    if denom <= 1e-8:
+        return 0.0
+    return float(inter / denom)
+
+
 def resolve_tar_path(tar_dir: str, bucket: str, tar_name: str) -> Optional[str]:
     if not tar_name:
         return None
@@ -163,10 +205,88 @@ def draw_text_block(img: np.ndarray, lines: Sequence[str], x: int = 8, y: int = 
         cv2.putText(img, s, (x, y + i * line_h), font, scale, (230, 230, 230), th, cv2.LINE_AA)
 
 
+def load_c2_map(features_jsonl: Path, wanted_ids: Sequence[str]) -> Dict[str, List[Dict[str, Any]]]:
+    wanted = set(str(x) for x in wanted_ids)
+    out: Dict[str, List[Dict[str, Any]]] = {}
+    if not features_jsonl.exists():
+        return out
+    with features_jsonl.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            image_id = str(rec.get("image_id", ""))
+            if image_id not in wanted:
+                continue
+            c2 = rec.get("c2_seg", [])
+            out[image_id] = c2 if isinstance(c2, list) else []
+    return out
+
+
+def build_subject_mask(
+    c2_list: Sequence[Dict[str, Any]],
+    subject_box_norm: Optional[Sequence[float]],
+    w: int,
+    h: int,
+) -> Optional[np.ndarray]:
+    if not isinstance(subject_box_norm, (list, tuple)) or len(subject_box_norm) != 4:
+        return None
+    subject_box = [
+        clamp(float(subject_box_norm[0]), 0.0, 1.0) * float(w),
+        clamp(float(subject_box_norm[1]), 0.0, 1.0) * float(h),
+        clamp(float(subject_box_norm[2]), 0.0, 1.0) * float(w),
+        clamp(float(subject_box_norm[3]), 0.0, 1.0) * float(h),
+    ]
+    selected: List[Tuple[float, np.ndarray]] = []
+    for inst in c2_list:
+        if not isinstance(inst, dict) or bool(inst.get("bg_like", False)):
+            continue
+        box = inst.get("box")
+        mask_rle = inst.get("mask_rle")
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            continue
+        if not isinstance(mask_rle, str) or not mask_rle.strip():
+            continue
+        box_xyxy = [float(v) for v in box]
+        cx = 0.5 * (box_xyxy[0] + box_xyxy[2])
+        cy = 0.5 * (box_xyxy[1] + box_xyxy[3])
+        center_inside = subject_box[0] <= cx <= subject_box[2] and subject_box[1] <= cy <= subject_box[3]
+        if iou_xyxy(box_xyxy, subject_box) < 0.05 and not center_inside:
+            continue
+        mask = decode_rle(mask_rle, (h, w))
+        if not np.any(mask):
+            continue
+        score = float(inst.get("importance_score", inst.get("score", 0.0)))
+        selected.append((score, mask))
+    if not selected:
+        return None
+    selected.sort(key=lambda item: item[0], reverse=True)
+    union = np.zeros((h, w), dtype=bool)
+    for _, mask in selected[:3]:
+        union |= mask
+    return union if np.any(union) else None
+
+
+def draw_subject_mask_overlay(image_bgr: np.ndarray, subject_mask: np.ndarray) -> np.ndarray:
+    out = image_bgr.copy()
+    if subject_mask is None or not np.any(subject_mask):
+        return out
+    overlay = np.zeros_like(out)
+    overlay[subject_mask] = SUBJECT_COLOR
+    blended = cv2.addWeighted(out, 0.72, overlay, 0.28, 0.0)
+    out[subject_mask] = blended[subject_mask]
+    contours, _ = cv2.findContours(subject_mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if contours:
+        cv2.drawContours(out, contours, -1, SUBJECT_COLOR, 2, cv2.LINE_AA)
+    return out
+
+
 def draw_one(
     raw_bgr: np.ndarray,
     task: Dict[str, Any],
     draw_subject_box: bool,
+    subject_mask: Optional[np.ndarray] = None,
 ) -> np.ndarray:
     out = raw_bgr.copy()
     h, w = out.shape[:2]
@@ -176,6 +296,9 @@ def draw_one(
     decision = task["decision_type"]
     delta = float(task.get("delta_improve", 0.0))
     tau = float(task.get("tau_improve", 0.0))
+
+    if subject_mask is not None:
+        out = draw_subject_mask_overlay(out, subject_mask)
 
     if draw_subject_box and task.get("subject_box") is not None:
         x1, y1, x2, y2 = denorm_box(task["subject_box"], w, h)
@@ -394,6 +517,10 @@ def main() -> None:
 
     image_ids = sorted(set(t["image_id"] for t in tasks))
     img_map = load_images_from_tars(ids=image_ids, mapping=mapping, tar_dir=args.tar_dir, image_dir=args.image_dir)
+    c2_map: Dict[str, List[Dict[str, Any]]] = {}
+    if int(args.draw_subject_mask) != 0 and args.features_jsonl:
+        c2_map = load_c2_map(Path(args.features_jsonl), image_ids)
+    subject_mask_cache: Dict[str, Optional[np.ndarray]] = {}
 
     rendered = 0
     by_ar_count: Dict[str, int] = defaultdict(int)
@@ -412,7 +539,21 @@ def main() -> None:
         subdir = out_dir / "by_ar" / ar_tok
         subdir.mkdir(parents=True, exist_ok=True)
 
-        vis = draw_one(raw_bgr=raw, task=t, draw_subject_box=int(args.draw_subject_box) != 0)
+        if image_id not in subject_mask_cache:
+            subject_mask_cache[image_id] = None
+            if int(args.draw_subject_mask) != 0 and image_id in c2_map:
+                subject_mask_cache[image_id] = build_subject_mask(
+                    c2_list=c2_map.get(image_id, []),
+                    subject_box_norm=t.get("subject_box"),
+                    w=raw.shape[1],
+                    h=raw.shape[0],
+                )
+        vis = draw_one(
+            raw_bgr=raw,
+            task=t,
+            draw_subject_box=int(args.draw_subject_box) != 0,
+            subject_mask=subject_mask_cache.get(image_id),
+        )
         out_path = subdir / f"{image_id}.jpg"
         cv2.imwrite(str(out_path), vis)
 
@@ -423,6 +564,7 @@ def main() -> None:
     overview = {
         "inputs": {
             "teacher_scores_jsonl": str(score_jsonl),
+            "features_jsonl": str(args.features_jsonl),
             "parquet": str(parquet_path),
             "tar_dir": str(args.tar_dir),
             "image_dir": str(args.image_dir),

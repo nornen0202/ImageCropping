@@ -358,15 +358,21 @@ export C6_GAZELLE_DEVICE=cuda
 ```
 
 ```bash
-DATANAME=Test_100
-RUN_TAG=260306_r0
+POOL_SIZE=100
+DATANAME=Test_${POOL_SIZE}
+RUN_TAG=260309_r1
+
+#POOL_SIZE=10000
+#DATANAME=Full_${POOL_SIZE}
+#RUN_TAG=260309_r0
+
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --bucket sstk_100 \
   --data_dir data/SSTK/${DATANAME} \
   --server_mode 1 \
   --tar_dir /sstk/20230916/sstk_100 \
   --run_filter 0 \
-  --curated_pool_size 100 \
+  --curated_pool_size ${POOL_SIZE} \
   --top_percentile 0.2 \
   --filter_require_train_match 1 \
   --filter_tag_embed_multi_gpu 1 \
@@ -419,6 +425,9 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 512 \
+  --run_component_viz 1 \
+  --component_viz_num_samples 120 \
+  --component_viz_out_dir data/SSTK/${DATANAME}/artifacts/precompute/visualizations/components_${RUN_TAG} \
   --run_qa 1 \
   --run_viz 1 \
   --num_viz 120 \
@@ -430,7 +439,45 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_top_k 5 \
   --vlm_fallback_backend heuristic \
   --run_tag ${RUN_TAG} \
-  | tee src/scripts/logs/run_phaseA_to_teacher_10K_local_${RUN_TAG}.log
+  | tee src/scripts/logs/run_phaseA_to_teacher_${DATANAME}_${RUN_TAG}.log
+```
+
+권장 재실행 명령 기존 산출물을 덮어쓰는 가장 짧은 재실행입니다. 영향 범위는 subject routing -> teacher -> QA -> viz만입니다.
+```bash
+POOL_SIZE=100
+DATANAME=Test_${POOL_SIZE}
+RUN_TAG=260309_r0
+
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --bucket sstk_100 \
+  --data_dir data/SSTK/${DATANAME} \
+  --server_mode 1 \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --run_filter 0 \
+  --skip_existing 0 \
+  --precompute_mode unified \
+  --run_c1 -1 \
+  --run_c2 0 --run_c3 0 --run_c4 0 --run_c5 0 --run_c6 0 --run_c3_enrich 0 --run_merge 0 \
+  --run_subject_routing 1 \
+  --subject_routing_top_n 5 \
+  --subject_routing_union_top_m 3 \
+  --subject_routing_allow_det_proxy 1 \
+  --run_candidates 0 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --cheap_top_m 30 \
+  --top_k 5 \
+  --tau_div 0.75 \
+  --align_device cuda \
+  --aesthetic_device cuda \
+  --exp_batch_size 512 \
+  --run_component_viz 0 \
+  --run_qa 1 \
+  --run_viz 1 \
+  --num_viz 120 \
+  --run_vlm_teacher 0 \
+  --run_tag ${RUN_TAG} \
+  | tee src/scripts/logs/run_phaseA_to_teacher_${DATANAME}_${RUN_TAG}.log
 ```
 
 Filter 태그 임베딩 멀티 GPU 옵션 설명:
@@ -452,6 +499,8 @@ Filter 태그 임베딩 멀티 GPU 옵션 설명:
 
 정리:
 - 위 `3.6` 템플릿 1회 실행으로 `Filter -> Precompute(C1~C6) -> Subject Routing -> Candidate -> Teacher -> VLM` 전체가 수행됩니다.
+- `--run_component_viz 1`을 켜면 precompute 시각화가 자동 생성되며, 출력은 기본적으로 `data/SSTK/<DATANAME>/artifacts/precompute/visualizations/components_<run_tag>/`에 저장됩니다.
+- precompute 시각화 산출물은 `original/`, `c2_seg/`, `c3_pose/`, `c4_ocr/`, `c5_geom/`, `c6_gaze/`, `combined_all/` 및 `viz_overview.json`입니다.
 - 기본 candidate AR 세트는 `FREE`를 포함합니다. (`--cand_ar_list`로 조정 가능)
 - `teacher_scores_jsonl`의 `results_by_ar`에 `FREE` 키가 함께 생성되며, `--vlm_target_ar all`이면 Stage10도 `FREE`를 포함해 라벨을 생성합니다.
 - `FREE`는 AR 하드제약 타겟이 아니라 AR 비조건부 후보 모드입니다. (다중 AR 후보를 생성하고 scorer에서 FREE 전용 prior만 약하게 적용)
@@ -985,7 +1034,7 @@ bash src/scripts/run_visualize_components.sh \
   --merged_jsonl "${DATA_DIR}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl" \
   --image_dir "${DATA_DIR}/images" \
   --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
-  --draw_c2 1 --draw_c3 1 --draw_c5 1 --draw_combined 1 \
+  --draw_c2 1 --draw_c3 1 --draw_c4 1 --draw_c5 1 --draw_c6 1 --draw_combined 1 \
   --num_samples 120 \
   --server_mode 1
 
@@ -1151,7 +1200,7 @@ bash src/scripts/run_visualize_components.sh \
   --merged_jsonl "${DATA_DIR}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl" \
   --image_dir "${DATA_DIR}/images" \
   --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
-  --draw_c2 1 --draw_c3 1 --draw_c5 1 --draw_combined 1 \
+  --draw_c2 1 --draw_c3 1 --draw_c4 1 --draw_c5 1 --draw_c6 1 --draw_combined 1 \
   --num_samples 120 \
   --server_mode 1
 
@@ -1317,7 +1366,7 @@ bash src/scripts/run_visualize_components.sh \
   --merged_jsonl "${DATA_DIR}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl" \
   --image_dir "${DATA_DIR}/images" \
   --image_ids_file "${REPORT_DIR}/sample_ids_supercat12.txt" \
-  --draw_c2 1 --draw_c3 1 --draw_c5 1 --draw_combined 1 \
+  --draw_c2 1 --draw_c3 1 --draw_c4 1 --draw_c5 1 --draw_c6 1 --draw_combined 1 \
   --num_samples 120 \
   --server_mode 1
 

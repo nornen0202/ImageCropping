@@ -228,6 +228,7 @@ def draw_c3_layer(
     image_bgr: np.ndarray,
     c3_list: Sequence[Dict[str, Any]],
     kp_thr: float = 0.05,
+    draw_gaze: bool = True,
 ) -> np.ndarray:
     out = image_bgr.copy()
     h, w = out.shape[:2]
@@ -295,7 +296,13 @@ def draw_c3_layer(
                     cv2.circle(out, (lx, ly), 2, face_color, -1)
 
         hp = obj.get("headpose_gaze")
-        if isinstance(hp, dict):
+        if draw_gaze and isinstance(hp, dict):
+            # C6 Gazelle results are merged back into c3_pose for downstream scoring.
+            # In visualization, keep the gaze arrow/text on the dedicated C6 layer only
+            # to avoid duplicated arrows in the combined overlay.
+            hp_source = str(hp.get("source", "") or "")
+            if hp_source in {"c6_gaze", "gaze_lle_gazelle"}:
+                continue
             yaw = float(hp.get("yaw_proxy", 0.0))
             pitch = float(hp.get("pitch_proxy", 0.0))
             roll = float(hp.get("roll_deg", 0.0))
@@ -645,13 +652,14 @@ def save_visualizations_for_image(
     c4 = c4_map.get(image_id, [])
     c5 = c5_map.get(image_id, {})
     c6 = c6_map.get(image_id, {})
+    has_c6_people = len(to_c6_people(c6)) > 0
 
     if as_bool_flag(args.draw_c2):
         vis = draw_c2_layer(raw_bgr, c2, max_masks=args.max_masks_per_image)
         cv2.imwrite(str(Path(args.out_dir) / "c2_seg" / f"{image_id}.jpg"), vis)
 
     if as_bool_flag(args.draw_c3):
-        vis = draw_c3_layer(raw_bgr, c3, kp_thr=args.kp_score_thr)
+        vis = draw_c3_layer(raw_bgr, c3, kp_thr=args.kp_score_thr, draw_gaze=not has_c6_people)
         cv2.imwrite(str(Path(args.out_dir) / "c3_pose" / f"{image_id}.jpg"), vis)
 
     if as_bool_flag(args.draw_c4):
@@ -671,7 +679,7 @@ def save_visualizations_for_image(
         if as_bool_flag(args.draw_c2):
             vis = draw_c2_layer(vis, c2, max_masks=args.max_masks_per_image)
         if as_bool_flag(args.draw_c3):
-            vis = draw_c3_layer(vis, c3, kp_thr=args.kp_score_thr)
+            vis = draw_c3_layer(vis, c3, kp_thr=args.kp_score_thr, draw_gaze=not has_c6_people)
         if as_bool_flag(args.draw_c4):
             vis = draw_c4_layer(vis, c4)
         if as_bool_flag(args.draw_c5):

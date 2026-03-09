@@ -236,6 +236,42 @@ resolve_input_path() {
   echo "$primary"
 }
 
+jsonl_has_c1_embeddings() {
+  local f="$1"
+  if [ ! -f "$f" ]; then
+    return 1
+  fi
+  python3 - "$f" <<'PY'
+import json
+import sys
+path = sys.argv[1]
+with open(path, "r", encoding="utf-8") as fh:
+    for line in fh:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            row = json.loads(line)
+        except Exception:
+            continue
+        if isinstance(row.get("c1_img_embed"), list) and row.get("c1_img_embed") and \
+           isinstance(row.get("c1_txt_embed"), list) and row.get("c1_txt_embed"):
+            sys.exit(0)
+sys.exit(1)
+PY
+}
+
+resolve_c1_input_path() {
+  local cand
+  for cand in "$@"; do
+    if [ -n "$cand" ] && [ -f "$cand" ] && jsonl_has_c1_embeddings "$cand"; then
+      echo "$cand"
+      return
+    fi
+  done
+  echo "$1"
+}
+
 LATEST_CANDIDATES_ARTIFACT="$(pick_latest_match "${DATA_ROOT}/artifacts/candidates/candidates_ar*.jsonl")"
 LATEST_CANDIDATES_LEGACY="$(pick_latest_match "${DATA_ROOT}/candidates_ar*.jsonl")"
 LATEST_CANDIDATES_TEMP="$(pick_latest_match "${DATA_ROOT}/Temp/candidates_ar*.jsonl")"
@@ -252,9 +288,10 @@ FEATURES_JSONL="$(resolve_input_path \
   "${DATA_ROOT}/feats_c2c3c5_v2_strict_enriched.jsonl" \
   "${DATA_ROOT}/Temp/feats_c2c3c5_v2_strict_enriched.jsonl")"
 
-C1_JSONL="$(resolve_input_path \
+C1_JSONL="$(resolve_c1_input_path \
   "$C1_JSONL" \
   "${DATA_ROOT}/artifacts/precompute/feats_c1.jsonl" \
+  "${DATA_ROOT}/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl" \
   "${DATA_ROOT}/feats_c1.jsonl" \
   "${DATA_ROOT}/Temp/feats_c1.jsonl")"
 
@@ -479,6 +516,7 @@ if [ "$RUN_VIZ" -eq 1 ]; then
   fi
   python3 src/visualize_teacher_scores.py \
     --teacher_scores_jsonl "$OUTPUT_JSONL" \
+    --features_jsonl "$FEATURES_JSONL" \
     --parquet "$PARQUET" \
     --tar_dir "$TAR_DIR" \
     --out_dir "$VIZ_OUT_DIR" \

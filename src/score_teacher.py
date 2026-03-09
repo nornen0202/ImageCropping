@@ -139,6 +139,7 @@ class TeacherScorerConfig:
     ar_hard_eps: float = 0.01
     hard_face_rule: bool = True
     hard_head_top_rule: bool = True
+    hard_portrait_lookroom_rule: bool = True
     severe_kp_margin_alpha: float = 0.03
     hard_joint_reject_count: int = 2
     head_top_face_expand_alpha: float = 0.35
@@ -305,6 +306,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--teacher_tau_boost_delta", type=float, default=0.02, help="tau_improve boost when baseline aligns with teacher consensus")
     p.add_argument("--teacher_tau_boost_baseline_iou", type=float, default=0.90, help="baseline IoU threshold for tau boost")
     p.add_argument("--hard_head_top_rule", type=int, default=1, help="1=portrait head-top(hair) cut hard reject")
+    p.add_argument("--hard_portrait_lookroom_rule", type=int, default=1, help="1=portrait insufficient lookroom hard reject")
     p.add_argument("--head_top_face_expand_alpha", type=float, default=0.35, help="head-top estimate: face_y1 - alpha*face_h")
     p.add_argument("--head_top_kp_expand", type=float, default=0.06, help="head-top estimate from keypoints: top_kp_y - value")
     p.add_argument("--head_top_min_margin", type=float, default=0.008, help="minimum safety margin for head-top inclusion")
@@ -2145,6 +2147,74 @@ def compute_text_penalty(
     }
 
 
+def summarize_feature_stage_debug(
+    *,
+    feat_rec: Dict[str, Any],
+    c3_info: Dict[str, Any],
+    c4_info: Dict[str, Any],
+    c5_info: Dict[str, Any],
+    c2_person_count: int,
+    c1_text_embed: Optional[np.ndarray],
+) -> Dict[str, Any]:
+    c2_seg = feat_rec.get("c2_seg", [])
+    c2_det = feat_rec.get("c2_det", [])
+    c3_pose = feat_rec.get("c3_pose", [])
+
+    c5_raw = feat_rec.get("c5_geom")
+    if isinstance(c5_raw, list):
+        c5_raw = safe_first(c5_raw)
+    if not isinstance(c5_raw, dict):
+        c5_raw = {}
+    c5_hr = c5_raw.get("horizon_roll") if isinstance(c5_raw.get("horizon_roll"), dict) else {}
+
+    c6_raw = feat_rec.get("c6_gaze")
+    if not isinstance(c6_raw, dict):
+        c6_raw = {}
+
+    c1_dim = 0
+    if isinstance(c1_text_embed, np.ndarray) and c1_text_embed.ndim == 1:
+        c1_dim = int(c1_text_embed.shape[0])
+
+    return {
+        "c1": {
+            "text_embed_available": bool(c1_dim > 0),
+            "text_embed_dim": int(c1_dim),
+        },
+        "c2": {
+            "seg_count": int(len(c2_seg)) if isinstance(c2_seg, list) else 0,
+            "det_count": int(len(c2_det)) if isinstance(c2_det, list) else 0,
+            "person_count_proxy": int(max(0, c2_person_count)),
+        },
+        "c3": {
+            "pose_count": int(len(c3_pose)) if isinstance(c3_pose, list) else 0,
+            "num_people_effective": int(max(0, c3_info.get("num_people", 0))),
+            "face_box_count": int(len(c3_info.get("face_boxes", []))),
+            "keypoint_set_count": int(len(c3_info.get("keypoints_norm", []))),
+            "gaze_entry_count": int(len(c3_info.get("gaze_entries", []))),
+        },
+        "c4": {
+            "available": bool(c4_info.get("num_boxes", 0) > 0),
+            "num_boxes": int(max(0, safe_float(c4_info.get("num_boxes", 0), 0.0))),
+            "coverage_ratio": float(clamp(safe_float(c4_info.get("coverage_ratio", 0.0), 0.0), 0.0, 1.0)),
+            "text_overlay_likely": bool(c4_info.get("text_overlay_likely", False)),
+            "method": str(c4_info.get("method", "unknown")),
+        },
+        "c5": {
+            "backend_runtime": str(c5_raw.get("backend_runtime", "unknown")),
+            "horizon_method": str(c5_hr.get("method", "unknown")),
+            "horizon_conf": float(c5_info.get("horizon_conf", 0.0)),
+            "roll_deg": c5_info.get("roll_deg"),
+            "symmetry_score": float(c5_info.get("symmetry", 0.0)),
+        },
+        "c6": {
+            "backend_runtime": str(c6_raw.get("backend_runtime", "unknown")),
+            "method": str(c6_raw.get("method", "unknown")),
+            "people_count": int(len(c6_raw.get("people", []))) if isinstance(c6_raw.get("people"), list) else 0,
+            "conf": float(safe_float(c6_raw.get("conf", 0.0), 0.0)),
+        },
+    }
+
+
 def joint_points_from_keypoints(kps: Sequence[Sequence[float]]) -> Dict[str, Tuple[float, float, float]]:
     out: Dict[str, Tuple[float, float, float]] = {}
 
@@ -2563,16 +2633,205 @@ def free_ar_prior_penalty(
     return float(max(0.0, p))
 
 
+def classify_subject_coverage_label(cov: float) -> str:
+    c = clamp(safe_float(cov, 0.0), 0.0, 1.0)
+    if c >= 0.95:
+        return "excellent"
+    if c >= 0.85:
+        return "good"
+    if c >= 0.70:
+        return "marginal"
+    return "poor"
+
+
+def classify_subject_scale_label(subj_area_ratio: float, target_range: Tuple[float, float]) -> str:
+    lo, hi = target_range
+    v = clamp(safe_float(subj_area_ratio, 0.0), 0.0, 1.0)
+    if v < float(lo):
+        return "too_loose"
+    if v > float(hi):
+        return "too_tight"
+    return "ideal_scale"
+
+
+def classify_joint_cut_label(joint_cut_score: float, severe_count: int) -> str:
+    score = max(0.0, safe_float(joint_cut_score, 0.0))
+    sev = int(max(0, severe_count))
+    if sev >= 2 or score > 0.35:
+        return "joint_cut_severe"
+    if sev > 0 or score > 0.10:
+        return "joint_cut_mild"
+    return "no_joint_cut"
+
+
+def classify_headroom_label(value: Optional[float], target_range: Sequence[float]) -> str:
+    if value is None:
+        return "headroom_na"
+    if not isinstance(target_range, (list, tuple)) or len(target_range) < 2:
+        return "headroom_na"
+    hmin = safe_float(target_range[0], 0.0)
+    hmax = safe_float(target_range[1], 1.0)
+    v = safe_float(value, 0.0)
+    if v < hmin:
+        return "headroom_tight"
+    if v > hmax:
+        return "headroom_loose"
+    return "headroom_ok"
+
+
+def classify_lookroom_label(value: Optional[float], target_range: Sequence[float], gaze_dir: str) -> str:
+    g = str(gaze_dir).strip().lower()
+    if g not in {"left", "right"} or value is None:
+        return "lookroom_na"
+    if not isinstance(target_range, (list, tuple)) or len(target_range) < 2:
+        return "lookroom_na"
+    lmin = safe_float(target_range[0], 0.0)
+    lmax = safe_float(target_range[1], 999.0)
+    v = safe_float(value, 0.0)
+    if v < lmin:
+        return "lookroom_insufficient"
+    if v > lmax:
+        return "lookroom_excessive"
+    return "lookroom_adequate"
+
+
+def classify_text_keep_label(text_eval: Dict[str, Any]) -> str:
+    if not bool(text_eval.get("available", False)):
+        return "text_na"
+    keep_ratio = clamp(safe_float(text_eval.get("text_keep_ratio", 1.0), 1.0), 0.0, 1.0)
+    target_keep = clamp(safe_float(text_eval.get("target_keep_ratio", 0.9), 0.9), 0.0, 1.0)
+    severe = clamp(safe_float(text_eval.get("severe_cut_ratio", 0.0), 0.0), 0.0, 1.0)
+    severe_max = clamp(safe_float(text_eval.get("severe_ratio_max", 0.2), 0.2), 0.0, 1.0)
+    if keep_ratio >= target_keep and severe <= severe_max:
+        return "text_preserved"
+    if keep_ratio >= 0.60:
+        return "text_partial"
+    return "text_lost"
+
+
+def classify_rule_strength_label(
+    dist: Optional[float],
+    *,
+    strong_thr: float,
+    strong_label: str,
+    weak_label: str,
+    na_label: str,
+) -> str:
+    d = safe_optional_float(dist)
+    if d is None:
+        return na_label
+    if d <= float(strong_thr):
+        return strong_label
+    return weak_label
+
+
+def classify_horizon_label(horizon: Dict[str, Any], third_tau: float) -> str:
+    if not isinstance(horizon, dict):
+        return "horizon_na"
+    if not bool(horizon.get("active", False)) or horizon.get("value") is None:
+        return "horizon_na"
+    if bool(horizon.get("pass", False)):
+        return "horizon_on_third"
+    y = safe_optional_float(horizon.get("value"))
+    if y is not None and abs(y - 0.5) <= max(0.10, 1.5 * float(third_tau)):
+        return "horizon_middle"
+    return "horizon_off"
+
+
+def classify_context_label(subj_area_ratio: float, target_range: Tuple[float, float]) -> str:
+    lo, hi = target_range
+    v = clamp(safe_float(subj_area_ratio, 0.0), 0.0, 1.0)
+    if v < float(lo):
+        return "context_too_loose"
+    if v > float(hi):
+        return "context_too_tight"
+    return "context_preserved"
+
+
+def classify_crop_tightness_label(area_ratio: float) -> str:
+    a = clamp(safe_float(area_ratio, 0.0), 0.0, 1.0)
+    if a < 0.35:
+        return "tight_crop"
+    if a > 0.75:
+        return "wide_crop"
+    return "balanced_crop"
+
+
+def build_why_text_template(
+    *,
+    checklist_labels: Dict[str, str],
+    why_tags: Sequence[str],
+    is_freeform: bool,
+) -> str:
+    parts: List[str] = []
+    cov = str(checklist_labels.get("subject_coverage", ""))
+    if cov in {"excellent", "good"}:
+        parts.append("subject is well preserved")
+    elif cov == "marginal":
+        parts.append("subject coverage is marginal")
+    elif cov == "poor":
+        parts.append("subject coverage is poor")
+
+    scale = str(checklist_labels.get("subject_scale", ""))
+    if scale == "ideal_scale":
+        parts.append("subject scale is in the intended range")
+    elif scale == "too_tight":
+        parts.append("crop is tight around the subject")
+    elif scale == "too_loose":
+        parts.append("crop is relatively loose around the subject")
+
+    if "rule_of_thirds" in why_tags:
+        parts.append("placement is close to rule-of-thirds")
+    elif "centered_subject" in why_tags:
+        parts.append("subject is centered with composition stability")
+
+    head = str(checklist_labels.get("headroom", ""))
+    if head == "headroom_ok":
+        parts.append("headroom is acceptable")
+    elif head == "headroom_tight":
+        parts.append("headroom is tight")
+
+    look = str(checklist_labels.get("lookroom", ""))
+    if look == "lookroom_adequate":
+        parts.append("lookroom is adequate")
+    elif look == "lookroom_insufficient":
+        parts.append("lookroom is insufficient")
+
+    text = str(checklist_labels.get("text_keep_ratio", ""))
+    if text == "text_preserved":
+        parts.append("text region is preserved")
+    elif text == "text_lost":
+        parts.append("text region is heavily cropped")
+
+    if "teacher_consensus" in why_tags:
+        parts.append("selection is aligned with public teacher consensus")
+    if is_freeform:
+        parts.append("free-form AR prior is applied")
+
+    if not parts:
+        return "Selection follows deterministic safety and composition checks."
+    # Keep a concise deterministic sentence.
+    uniq_parts: List[str] = []
+    seen = set()
+    for p in parts:
+        if p in seen:
+            continue
+        seen.add(p)
+        uniq_parts.append(p)
+    return "; ".join(uniq_parts[:6]) + "."
+
+
 def _resolve_subject_routing_hint(cand_rec: Dict[str, Any], feat_rec: Dict[str, Any]) -> Dict[str, Any]:
-    # Candidate-level routing takes precedence because it is the exact generation context,
-    # but we backfill missing fields from feature-level routing.
+    # Feature-level routing is authoritative on reruns because candidate jsonl may
+    # carry stale routing hints baked at generation time. Candidate-level fields are
+    # only used as backfill when the refreshed feature record lacks them.
     cand_routing = cand_rec.get("routing", {})
     feat_routing = feat_rec.get("routing", {})
     out: Dict[str, Any] = {}
-    if isinstance(feat_routing, dict):
-        out.update(feat_routing)
     if isinstance(cand_routing, dict):
         out.update(cand_routing)
+    if isinstance(feat_routing, dict):
+        out.update(feat_routing)
     return out
 
 
@@ -2739,6 +2998,36 @@ def apply_subject_policy_overrides(
     return out
 
 
+def resolve_num_people_for_route(
+    routing_hint: Dict[str, Any],
+    c3_info: Dict[str, Any],
+    c2_person_count: int,
+) -> Dict[str, int]:
+    routing_subject_set = routing_hint.get("subject_set", {}) if isinstance(routing_hint.get("subject_set"), dict) else {}
+    routing_signals = routing_hint.get("router_signals", {}) if isinstance(routing_hint.get("router_signals"), dict) else {}
+    face_count = len(c3_info.get("face_boxes", []) or [])
+    routed_num_people = int(
+        safe_float(
+            routing_signals.get(
+                "num_person",
+                routing_subject_set.get("num_person", 0),
+            ),
+            0.0,
+        )
+    )
+    detector_num_people = max(int(c2_person_count), int(face_count), int(routed_num_people))
+    pose_num_people = int(safe_float(c3_info.get("num_people", 0), 0.0))
+    num_people = detector_num_people if detector_num_people > 0 else pose_num_people
+    return {
+        "num_people": int(num_people),
+        "c2_person_count": int(c2_person_count),
+        "face_count": int(face_count),
+        "routed_num_people": int(routed_num_people),
+        "detector_num_people": int(detector_num_people),
+        "pose_num_people": int(pose_num_people),
+    }
+
+
 def apply_expensive_score(
     candidate: Dict[str, Any],
     cfg: TeacherScorerConfig,
@@ -2819,7 +3108,10 @@ def _is_structural_valid(candidate: Dict[str, Any]) -> bool:
 
 
 def _is_face_safe(candidate: Dict[str, Any]) -> bool:
-    return not _has_hard_tag(candidate, "face_cut")
+    return not any(
+        _has_hard_tag(candidate, tag)
+        for tag in ("face_cut", "head_top_cut", "lookroom_cut")
+    )
 
 
 def _relax_joint_only_hard_reject(candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -2832,7 +3124,7 @@ def _relax_joint_only_hard_reject(candidate: Dict[str, Any]) -> Optional[Dict[st
         return candidate
 
     hard_tags = set(str(x) for x in (candidate.get("hard_reject_tags") or []))
-    if any(t in hard_tags for t in ("area_violation", "ar_violation", "face_cut", "head_top_cut")):
+    if any(t in hard_tags for t in ("area_violation", "ar_violation", "face_cut", "head_top_cut", "lookroom_cut")):
         return None
     if "joint_cutoff" not in hard_tags:
         return None
@@ -2875,8 +3167,9 @@ def compute_candidate_scores(
     if (target_ar is not None) and (abs(ar - target_ar) > cfg.ar_hard_eps):
         hard_reject_tags.append("ar_violation")
 
+    is_portrait_mode = str(route.get("subject_mode", "")).startswith("portrait")
     f_cut, f_kept, f_total = face_cut_flags(c3_info["face_boxes"], crop)
-    if (not is_baseline_full) and cfg.hard_face_rule and f_total > 0 and f_cut:
+    if cfg.hard_face_rule and f_total > 0 and f_cut and ((not is_baseline_full) or is_portrait_mode):
         hard_reject_tags.append("face_cut")
 
     head_top = compute_head_top_guard(
@@ -2885,11 +3178,10 @@ def compute_candidate_scores(
         head_margin_values=c3_info.get("head_guard_margin_norm", []),
         min_margin=float(cfg.head_top_min_margin),
     )
-    is_portrait_mode = str(route.get("subject_mode", "")).startswith("portrait")
     if (
-        (not is_baseline_full)
-        and bool(cfg.hard_head_top_rule)
+        bool(cfg.hard_head_top_rule)
         and is_portrait_mode
+        and ((not is_baseline_full) or is_portrait_mode)
         and bool(head_top.get("activated", False))
         and (not bool(head_top.get("pass", True)))
     ):
@@ -2900,7 +3192,7 @@ def compute_candidate_scores(
         crop=crop,
         margin_alpha=cfg.severe_kp_margin_alpha,
     )
-    if (not is_baseline_full) and joint["severe_count"] >= cfg.hard_joint_reject_count:
+    if joint["severe_count"] >= cfg.hard_joint_reject_count and ((not is_baseline_full) or is_portrait_mode):
         hard_reject_tags.append("joint_cutoff")
 
     # Cheap terms
@@ -2967,6 +3259,14 @@ def compute_candidate_scores(
         sigma_l=cfg.sigma_l,
         gamma_l=cfg.gamma_l,
     )
+    lookroom_cut = (
+        bool(cfg.hard_portrait_lookroom_rule)
+        and is_portrait_mode
+        and lr["gaze_dir"] in {"left", "right"}
+        and (not bool(lr["pass"]))
+    )
+    if lookroom_cut:
+        hard_reject_tags.append("lookroom_cut")
 
     sym = c5_info["symmetry"]
 
@@ -3010,8 +3310,139 @@ def compute_candidate_scores(
     ca_proxy = 0.65 * cov + 0.35 * context_fit
     r_edge = edge_term(subject_box=subject_box, crop=crop)
 
+    # Explainability labels (continuous value + categorical label).
+    ar_error = (None if is_freeform else float(abs(ar - float(target_ar))))
+    subject_cov_label = classify_subject_coverage_label(cov)
+    subject_scale_label = classify_subject_scale_label(subj_area_ratio, (ctx_lo, ctx_hi))
+    face_cut_label = "face_cut" if f_cut else "no_face_cut"
+    joint_cut_label = classify_joint_cut_label(joint["joint_cut_score"], joint["severe_count"])
+    headroom_label = classify_headroom_label(hr.get("value"), hr.get("target_range", []))
+    lookroom_label = classify_lookroom_label(lr.get("value"), lr.get("target_range", []), lr.get("gaze_dir", "unknown"))
+    third_label = classify_rule_strength_label(
+        d_third,
+        strong_thr=0.10,
+        strong_label="rule_of_thirds_strong",
+        weak_label="rule_of_thirds_weak",
+        na_label="rule_of_thirds_na",
+    )
+    phi_label = classify_rule_strength_label(
+        d_phi,
+        strong_thr=0.10,
+        strong_label="phi_grid_strong",
+        weak_label="phi_grid_weak",
+        na_label="phi_grid_na",
+    )
+    center_label = classify_rule_strength_label(
+        d_center,
+        strong_thr=0.12,
+        strong_label="center_comp_strong",
+        weak_label="center_comp_weak",
+        na_label="center_comp_na",
+    )
+    horizon_label = classify_horizon_label(horizon, cfg.horizon_third_tau)
+    context_label = classify_context_label(subj_area_ratio, (ctx_lo, ctx_hi))
+    text_label = classify_text_keep_label(text_eval)
+    teacher_label = "teacher_consensus_na"
+    if bool(teach_eval.get("enabled", False)):
+        if bool(teach_eval.get("consensus", False)):
+            teacher_label = (
+                "teacher_aligned"
+                if safe_float(teach_eval.get("rho", 0.0), 0.0) >= float(cfg.teach_rho_tau)
+                else "teacher_mismatch"
+            )
+        else:
+            teacher_label = "teacher_no_consensus"
+    ar_label = "ar_choice_freeform" if is_freeform else (
+        "ar_fits_well" if (ar_error is not None and ar_error <= float(cfg.ar_hard_eps)) else "ar_mismatch"
+    )
+    crop_tightness_label = classify_crop_tightness_label(area)
+
+    checklist = {
+        "subject_coverage": {
+            "value": float(cov),
+            "label": subject_cov_label,
+            "thresholds": {"excellent": 0.95, "good": 0.85, "marginal": 0.70},
+        },
+        "subject_scale": {
+            "value": float(subj_area_ratio),
+            "label": subject_scale_label,
+            "target_range": [round(float(ctx_lo), 4), round(float(ctx_hi), 4)],
+        },
+        "face_cut": {"value": int(bool(f_cut)), "label": face_cut_label},
+        "joint_cut": {
+            "value": float(joint["joint_cut_score"]),
+            "label": joint_cut_label,
+            "severe_count": int(joint["severe_count"]),
+            "near_count": int(joint["near_count"]),
+        },
+        "text_keep_ratio": {
+            "value": (
+                None
+                if not bool(text_eval.get("available", False))
+                else float(text_eval.get("text_keep_ratio", 1.0))
+            ),
+            "label": text_label,
+            "available": bool(text_eval.get("available", False)),
+            "target_keep_ratio": float(text_eval.get("target_keep_ratio", cfg.text_keep_min_default)),
+        },
+        "third_dist": {"value": float(d_third), "label": third_label},
+        "phi_dist": {"value": float(d_phi), "label": phi_label},
+        "center_dist": {"value": float(d_center), "label": center_label},
+        "headroom": {
+            "value": hr.get("value"),
+            "label": headroom_label,
+            "target_range": hr.get("target_range"),
+        },
+        "lookroom": {
+            "value": lr.get("value"),
+            "label": lookroom_label,
+            "target_range": lr.get("target_range"),
+            "gaze_dir": lr.get("gaze_dir", "unknown"),
+        },
+        "horizon": {
+            "value": horizon.get("value"),
+            "label": horizon_label,
+            "third_dist": horizon.get("dist"),
+            "conf": float(c5_info["horizon_conf"]),
+        },
+        "context": {
+            "value": float(subj_area_ratio),
+            "label": context_label,
+            "target_range": [round(float(ctx_lo), 4), round(float(ctx_hi), 4)],
+        },
+        "teacher_consensus": {
+            "value": float(safe_float(teach_eval.get("rho", 0.0), 0.0)),
+            "label": teacher_label,
+            "consensus": bool(teach_eval.get("consensus", False)),
+            "enabled": bool(teach_eval.get("enabled", False)),
+        },
+        "ar": {
+            "value": (None if is_freeform else float(ar_error)),
+            "label": ar_label,
+            "target_ar": (None if is_freeform else float(target_ar)),
+        },
+        "crop_tightness": {"value": float(area), "label": crop_tightness_label},
+    }
+    checklist_labels = {
+        k: str(v.get("label", ""))
+        for k, v in checklist.items()
+        if isinstance(v, dict)
+    }
+
     # Deterministic tags/checks for rationale.
     why_tags: List[str] = []
+    if subject_cov_label in {"excellent", "good"}:
+        why_tags.append("subject_preserved")
+    elif subject_cov_label == "marginal":
+        why_tags.append("subject_marginal")
+    else:
+        why_tags.append("subject_poor")
+    if subject_scale_label == "ideal_scale":
+        why_tags.append("subject_scale_ideal")
+    elif subject_scale_label == "too_tight":
+        why_tags.append("subject_scale_tight")
+    else:
+        why_tags.append("subject_scale_loose")
     if d_third <= 0.18:
         why_tags.append("rule_of_thirds")
     if d_phi <= 0.15:
@@ -3051,7 +3482,112 @@ def compute_candidate_scores(
             why_tags.append("ar_extreme_penalty")
     else:
         why_tags.append("ar_fits_well" if abs(ar - float(target_ar)) <= cfg.ar_hard_eps else "ar_mismatch")
-    why_tags.append("tight_crop" if area < 0.35 else ("wide_crop" if area > 0.75 else "balanced_crop"))
+    why_tags.append(crop_tightness_label)
+
+    why_tags_numeric = [
+        {
+            "why_tag": "subject_preserved",
+            "metric": "subject_coverage",
+            "value": float(cov),
+            "label": subject_cov_label,
+            "pass": bool(cov >= 0.85),
+        },
+        {
+            "why_tag": "subject_scale_ideal",
+            "metric": "subject_scale",
+            "value": float(subj_area_ratio),
+            "label": subject_scale_label,
+            "pass": bool(subject_scale_label == "ideal_scale"),
+        },
+        {
+            "why_tag": "avoid_face_cut",
+            "metric": "face_cut",
+            "value": int(bool(f_cut)),
+            "label": face_cut_label,
+            "pass": bool(not f_cut),
+        },
+        {
+            "why_tag": "avoid_person_cut",
+            "metric": "joint_cut",
+            "value": float(joint["joint_cut_score"]),
+            "label": joint_cut_label,
+            "pass": bool(joint["joint_cut_score"] <= 0.10),
+        },
+        {
+            "why_tag": "rule_of_thirds",
+            "metric": "third_dist",
+            "value": float(d_third),
+            "label": third_label,
+            "pass": bool(d_third <= 0.18),
+        },
+        {
+            "why_tag": "headroom_ok",
+            "metric": "headroom",
+            "value": hr.get("value"),
+            "label": headroom_label,
+            "pass": (None if hr.get("value") is None else bool(hr["pass"])),
+        },
+        {
+            "why_tag": "lookroom_ok",
+            "metric": "lookroom",
+            "value": lr.get("value"),
+            "label": lookroom_label,
+            "pass": (
+                None
+                if lr.get("gaze_dir") not in {"left", "right"} or lr.get("value") is None
+                else bool(lr["pass"])
+            ),
+        },
+        {
+            "why_tag": "horizon_on_third",
+            "metric": "horizon_dist",
+            "value": horizon.get("dist"),
+            "label": horizon_label,
+            "pass": (None if not bool(horizon.get("active", False)) else bool(horizon["pass"])),
+        },
+        {
+            "why_tag": "context_preserved",
+            "metric": "subject_area",
+            "value": float(subj_area_ratio),
+            "label": context_label,
+            "pass": bool(ctx_pass),
+        },
+        {
+            "why_tag": "text_preserved",
+            "metric": "text_keep_ratio",
+            "value": (
+                None
+                if not bool(text_eval.get("available", False))
+                else float(text_eval.get("text_keep_ratio", 1.0))
+            ),
+            "label": text_label,
+            "pass": (
+                None
+                if not bool(text_eval.get("available", False))
+                else bool(text_eval.get("pass", True))
+            ),
+        },
+        {
+            "why_tag": "teacher_aligned",
+            "metric": "teacher_rho",
+            "value": float(safe_float(teach_eval.get("rho", 0.0), 0.0)),
+            "label": teacher_label,
+            "pass": bool(teacher_label == "teacher_aligned"),
+        },
+        {
+            "why_tag": "ar_fits_well",
+            "metric": "ar_error",
+            "value": (None if ar_error is None else float(ar_error)),
+            "label": ar_label,
+            "pass": (None if is_freeform else bool(ar_error is not None and ar_error <= float(cfg.ar_hard_eps))),
+        },
+    ]
+    why_tags_final = sorted(set(why_tags))
+    why_text_template = build_why_text_template(
+        checklist_labels=checklist_labels,
+        why_tags=why_tags_final,
+        is_freeform=is_freeform,
+    )
 
     reject_tags = list(hard_reject_tags)
     if f_cut and "face_cut" not in reject_tags:
@@ -3064,6 +3600,8 @@ def compute_candidate_scores(
         reject_tags.append("text_cutoff")
     if lr["gaze_dir"] in {"left", "right"} and not lr["pass"]:
         reject_tags.append("lookroom_violation")
+    if lookroom_cut and "lookroom_cut" not in reject_tags:
+        reject_tags.append("lookroom_cut")
 
     out = {
         "candidate_id": candidate.get("candidate_id"),
@@ -3113,12 +3651,13 @@ def compute_candidate_scores(
         "flags": {
             "face_cut": bool(f_cut),
             "head_top_cut": bool(head_top.get("activated", False) and (not bool(head_top.get("pass", True)))),
+            "lookroom_cut": bool(lookroom_cut),
             "joint_cutoff_score": float(joint["joint_cut_score"]),
             "joint_severe_count": int(joint["severe_count"]),
             "subject_touch_border": bool(subj_touch),
             "subject_coverage": float(cov),
             "subject_area": float(subj_area_ratio),
-            "ar_error": (None if is_freeform else float(abs(ar - float(target_ar)))),
+            "ar_error": ar_error,
             "ar_free_prior_penalty": float(p_ar_free),
         },
         "composition_checks": {
@@ -3185,7 +3724,11 @@ def compute_candidate_scores(
                 "pass": bool(safe_float(teach_eval.get("rho", 0.0), 0.0) >= float(cfg.teach_rho_tau)),
             },
         },
-        "why_tags": sorted(set(why_tags)),
+        "checklist": checklist,
+        "checklist_labels": checklist_labels,
+        "why_tags": why_tags_final,
+        "why_tags_numeric": why_tags_numeric,
+        "why_text_template": why_text_template,
         "reject_tags": sorted(set(reject_tags)),
     }
     apply_expensive_score(
@@ -3371,7 +3914,11 @@ def candidate_brief(c: Dict[str, Any], rank: Optional[int] = None) -> Dict[str, 
             "components": c["scores"].get("components", {}),
         },
         "flags": c.get("flags", {}),
+        "checklist": c.get("checklist", {}),
+        "checklist_labels": c.get("checklist_labels", {}),
         "why_tags": c.get("why_tags", []),
+        "why_tags_numeric": c.get("why_tags_numeric", []),
+        "why_text_template": c.get("why_text_template", ""),
         "reject_tags": c.get("reject_tags", []),
         "composition_checks": c.get("composition_checks", {}),
     }
@@ -3586,9 +4133,13 @@ def process_one_image(
     c4_info = collect_c4_info(feat_rec=feat_rec, width=width, height=height)
 
     c2_person_count = count_c2_person_instances(feat_rec)
-    num_people = c3_info["num_people"]
-    # Routing sanity: treat C3(person/pose) as authoritative for human evidence.
-    # C2-only person signal is noisy on non-human scenes and can over-trigger portrait route.
+    person_stats = resolve_num_people_for_route(
+        routing_hint=routing_hint,
+        c3_info=c3_info,
+        c2_person_count=c2_person_count,
+    )
+    num_people = int(person_stats["num_people"])
+    face_count = int(person_stats["face_count"])
     has_human_evidence = num_people > 0
 
     shot_type = infer_shot_type(tags, has_human_evidence=has_human_evidence)
@@ -3609,6 +4160,7 @@ def process_one_image(
         "flags": flags,
         "num_people": num_people,
         "c2_person_count": c2_person_count,
+        "face_count": face_count,
         "has_human_evidence": bool(has_human_evidence),
         "norm_size_source": norm_size_source,
         "headroom_range": headroom_prior(shot_type, portrait_category, flags),
@@ -3629,6 +4181,37 @@ def process_one_image(
         policy_id=hint_policy_id,
         routing_hint=routing_hint,
     )
+    feature_stage_debug = summarize_feature_stage_debug(
+        feat_rec=feat_rec,
+        c3_info=c3_info,
+        c4_info=c4_info,
+        c5_info=c5_info,
+        c2_person_count=c2_person_count,
+        c1_text_embed=c1_text_embed,
+    )
+    routing_hint_debug = {
+        "subject_mode": str(hint_subject_mode or ""),
+        "policy_id": str(hint_policy_id or ""),
+        "shot_type_hint": str(hint_shot_type or ""),
+        "subject_mode_conf": safe_float(routing_hint.get("subject_mode_conf", 0.0), 0.0),
+        "subject_mode_reasons": (
+            routing_hint.get("subject_mode_reasons", [])
+            if isinstance(routing_hint.get("subject_mode_reasons"), list)
+            else []
+        ),
+        "subject_mode_conflict": bool(routing_hint.get("subject_mode_conflict", False)),
+        "subject_set": (
+            routing_hint.get("subject_set", {})
+            if isinstance(routing_hint.get("subject_set"), dict)
+            else {}
+        ),
+        "router_rule_id": str(routing_hint.get("router_rule_id", "")),
+        "router_signals": (
+            routing_hint.get("router_signals", {})
+            if isinstance(routing_hint.get("router_signals"), dict)
+            else {}
+        ),
+    }
 
     subject_box = build_subject_bbox(cand_rec, feat_rec, width=width, height=height)
     subject_centroid = box_center(subject_box)
@@ -3881,6 +4464,9 @@ def process_one_image(
         if selected_topk:
             normalize_final_scores(selected_topk)
         hard_negs = select_hard_negatives(exp_sorted, max_n=5)
+        top1_selected = selected_topk[0] if selected_topk else {}
+        if not isinstance(top1_selected, dict):
+            top1_selected = {}
 
         rejected_sorted = sorted(
             [c for c in scored if c.get("hard_reject", False)],
@@ -3959,6 +4545,46 @@ def process_one_image(
                     "tau_boost_applied": bool(tau_boost_applied),
                 },
             },
+            "stage_debug": {
+                "candidate_generation": {
+                    "num_input_candidates": int(len(scored)),
+                    "num_strict_valid_candidates": int(fallback_info.get("strict_valid_count", 0)),
+                    "num_effective_candidates": int(fallback_info.get("effective_valid_count", 0)),
+                    "proposal_injected": bool(proposal_injected),
+                    "teacher_candidates_ar": int(safe_float(teacher_cands_by_ar.get(ar_text, 0), 0.0)),
+                },
+                "cheap_stage": {
+                    "num_cheap_kept": int(len(cheap_top_m)),
+                    "cheap_top_m_ids": [str(c.get("candidate_id", "")) for c in cheap_top_m[:10]],
+                },
+                "expensive_stage": {
+                    "num_expensive_eval": int(len(expensive_eval_pool)),
+                    "real_applied": bool(expensive_real_applied),
+                    "uses_clip_text_alignment": bool(expensive_real_applied),
+                },
+                "decision_stage": {
+                    "decision_type": str(decision.get("decision_type", "")),
+                    "chosen_candidate_id": str(decision.get("chosen_candidate_id", "")),
+                    "baseline_candidate_id": str(baseline_effective.get("candidate_id", "")),
+                    "best_candidate_id": str(best.get("candidate_id", "")),
+                    "delta_improve": float(decision.get("delta_improve", 0.0)),
+                    "tau_improve": float(decision.get("tau_improve", tau_effective)),
+                },
+                "top1_explainability": {
+                    "candidate_id": str(top1_selected.get("candidate_id", "")),
+                    "checklist_labels": (
+                        top1_selected.get("checklist_labels", {})
+                        if isinstance(top1_selected.get("checklist_labels"), dict)
+                        else {}
+                    ),
+                    "why_tags": (
+                        top1_selected.get("why_tags", [])
+                        if isinstance(top1_selected.get("why_tags"), list)
+                        else []
+                    ),
+                    "why_text_template": str(top1_selected.get("why_text_template", "")),
+                },
+            },
         }
         results_by_ar[ar_text] = ar_result
 
@@ -4002,6 +4628,23 @@ def process_one_image(
             "router_rule_id": route.get("router_rule_id", ""),
             "router_signals": route.get("router_signals", {}),
         },
+        "pipeline_debug": {
+            "feature_stage": feature_stage_debug,
+            "routing_hint": routing_hint_debug,
+            "route_applied": {
+                "subject_mode": route.get("subject_mode", "other_ambiguous"),
+                "policy_id": route.get("policy_id", "generic_v1"),
+                "subject_mode_conf": safe_float(route.get("subject_mode_conf", 0.0)),
+                "subject_mode_reasons": route.get("subject_mode_reasons", []),
+                "subject_mode_conflict": bool(route.get("subject_mode_conflict", False)),
+                "shot_type": route.get("shot_type", shot_type),
+                "portrait_category": route.get("portrait_category", portrait_category),
+                "headroom_range": route.get("headroom_range", []),
+                "lookroom_range": route.get("lookroom_range", []),
+                "context_range": route.get("context_range", []),
+                "lambdas": route.get("lambdas", {}),
+            },
+        },
         "teacher_scorer": {
             "config": asdict(cfg),
             "expensive_real_applied": bool(expensive_real_applied),
@@ -4037,6 +4680,7 @@ def run(args: argparse.Namespace) -> None:
         teacher_tau_boost_delta=float(args.teacher_tau_boost_delta),
         teacher_tau_boost_baseline_iou=float(args.teacher_tau_boost_baseline_iou),
         hard_head_top_rule=bool(int(args.hard_head_top_rule)),
+        hard_portrait_lookroom_rule=bool(int(args.hard_portrait_lookroom_rule)),
         head_top_face_expand_alpha=float(args.head_top_face_expand_alpha),
         head_top_kp_expand=float(args.head_top_kp_expand),
         head_top_min_margin=float(args.head_top_min_margin),
@@ -4244,8 +4888,19 @@ def run(args: argparse.Namespace) -> None:
         s.cheap_kept_mean /= denom
 
     overview = {
-        "schema_version": "teacher_scorer_v6_nima_primary_laion_prior",
+        "schema_version": "teacher_scorer_v7_explainability_checklist_debug",
         "config": asdict(cfg),
+        "explainability_contract": {
+            "enabled": True,
+            "fields": ["checklist", "checklist_labels", "why_tags", "why_tags_numeric", "why_text_template"],
+            "excluded_unimplemented_items": [
+                "comp9_class",
+                "comp24_class",
+                "picd_compenc",
+                "composition_classifier_logits",
+                "ocr_layout_class",
+            ],
+        },
         "inputs": {
             "candidates_jsonl": str(cand_path),
             "features_jsonl": str(feat_path),

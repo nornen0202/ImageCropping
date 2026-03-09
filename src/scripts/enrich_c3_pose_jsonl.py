@@ -19,7 +19,7 @@ import math
 import os
 import tarfile
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 import pandas as pd
@@ -358,16 +358,70 @@ def estimate_headpose_gaze_proxy(face: Optional[Dict[str, object]]) -> Dict[str,
     return out
 
 
-def enrich_pose_item_from_keypoints(pose_item: Dict[str, object], image_w: int, image_h: int) -> Dict[str, object]:
+def _is_gazelle_headpose_gaze(headpose_gaze: object) -> bool:
+    if not isinstance(headpose_gaze, dict):
+        return False
+    source = str(headpose_gaze.get("source", "") or "").strip().lower()
+    return source in {"c6_gaze", "gaze_lle_gazelle", "gazelle", "gazelle_gaze_lle"}
+
+
+def _normalize_c6_headpose_gaze(person: Dict[str, Any]) -> Dict[str, object]:
+    return {
+        "yaw_proxy": round(float(person.get("yaw_proxy", 0.0) or 0.0), 4),
+        "pitch_proxy": round(float(person.get("pitch_proxy", 0.0) or 0.0), 4),
+        "roll_deg": round(float(person.get("roll_deg", 0.0) or 0.0), 3),
+        "gaze_dir": str(person.get("gaze_dir", "unknown")),
+        "conf": round(float(person.get("conf", 0.0) or 0.0), 4),
+        "source": str(person.get("source", "c6_gaze") or "c6_gaze"),
+    }
+
+
+def _build_c6_person_map(rec: Dict[str, object]) -> Dict[int, Dict[str, object]]:
+    c6 = rec.get("c6_gaze")
+    if not isinstance(c6, dict):
+        return {}
+    people = c6.get("people")
+    if not isinstance(people, list):
+        return {}
+    out: Dict[int, Dict[str, object]] = {}
+    for p in people:
+        if not isinstance(p, dict):
+            continue
+        try:
+            person_index = int(p.get("person_index", -1))
+        except Exception:
+            person_index = -1
+        if person_index < 0:
+            continue
+        out[person_index] = _normalize_c6_headpose_gaze(p)
+    return out
+
+
+def enrich_pose_item_from_keypoints(
+    pose_item: Dict[str, object],
+    image_w: int,
+    image_h: int,
+    c6_headpose_gaze: Optional[Dict[str, object]] = None,
+) -> Dict[str, object]:
     out = dict(pose_item)
     keypoints = pose_item.get("keypoints")
     if not isinstance(keypoints, list) or len(keypoints) == 0:
         out.setdefault("face", None)
-        out.setdefault("headpose_gaze", estimate_headpose_gaze_proxy(None))
+        if c6_headpose_gaze is not None:
+            out["headpose_gaze"] = dict(c6_headpose_gaze)
+        else:
+            out.setdefault("headpose_gaze", estimate_headpose_gaze_proxy(None))
         return out
     face = derive_face_from_keypoints(keypoints=keypoints, image_w=image_w, image_h=image_h)
     out["face"] = face
-    out["headpose_gaze"] = estimate_headpose_gaze_proxy(face)
+    if c6_headpose_gaze is not None:
+        out["headpose_gaze"] = dict(c6_headpose_gaze)
+    else:
+        existing_headpose = out.get("headpose_gaze")
+        if _is_gazelle_headpose_gaze(existing_headpose):
+            out["headpose_gaze"] = dict(existing_headpose)
+        else:
+            out["headpose_gaze"] = estimate_headpose_gaze_proxy(face)
     return out
 
 
@@ -412,10 +466,18 @@ def main() -> None:
 
             w, h = wh
             if isinstance(pose_list, list) and pose_list:
+                c6_person_map = _build_c6_person_map(rec)
                 new_pose = []
-                for item in pose_list:
+                for idx, item in enumerate(pose_list):
                     if isinstance(item, dict):
-                        new_pose.append(enrich_pose_item_from_keypoints(item, image_w=w, image_h=h))
+                        new_pose.append(
+                            enrich_pose_item_from_keypoints(
+                                item,
+                                image_w=w,
+                                image_h=h,
+                                c6_headpose_gaze=c6_person_map.get(idx),
+                            )
+                        )
                     else:
                         new_pose.append(item)
                 rec["c3_pose"] = new_pose

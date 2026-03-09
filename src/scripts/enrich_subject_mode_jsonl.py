@@ -183,6 +183,7 @@ def main() -> None:
             )
             blank_ratio_est = _compute_blank_ratio_from_union(rec.get("c2_union_box_xyxy"), width, height)
             c5_geom = rec.get("c5_geom", {}) if isinstance(rec.get("c5_geom"), dict) else {}
+            c4_meta = rec.get("c4_ocr_meta", {}) if isinstance(rec.get("c4_ocr_meta"), dict) else {}
             horizon_conf = c5_geom.get("horizon_conf", 0.0)
             symmetry_score = c5_geom.get("symmetry_score", 0.0)
             routing = route_subject_mode(
@@ -200,6 +201,7 @@ def main() -> None:
                 blank_ratio_est=blank_ratio_est,
                 horizon_conf=horizon_conf,
                 symmetry_score=symmetry_score,
+                ocr_backend_method=c4_meta.get("method"),
             )
             rec["routing"] = routing
 

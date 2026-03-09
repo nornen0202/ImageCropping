@@ -678,7 +678,8 @@ VLM_SUMMARY_DIR="${VLM_DIR}/summary"
 VLM_DEBUG_BASE_DIR="${VLM_DIR}/debug"
 CACHE_DIR="${DATA_DIR}/cache"
 
-FEATS_C1="${PRECOMPUTE_DIR}/feats_c1.jsonl"
+FEATS_C1_CANONICAL="${PRECOMPUTE_DIR}/feats_c1.jsonl"
+FEATS_C1="$FEATS_C1_CANONICAL"
 FEATS_C2="${PRECOMPUTE_DIR}/feats_c2.jsonl"
 FEATS_C3="${PRECOMPUTE_DIR}/feats_c3_v2_strict.jsonl"
 FEATS_C3_ENRICHED="${PRECOMPUTE_DIR}/feats_c3_v2_strict_enriched.jsonl"
@@ -889,6 +890,39 @@ sys.exit(1)
 PY
 }
 
+resolve_c1_jsonl_path() {
+  if [ "$PRECOMPUTE_MODE" = "unified" ] && [ -f "$FEATS_C2C3C5_RAW" ] && jsonl_has_c1_embeddings "$FEATS_C2C3C5_RAW"; then
+    echo "$FEATS_C2C3C5_RAW"
+    return
+  fi
+  if [ -f "$FEATS_C1_CANONICAL" ] && jsonl_has_c1_embeddings "$FEATS_C1_CANONICAL"; then
+    echo "$FEATS_C1_CANONICAL"
+    return
+  fi
+  echo "$FEATS_C1_CANONICAL"
+}
+
+ensure_c1_alias() {
+  local src="$1"
+  local dst="$FEATS_C1_CANONICAL"
+  if [ -z "$src" ] || [ ! -f "$src" ] || [ "$src" = "$dst" ]; then
+    return 0
+  fi
+  rm -f "$dst"
+  if ! ln -s "$(basename "$src")" "$dst" 2>/dev/null; then
+    cp -f "$src" "$dst"
+  fi
+}
+
+refresh_c1_path_state() {
+  FEATS_C1="$(resolve_c1_jsonl_path)"
+  if jsonl_has_c1_embeddings "$FEATS_C1"; then
+    ensure_c1_alias "$FEATS_C1"
+  fi
+}
+
+refresh_c1_path_state
+
 extract_common_args=(
   --priority "$EXTRACT_PRIORITY"
   --mode "$EXTRACT_MODE"
@@ -934,6 +968,7 @@ echo " candidate_ar_list   : $CAND_AR_LIST"
 echo " candidate_mp       : workers=$CAND_NUM_WORKERS chunksize=$CAND_MP_CHUNKSIZE start=$CAND_MP_START_METHOD"
 echo " teacher proposals   : ${TEACHER_PROPOSALS_JSONL:-<none>}"
 echo " run_teacher         : $RUN_TEACHER (real_expensive=$USE_REAL_EXPENSIVE)"
+echo " c1 source           : $FEATS_C1"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
 echo " teacher_auto_repair : $TEACHER_AUTO_REPAIR (strict=$TEACHER_AUTO_REPAIR_STRICT)"
 echo " teacher_accel       : exp_batch=$EXP_BATCH_SIZE exp_eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
@@ -1060,21 +1095,24 @@ if [ "$PRECOMPUTE_MODE" = "unified" ]; then
     C1_CANDIDATE="$FEATS_C2C3C5_RAW"
     if [ -f "$C1_CANDIDATE" ] && jsonl_has_c1_embeddings "$C1_CANDIDATE"; then
       FEATS_C1="$C1_CANDIDATE"
-    elif [ -f "$FEATS_C1" ] && jsonl_has_c1_embeddings "$FEATS_C1"; then
-      echo "[warn] unified raw has no c1 embeddings. falling back to legacy c1 file: $FEATS_C1"
+    elif [ -f "$FEATS_C1_CANONICAL" ] && jsonl_has_c1_embeddings "$FEATS_C1_CANONICAL"; then
+      FEATS_C1="$FEATS_C1_CANONICAL"
+      echo "[warn] unified raw has no c1 embeddings. falling back to legacy c1 file: $FEATS_C1_CANONICAL"
     else
       echo "[warn] c1 embeddings missing in unified raw/legacy c1. extracting standalone c1..."
       run_with_log "02b_extract_c1_fallback" \
         bash src/scripts/run_extract_component.sh \
-          "$FILTERED_PARQUET" "$BUCKET" "$FEATS_C1" \
+          "$FILTERED_PARQUET" "$BUCKET" "$FEATS_C1_CANONICAL" \
           --component c1 \
           "${extract_common_args[@]}"
-      if ! jsonl_has_c1_embeddings "$FEATS_C1"; then
-        echo "[error] failed to build valid c1 embeddings: $FEATS_C1"
+      if ! jsonl_has_c1_embeddings "$FEATS_C1_CANONICAL"; then
+        echo "[error] failed to build valid c1 embeddings: $FEATS_C1_CANONICAL"
         exit 1
       fi
+      FEATS_C1="$FEATS_C1_CANONICAL"
     fi
   fi
+  refresh_c1_path_state
 else
   if [ "$RUN_C1" -eq 1 ]; then
     if ! should_skip_file "$FEATS_C1"; then
@@ -1197,6 +1235,8 @@ else
     fi
   fi
 fi
+
+refresh_c1_path_state
 
 # ------------------------------------------------------------------------------
 # 2.4) Subject-Mode Routing + C2 Top-N enrich (v1 patch)
@@ -1488,8 +1528,12 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
     exit 1
   fi
   if [ "$USE_REAL_EXPENSIVE" -eq 1 ]; then
+    refresh_c1_path_state
     if [ ! -f "$FEATS_C1" ]; then
       echo "[error] use_real_expensive=1 requires c1 jsonl: $FEATS_C1"
+      if [ "$FEATS_C1" != "$FEATS_C1_CANONICAL" ]; then
+        echo "        info: canonical alias path is $FEATS_C1_CANONICAL"
+      fi
       exit 1
     fi
     if ! jsonl_has_c1_embeddings "$FEATS_C1"; then
@@ -1620,7 +1664,8 @@ echo " filtered parquet : $FILTERED_PARQUET"
 if [ "$PRECOMPUTE_MODE" = "unified" ]; then
   echo " precompute raw    : $FEATS_C2C3C5_RAW (unified C1/C2/C3/C4/C5/C6)"
 fi
-echo " feats c1          : $FEATS_C1"
+echo " feats c1 source   : $FEATS_C1"
+echo " feats c1 alias    : $FEATS_C1_CANONICAL"
 echo " feats c2/c3e/c4/c5/c6: $FEATS_C2 | $FEATS_C3_ENRICHED | $FEATS_C4 | $FEATS_C5 | $FEATS_C6"
 echo " merged feats     : $MERGED_FEATS"
 if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then

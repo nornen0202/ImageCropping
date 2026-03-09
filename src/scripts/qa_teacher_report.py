@@ -18,6 +18,29 @@ from typing import Any, Dict, List
 import pandas as pd
 
 
+CHECKLIST_LABEL_KEYS = [
+    "subject_coverage",
+    "subject_scale",
+    "face_cut",
+    "joint_cut",
+    "text_keep_ratio",
+    "third_dist",
+    "phi_dist",
+    "center_dist",
+    "headroom",
+    "lookroom",
+    "horizon",
+    "context",
+    "teacher_consensus",
+    "ar",
+    "crop_tightness",
+]
+
+
+def make_checklist_label_counter_map() -> Dict[str, Counter]:
+    return {k: Counter() for k in CHECKLIST_LABEL_KEYS}
+
+
 def safe_float(v: Any, default: float = 0.0) -> float:
     try:
         x = float(v)
@@ -63,11 +86,19 @@ def make_bucket() -> Dict[str, Any]:
         "final_scores": [],
         "delta_improve": [],
         "num_input_candidates": [],
+        "checklist_present_count": 0,
+        "checklist_label_counts": make_checklist_label_counter_map(),
+        "why_text_present_count": 0,
+        "why_tag_count": [],
+        "why_tag_vocab": Counter(),
         "subject_mode": Counter(),
         "policy_id": Counter(),
         "subject_mode_conf": [],
         "subject_mode_conflict_count": 0,
+        "num_person": [],
         "c2_num_inst": [],
+        "num_effective_subjects": [],
+        "primary_subject_exists_count": 0,
         "c2_primary_bg_like_count": 0,
         "multi_subject_count": 0,
         "union_used_count": 0,
@@ -86,6 +117,9 @@ def make_bucket() -> Dict[str, Any]:
         "portrait_route_count": 0,
         "portrait_no_human_count": 0,
         "group_no_human_count": 0,
+        "scene_mode_count": 0,
+        "scene_horizon_na_count": 0,
+        "text_document_ocr_unavailable_count": 0,
         "expensive_source": Counter(),
         "fallback_activated_count": 0,
         "fallback_mode": Counter(),
@@ -158,6 +192,34 @@ def update_bucket(
     if not isinstance(topk, list) or not topk:
         return
     top1 = topk[0] if isinstance(topk[0], dict) else {}
+
+    why_tags = top1.get("why_tags", [])
+    if isinstance(why_tags, list):
+        bucket["why_tag_count"].append(int(len(why_tags)))
+        for t in why_tags:
+            tt = str(t).strip()
+            if tt:
+                bucket["why_tag_vocab"][tt] += 1
+    why_text_template = str(top1.get("why_text_template", "")).strip()
+    if why_text_template:
+        bucket["why_text_present_count"] += 1
+
+    checklist = top1.get("checklist", {})
+    if isinstance(checklist, dict) and bool(checklist):
+        bucket["checklist_present_count"] += 1
+        label_counts = bucket.get("checklist_label_counts", {})
+        if isinstance(label_counts, dict):
+            for k in CHECKLIST_LABEL_KEYS:
+                it = checklist.get(k, {})
+                if not isinstance(it, dict):
+                    continue
+                label = str(it.get("label", "")).strip()
+                if not label:
+                    continue
+                if not isinstance(label_counts.get(k), Counter):
+                    label_counts[k] = Counter()
+                label_counts[k][label] += 1
+
     top1_source = str(top1.get("source", ""))
     teacher_seed_top1 = top1_source.startswith("teacher:")
     if teacher_seed_top1:
@@ -234,26 +296,45 @@ def update_bucket(
     bucket["subject_mode_conf"].append(subject_mode_conf)
     if subject_mode_conflict:
         bucket["subject_mode_conflict_count"] += 1
-    c2_num_inst = int(safe_float(subject_set.get("num_subject_inst", 0), 0.0))
+    signal_num_person = int(
+        safe_float(
+            router_signals.get(
+                "num_person",
+                subject_set.get("num_person", route_global.get("num_people", 0)),
+            ),
+            0.0,
+        )
+    )
+    c2_num_inst = int(
+        safe_float(
+            subject_set.get("num_c2_instances", subject_set.get("num_subject_inst", 0)),
+            0.0,
+        )
+    )
+    num_effective_subjects = int(
+        safe_float(
+            subject_set.get("num_effective_subjects", c2_num_inst),
+            0.0,
+        )
+    )
+    primary_subject_exists = bool(subject_set.get("primary_subject_exists", False))
+    if not primary_subject_exists:
+        primary_subject_exists = int(safe_float(subject_set.get("primary_idx", -1), -1.0)) >= 0
+    bucket["num_person"].append(signal_num_person)
     bucket["c2_num_inst"].append(c2_num_inst)
+    bucket["num_effective_subjects"].append(num_effective_subjects)
+    if primary_subject_exists:
+        bucket["primary_subject_exists_count"] += 1
     if bool(subject_set.get("c2_primary_bg_like", False)):
         bucket["c2_primary_bg_like_count"] += 1
     if bool(subject_set.get("multi_subject", False)):
         bucket["multi_subject_count"] += 1
 
     # Guard consistency diagnostics
-    signal_num_person = int(
-        safe_float(
-            router_signals.get(
-                "num_person",
-                route_global.get("num_people", 0),
-            ),
-            0.0,
-        )
-    )
     signal_has_text_hint = bool(router_signals.get("has_text_hint", False))
     signal_text_overlay = bool(router_signals.get("text_overlay_likely", False))
     signal_ocr_boxes = int(safe_float(router_signals.get("ocr_text_boxes", 0), 0.0))
+    signal_ocr_available = bool(router_signals.get("ocr_available", False))
     signal_blank_ratio = safe_float(router_signals.get("blank_ratio_est", 0.0), 0.0)
     signal_blank_thr = safe_float(router_signals.get("blank_ratio_thr", 0.28), 0.28)
     signal_copy_tag = bool(router_signals.get("has_copyspace_tag", False))
@@ -267,6 +348,8 @@ def update_bucket(
         and (not signal_has_text_hint)
     ):
         bucket["guard_no_text_signal_count"] += 1
+    if subject_mode == "text_document" and (not signal_ocr_available):
+        bucket["text_document_ocr_unavailable_count"] += 1
     if subject_mode == "background_texture_copyspace" and signal_copy_tag and signal_blank_ratio < signal_blank_thr:
         bucket["guard_low_blank_ratio_copyspace_count"] += 1
 
@@ -308,6 +391,11 @@ def update_bucket(
             bucket["portrait_no_human_count"] += 1
     if shot_type == "group" and not has_human_evidence:
         bucket["group_no_human_count"] += 1
+    if subject_mode.startswith("scene"):
+        bucket["scene_mode_count"] += 1
+        horizon_check = checklist.get("horizon", {}) if isinstance(checklist, dict) else {}
+        if str(horizon_check.get("label", "")).strip() == "horizon_na":
+            bucket["scene_horizon_na_count"] += 1
 
 
 def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
@@ -316,17 +404,42 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
     deltas = [float(v) for v in bucket["delta_improve"]]
     num_input = [int(v) for v in bucket["num_input_candidates"]]
     sm_conf = [float(v) for v in bucket["subject_mode_conf"]]
+    num_person = [int(v) for v in bucket["num_person"]]
     c2_num_inst = [int(v) for v in bucket["c2_num_inst"]]
+    num_effective_subjects = [int(v) for v in bucket["num_effective_subjects"]]
     proposal_n = int(bucket["proposal_injected_count"])
     consensus_n = int(bucket["teacher_consensus_count"])
     consensus_avail_n = int(bucket["teacher_consensus_available_count"])
     text_keep = [float(v) for v in bucket["text_keep_ratio"]]
     text_penalty = [float(v) for v in bucket["text_penalty"]]
+    why_tag_count = [int(v) for v in bucket.get("why_tag_count", [])]
+    text_document_count = int(bucket["subject_mode"].get("text_document", 0))
+    scene_mode_count = int(bucket["scene_mode_count"])
+    checklist_label_counts_raw = (
+        bucket.get("checklist_label_counts", {})
+        if isinstance(bucket.get("checklist_label_counts"), dict)
+        else {}
+    )
+    checklist_label_counts: Dict[str, Dict[str, int]] = {}
+    for key, cnt in checklist_label_counts_raw.items():
+        if isinstance(cnt, Counter):
+            checklist_label_counts[str(key)] = dict(cnt)
+        elif isinstance(cnt, dict):
+            checklist_label_counts[str(key)] = {str(k): int(v) for k, v in cnt.items()}
 
     return {
         "count": int(bucket["count"]),
         "subject_mode_counts": dict(bucket["subject_mode"]),
         "policy_id_counts": dict(bucket["policy_id"]),
+        "explainability": {
+            "checklist_present_rate": float(bucket.get("checklist_present_count", 0)) / n,
+            "why_text_present_rate": float(bucket.get("why_text_present_count", 0)) / n,
+            "why_tag_count_mean": mean(why_tag_count) if why_tag_count else 0.0,
+            "why_tag_count_p50": percentile([float(v) for v in why_tag_count], 0.50) if why_tag_count else 0.0,
+            "why_tag_count_p90": percentile([float(v) for v in why_tag_count], 0.90) if why_tag_count else 0.0,
+            "why_tag_vocab_top20": dict(bucket.get("why_tag_vocab", Counter()).most_common(20)),
+            "checklist_label_counts": checklist_label_counts,
+        },
         "subject_mode_conf": {
             "mean": mean(sm_conf) if sm_conf else 0.0,
             "p10": percentile(sm_conf, 0.10),
@@ -337,13 +450,20 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
         "candidate_volume": {
             "num_input_mean": mean(num_input) if num_input else 0.0,
             "num_input_p95": percentile([float(v) for v in num_input], 0.95) if num_input else 0.0,
+            "num_person_mean": mean(num_person) if num_person else 0.0,
+            "num_person_p95": percentile([float(v) for v in num_person], 0.95) if num_person else 0.0,
             "c2_num_inst_mean": mean(c2_num_inst) if c2_num_inst else 0.0,
             "c2_num_inst_p95": percentile([float(v) for v in c2_num_inst], 0.95) if c2_num_inst else 0.0,
+            "num_effective_subjects_mean": mean(num_effective_subjects) if num_effective_subjects else 0.0,
+            "num_effective_subjects_p95": (
+                percentile([float(v) for v in num_effective_subjects], 0.95) if num_effective_subjects else 0.0
+            ),
         },
         "subject_mode_kpi": {
             "bg_selected_rate": float(bucket["c2_primary_bg_like_count"]) / n,
             "multi_subject_detect_rate": float(bucket["multi_subject_count"]) / n,
             "union_used_rate": float(bucket["union_used_count"]) / n,
+            "primary_subject_exists_rate": float(bucket["primary_subject_exists_count"]) / n,
             "guard_no_person_for_portrait_rate": float(bucket["guard_no_person_for_portrait_count"]) / n,
             "guard_no_text_signal_rate": float(bucket["guard_no_text_signal_count"]) / n,
             "guard_low_blank_ratio_copyspace_rate": float(bucket["guard_low_blank_ratio_copyspace_count"]) / n,
@@ -417,6 +537,18 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
             ),
             "group_route_without_human_rate": float(bucket["group_no_human_count"]) / n,
         },
+        "p0_release_gates": {
+            "head_top_cut_rate": float(bucket["head_top_cut_count"]) / n,
+            "face_cut_rate": float(bucket["face_cut_count"]) / n,
+            "joint_cut_rate": float(bucket["joint_cut_count"]) / n,
+            "text_document_ocr_unavailable_rate": (
+                float(bucket["text_document_ocr_unavailable_count"]) / max(1, text_document_count)
+            ),
+            "portrait_route_without_human_rate": float(bucket["portrait_no_human_count"]) / max(
+                1, int(bucket["portrait_route_count"])
+            ),
+            "scene_horizon_na_rate": float(bucket["scene_horizon_na_count"]) / max(1, scene_mode_count),
+        },
         "copyspace": {
             "subset_count": int(bucket["copyspace_subset_count"]),
             "preserve_rate": float(bucket["copyspace_preserve_count"]) / max(
@@ -466,6 +598,9 @@ def flatten_for_csv(ar: str, summary: Dict[str, Any]) -> Dict[str, Any]:
         "final_p50": summary.get("final_score", {}).get("p50", 0.0),
         "final_p90": summary.get("final_score", {}).get("p90", 0.0),
         "final_neg_rate": summary.get("final_score", {}).get("neg_rate", 0.0),
+        "checklist_present_rate": summary.get("explainability", {}).get("checklist_present_rate", 0.0),
+        "why_text_present_rate": summary.get("explainability", {}).get("why_text_present_rate", 0.0),
+        "why_tag_count_mean": summary.get("explainability", {}).get("why_tag_count_mean", 0.0),
         "delta_mean": summary.get("delta_improve", {}).get("mean", 0.0),
         "face_cut_rate": summary.get("risk_rates", {}).get("face_cut_rate", 0.0),
         "head_top_cut_rate": summary.get("risk_rates", {}).get("head_top_cut_rate", 0.0),
@@ -483,6 +618,29 @@ def flatten_for_csv(ar: str, summary: Dict[str, Any]) -> Dict[str, Any]:
         "copyspace_preserve_rate": summary.get("copyspace", {}).get("preserve_rate", 0.0),
         "fallback_activated_rate": summary.get("fallback", {}).get("activated_rate", 0.0),
     }
+    return out
+
+
+def build_mode_qa_summary(by_subject_mode: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+    out: Dict[str, Dict[str, Any]] = {}
+    for mode, summary in sorted(by_subject_mode.items()):
+        out[str(mode)] = {
+            "count": int(summary.get("count", 0)),
+            "num_person_mean": summary.get("candidate_volume", {}).get("num_person_mean", 0.0),
+            "num_c2_instances_mean": summary.get("candidate_volume", {}).get("c2_num_inst_mean", 0.0),
+            "num_effective_subjects_mean": summary.get("candidate_volume", {}).get("num_effective_subjects_mean", 0.0),
+            "primary_subject_exists_rate": summary.get("subject_mode_kpi", {}).get("primary_subject_exists_rate", 0.0),
+            "head_top_cut_rate": summary.get("p0_release_gates", {}).get("head_top_cut_rate", 0.0),
+            "face_cut_rate": summary.get("p0_release_gates", {}).get("face_cut_rate", 0.0),
+            "joint_cut_rate": summary.get("p0_release_gates", {}).get("joint_cut_rate", 0.0),
+            "text_document_ocr_unavailable_rate": (
+                summary.get("p0_release_gates", {}).get("text_document_ocr_unavailable_rate", 0.0)
+            ),
+            "portrait_route_without_human_rate": (
+                summary.get("p0_release_gates", {}).get("portrait_route_without_human_rate", 0.0)
+            ),
+            "scene_horizon_na_rate": summary.get("p0_release_gates", {}).get("scene_horizon_na_rate", 0.0),
+        }
     return out
 
 
@@ -610,6 +768,7 @@ def main() -> None:
         },
         "global": global_summary,
         "by_ar": by_ar_summary,
+        "mode_qa_summary": build_mode_qa_summary(by_subject_mode),
         "by_subject_mode": by_subject_mode,
         "by_subject_mode_ar": by_subject_mode_ar,
         "by_subject_mode_shot_ar": by_subject_mode_shot_ar,

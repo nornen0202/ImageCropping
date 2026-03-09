@@ -116,6 +116,14 @@ fi
 
 SRC_DIR=$(cd "$(dirname "$0")/.." && pwd)
 PY_SCRIPT="${SRC_DIR}/visualize_components.py"
+if command -v python3 >/dev/null 2>&1; then
+  PY_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PY_BIN="python"
+else
+  echo "[viz-wrapper][error] neither python3 nor python found in PATH"
+  exit 127
+fi
 
 echo "=============================================="
 echo " Visualize Components Runner"
@@ -130,7 +138,7 @@ fi
 echo "=============================================="
 
 run_main_cmd=(
-python "$PY_SCRIPT" \
+"$PY_BIN" "$PY_SCRIPT" \
   --parquet "$PARQUET" \
   --tar_dir "$TAR_DIR" \
   --out_dir "$OUT_DIR" \
@@ -184,7 +192,7 @@ for ((i=0; i<${#PASS_ARGS[@]}; i++)); do
 done
 
 set +e
-CUDA_VISIBLE_DEVICES="" python "$PY_SCRIPT" \
+CUDA_VISIBLE_DEVICES="" "$PY_BIN" "$PY_SCRIPT" \
   --parquet "$PARQUET" \
   --tar_dir "$TAR_DIR" \
   --out_dir "$OUT_DIR" \

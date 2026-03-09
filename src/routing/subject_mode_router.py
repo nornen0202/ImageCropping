@@ -45,6 +45,11 @@ COPYSPACE_HINTS = (
 SCENE_HINTS = ("landscape", "cityscape", "interior", "architecture", "scenery", "panorama")
 OBJECT_HINTS = ("animal", "pet", "product", "vehicle", "car", "food", "object")
 BLANK_RATIO_COPYSPACE_MIN = 0.28
+PERSON_CLASS_IDS = {0}
+PERSON_BOX_DEDUP_IOU = 0.85
+POSE_SCORE_PERSON_MIN = 0.30
+POSE_FACE_SCORE_MIN = 0.20
+POSE_C2_SUPPORT_IOU_MIN = 0.10
 
 
 def _safe_float(v: Any, default: float = 0.0) -> float:
@@ -173,6 +178,68 @@ def _person_union_box(c3_pose: Any, width: int, height: int) -> Optional[List[fl
         if b is not None:
             boxes.append(b)
     return _union_box(boxes)
+
+
+def _dedupe_boxes(boxes: Sequence[Sequence[float]], iou_thr: float = PERSON_BOX_DEDUP_IOU) -> List[List[float]]:
+    kept: List[List[float]] = []
+    for box in boxes:
+        cand = [float(v) for v in box]
+        if any(_iou_xyxy(cand, prev) >= float(iou_thr) for prev in kept):
+            continue
+        kept.append(cand)
+    return kept
+
+
+def _person_signal_stats(
+    c2_instances: Sequence[Dict[str, Any]],
+    c3_pose: Any,
+    width: int,
+    height: int,
+) -> Dict[str, Any]:
+    c2_person_boxes: List[List[float]] = []
+    for inst in c2_instances:
+        if not isinstance(inst, dict):
+            continue
+        if bool(inst.get("bg_like", False)):
+            continue
+        class_id = int(_safe_float(inst.get("class_id", -1), -1))
+        if class_id not in PERSON_CLASS_IDS:
+            continue
+        box = _normalize_box_xyxy(inst.get("box"), width, height)
+        if box is None:
+            continue
+        c2_person_boxes.append(box)
+    c2_person_boxes = _dedupe_boxes(c2_person_boxes)
+
+    c3_supported_boxes: List[List[float]] = []
+    c3_list = c3_pose if isinstance(c3_pose, list) else []
+    for pose in c3_list:
+        if not isinstance(pose, dict):
+            continue
+        box = _normalize_box_xyxy(pose.get("bbox"), width, height)
+        if box is None:
+            continue
+        pose_score = _safe_float(pose.get("score", 0.0), 0.0)
+        face = pose.get("face", {}) if isinstance(pose.get("face"), dict) else {}
+        face_score = _safe_float(face.get("score", 0.0), 0.0)
+        overlap = max((_iou_xyxy(box, pb) for pb in c2_person_boxes), default=0.0)
+        if c2_person_boxes:
+            if overlap < POSE_C2_SUPPORT_IOU_MIN:
+                continue
+        elif pose_score < POSE_SCORE_PERSON_MIN and face_score < POSE_FACE_SCORE_MIN:
+            continue
+        c3_supported_boxes.append(box)
+    c3_supported_boxes = _dedupe_boxes(c3_supported_boxes)
+
+    effective_boxes = c2_person_boxes if c2_person_boxes else c3_supported_boxes
+    num_person_source = "c2_person" if c2_person_boxes else ("c3_pose" if c3_supported_boxes else "none")
+    return {
+        "num_person": int(len(effective_boxes)),
+        "num_person_c2": int(len(c2_person_boxes)),
+        "num_person_c3_supported": int(len(c3_supported_boxes)),
+        "num_person_source": num_person_source,
+        "person_union_box_xyxy": _union_box(effective_boxes),
+    }
 
 
 def _center_dist_norm(box: Sequence[float], width: int, height: int) -> float:
@@ -498,9 +565,11 @@ def route_subject_mode(
     blank_ratio_est: Optional[float] = None,
     horizon_conf: Optional[float] = None,
     symmetry_score: Optional[float] = None,
+    ocr_backend_method: Optional[str] = None,
 ) -> Dict[str, Any]:
     c3_list = c3_pose if isinstance(c3_pose, list) else []
-    num_person = len(c3_list)
+    person_stats = _person_signal_stats(c2_instances=c2_instances, c3_pose=c3_list, width=width, height=height)
+    num_person = int(person_stats["num_person"])
     mode, conf, reasons, base_rule_id = _infer_mode(tags_norm=tags_norm, super_cat=super_cat, c3_person_count=num_person)
     router_rule_id = base_rule_id
 
@@ -522,6 +591,9 @@ def route_subject_mode(
     has_copyspace_tag = _has_any_hint(tags_norm, COPYSPACE_HINTS)
     text_boxes = max(0, int(_safe_float(ocr_text_boxes_count, 0.0)))
     text_overlay = bool(text_overlay_likely) if text_overlay_likely is not None else False
+    ocr_method = str(ocr_backend_method or "").strip().lower()
+    ocr_available = ocr_method not in {"", "unknown", "unavailable", "disabled"}
+    strong_text_evidence = bool(text_boxes > 0 or text_overlay)
     text_signal = bool(has_text_hint or text_overlay or text_boxes > 0 or str(super_cat or "").strip().lower() in TEXT_SUPER_CATS)
     copyspace_signal = bool(copy_space_flag) if copy_space_flag is not None else bool(has_copyspace_tag)
 
@@ -550,18 +622,17 @@ def route_subject_mode(
         reasons.extend(guard_reasons + fb_reasons)
         router_rule_id = f"{base_rule_id}|{fb_rule_id}"
 
-    # P0 guard #2: no OCR/text evidence should not route text_document
-    # (except explicit text super-category).
+    # P0 guard #2: no C4-backed text evidence should not route text_document.
     sc = str(super_cat or "").strip().lower()
-    if mode == "text_document" and (sc not in TEXT_SUPER_CATS) and (not text_signal):
-        guard_reasons.append("guard_no_text_signal")
+    if mode == "text_document" and not strong_text_evidence:
+        guard_reasons.append("guard_text_requires_c4_evidence")
         mode, conf, fb_reasons, fb_rule_id = _fallback_mode_after_guard(
             tags_norm=tags_norm,
             super_cat=super_cat,
             text_signal=False,
             copyspace_allowed=copyspace_allowed,
         )
-        reasons.extend(["guard_no_text_signal"] + fb_reasons)
+        reasons.extend(["guard_text_requires_c4_evidence"] + fb_reasons)
         router_rule_id = f"{base_rule_id}|{fb_rule_id}"
 
     # P0 guard #3: copy-space tag only is insufficient when blank ratio is low.
@@ -582,12 +653,13 @@ def route_subject_mode(
     union_box = list(union_box_seed) if isinstance(union_box_seed, list) else None
     multi_subject = False
     if mode.startswith("portrait"):
-        primary_source = "c3" if num_person > 0 else primary_source
+        if num_person > 0:
+            primary_source = str(person_stats.get("num_person_source", "c3_pose"))
         if mode == "portrait_group":
             multi_subject = True
-            c3_union = _person_union_box(c3_list, width, height)
-            if c3_union is not None:
-                union_box = [round(v, 3) for v in c3_union]
+            person_union = person_stats.get("person_union_box_xyxy")
+            if isinstance(person_union, list) and len(person_union) == 4:
+                union_box = [round(float(v), 3) for v in person_union]
     elif mode.startswith("object"):
         if len(c2_instances) >= 2:
             s1 = _safe_float(c2_instances[0].get("importance_score", 0.0), 0.0)
@@ -657,7 +729,7 @@ def route_subject_mode(
     mode_conflict = False
     if mode.startswith("portrait") and not flags["has_person"] and sc not in PEOPLE_SUPER_CATS:
         mode_conflict = True
-    if mode == "text_document" and sc not in TEXT_SUPER_CATS and not _has_any_hint(tags_norm, TEXT_HINTS):
+    if mode == "text_document" and not strong_text_evidence:
         mode_conflict = True
     if guard_reasons:
         mode_conflict = True
@@ -668,12 +740,18 @@ def route_subject_mode(
     router_signals = {
         "super_cat": sc,
         "num_person": int(num_person),
+        "num_person_c2": int(person_stats.get("num_person_c2", 0)),
+        "num_person_c3_supported": int(person_stats.get("num_person_c3_supported", 0)),
+        "num_person_source": str(person_stats.get("num_person_source", "none")),
         "c2_num_instances": int(len(c2_instances)),
         "c2_primary_bg_like": bool(c2_primary_bg_like),
         "c2_primary_area_ratio": round(float(c2_primary_area_ratio), 6),
         "has_text_hint": bool(has_text_hint),
         "ocr_text_boxes": int(text_boxes),
+        "ocr_backend_method": ocr_method or "unknown",
+        "ocr_available": bool(ocr_available),
         "text_overlay_likely": bool(text_overlay),
+        "text_evidence_strong": bool(strong_text_evidence),
         "text_signal": bool(text_signal),
         "has_copyspace_tag": bool(has_copyspace_tag),
         "copy_space_flag": bool(copyspace_signal),
@@ -695,7 +773,12 @@ def route_subject_mode(
         "primary_subject_source": primary_source,
         "subject_set": {
             "num_person": int(num_person),
+            "num_c2_instances": int(len(c2_instances)),
             "num_subject_inst": int(len(c2_instances)),
+            "num_effective_subjects": int(
+                num_person if num_person > 0 else (2 if multi_subject else (1 if (primary_idx >= 0 or union_box is not None) else 0))
+            ),
+            "primary_subject_exists": bool(num_person > 0 or primary_idx >= 0 or union_box is not None),
             "union_box_xyxy": union_box,
             "primary_idx": int(primary_idx),
             "c2_primary_area_ratio": round(float(c2_primary_area_ratio), 6),

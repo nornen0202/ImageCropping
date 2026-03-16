@@ -125,6 +125,7 @@ AESTHETIC_BACKEND="hybrid"
 AESTHETIC_PRIOR_LAION_WEIGHT=0.15
 EXP_BATCH_SIZE=24
 EXPENSIVE_EVAL_TOP_M=0
+SAVE_PUBLIC_TEACHER_REF_EVAL=1
 EXP_PREPROCESS_WORKERS=0
 EXP_PIN_MEMORY=1
 AESTHETIC_MLP_PATH="weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth"
@@ -184,6 +185,7 @@ while [ "$#" -gt 0 ]; do
     --aesthetic_prior_laion_weight) AESTHETIC_PRIOR_LAION_WEIGHT="$2"; shift 2 ;;
     --exp_batch_size) EXP_BATCH_SIZE="$2"; shift 2 ;;
     --expensive_eval_top_m) EXPENSIVE_EVAL_TOP_M="$2"; shift 2 ;;
+    --save_public_teacher_ref_eval) SAVE_PUBLIC_TEACHER_REF_EVAL="$2"; shift 2 ;;
     --exp_preprocess_workers) EXP_PREPROCESS_WORKERS="$2"; shift 2 ;;
     --exp_pin_memory) EXP_PIN_MEMORY="$2"; shift 2 ;;
     --aesthetic_mlp_path) AESTHETIC_MLP_PATH="$2"; shift 2 ;;
@@ -343,6 +345,7 @@ echo "[config] c1=$C1_JSONL"
 echo "[config] parquet=$PARQUET"
 echo "[config] output_jsonl=$OUTPUT_JSONL"
 echo "[config] expensive_accel: batch=$EXP_BATCH_SIZE eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo "[config] public_teacher_ref_eval: save=$SAVE_PUBLIC_TEACHER_REF_EVAL"
 echo "[config] aesthetic: backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC_PRIOR_LAION_WEIGHT nima_ckpt=$NIMA_MODEL_PATH require_ckpt=$NIMA_REQUIRE_CKPT"
 echo "[config] portrait_safety: hard_head_top=$HARD_HEAD_TOP_RULE face_expand=$HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$HEAD_TOP_KP_EXPAND min_margin=$HEAD_TOP_MIN_MARGIN face_margin_alpha=$HEAD_TOP_FACE_MARGIN_ALPHA"
 echo "[config] viz_image_ids=${VIZ_IMAGE_IDS:-<none>} viz_image_ids_file=${VIZ_IMAGE_IDS_FILE:-<none>}"
@@ -383,6 +386,7 @@ run_teacher_one() {
     --aesthetic_prior_laion_weight "$AESTHETIC_PRIOR_LAION_WEIGHT" \
     --exp_batch_size "$EXP_BATCH_SIZE" \
     --expensive_eval_top_m "$EXPENSIVE_EVAL_TOP_M" \
+    --save_public_teacher_ref_eval "$SAVE_PUBLIC_TEACHER_REF_EVAL" \
     --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
     --exp_pin_memory "$EXP_PIN_MEMORY" \
     --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \

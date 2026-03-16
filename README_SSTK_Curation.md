@@ -360,7 +360,7 @@ export C6_GAZELLE_DEVICE=cuda
 ```bash
 POOL_SIZE=100
 DATANAME=Test_${POOL_SIZE}
-RUN_TAG=260309_r1
+RUN_TAG=260309_r0
 
 #POOL_SIZE=10000
 #DATANAME=Full_${POOL_SIZE}
@@ -371,19 +371,19 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --data_dir data/SSTK/${DATANAME} \
   --server_mode 1 \
   --tar_dir /sstk/20230916/sstk_100 \
-  --run_filter 0 \
+  --run_filter 1 \
   --curated_pool_size ${POOL_SIZE} \
   --top_percentile 0.2 \
   --filter_require_train_match 1 \
   --filter_tag_embed_multi_gpu 1 \
-  --filter_tag_embed_gpu_ids 0,1,2,3,4,5,6,7 \
+  --filter_tag_embed_gpu_ids 0,1,2 \
   --filter_tag_embed_batch_size 128 \
   --filter_tag_embed_chunk_size 0 \
   --filter_tag_embed_device auto \
   --export_curated_images 1 \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
-  --skip_existing 0 \
+  --skip_existing 1 \
   --precompute_mode unified \
   --run_c1 -1 \
   --run_c2 1 --run_c3 1 --run_c4 1 --run_c5 1 --run_c6 1 --run_c3_enrich 1 --run_merge 1 \
@@ -393,8 +393,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --subject_routing_allow_det_proxy 1 \
   --extract_mode auto \
   --extract_multi_gpu 1 \
-  --extract_gpu_ids 0,1,2,3,4,5,6,7 \
-  --num_workers 8 \
+  --extract_gpu_ids 0,1,2 \
+  --num_workers 3 \
   --extract_priority quality_first \
   --c5_priority quality_first \
   --batch_size 512 \
@@ -456,13 +456,27 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_filter 0 \
   --skip_existing 0 \
   --precompute_mode unified \
-  --run_c1 -1 \
+  --run_c1 0 \
   --run_c2 0 --run_c3 0 --run_c4 0 --run_c5 0 --run_c6 0 --run_c3_enrich 0 --run_merge 0 \
   --run_subject_routing 1 \
   --subject_routing_top_n 5 \
   --subject_routing_union_top_m 3 \
   --subject_routing_allow_det_proxy 1 \
-  --run_candidates 0 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_teacher_max_images -1 \
+  --public_teacher_device auto \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --public_infer_multi_gpu 1 \
+  --public_infer_gpu_ids 0,1,2,3,4,5,6,7 \
+  --public_infer_num_workers 8 \
+  --public_infer_skip_on_oom 1 \
+  --public_infer_fallback_cpu_on_oom 1 \
+  --public_infer_fallback_cpu_max_images 3 \
+  --public_infer_skip_if_fallback_failed 1 \
+  --run_candidates 1 \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --cheap_top_m 30 \
@@ -471,6 +485,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 512 \
+  --save_public_teacher_ref_eval 1 \
   --run_component_viz 0 \
   --run_qa 1 \
   --run_viz 1 \

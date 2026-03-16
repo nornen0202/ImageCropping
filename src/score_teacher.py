@@ -109,6 +109,20 @@ NIMA_DEFAULT_PATH = "weights/nima/NIMA_VGG16_ava-dc4e8265.pth"
 NIMA_DEFAULT_URL = ""
 
 DEFAULT_IMAGE_EXTS = ("jpg", "jpeg", "png", "webp")
+SCENE_MODES = {"scene_general", "scene_landscape"}
+SCENE_SUBTYPE_UNKNOWN = "scene_general_unknown"
+ALIGN_GPU_OOM_FALLBACKS: Dict[Tuple[str, str], Tuple[Tuple[str, str], ...]] = {
+    ("vit-h-14", "laion2b_s32b_b79k"): (("ViT-B-32", "openai"),),
+}
+SCENE_HORIZON_TARGETS: Dict[str, Tuple[float, ...]] = {
+    "scene_landscape_nature": (1.0 / 3.0, 2.0 / 3.0),
+    "scene_reflection_symmetry": (0.5,),
+    "scene_city_architecture": (1.0 / 3.0, 0.5, 2.0 / 3.0),
+    "scene_interior_architecture": (),
+    "scene_structural_pattern": (),
+    "scene_contextual_object": (),
+    SCENE_SUBTYPE_UNKNOWN: (),
+}
 
 
 # COCO-17 keypoint indices.
@@ -171,6 +185,7 @@ class TeacherScorerConfig:
     w_center: float = 0.25
     w_horizon: float = 0.15
     horizon_conf_thr: float = 0.25
+    horizon_visibility_thr: float = 0.70
 
     # Headroom/lookroom formula constants
     sigma_h: float = 0.05
@@ -190,6 +205,7 @@ class TeacherScorerConfig:
     aesthetic_score_min: float = 1.0
     aesthetic_score_max: float = 10.0
     expensive_eval_top_m: int = 0  # 0 means evaluate all cheap_top_m in expensive stage
+    save_public_teacher_ref_eval: bool = True
     exp_preprocess_workers: int = 0  # 0 means auto (bounded by CPU count)
     exp_pin_memory: bool = True
 
@@ -268,6 +284,7 @@ class ARStats:
     delta_improve: List[float] = None
     top1_top2_iou: List[float] = None
     horizon_third_dist: List[float] = None
+    roll_abs: List[float] = None
 
     def __post_init__(self) -> None:
         if self.delta_improve is None:
@@ -276,6 +293,8 @@ class ARStats:
             self.top1_top2_iou = []
         if self.horizon_third_dist is None:
             self.horizon_third_dist = []
+        if self.roll_abs is None:
+            self.roll_abs = []
         if self.fallback_mode_counts is None:
             self.fallback_mode_counts = {}
 
@@ -329,6 +348,12 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--exp_batch_size", type=int, default=24)
     p.add_argument("--expensive_eval_top_m", type=int, default=0, help="0=all cheap_top_m, >0=capped expensive eval")
+    p.add_argument(
+        "--save_public_teacher_ref_eval",
+        type=int,
+        default=1,
+        help="1=save exact scored public teacher seed/proj refs per AR regardless of cheap_top_m/top_k",
+    )
     p.add_argument("--exp_preprocess_workers", type=int, default=0, help="0=auto, >0=thread workers for clip preprocess")
     p.add_argument("--exp_pin_memory", type=int, default=1, help="1=pin CPU batch tensor before H2D copy")
     p.add_argument(
@@ -683,6 +708,56 @@ def build_teacher_consensus_context(
     }
 
 
+def select_public_teacher_refs(
+    *,
+    cand_rec: Dict[str, Any],
+    ar_text: str,
+) -> List[Dict[str, Any]]:
+    raw = cand_rec.get("teacher_candidates", [])
+    if not isinstance(raw, list) or not raw:
+        return []
+
+    target_key = normalize_ar_key(ar_text)
+    by_teacher_stage: Dict[str, Dict[str, Dict[str, Any]]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        stage = str(item.get("stage", "")).strip().lower()
+        if stage not in {"seed", "proj"}:
+            continue
+        if normalize_ar_key(item.get("target_ar", "")) != target_key:
+            continue
+        bbox = item.get("bbox_norm_xyxy")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            continue
+        bbox01 = clip_box01([safe_float(v) for v in bbox])
+        if box_area(bbox01) <= 0.0:
+            continue
+        teacher_id = str(item.get("teacher_id", "unknown")).strip() or "unknown"
+        score = safe_float(item.get("teacher_score", -1e9), -1e9)
+        stage_bucket = by_teacher_stage.setdefault(teacher_id, {})
+        current = stage_bucket.get(stage)
+        if current is None or score > safe_float(current.get("teacher_score", -1e9), -1e9):
+            stage_bucket[stage] = {
+                "teacher_id": teacher_id,
+                "target_ar": str(item.get("target_ar", ar_text)),
+                "stage": stage,
+                "bbox_norm_xyxy": bbox01,
+                "teacher_score": float(score),
+            }
+    out: List[Dict[str, Any]] = []
+    prefer_seed = normalize_ar_key(ar_text) == "FREE"
+    for teacher_id, stage_map in sorted(by_teacher_stage.items()):
+        chosen = None
+        if prefer_seed:
+            chosen = stage_map.get("seed") or stage_map.get("proj")
+        else:
+            chosen = stage_map.get("proj") or stage_map.get("seed")
+        if chosen is not None:
+            out.append(chosen)
+    return out
+
+
 def compute_teacher_consensus_reward(
     *,
     crop: Sequence[float],
@@ -1019,6 +1094,8 @@ class ExpensiveModels:
         self.nima_preprocess = None
         self._laion_ready = False
         self._nima_ready = False
+        self.align_model_name = ""
+        self.align_pretrained = ""
 
         # Align model for cos(E_I(I_b), E_T): match C1 text embedding dimension.
         if not align_model_name or not align_pretrained:
@@ -1042,6 +1119,7 @@ class ExpensiveModels:
             model_name=align_model_name,
             pretrained=align_pretrained,
             preferred_device=self.align_device,
+            purpose="align",
         )
         self.align_model.eval()
         if self.align_device != "cpu":
@@ -1057,6 +1135,7 @@ class ExpensiveModels:
                     model_name="ViT-L-14",
                     pretrained="openai",
                     preferred_device=self.aes_device,
+                    purpose="aesthetic",
                 )
                 self.aes_clip.eval()
                 if self.aes_device != "cpu":
@@ -1326,6 +1405,7 @@ class ExpensiveModels:
         model_name: str,
         pretrained: str,
         preferred_device: str,
+        purpose: str = "clip",
     ) -> Tuple[Any, Any, str]:
         try:
             model, _, preprocess = self.open_clip.create_model_and_transforms(
@@ -1333,10 +1413,33 @@ class ExpensiveModels:
                 pretrained=pretrained,
                 device=preferred_device,
             )
+            if purpose == "align":
+                self.align_model_name = str(model_name)
+                self.align_pretrained = str(pretrained)
             return model, preprocess, preferred_device
         except Exception as e:
             msg = str(e).lower()
             if preferred_device != "cpu" and ("out of memory" in msg or "cuda" in msg):
+                fallback_key = (str(model_name).strip().lower(), str(pretrained).strip().lower())
+                for fb_model_name, fb_pretrained in ALIGN_GPU_OOM_FALLBACKS.get(fallback_key, ()):
+                    try:
+                        print(
+                            f"[expensive][warn] failed to load {model_name}/{pretrained} on {preferred_device}: {e}\n"
+                            f" -> retry on {preferred_device} with downgraded {fb_model_name}/{fb_pretrained}"
+                        )
+                        model, _, preprocess = self.open_clip.create_model_and_transforms(
+                            fb_model_name,
+                            pretrained=fb_pretrained,
+                            device=preferred_device,
+                        )
+                        if purpose == "align":
+                            self.align_model_name = str(fb_model_name)
+                            self.align_pretrained = str(fb_pretrained)
+                        return model, preprocess, preferred_device
+                    except Exception as fb_e:
+                        print(
+                            f"[expensive][warn] downgraded {fb_model_name}/{fb_pretrained} on {preferred_device} also failed: {fb_e}"
+                        )
                 print(
                     f"[expensive][warn] failed to load {model_name}/{pretrained} on {preferred_device}: {e}\n"
                     " -> retry on CPU"
@@ -1346,8 +1449,40 @@ class ExpensiveModels:
                     pretrained=pretrained,
                     device="cpu",
                 )
+                if purpose == "align":
+                    self.align_model_name = str(model_name)
+                    self.align_pretrained = str(pretrained)
                 return model, preprocess, "cpu"
             raise
+
+    def _downgrade_align_model_after_oom(self) -> bool:
+        if self.align_device == "cpu":
+            return False
+        key = (str(self.align_model_name).strip().lower(), str(self.align_pretrained).strip().lower())
+        fallbacks = ALIGN_GPU_OOM_FALLBACKS.get(key, ())
+        for fb_model_name, fb_pretrained in fallbacks:
+            try:
+                print(
+                    f"[expensive][warn] align batch OOM on GPU -> switching align model to {fb_model_name}/{fb_pretrained} on {self.align_device}"
+                )
+                model, preprocess, device = self._create_clip_with_fallback(
+                    model_name=fb_model_name,
+                    pretrained=fb_pretrained,
+                    preferred_device=self.align_device,
+                    purpose="align",
+                )
+                model.eval()
+                if device != "cpu":
+                    model = model.half()
+                self.align_model = model
+                self.align_preprocess = preprocess
+                self.align_device = device
+                self.align_model_name = str(fb_model_name)
+                self.align_pretrained = str(fb_pretrained)
+                return True
+            except Exception as e:
+                print(f"[expensive][warn] failed to downgrade align model after OOM: {e}")
+        return False
 
     def _batched_encode_align(self, crops: Sequence["Image.Image"]) -> np.ndarray:
         if not crops:
@@ -1369,6 +1504,12 @@ class ExpensiveModels:
                     all_out.append(emb.detach().cpu().float().numpy())
         except Exception as e:
             if self.align_device != "cpu" and "out of memory" in str(e).lower():
+                if self._downgrade_align_model_after_oom():
+                    try:
+                        self.torch.cuda.empty_cache()
+                    except Exception:
+                        pass
+                    return self._batched_encode_align(crops)
                 print("[expensive][warn] align batch OOM on GPU -> switching align model to CPU")
                 try:
                     self.torch.cuda.empty_cache()
@@ -1717,6 +1858,72 @@ def context_target_range(
     return (lo, hi)
 
 
+def subject_scale_target_range(
+    *,
+    subject_mode: str,
+    shot_type: str,
+    scene_subtype: str,
+    flags: Dict[str, bool],
+    has_human_evidence: bool,
+) -> Tuple[Tuple[float, float], str]:
+    mode = str(subject_mode or "").strip().lower()
+    subtype = normalize_scene_subtype(scene_subtype)
+    if mode == "portrait_single":
+        table = {
+            "headshot": (0.55, 0.82),
+            "half": (0.38, 0.62),
+            "full": (0.22, 0.42),
+            "unknown": (0.28, 0.60),
+        }
+        return table.get(shot_type, table["unknown"]), "primary_subject"
+    if mode == "portrait_group":
+        return (0.22, 0.52), "subject_union"
+    if mode == "object_single":
+        return (0.35, 0.72), "primary_subject"
+    if mode == "object_multi":
+        return (0.25, 0.58), "subject_union"
+    if mode == "background_texture_copyspace":
+        return (0.08, 0.30), "primary_subject"
+    if mode == "text_document":
+        return (0.35, 0.90), "primary_subject"
+    if mode in SCENE_MODES or mode.startswith("scene"):
+        if subtype == "scene_contextual_object":
+            return (0.12, 0.32), "subject_union"
+        return (0.05, 0.22), "primary_subject"
+    if flags.get("is_product", False):
+        return (0.40, 0.80), "primary_subject"
+    if has_human_evidence:
+        return (0.22, 0.55), "primary_subject"
+    return (0.12, 0.45), "primary_subject"
+
+
+def context_keep_target_range(
+    *,
+    subject_mode: str,
+    scene_subtype: str,
+    flags: Dict[str, bool],
+) -> Tuple[Tuple[float, float], str]:
+    mode = str(subject_mode or "").strip().lower()
+    subtype = normalize_scene_subtype(scene_subtype)
+    if mode == "background_texture_copyspace":
+        return (0.55, 1.00), "negative_space"
+    if mode == "text_document":
+        return (0.70, 1.00), "secondary_context"
+    if mode in {"object_single", "portrait_single"}:
+        return (0.18, 0.55), "secondary_context"
+    if mode in {"object_multi", "portrait_group"}:
+        return (0.28, 0.65), "secondary_context"
+    if mode in SCENE_MODES or mode.startswith("scene"):
+        if subtype == "scene_contextual_object":
+            return (0.30, 0.78), "secondary_context"
+        if subtype in {"scene_reflection_symmetry", "scene_city_architecture", "scene_interior_architecture"}:
+            return (0.45, 0.95), "scene_structure"
+        return (0.40, 0.95), "scene_structure"
+    if flags.get("is_product", False):
+        return (0.10, 0.35), "secondary_context"
+    return (0.20, 0.60), "secondary_context"
+
+
 def tau_improve_for_route(shot_type: str, flags: Dict[str, bool], num_people: int) -> float:
     if flags.get("has_copy_space", False) or flags.get("is_landscape_scene", False):
         return 0.055
@@ -1779,7 +1986,7 @@ def build_subject_bbox(
     if isinstance(union_box, (list, tuple)) and len(union_box) == 4:
         ub = clip_box01(norm_box_xyxy(union_box, width, height))
         if box_area(ub) > 0:
-            if mode in {"portrait_group", "object_multi", "scene_landscape", "background_texture_copyspace"}:
+            if mode in {"portrait_group", "object_multi", "scene_general", "scene_landscape", "background_texture_copyspace"}:
                 return ub
 
     sp = candidate_rec.get("subject_prior", {})
@@ -1956,14 +2163,24 @@ def collect_c5_info(feat_rec: Dict[str, Any]) -> Dict[str, Any]:
     if isinstance(c5, list):
         c5 = safe_first(c5)
     if not isinstance(c5, dict):
-        return {"horizon_y_norm": None, "horizon_conf": 0.0, "roll_deg": None, "symmetry": 0.0}
+        return {
+            "horizon_y_norm": None,
+            "horizon_conf": 0.0,
+            "horizon_exists_prob": 0.0,
+            "roll_deg": None,
+            "line_norm_xyxy": None,
+            "symmetry": 0.0,
+        }
 
     hr = c5.get("horizon_roll") if isinstance(c5.get("horizon_roll"), dict) else {}
     sym = c5.get("symmetry") if isinstance(c5.get("symmetry"), dict) else {}
+    horizon_conf = safe_float(hr.get("conf", c5.get("horizon_conf", 0.0)))
     return {
         "horizon_y_norm": hr.get("horizon_y_norm"),
-        "horizon_conf": safe_float(hr.get("conf", 0.0)),
+        "horizon_conf": horizon_conf,
+        "horizon_exists_prob": horizon_conf,
         "roll_deg": hr.get("roll_deg"),
+        "line_norm_xyxy": hr.get("line_norm_xyxy"),
         "symmetry": clamp(safe_float(sym.get("score", 0.0)), 0.0, 1.0),
     }
 
@@ -2474,11 +2691,70 @@ def compute_lookroom_term(
     }
 
 
+def is_scene_mode(mode: str) -> bool:
+    return str(mode or "").strip().lower() in SCENE_MODES or str(mode or "").strip().lower().startswith("scene")
+
+
+def normalize_scene_subtype(scene_subtype: Any) -> str:
+    subtype = str(scene_subtype or "").strip().lower()
+    return subtype if subtype else SCENE_SUBTYPE_UNKNOWN
+
+
+def horizon_thresholds_for_subtype(scene_subtype: str) -> Tuple[float, float]:
+    subtype = normalize_scene_subtype(scene_subtype)
+    if subtype == "scene_landscape_nature":
+        return 0.20, 0.35
+    if subtype == "scene_reflection_symmetry":
+        return 0.20, 0.30
+    if subtype == "scene_city_architecture":
+        return 0.20, 0.50
+    if subtype in {"scene_interior_architecture", "scene_structural_pattern"}:
+        return 0.25, 0.45
+    return 0.25, 0.45
+
+
+def _clip_line_segment_to_rect(
+    p1: Tuple[float, float],
+    p2: Tuple[float, float],
+    rect: Sequence[float],
+) -> Optional[Tuple[Tuple[float, float], Tuple[float, float]]]:
+    x1, y1 = float(p1[0]), float(p1[1])
+    x2, y2 = float(p2[0]), float(p2[1])
+    rx1, ry1, rx2, ry2 = [float(v) for v in rect]
+    dx = x2 - x1
+    dy = y2 - y1
+    p = (-dx, dx, -dy, dy)
+    q = (x1 - rx1, rx2 - x1, y1 - ry1, ry2 - y1)
+    u1 = 0.0
+    u2 = 1.0
+    for pi, qi in zip(p, q):
+        if abs(pi) <= 1e-12:
+            if qi < 0.0:
+                return None
+            continue
+        t = qi / pi
+        if pi < 0.0:
+            if t > u2:
+                return None
+            u1 = max(u1, t)
+        else:
+            if t < u1:
+                return None
+            u2 = min(u2, t)
+    if u2 < u1:
+        return None
+    return ((x1 + u1 * dx, y1 + u1 * dy), (x1 + u2 * dx, y1 + u2 * dy))
+
+
 def compute_horizon_reward(
     crop: Sequence[float],
     horizon_y_norm: Optional[float],
     horizon_conf: float,
+    horizon_exists_prob: float,
+    scene_subtype: str,
+    line_norm_xyxy: Optional[Sequence[Any]],
     conf_thr: float,
+    visibility_thr: float,
 ) -> Dict[str, Any]:
     if horizon_y_norm is None or not math.isfinite(float(horizon_y_norm)):
         return {
@@ -2487,20 +2763,61 @@ def compute_horizon_reward(
             "active": False,
             "value": None,
             "pass": True,
+            "state": "none",
+            "exists_prob": float(clamp(horizon_exists_prob, 0.0, 1.0)),
+            "visible_ratio": 0.0,
+            "target_set": [],
         }
 
     x1, y1, x2, y2 = [safe_float(v) for v in crop]
     hh = max(1e-8, y2 - y1)
     y_local = (float(horizon_y_norm) - y1) / hh
-    d = min(abs(y_local - (1.0 / 3.0)), abs(y_local - (2.0 / 3.0)))
-    active = horizon_conf >= conf_thr
-    reward = reward_dist(d, 0.08) if active else 0.0
+    subtype = normalize_scene_subtype(scene_subtype)
+    target_set = list(SCENE_HORIZON_TARGETS.get(subtype, ()))
+    if not target_set:
+        target_set = [1.0 / 3.0, 2.0 / 3.0]
+    exists_thr, subtype_conf_thr = horizon_thresholds_for_subtype(subtype)
+    effective_conf_thr = min(float(conf_thr), float(subtype_conf_thr))
+
+    exists_prob = clamp(horizon_exists_prob, 0.0, 1.0)
+    conf = clamp(horizon_conf, 0.0, 1.0)
+    if exists_prob < exists_thr:
+        state = "none"
+    elif conf < effective_conf_thr:
+        state = "weak"
+    else:
+        state = "strong"
+
+    d = min(abs(y_local - t) for t in target_set)
+    visible_ratio = 0.0
+    if isinstance(line_norm_xyxy, (list, tuple)) and len(line_norm_xyxy) == 4:
+        clipped = _clip_line_segment_to_rect(
+            (safe_float(line_norm_xyxy[0]), safe_float(line_norm_xyxy[1])),
+            (safe_float(line_norm_xyxy[2]), safe_float(line_norm_xyxy[3])),
+            crop,
+        )
+        if clipped is not None:
+            seg_len = math.hypot(clipped[1][0] - clipped[0][0], clipped[1][1] - clipped[0][1])
+            visible_ratio = clamp(seg_len / max(1e-8, x2 - x1), 0.0, 1.0)
+    if visible_ratio <= 0.0:
+        visible_ratio = 1.0 if (0.0 <= y_local <= 1.0) else 0.0
+
+    active = state != "none"
+    pos_reward = reward_dist(d, 0.08) if active else 0.0
+    vis_reward = clamp(visible_ratio / max(1e-8, visibility_thr), 0.0, 1.0) if active else 0.0
+    state_weight = 1.0 if state == "strong" else 0.45
+    reward = state_weight * (0.70 * pos_reward + 0.30 * vis_reward)
+    pass_flag = active and d <= 0.08 and visible_ratio >= 0.35
     return {
         "dist": float(d),
         "reward": float(reward),
         "active": bool(active),
         "value": float(y_local),
-        "pass": bool(d <= 0.08) if active else True,
+        "pass": bool(pass_flag) if active else True,
+        "state": state,
+        "exists_prob": float(exists_prob),
+        "visible_ratio": float(visible_ratio),
+        "target_set": [round(float(v), 4) for v in target_set],
     }
 
 
@@ -2728,24 +3045,87 @@ def classify_rule_strength_label(
 def classify_horizon_label(horizon: Dict[str, Any], third_tau: float) -> str:
     if not isinstance(horizon, dict):
         return "horizon_na"
+    if str(horizon.get("state", "")).strip() == "weak":
+        return "horizon_weak"
     if not bool(horizon.get("active", False)) or horizon.get("value") is None:
         return "horizon_na"
     if bool(horizon.get("pass", False)):
-        return "horizon_on_third"
+        return "horizon_on_target"
     y = safe_optional_float(horizon.get("value"))
     if y is not None and abs(y - 0.5) <= max(0.10, 1.5 * float(third_tau)):
         return "horizon_middle"
     return "horizon_off"
 
 
-def classify_context_label(subj_area_ratio: float, target_range: Tuple[float, float]) -> str:
+def classify_context_label(context_value: float, target_range: Tuple[float, float]) -> str:
     lo, hi = target_range
-    v = clamp(safe_float(subj_area_ratio, 0.0), 0.0, 1.0)
+    v = clamp(safe_float(context_value, 0.0), 0.0, 1.0)
+    if v < max(0.0, float(lo) * 0.60):
+        return "context_poor"
     if v < float(lo):
-        return "context_too_loose"
+        return "context_partial"
     if v > float(hi):
-        return "context_too_tight"
+        return "context_excessive"
     return "context_preserved"
+
+
+def classify_roll_label(roll_deg: Optional[float], roll_thr: float) -> str:
+    if roll_deg is None:
+        return "roll_na"
+    return "needs_leveling" if abs(safe_float(roll_deg, 0.0)) > float(roll_thr) else "level_ok"
+
+
+def compute_context_preserved(
+    *,
+    crop_area: float,
+    subject_area_in_crop_ratio: float,
+    subject_box_area_full: float,
+    scene_bonus: float,
+    text_bonus: float,
+    negative_space_bonus: float,
+) -> float:
+    subject_area_in_crop = clamp(subject_area_in_crop_ratio, 0.0, 1.0) * clamp(crop_area, 0.0, 1.0)
+    non_subject_crop = max(0.0, clamp(crop_area, 0.0, 1.0) - subject_area_in_crop)
+    denom = max(1e-6, 1.0 - clamp(subject_box_area_full, 0.0, 0.98))
+    base = clamp(non_subject_crop / denom, 0.0, 1.0)
+    return clamp(0.70 * base + 0.15 * scene_bonus + 0.10 * text_bonus + 0.05 * negative_space_bonus, 0.0, 1.0)
+
+
+def compute_copyspace_reward(
+    *,
+    crop: Sequence[float],
+    subject_box: Sequence[float],
+    route: Dict[str, Any],
+) -> Dict[str, Any]:
+    side = str(route.get("copyspace_side", "unknown")).strip().lower()
+    if side not in {"left", "right", "top", "bottom"}:
+        return {"reward": 0.0, "blank_ratio_keep": 0.0, "side_consistency": 0.0, "intrusion": 0.0}
+
+    x1, y1, x2, y2 = [safe_float(v) for v in crop]
+    sx1, sy1, sx2, sy2 = [safe_float(v) for v in subject_box]
+    crop_w = max(1e-8, x2 - x1)
+    crop_h = max(1e-8, y2 - y1)
+    if side == "left":
+        blank_ratio_keep = clamp((sx1 - x1) / crop_w, 0.0, 1.0)
+        intrusion = clamp((sx2 - x1) / crop_w, 0.0, 1.0)
+    elif side == "right":
+        blank_ratio_keep = clamp((x2 - sx2) / crop_w, 0.0, 1.0)
+        intrusion = clamp((x2 - sx1) / crop_w, 0.0, 1.0)
+    elif side == "top":
+        blank_ratio_keep = clamp((sy1 - y1) / crop_h, 0.0, 1.0)
+        intrusion = clamp((sy2 - y1) / crop_h, 0.0, 1.0)
+    else:
+        blank_ratio_keep = clamp((y2 - sy2) / crop_h, 0.0, 1.0)
+        intrusion = clamp((y2 - sy1) / crop_h, 0.0, 1.0)
+    side_consistency = 1.0 if blank_ratio_keep >= 0.18 else clamp(blank_ratio_keep / 0.18, 0.0, 1.0)
+    intrusion_pen = 1.0 - clamp(blank_ratio_keep * 1.5, 0.0, 1.0)
+    reward = clamp(0.55 * blank_ratio_keep + 0.30 * side_consistency - 0.25 * intrusion_pen, -1.0, 1.0)
+    return {
+        "reward": float(reward),
+        "blank_ratio_keep": float(blank_ratio_keep),
+        "side_consistency": float(side_consistency),
+        "intrusion": float(intrusion_pen),
+    }
 
 
 def classify_crop_tightness_label(area_ratio: float) -> str:
@@ -2858,7 +3238,7 @@ def _fallback_subject_mode_when_no_person(
         return "background_texture_copyspace", "copyspace_v1", reasons
     if bool(flags.get("is_landscape_scene", False)):
         reasons.append("fallback_scene_signal")
-        return "scene_landscape", "scene_v1", reasons
+        return "scene_general", "scene_v1", reasons
     if bool(flags.get("is_product", False)) or bool(flags.get("is_isolated_packshot", False)):
         reasons.append("fallback_object_signal")
         return "object_single", "object_v1", reasons
@@ -2884,9 +3264,13 @@ def apply_subject_policy_overrides(
         flags["subject_mode_has_text_heavy"] = bool(sm_flags.get("has_text_heavy", False))
         flags["subject_mode_has_copyspace_tag"] = bool(sm_flags.get("has_copyspace_tag", False))
         flags["subject_mode_is_background_like"] = bool(sm_flags.get("is_background_like", False))
+    if isinstance(routing_hint.get("copyspace"), dict):
+        flags["has_copy_space"] = bool(routing_hint.get("copyspace", {}).get("gate_passed", flags.get("has_copy_space", False)))
 
     mode = str(subject_mode or "").strip().lower()
     policy = str(policy_id or "").strip().lower()
+    scene_subtype = normalize_scene_subtype(routing_hint.get("scene_subtype"))
+    copyspace_meta = routing_hint.get("copyspace", {}) if isinstance(routing_hint.get("copyspace"), dict) else {}
     if not mode:
         mode = "other_ambiguous"
     if not policy:
@@ -2943,7 +3327,7 @@ def apply_subject_policy_overrides(
         if mode == "object_multi":
             lambdas["cov"] = max(lambdas.get("cov", 0.0), 0.55)
 
-    elif mode == "scene_landscape" or policy == "scene_v1":
+    elif mode in SCENE_MODES or policy == "scene_v1":
         out["tau_improve"] = max(float(out.get("tau_improve", 0.035)), 0.055)
         out["w_area"] = min(float(out.get("w_area", 0.10)), 0.08)
         lambdas["cov"] = min(lambdas.get("cov", 0.0), 0.30)
@@ -2972,6 +3356,23 @@ def apply_subject_policy_overrides(
     if not mode.startswith("portrait"):
         out["shot_type"] = "unknown"
 
+    scale_range, scale_region = subject_scale_target_range(
+        subject_mode=mode,
+        shot_type=str(out.get("shot_type", "unknown")),
+        scene_subtype=scene_subtype,
+        flags=flags,
+        has_human_evidence=bool(out.get("has_human_evidence", False)),
+    )
+    ctx_range, ctx_region = context_keep_target_range(
+        subject_mode=mode,
+        scene_subtype=scene_subtype,
+        flags=flags,
+    )
+    out["subject_scale_range"] = scale_range
+    out["subject_scale_target_region"] = scale_region
+    out["context_range"] = ctx_range
+    out["context_target_region"] = ctx_region
+
     for k in list(lambdas.keys()):
         lambdas[k] = max(0.0, float(lambdas[k]))
 
@@ -2979,6 +3380,11 @@ def apply_subject_policy_overrides(
     out["lambdas"] = lambdas
     out["subject_mode"] = mode
     out["policy_id"] = policy
+    out["scene_subtype"] = scene_subtype
+    out["scene_conf"] = safe_float(routing_hint.get("scene_conf", 0.0))
+    out["copyspace"] = copyspace_meta
+    out["copyspace_side"] = str(copyspace_meta.get("side", "unknown"))
+    out["copyspace_quality"] = str(copyspace_meta.get("quality", "none"))
     out["subject_mode_conf"] = safe_float(routing_hint.get("subject_mode_conf", 0.0))
     if "subject_mode_reasons" not in out:
         out["subject_mode_reasons"] = (
@@ -3226,7 +3632,11 @@ def compute_candidate_scores(
         crop=crop,
         horizon_y_norm=c5_info["horizon_y_norm"],
         horizon_conf=c5_info["horizon_conf"],
+        horizon_exists_prob=safe_float(c5_info.get("horizon_exists_prob", c5_info["horizon_conf"]), 0.0),
+        scene_subtype=str(route.get("scene_subtype", "")),
+        line_norm_xyxy=c5_info.get("line_norm_xyxy"),
         conf_thr=cfg.horizon_conf_thr,
+        visibility_thr=cfg.horizon_visibility_thr,
     )
 
     comp_w = effective_comp_weights(
@@ -3270,14 +3680,30 @@ def compute_candidate_scores(
 
     sym = c5_info["symmetry"]
 
+    scale_lo, scale_hi = route.get("subject_scale_range", route.get("legacy_context_range", route["context_range"]))
     ctx_lo, ctx_hi = route["context_range"]
+    subject_box_area_full = box_area(subject_box)
+    text_keep_ratio = (
+        clamp(safe_float(text_eval.get("text_keep_ratio", 1.0), 1.0), 0.0, 1.0)
+        if bool(text_eval.get("available", False))
+        else 0.0
+    )
+    copyspace_ratio = clamp(1.0 - subj_area_ratio, 0.0, 1.0)
+    context_value = compute_context_preserved(
+        crop_area=area,
+        subject_area_in_crop_ratio=subj_area_ratio,
+        subject_box_area_full=subject_box_area_full,
+        scene_bonus=0.5 * clamp(safe_float(horizon.get("visible_ratio", 0.0), 0.0), 0.0, 1.0) + 0.5 * sym,
+        text_bonus=text_keep_ratio,
+        negative_space_bonus=copyspace_ratio,
+    )
     ctx_target = 0.5 * (ctx_lo + ctx_hi)
     sigma_a = max(0.05, 0.5 * (ctx_hi - ctx_lo))
-    r_context = -abs(subj_area_ratio - ctx_target) / sigma_a
-    ctx_pass = ctx_lo <= subj_area_ratio <= ctx_hi
+    r_context = -abs(context_value - ctx_target) / sigma_a
+    ctx_pass = ctx_lo <= context_value <= ctx_hi
 
-    copyspace_ratio = clamp(1.0 - subj_area_ratio, 0.0, 1.0)
-    r_copyspace = copyspace_ratio if route["flags"].get("has_copy_space", False) else 0.0
+    copyspace_eval = compute_copyspace_reward(crop=crop, subject_box=subject_box, route=route)
+    r_copyspace = copyspace_eval["reward"] if route["flags"].get("has_copy_space", False) else 0.0
 
     p_ar_free = free_ar_prior_penalty(ar=ar, route=route, cfg=cfg) if is_freeform else 0.0
     teach_eval = compute_teacher_consensus_reward(crop=crop, teacher_ctx=teacher_ctx, cfg=cfg)
@@ -3299,7 +3725,7 @@ def compute_candidate_scores(
     )
 
     # Expensive priors (used as fallback when real expensive model is unavailable).
-    context_fit = reward_dist(abs(subj_area_ratio - ctx_target), max(0.05, sigma_a))
+    context_fit = reward_dist(abs(context_value - ctx_target), max(0.05, sigma_a))
     aesthetic_proxy = (
         0.45 * r_comp
         + 0.20 * sym
@@ -3313,7 +3739,7 @@ def compute_candidate_scores(
     # Explainability labels (continuous value + categorical label).
     ar_error = (None if is_freeform else float(abs(ar - float(target_ar))))
     subject_cov_label = classify_subject_coverage_label(cov)
-    subject_scale_label = classify_subject_scale_label(subj_area_ratio, (ctx_lo, ctx_hi))
+    subject_scale_label = classify_subject_scale_label(subj_area_ratio, (scale_lo, scale_hi))
     face_cut_label = "face_cut" if f_cut else "no_face_cut"
     joint_cut_label = classify_joint_cut_label(joint["joint_cut_score"], joint["severe_count"])
     headroom_label = classify_headroom_label(hr.get("value"), hr.get("target_range", []))
@@ -3340,7 +3766,8 @@ def compute_candidate_scores(
         na_label="center_comp_na",
     )
     horizon_label = classify_horizon_label(horizon, cfg.horizon_third_tau)
-    context_label = classify_context_label(subj_area_ratio, (ctx_lo, ctx_hi))
+    context_label = classify_context_label(context_value, (ctx_lo, ctx_hi))
+    roll_label = classify_roll_label(c5_info.get("roll_deg"), cfg.roll_violation_deg)
     text_label = classify_text_keep_label(text_eval)
     teacher_label = "teacher_consensus_na"
     if bool(teach_eval.get("enabled", False)):
@@ -3366,7 +3793,8 @@ def compute_candidate_scores(
         "subject_scale": {
             "value": float(subj_area_ratio),
             "label": subject_scale_label,
-            "target_range": [round(float(ctx_lo), 4), round(float(ctx_hi), 4)],
+            "target_range": [round(float(scale_lo), 4), round(float(scale_hi), 4)],
+            "target_region": str(route.get("subject_scale_target_region", "primary_subject")),
         },
         "face_cut": {"value": int(bool(f_cut)), "label": face_cut_label},
         "joint_cut": {
@@ -3404,11 +3832,33 @@ def compute_candidate_scores(
             "label": horizon_label,
             "third_dist": horizon.get("dist"),
             "conf": float(c5_info["horizon_conf"]),
+            "state": str(horizon.get("state", "none")),
+            "exists_prob": float(safe_float(horizon.get("exists_prob", 0.0), 0.0)),
+            "visible_ratio": float(safe_float(horizon.get("visible_ratio", 0.0), 0.0)),
+            "target_set": horizon.get("target_set", []),
+            "roll_used_in_score": False,
         },
         "context": {
-            "value": float(subj_area_ratio),
+            "value": float(context_value),
             "label": context_label,
             "target_range": [round(float(ctx_lo), 4), round(float(ctx_hi), 4)],
+            "target_region": str(route.get("context_target_region", "secondary_context")),
+        },
+        "copyspace": {
+            "value": float(r_copyspace),
+            "label": (
+                "copyspace_preserved"
+                if copyspace_eval["blank_ratio_keep"] >= 0.18 and copyspace_eval["side_consistency"] >= 0.5
+                else "copyspace_partial"
+            ),
+            "side": str(route.get("copyspace_side", "unknown")),
+            "quality": str(route.get("copyspace_quality", "none")),
+        },
+        "roll": {
+            "value": (None if c5_info.get("roll_deg") is None else float(safe_float(c5_info.get("roll_deg"), 0.0))),
+            "label": roll_label,
+            "needs_leveling": bool(roll_label == "needs_leveling"),
+            "used_in_score": False,
         },
         "teacher_consensus": {
             "value": float(safe_float(teach_eval.get("rho", 0.0), 0.0)),
@@ -3459,7 +3909,7 @@ def compute_candidate_scores(
     if lr["gaze_dir"] in {"left", "right"}:
         why_tags.append("lookroom_ok" if lr["pass"] else "lookroom_violation")
     if horizon["active"]:
-        why_tags.append("horizon_on_third" if horizon["pass"] else "horizon_off_third")
+        why_tags.append("horizon_on_target" if horizon["pass"] else "horizon_off_target")
 
     why_tags.append("context_preserved" if ctx_pass else "context_loss")
     if not f_cut:
@@ -3467,7 +3917,9 @@ def compute_candidate_scores(
     if joint["joint_cut_score"] <= 0.10:
         why_tags.append("avoid_person_cut")
     if route["flags"].get("has_copy_space", False):
-        why_tags.append("copy_space_kept" if copyspace_ratio >= 0.25 else "copy_space_lost")
+        why_tags.append("copy_space_kept" if copyspace_eval["blank_ratio_keep"] >= 0.18 else "copy_space_lost")
+    if roll_label == "needs_leveling":
+        why_tags.append("needs_leveling")
     if bool(text_eval.get("available", False)):
         why_tags.append("text_preserved" if bool(text_eval.get("pass", True)) else "text_cut_risk")
     if bool(teach_eval.get("consensus", False)):
@@ -3539,7 +3991,7 @@ def compute_candidate_scores(
             ),
         },
         {
-            "why_tag": "horizon_on_third",
+            "why_tag": "horizon_on_target",
             "metric": "horizon_dist",
             "value": horizon.get("dist"),
             "label": horizon_label,
@@ -3547,8 +3999,8 @@ def compute_candidate_scores(
         },
         {
             "why_tag": "context_preserved",
-            "metric": "subject_area",
-            "value": float(subj_area_ratio),
+            "metric": "context_preserved",
+            "value": float(context_value),
             "label": context_label,
             "pass": bool(ctx_pass),
         },
@@ -3628,7 +4080,10 @@ def compute_candidate_scores(
                 "r_lookroom": float(lr["score"]),
                 "r_sym": float(sym),
                 "r_context": float(r_context),
+                "context_value": float(context_value),
                 "r_copyspace": float(r_copyspace),
+                "copyspace_blank_ratio_keep": float(copyspace_eval["blank_ratio_keep"]),
+                "copyspace_side_consistency": float(copyspace_eval["side_consistency"]),
                 "r_teach": float(r_teach),
                 "teacher_rho": float(safe_float(teach_eval.get("rho", 0.0), 0.0)),
                 "p_ar_free": float(p_ar_free),
@@ -3686,6 +4141,20 @@ def compute_candidate_scores(
                 "conf": c5_info["horizon_conf"],
                 "third_dist": horizon["dist"],
                 "pass": bool(horizon["pass"]),
+                "state": str(horizon.get("state", "none")),
+                "exists_prob": float(safe_float(horizon.get("exists_prob", 0.0), 0.0)),
+                "visible_ratio": float(safe_float(horizon.get("visible_ratio", 0.0), 0.0)),
+                "target_set": horizon.get("target_set", []),
+                "roll_used_in_score": False,
+            },
+            "roll": {
+                "value": (None if c5_info.get("roll_deg") is None else float(safe_float(c5_info.get("roll_deg"), 0.0))),
+                "label": roll_label,
+                "needs_leveling": bool(roll_label == "needs_leveling"),
+                "rotation_hint_deg": (
+                    None if c5_info.get("roll_deg") is None else float(-safe_float(c5_info.get("roll_deg"), 0.0))
+                ),
+                "used_in_score": False,
             },
             "symmetry": {
                 "value": float(sym),
@@ -3693,8 +4162,18 @@ def compute_candidate_scores(
             },
             "context": {
                 "subject_area": float(subj_area_ratio),
+                "context_preserved": float(context_value),
                 "target_range": [round(ctx_lo, 4), round(ctx_hi, 4)],
                 "pass": bool(ctx_pass),
+                "target_region": str(route.get("context_target_region", "secondary_context")),
+            },
+            "copyspace": {
+                "side": str(route.get("copyspace_side", "unknown")),
+                "quality": str(route.get("copyspace_quality", "none")),
+                "blank_ratio_keep": float(copyspace_eval["blank_ratio_keep"]),
+                "side_consistency": float(copyspace_eval["side_consistency"]),
+                "intrusion": float(copyspace_eval["intrusion"]),
+                "pass": bool(copyspace_eval["blank_ratio_keep"] >= 0.18),
             },
             "cutoff": {
                 "joint_cutoff_score": float(joint["joint_cut_score"]),
@@ -3731,6 +4210,26 @@ def compute_candidate_scores(
         "why_text_template": why_text_template,
         "reject_tags": sorted(set(reject_tags)),
     }
+    if "teacher_id" in candidate:
+        out["teacher_id"] = candidate.get("teacher_id")
+    if "teacher_stage" in candidate:
+        out["teacher_stage"] = candidate.get("teacher_stage")
+    if "teacher_target_ar" in candidate:
+        out["teacher_target_ar"] = candidate.get("teacher_target_ar")
+    if "teacher_raw_score" in candidate:
+        out["teacher_raw_score"] = safe_float(candidate.get("teacher_raw_score", 0.0), 0.0)
+    if "teacher_ref_kind" in candidate:
+        out["teacher_ref_kind"] = candidate.get("teacher_ref_kind")
+    if "source_lineage" in candidate:
+        out["source_lineage"] = candidate.get("source_lineage", [])
+    if "teacher_derived" in candidate:
+        out["teacher_derived"] = bool(candidate.get("teacher_derived", False))
+    if "teacher_ids" in candidate:
+        out["teacher_ids"] = candidate.get("teacher_ids", [])
+    if "teacher_stages" in candidate:
+        out["teacher_stages"] = candidate.get("teacher_stages", [])
+    if "teacher_provenance" in candidate:
+        out["teacher_provenance"] = candidate.get("teacher_provenance", [])
     apply_expensive_score(
         candidate=out,
         cfg=cfg,
@@ -3922,6 +4421,26 @@ def candidate_brief(c: Dict[str, Any], rank: Optional[int] = None) -> Dict[str, 
         "reject_tags": c.get("reject_tags", []),
         "composition_checks": c.get("composition_checks", {}),
     }
+    if "teacher_id" in c:
+        out["teacher_id"] = c.get("teacher_id")
+    if "teacher_stage" in c:
+        out["teacher_stage"] = c.get("teacher_stage")
+    if "teacher_target_ar" in c:
+        out["teacher_target_ar"] = c.get("teacher_target_ar")
+    if "teacher_raw_score" in c:
+        out["teacher_raw_score"] = round(safe_float(c.get("teacher_raw_score", 0.0)), 6)
+    if "teacher_ref_kind" in c:
+        out["teacher_ref_kind"] = c.get("teacher_ref_kind")
+    if "source_lineage" in c:
+        out["source_lineage"] = c.get("source_lineage", [])
+    if "teacher_derived" in c:
+        out["teacher_derived"] = bool(c.get("teacher_derived", False))
+    if "teacher_ids" in c:
+        out["teacher_ids"] = c.get("teacher_ids", [])
+    if "teacher_stages" in c:
+        out["teacher_stages"] = c.get("teacher_stages", [])
+    if "teacher_provenance" in c:
+        out["teacher_provenance"] = c.get("teacher_provenance", [])
     if rank is not None:
         out["rank"] = int(rank)
     return out
@@ -4000,15 +4519,17 @@ def update_stats(
     horizon = checks.get("horizon", {}) if isinstance(checks.get("horizon"), dict) else {}
     h_conf = safe_float(horizon.get("conf", 0.0))
     h_dist = horizon.get("third_dist")
-    if h_dist is not None and h_conf >= cfg.horizon_conf_thr:
+    if str(horizon.get("state", "")).strip() != "none" and h_dist is not None:
         stats.horizon_subset_count += 1
         stats.horizon_third_dist.append(float(h_dist))
         if not bool(horizon.get("pass", True)):
             stats.horizon_violation_count += 1
 
-    if route["flags"].get("is_landscape_scene", False):
-        roll = horizon.get("roll_deg")
+    if route["flags"].get("is_landscape_scene", False) or is_scene_mode(route.get("subject_mode", "")):
+        roll_check = checks.get("roll", {}) if isinstance(checks.get("roll"), dict) else {}
+        roll = roll_check.get("value", horizon.get("roll_deg"))
         if roll is not None:
+            stats.roll_abs.append(abs(safe_float(roll, 0.0)))
             stats.roll_subset_count += 1
             if abs(safe_float(roll, 0.0)) > cfg.roll_violation_deg:
                 stats.roll_violation_count += 1
@@ -4016,9 +4537,8 @@ def update_stats(
     # Copy-space preservation
     if route["flags"].get("has_copy_space", False):
         stats.copyspace_subset_count += 1
-        context = checks.get("context", {}) if isinstance(checks.get("context"), dict) else {}
-        subj_area = safe_float(context.get("subject_area", 0.0))
-        if (1.0 - subj_area) >= 0.25:
+        copyspace = checks.get("copyspace", {}) if isinstance(checks.get("copyspace"), dict) else {}
+        if bool(copyspace.get("pass", False)):
             stats.copyspace_preserve_count += 1
 
 
@@ -4053,6 +4573,9 @@ def summarize_stats(stats: ARStats) -> Dict[str, Any]:
         ),
         "horizon_third_dist_p90": percentile(stats.horizon_third_dist, 0.90),
         "roll_violation_rate": stats.roll_violation_count / max(1, stats.roll_subset_count),
+        "roll_abs_p50": percentile(stats.roll_abs, 0.50),
+        "roll_abs_p90": percentile(stats.roll_abs, 0.90),
+        "needs_leveling_rate": stats.roll_violation_count / max(1, stats.roll_subset_count),
         "copyspace_preserve_rate": stats.copyspace_preserve_count / max(1, stats.copyspace_subset_count),
         "fallback_rate": stats.fallback_activated_count / n,
         "fallback_mode_counts": dict(stats.fallback_mode_counts),
@@ -4153,6 +4676,19 @@ def process_one_image(
         shot_type = hint_shot_type
     hint_subject_mode = str(routing_hint.get("subject_mode", "")).strip()
     hint_policy_id = str(routing_hint.get("policy_id", "")).strip()
+    hint_scene_subtype = str(routing_hint.get("scene_subtype", "")).strip()
+    subject_scale_range, subject_scale_target_region = subject_scale_target_range(
+        subject_mode=hint_subject_mode,
+        shot_type=shot_type,
+        scene_subtype=hint_scene_subtype,
+        flags=flags,
+        has_human_evidence=bool(has_human_evidence),
+    )
+    context_keep_range, context_target_region = context_keep_target_range(
+        subject_mode=hint_subject_mode,
+        scene_subtype=hint_scene_subtype,
+        flags=flags,
+    )
 
     route = {
         "shot_type": shot_type,
@@ -4165,12 +4701,16 @@ def process_one_image(
         "norm_size_source": norm_size_source,
         "headroom_range": headroom_prior(shot_type, portrait_category, flags),
         "lookroom_range": lookroom_prior(shot_type, flags),
-        "context_range": context_target_range(
+        "context_range": context_keep_range,
+        "legacy_context_range": context_target_range(
             shot_type=shot_type,
             flags=flags,
             portrait_category=portrait_category,
             has_human_evidence=bool(has_human_evidence),
         ),
+        "subject_scale_range": subject_scale_range,
+        "subject_scale_target_region": subject_scale_target_region,
+        "context_target_region": context_target_region,
         "tau_improve": tau_improve_for_route(shot_type, flags, num_people),
         "w_area": area_weight_for_route(flags),
         "lambdas": effective_lambdas(cfg, shot_type, flags, has_people),
@@ -4191,6 +4731,7 @@ def process_one_image(
     )
     routing_hint_debug = {
         "subject_mode": str(hint_subject_mode or ""),
+        "scene_subtype": str(routing_hint.get("scene_subtype", "") or ""),
         "policy_id": str(hint_policy_id or ""),
         "shot_type_hint": str(hint_shot_type or ""),
         "subject_mode_conf": safe_float(routing_hint.get("subject_mode_conf", 0.0), 0.0),
@@ -4209,6 +4750,11 @@ def process_one_image(
         "router_signals": (
             routing_hint.get("router_signals", {})
             if isinstance(routing_hint.get("router_signals"), dict)
+            else {}
+        ),
+        "copyspace": (
+            routing_hint.get("copyspace", {})
+            if isinstance(routing_hint.get("copyspace"), dict)
             else {}
         ),
     }
@@ -4240,12 +4786,53 @@ def process_one_image(
         if not isinstance(cands, list) or not cands:
             continue
         teacher_ctx = build_teacher_consensus_context(cand_rec=cand_rec, ar_text=ar_text, cfg=cfg)
+        public_teacher_refs_raw = (
+            select_public_teacher_refs(cand_rec=cand_rec, ar_text=ar_text)
+            if bool(cfg.save_public_teacher_ref_eval)
+            else []
+        )
 
         scored: List[Dict[str, Any]] = []
         for c in cands:
             scored.append(
                 compute_candidate_scores(
                     candidate=c,
+                    target_ar=target_ar,
+                    image_ar=image_ar,
+                    subject_box=subject_box,
+                    subject_centroid=subject_centroid,
+                    c3_info=c3_info,
+                    c5_info=c5_info,
+                    c4_info=c4_info,
+                    route=route,
+                    teacher_ctx=teacher_ctx,
+                    cfg=cfg,
+                )
+            )
+
+        public_teacher_ref_eval: List[Dict[str, Any]] = []
+        for ref in public_teacher_refs_raw:
+            ref_bbox = ref.get("bbox_norm_xyxy")
+            if not isinstance(ref_bbox, list) or len(ref_bbox) != 4:
+                continue
+            ref_candidate = {
+                "candidate_id": f"public_teacher_ref::{ar_text}::{ref['teacher_id']}::{ref['stage']}",
+                "bbox_norm_xyxy": [safe_float(v) for v in ref_bbox],
+                "area_ratio": float(box_area(ref_bbox)),
+                "ar": float(parse_target_ar(ar_text) or image_ar),
+                "source": f"public_teacher_ref:{ref['teacher_id']}",
+                "source_types": ["public_teacher_ref"],
+                "must_keep": False,
+                "priority": 0.0,
+                "teacher_id": str(ref["teacher_id"]),
+                "teacher_stage": str(ref["stage"]),
+                "teacher_target_ar": str(ref.get("target_ar", ar_text)),
+                "teacher_raw_score": float(ref.get("teacher_score", 0.0)),
+                "teacher_ref_kind": "raw_public_teacher_ref",
+            }
+            public_teacher_ref_eval.append(
+                compute_candidate_scores(
+                    candidate=ref_candidate,
                     target_ar=target_ar,
                     image_ar=image_ar,
                     subject_box=subject_box,
@@ -4360,6 +4947,7 @@ def process_one_image(
             "expensive_eval_pool": expensive_eval_pool,
             "fallback_info": fallback_info,
             "teacher_ctx": teacher_ctx,
+            "public_teacher_ref_eval": public_teacher_ref_eval,
         }
 
     # Real expensive stage on union(M candidates across AR), if resources are ready.
@@ -4368,6 +4956,10 @@ def process_one_image(
         union: Dict[str, Dict[str, Any]] = {}
         for tmp in per_ar_tmp.values():
             for c in tmp.get("expensive_eval_pool", tmp["cheap_top_m"]):
+                cid = str(c.get("candidate_id", ""))
+                if cid:
+                    union[cid] = c
+            for c in tmp.get("public_teacher_ref_eval", []):
                 cid = str(c.get("candidate_id", ""))
                 if cid:
                     union[cid] = c
@@ -4395,6 +4987,7 @@ def process_one_image(
         expensive_eval_pool = tmp.get("expensive_eval_pool", cheap_top_m)
         fallback_info = tmp["fallback_info"]
         teacher_ctx = tmp.get("teacher_ctx", {}) if isinstance(tmp.get("teacher_ctx"), dict) else {}
+        public_teacher_ref_eval = tmp.get("public_teacher_ref_eval", [])
         target_ar = tmp.get("target_ar")
         is_freeform = bool(tmp.get("is_freeform", False))
 
@@ -4535,6 +5128,8 @@ def process_one_image(
                 "enabled": bool(proposal_injected),
                 "num_teacher_candidates_ar": int(safe_float(teacher_cands_by_ar.get(ar_text, 0), 0.0)),
                 "candidate_top1_iou_to_teacher_seed": safe_float(iou_to_teacher_top1_by_ar.get(ar_text, 0.0), 0.0),
+                "public_teacher_ref_eval_saved": bool(cfg.save_public_teacher_ref_eval),
+                "public_teacher_ref_eval": [candidate_brief(c) for c in public_teacher_ref_eval],
                 "teacher_consensus": {
                     "available": bool(teacher_ctx.get("available", False)),
                     "num_teachers": int(safe_float(teacher_ctx.get("num_teachers", 0), 0.0)),
@@ -4620,6 +5215,8 @@ def process_one_image(
             "has_human_evidence": bool(has_human_evidence),
             "norm_size_source": norm_size_source,
             "subject_mode": route.get("subject_mode", "other_ambiguous"),
+            "scene_subtype": route.get("scene_subtype", SCENE_SUBTYPE_UNKNOWN),
+            "scene_conf": safe_float(route.get("scene_conf", 0.0)),
             "policy_id": route.get("policy_id", "generic_v1"),
             "subject_mode_conf": safe_float(route.get("subject_mode_conf", 0.0)),
             "subject_mode_reasons": route.get("subject_mode_reasons", []),
@@ -4627,12 +5224,14 @@ def process_one_image(
             "subject_set": route.get("subject_set", {}),
             "router_rule_id": route.get("router_rule_id", ""),
             "router_signals": route.get("router_signals", {}),
+            "copyspace": route.get("copyspace", {}),
         },
         "pipeline_debug": {
             "feature_stage": feature_stage_debug,
             "routing_hint": routing_hint_debug,
             "route_applied": {
                 "subject_mode": route.get("subject_mode", "other_ambiguous"),
+                "scene_subtype": route.get("scene_subtype", SCENE_SUBTYPE_UNKNOWN),
                 "policy_id": route.get("policy_id", "generic_v1"),
                 "subject_mode_conf": safe_float(route.get("subject_mode_conf", 0.0)),
                 "subject_mode_reasons": route.get("subject_mode_reasons", []),
@@ -4642,6 +5241,9 @@ def process_one_image(
                 "headroom_range": route.get("headroom_range", []),
                 "lookroom_range": route.get("lookroom_range", []),
                 "context_range": route.get("context_range", []),
+                "subject_scale_range": route.get("subject_scale_range", []),
+                "subject_scale_target_region": route.get("subject_scale_target_region", ""),
+                "context_target_region": route.get("context_target_region", ""),
                 "lambdas": route.get("lambdas", {}),
             },
         },
@@ -4686,6 +5288,7 @@ def run(args: argparse.Namespace) -> None:
         head_top_min_margin=float(args.head_top_min_margin),
         head_top_face_margin_alpha=float(args.head_top_face_margin_alpha),
         expensive_eval_top_m=max(0, int(args.expensive_eval_top_m)),
+        save_public_teacher_ref_eval=bool(int(args.save_public_teacher_ref_eval)),
         exp_preprocess_workers=max(0, int(args.exp_preprocess_workers)),
         exp_pin_memory=bool(int(args.exp_pin_memory)),
     )

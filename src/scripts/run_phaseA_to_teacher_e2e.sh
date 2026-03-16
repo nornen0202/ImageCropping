@@ -153,10 +153,15 @@ Core options
 --teacher_head_top_min_margin FLOAT head-top 최소 안전 마진 (default: 0.008)
 --teacher_head_top_face_margin_alpha FLOAT face 높이 기반 안전 마진 계수 (default: 0.20)
 --expensive_eval_top_m INT      expensive stage에서 AR별 평가 상한(0=cheap_top_m 전체)
+--save_public_teacher_ref_eval 0|1 public teacher raw seed/proj exact score 저장 여부 (default: 1)
 --exp_preprocess_workers INT    expensive clip preprocess thread 수(0=auto)
 --exp_pin_memory 0|1            expensive batch H2D pin_memory 사용 여부 (default: 1)
 
 --run_vlm_teacher 0|1           section10 VLM teacher 라벨 생성 실행 여부 (default: 0)
+--run_detailed_report -1|0|1    detailed report 패키지 생성 (-1=auto: run_tag가 있으면 on, default: -1)
+--report_dir PATH               detailed report 출력 경로 (default: <data_dir>/artifacts/reports/<run_tag>_detailed)
+--report_examples_per_bucket N  subject count/mode evidence 샘플 수 (default: 5)
+--report_viz_stage_dir PATH     report 전용 teacher viz staging 경로
 --vlm_backend NAME              qwen25_vl|heuristic (default: qwen25_vl)
 --vlm_fallback_backend NAME     heuristic|none (default: heuristic)
 --vlm_model_id STR              HF model id (default: Qwen/Qwen3-VL-4B-Instruct)
@@ -226,6 +231,10 @@ LOG_DIR=""
 RUN_TAG=""
 SKIP_EXISTING=1
 PRECOMPUTE_MODE="unified"
+RUN_DETAILED_REPORT=-1
+REPORT_DIR=""
+REPORT_EXAMPLES_PER_BUCKET=5
+REPORT_VIZ_STAGE_DIR=""
 
 # Filter
 RUN_FILTER=1
@@ -337,6 +346,7 @@ AESTHETIC_BACKEND="hybrid"
 AESTHETIC_PRIOR_LAION_WEIGHT=0.15
 EXP_BATCH_SIZE=24
 EXPENSIVE_EVAL_TOP_M=0
+SAVE_PUBLIC_TEACHER_REF_EVAL=1
 EXP_PREPROCESS_WORKERS=0
 EXP_PIN_MEMORY=1
 AESTHETIC_MLP_PATH="weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth"
@@ -502,6 +512,7 @@ while [ "$#" -gt 0 ]; do
     --aesthetic_prior_laion_weight) AESTHETIC_PRIOR_LAION_WEIGHT="$2"; shift 2 ;;
     --exp_batch_size) EXP_BATCH_SIZE="$2"; shift 2 ;;
     --expensive_eval_top_m) EXPENSIVE_EVAL_TOP_M="$2"; shift 2 ;;
+    --save_public_teacher_ref_eval) SAVE_PUBLIC_TEACHER_REF_EVAL="$2"; shift 2 ;;
     --exp_preprocess_workers) EXP_PREPROCESS_WORKERS="$2"; shift 2 ;;
     --exp_pin_memory) EXP_PIN_MEMORY="$2"; shift 2 ;;
     --aesthetic_mlp_path) AESTHETIC_MLP_PATH="$2"; shift 2 ;;
@@ -517,6 +528,10 @@ while [ "$#" -gt 0 ]; do
     --teacher_auto_repair_strict) TEACHER_AUTO_REPAIR_STRICT="$2"; shift 2 ;;
 
     --run_vlm_teacher) RUN_VLM_TEACHER="$2"; shift 2 ;;
+    --run_detailed_report) RUN_DETAILED_REPORT="$2"; shift 2 ;;
+    --report_dir) REPORT_DIR="$2"; shift 2 ;;
+    --report_examples_per_bucket) REPORT_EXAMPLES_PER_BUCKET="$2"; shift 2 ;;
+    --report_viz_stage_dir) REPORT_VIZ_STAGE_DIR="$2"; shift 2 ;;
     --vlm_backend) VLM_BACKEND="$2"; shift 2 ;;
     --vlm_fallback_backend) VLM_FALLBACK_BACKEND="$2"; shift 2 ;;
     --vlm_model_id) VLM_MODEL_ID="$2"; shift 2 ;;
@@ -595,6 +610,14 @@ if [ "$RUN_C1" -lt 0 ]; then
     RUN_C1=1
   else
     RUN_C1=0
+  fi
+fi
+
+if [ "$RUN_DETAILED_REPORT" -lt 0 ]; then
+  if [ -n "$RUN_TAG" ]; then
+    RUN_DETAILED_REPORT=1
+  else
+    RUN_DETAILED_REPORT=0
   fi
 fi
 
@@ -677,6 +700,7 @@ VLM_META_DIR="${VLM_DIR}/meta"
 VLM_SUMMARY_DIR="${VLM_DIR}/summary"
 VLM_DEBUG_BASE_DIR="${VLM_DIR}/debug"
 CACHE_DIR="${DATA_DIR}/cache"
+REPORTS_DIR="${ARTIFACTS_DIR}/reports"
 
 FEATS_C1_CANONICAL="${PRECOMPUTE_DIR}/feats_c1.jsonl"
 FEATS_C1="$FEATS_C1_CANONICAL"
@@ -729,6 +753,16 @@ fi
 if [ -z "$COMPONENT_VIZ_OUT_DIR" ]; then
   COMPONENT_VIZ_OUT_DIR="${PRECOMPUTE_VIZ_BASE_DIR}/components${SUFFIX}"
 fi
+if [ -z "$REPORT_DIR" ]; then
+  if [ -n "$RUN_TAG" ]; then
+    REPORT_DIR="${REPORTS_DIR}/${RUN_TAG}_detailed"
+  else
+    REPORT_DIR="${REPORTS_DIR}/latest_detailed"
+  fi
+fi
+if [ -z "$REPORT_VIZ_STAGE_DIR" ]; then
+  REPORT_VIZ_STAGE_DIR="${REPORT_DIR}/assets/_staging_teacher_viz/teacher_scorer${SUFFIX}"
+fi
 
 mkdir -p \
   "$PRECOMPUTE_DIR" \
@@ -744,7 +778,8 @@ mkdir -p \
   "$VLM_META_DIR" \
   "$VLM_SUMMARY_DIR" \
   "$VLM_DEBUG_BASE_DIR" \
-  "$CACHE_DIR"
+  "$CACHE_DIR" \
+  "$REPORTS_DIR"
 
 EFFECTIVE_IMAGE_DIR=""
 if [ "$PREFER_CURATED_IMAGES" -eq 1 ] && [ -d "$CURATED_IMAGE_DIR" ]; then
@@ -972,9 +1007,11 @@ echo " c1 source           : $FEATS_C1"
 echo " teacher_multi_gpu   : $TEACHER_MULTI_GPU (gpu_ids=${TEACHER_GPU_IDS:-auto}, workers=${TEACHER_NUM_WORKERS:-auto})"
 echo " teacher_auto_repair : $TEACHER_AUTO_REPAIR (strict=$TEACHER_AUTO_REPAIR_STRICT)"
 echo " teacher_accel       : exp_batch=$EXP_BATCH_SIZE exp_eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo " teacher_public_ref  : save_public_teacher_ref_eval=$SAVE_PUBLIC_TEACHER_REF_EVAL"
 echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC_PRIOR_LAION_WEIGHT nima_ckpt=$NIMA_MODEL_PATH require_ckpt=$NIMA_REQUIRE_CKPT"
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
+echo " run_detailed_report : $RUN_DETAILED_REPORT (dir=$REPORT_DIR examples_per_bucket=$REPORT_EXAMPLES_PER_BUCKET)"
 echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
 echo " vlm strict init     : $VLM_STRICT_BACKEND_INIT"
 echo " vlm qwen3 autofix   : $VLM_AUTOFIX_QWEN3_RUNTIME (github_fallback=$VLM_QWEN3_ALLOW_GITHUB_FALLBACK)"
@@ -1576,6 +1613,7 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --aesthetic_prior_laion_weight "$AESTHETIC_PRIOR_LAION_WEIGHT" \
         --exp_batch_size "$EXP_BATCH_SIZE" \
         --expensive_eval_top_m "$EXPENSIVE_EVAL_TOP_M" \
+        --save_public_teacher_ref_eval "$SAVE_PUBLIC_TEACHER_REF_EVAL" \
         --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
         --exp_pin_memory "$EXP_PIN_MEMORY" \
         --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \
@@ -1657,6 +1695,66 @@ if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
   fi
 fi
 
+# ------------------------------------------------------------------------------
+# 7) Detailed Report Package (optional)
+# ------------------------------------------------------------------------------
+if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
+  if [ -z "$RUN_TAG" ]; then
+    echo "[warn] run_detailed_report=1 but run_tag is empty. skipping detailed report package."
+  else
+    if [ ! -f "$MERGED_FEATS_ROUTED" ]; then
+      echo "[error] detailed report requires routed feats jsonl: $MERGED_FEATS_ROUTED"
+      exit 1
+    fi
+    if [ ! -f "$TEACHER_JSONL" ] || [ ! -f "$TEACHER_QA_JSON" ] || [ ! -f "$TEACHER_OVERVIEW_JSON" ]; then
+      echo "[error] detailed report requires teacher outputs: $TEACHER_JSONL | $TEACHER_QA_JSON | $TEACHER_OVERVIEW_JSON"
+      exit 1
+    fi
+
+    run_with_log "12a_build_report_assets" \
+      python3 src/scripts/build_sstk_report_assets.py \
+        --run_tag "$RUN_TAG" \
+        --routed_feats_jsonl "$MERGED_FEATS_ROUTED" \
+        --teacher_scores_jsonl "$TEACHER_JSONL" \
+        --teacher_qa_json "$TEACHER_QA_JSON" \
+        --components_viz_dir "$COMPONENT_VIZ_OUT_DIR" \
+        --output_report_dir "$REPORT_DIR" \
+        --examples_per_bucket "$REPORT_EXAMPLES_PER_BUCKET"
+
+    REPORT_EXAMPLE_IDS_FILE="${REPORT_DIR}/assets/analytics/report_example_image_ids_${RUN_TAG}.txt"
+    run_with_log "12b_build_detailed_report_seed" \
+      python3 src/scripts/build_sstk_detailed_report.py \
+        --run_tag "$RUN_TAG" \
+        --data_root "$DATA_DIR" \
+        --report_dir "$REPORT_DIR"
+
+    if [ -f "$REPORT_EXAMPLE_IDS_FILE" ]; then
+      run_with_log "12c_render_report_teacher_viz" \
+        python3 src/visualize_teacher_scores.py \
+          --teacher_scores_jsonl "$TEACHER_JSONL" \
+          --features_jsonl "$MERGED_FEATS_ROUTED" \
+          --parquet "$FILTERED_PARQUET" \
+          --tar_dir "$TAR_DIR" \
+          "${image_dir_args[@]}" \
+          --out_dir "$REPORT_VIZ_STAGE_DIR" \
+          --target_ar all \
+          --decision_filter all \
+          --num_samples 0 \
+          --image_ids_file "$REPORT_EXAMPLE_IDS_FILE"
+
+      run_with_log "12d_build_detailed_report_final" \
+        python3 src/scripts/build_sstk_detailed_report.py \
+          --run_tag "$RUN_TAG" \
+          --data_root "$DATA_DIR" \
+          --report_dir "$REPORT_DIR" \
+          --teacher_viz_fallback_dir "$REPORT_VIZ_STAGE_DIR"
+    else
+      echo "[warn] report example id list not found: $REPORT_EXAMPLE_IDS_FILE"
+      echo "       detailed report generated without report-specific teacher viz staging."
+    fi
+  fi
+fi
+
 echo "========================================================"
 echo " Done"
 echo "========================================================"
@@ -1685,6 +1783,10 @@ echo " teacher jsonl    : $TEACHER_JSONL"
 echo " teacher overview : $TEACHER_OVERVIEW_JSON"
 echo " teacher QA       : $TEACHER_QA_JSON"
 echo " teacher viz dir  : $TEACHER_VIZ_DIR"
+if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
+  echo " report dir       : $REPORT_DIR"
+  echo " report viz stage : $REPORT_VIZ_STAGE_DIR"
+fi
 if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
   echo " vlm labels jsonl : $VLM_OUTPUT_JSONL"
   echo " vlm meta jsonl   : $VLM_OUTPUT_META_JSONL"

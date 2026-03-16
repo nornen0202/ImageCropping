@@ -31,6 +31,8 @@ CHECKLIST_LABEL_KEYS = [
     "lookroom",
     "horizon",
     "context",
+    "copyspace",
+    "roll",
     "teacher_consensus",
     "ar",
     "crop_tightness",
@@ -119,6 +121,10 @@ def make_bucket() -> Dict[str, Any]:
         "group_no_human_count": 0,
         "scene_mode_count": 0,
         "scene_horizon_na_count": 0,
+        "needs_leveling_count": 0,
+        "roll_abs": [],
+        "scene_subtype": Counter(),
+        "copyspace_mode_fired_by": Counter(),
         "text_document_ocr_unavailable_count": 0,
         "expensive_source": Counter(),
         "fallback_activated_count": 0,
@@ -277,9 +283,11 @@ def update_bucket(
         if not bool(text_check.get("pass", True)):
             bucket["text_fail_count"] += 1
 
-    routing = ar_res.get("routing", {}) if isinstance(ar_res.get("routing"), dict) else {}
-    if not routing:
-        routing = route_global if isinstance(route_global, dict) else {}
+    routing = {}
+    if isinstance(route_global, dict):
+        routing.update(route_global)
+    if isinstance(ar_res.get("routing"), dict):
+        routing.update(ar_res.get("routing"))
     flags_route = routing.get("flags", {}) if isinstance(routing.get("flags"), dict) else {}
     subject_mode = str(routing.get("subject_mode", route_global.get("subject_mode", "other_ambiguous")))
     policy_id = str(routing.get("policy_id", route_global.get("policy_id", "generic_v1")))
@@ -288,8 +296,11 @@ def update_bucket(
     subject_set = routing.get("subject_set", {}) if isinstance(routing.get("subject_set"), dict) else {}
     router_signals = routing.get("router_signals", {}) if isinstance(routing.get("router_signals"), dict) else {}
     rule_id = str(routing.get("router_rule_id", "")).strip()
+    scene_subtype = str(routing.get("scene_subtype", ""))
     if rule_id:
         bucket["router_rule_id"][rule_id] += 1
+    if scene_subtype and subject_mode.startswith("scene"):
+        bucket["scene_subtype"][scene_subtype] += 1
 
     bucket["subject_mode"][subject_mode] += 1
     bucket["policy_id"][policy_id] += 1
@@ -337,7 +348,10 @@ def update_bucket(
     signal_ocr_available = bool(router_signals.get("ocr_available", False))
     signal_blank_ratio = safe_float(router_signals.get("blank_ratio_est", 0.0), 0.0)
     signal_blank_thr = safe_float(router_signals.get("blank_ratio_thr", 0.28), 0.28)
-    signal_copy_tag = bool(router_signals.get("has_copyspace_tag", False))
+    signal_copy_tag = bool(router_signals.get("copyspace_tag_signal", router_signals.get("has_copyspace_tag", False)))
+    signal_copy_fired_by = str(router_signals.get("copyspace_mode_fired_by", "none")).strip()
+    if signal_copy_fired_by:
+        bucket["copyspace_mode_fired_by"][signal_copy_fired_by] += 1
 
     if subject_mode.startswith("portrait") and signal_num_person <= 0:
         bucket["guard_no_person_for_portrait_count"] += 1
@@ -379,11 +393,9 @@ def update_bucket(
 
     if has_copyspace:
         bucket["copyspace_subset_count"] += 1
-        context = top1.get("composition_checks", {}).get("context", {})
-        if isinstance(context, dict):
-            subj_area = safe_float(context.get("subject_area", 1.0))
-            if (1.0 - subj_area) >= float(copyspace_keep_thr):
-                bucket["copyspace_preserve_count"] += 1
+        copyspace = top1.get("composition_checks", {}).get("copyspace", {})
+        if isinstance(copyspace, dict) and safe_float(copyspace.get("blank_ratio_keep", 0.0), 0.0) >= float(copyspace_keep_thr):
+            bucket["copyspace_preserve_count"] += 1
 
     if shot_type in {"headshot", "half", "full", "group"}:
         bucket["portrait_route_count"] += 1
@@ -394,8 +406,15 @@ def update_bucket(
     if subject_mode.startswith("scene"):
         bucket["scene_mode_count"] += 1
         horizon_check = checklist.get("horizon", {}) if isinstance(checklist, dict) else {}
-        if str(horizon_check.get("label", "")).strip() == "horizon_na":
+        if str(horizon_check.get("label", "")).strip() in {"horizon_na", ""}:
             bucket["scene_horizon_na_count"] += 1
+    roll_check = top1.get("composition_checks", {}).get("roll", {})
+    if isinstance(roll_check, dict):
+        roll_val = roll_check.get("value")
+        if roll_val is not None:
+            bucket["roll_abs"].append(abs(safe_float(roll_val, 0.0)))
+        if bool(roll_check.get("needs_leveling", False)):
+            bucket["needs_leveling_count"] += 1
 
 
 def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
@@ -412,6 +431,7 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
     consensus_avail_n = int(bucket["teacher_consensus_available_count"])
     text_keep = [float(v) for v in bucket["text_keep_ratio"]]
     text_penalty = [float(v) for v in bucket["text_penalty"]]
+    roll_abs = [float(v) for v in bucket.get("roll_abs", [])]
     why_tag_count = [int(v) for v in bucket.get("why_tag_count", [])]
     text_document_count = int(bucket["subject_mode"].get("text_document", 0))
     scene_mode_count = int(bucket["scene_mode_count"])
@@ -430,6 +450,7 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "count": int(bucket["count"]),
         "subject_mode_counts": dict(bucket["subject_mode"]),
+        "scene_subtype_counts": dict(bucket.get("scene_subtype", Counter())),
         "policy_id_counts": dict(bucket["policy_id"]),
         "explainability": {
             "checklist_present_rate": float(bucket.get("checklist_present_count", 0)) / n,
@@ -554,6 +575,12 @@ def summarize_bucket(bucket: Dict[str, Any]) -> Dict[str, Any]:
             "preserve_rate": float(bucket["copyspace_preserve_count"]) / max(
                 1, int(bucket["copyspace_subset_count"])
             ),
+            "mode_fired_by_counts": dict(bucket.get("copyspace_mode_fired_by", Counter())),
+        },
+        "geometry_qa": {
+            "needs_leveling_rate": float(bucket.get("needs_leveling_count", 0)) / n,
+            "roll_abs_p50": percentile(roll_abs, 0.50),
+            "roll_abs_p90": percentile(roll_abs, 0.90),
         },
         "expensive_source_counts": dict(bucket["expensive_source"]),
         "fallback": {

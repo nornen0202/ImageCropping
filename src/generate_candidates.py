@@ -807,25 +807,127 @@ def project_box_to_ar(
     return clip_box01([x1n, y1n, x2n, y2n])
 
 
+def _ordered_unique_str(values: Sequence[Any]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for value in values:
+        text = str(value).strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        out.append(text)
+    return out
+
+
+def _normalize_teacher_provenance_entry(entry: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(entry, dict):
+        return None
+    teacher_id = str(entry.get("teacher_id", "")).strip()
+    if not teacher_id:
+        return None
+    teacher_stage = str(entry.get("teacher_stage", "")).strip() or "unknown"
+    source = str(entry.get("source", "")).strip() or f"teacher:{teacher_id}"
+    scale_idx = str(entry.get("scale_idx", "")).strip()
+    score = entry.get("teacher_score")
+    score_norm = None if score is None else float(score)
+    preserved_via = _ordered_unique_str(entry.get("preserved_via", []) or ["candidate"])
+    return {
+        "teacher_id": teacher_id,
+        "teacher_stage": teacher_stage,
+        "teacher_score": score_norm,
+        "source": source,
+        "scale_idx": scale_idx,
+        "preserved_via": preserved_via,
+    }
+
+
+def ensure_candidate_provenance(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    source_types = candidate.get("source_types", [])
+    if not isinstance(source_types, list):
+        source_types = [candidate.get("source")]
+    candidate["source_types"] = _ordered_unique_str(source_types or [candidate.get("source")])
+    candidate["source_lineage"] = _ordered_unique_str(
+        [candidate.get("source")] + candidate.get("source_lineage", []) + candidate["source_types"]
+    )
+
+    entries: List[Dict[str, Any]] = []
+    for item in candidate.get("teacher_provenance", []) or []:
+        norm = _normalize_teacher_provenance_entry(item)
+        if norm is not None:
+            entries.append(norm)
+
+    teacher_id = str(candidate.get("teacher_id", "")).strip()
+    if teacher_id:
+        direct = _normalize_teacher_provenance_entry(
+            {
+                "teacher_id": teacher_id,
+                "teacher_stage": candidate.get("teacher_stage", "unknown"),
+                "teacher_score": candidate.get("teacher_score"),
+                "source": candidate.get("source"),
+                "scale_idx": candidate.get("scale_idx"),
+                "preserved_via": ["candidate"],
+            }
+        )
+        if direct is not None:
+            entries.append(direct)
+
+    merged: Dict[Tuple[str, str, str, str], Dict[str, Any]] = {}
+    for entry in entries:
+        key = (
+            str(entry["teacher_id"]),
+            str(entry["teacher_stage"]),
+            str(entry["source"]),
+            str(entry.get("scale_idx", "")),
+        )
+        prev = merged.get(key)
+        if prev is None:
+            merged[key] = dict(entry)
+            continue
+        prev["preserved_via"] = _ordered_unique_str(prev.get("preserved_via", []) + entry.get("preserved_via", []))
+        prev_score = prev.get("teacher_score")
+        entry_score = entry.get("teacher_score")
+        if prev_score is None or (entry_score is not None and float(entry_score) > float(prev_score)):
+            prev["teacher_score"] = entry_score
+
+    teacher_provenance = list(merged.values())
+    candidate["teacher_provenance"] = teacher_provenance
+    candidate["teacher_derived"] = bool(teacher_provenance)
+    candidate["teacher_ids"] = sorted({str(x["teacher_id"]) for x in teacher_provenance})
+    candidate["teacher_stages"] = sorted({str(x["teacher_stage"]) for x in teacher_provenance})
+    return candidate
+
+
+def merge_candidate_provenance(dst: Dict[str, Any], src: Dict[str, Any], reason: str) -> Dict[str, Any]:
+    ensure_candidate_provenance(dst)
+    ensure_candidate_provenance(src)
+    dst["source_types"] = _ordered_unique_str(dst.get("source_types", []) + src.get("source_types", []))
+    dst["source_lineage"] = _ordered_unique_str(dst.get("source_lineage", []) + src.get("source_lineage", []))
+
+    merged_entries: List[Dict[str, Any]] = list(dst.get("teacher_provenance", []))
+    for entry in src.get("teacher_provenance", []):
+        copied = dict(entry)
+        copied["preserved_via"] = _ordered_unique_str(list(copied.get("preserved_via", [])) + [reason])
+        merged_entries.append(copied)
+    dst["teacher_provenance"] = merged_entries
+    dst["must_keep"] = bool(dst.get("must_keep", False) or src.get("must_keep", False))
+    return ensure_candidate_provenance(dst)
+
+
 def dedupe_by_rounded_box(
     cands: Sequence[Dict[str, Any]],
     ndigits: int = 6,
 ) -> List[Dict[str, Any]]:
     kept: Dict[Tuple[float, float, float, float], Dict[str, Any]] = {}
     for c in cands:
+        current = ensure_candidate_provenance(dict(c))
         box = c["bbox_norm_xyxy"]
         key = tuple(round(float(v), ndigits) for v in box)
         if key not in kept:
-            kept[key] = dict(c)
+            kept[key] = current
             continue
 
         prev = kept[key]
-        prev["source_types"] = sorted(
-            set(prev.get("source_types", [])) | set(c.get("source_types", []))
-        )
-        prev["must_keep"] = bool(
-            prev.get("must_keep", False) or c.get("must_keep", False)
-        )
+        merge_candidate_provenance(prev, current, reason="dedupe_box")
     return list(kept.values())
 
 
@@ -853,9 +955,17 @@ def nms_candidates(
 
     accepted: List[Dict[str, Any]] = []
     for idx in sorted_idx:
-        cand = candidates[idx]
+        cand = ensure_candidate_provenance(candidates[idx])
         box = cand["bbox_norm_xyxy"]
-        if any(iou_xyxy(box, k["bbox_norm_xyxy"]) > iou_thr for k in kept):
+        matched_existing = None
+        matched_iou = -1.0
+        for kept_cand in kept:
+            overlap = iou_xyxy(box, kept_cand["bbox_norm_xyxy"])
+            if overlap > iou_thr and overlap > matched_iou:
+                matched_existing = kept_cand
+                matched_iou = overlap
+        if matched_existing is not None:
+            merge_candidate_provenance(matched_existing, cand, reason="nms_suppressed")
             continue
         kept.append(cand)
         accepted.append(cand)
@@ -1099,7 +1209,7 @@ def resolve_subject_prior(
         subj_box = union_pref
         source_parts.append("routing_union")
         union_used = True
-    elif mode in {"scene_landscape", "background_texture_copyspace", "text_document"}:
+    elif mode in {"scene_general", "scene_landscape", "background_texture_copyspace", "text_document"}:
         if union_pref is not None:
             subj_box = union_pref
             source_parts.append("routing_union")
@@ -1176,7 +1286,7 @@ def add_candidate(
     }
     if extra:
         cand.update(extra)
-    out.append(cand)
+    out.append(ensure_candidate_provenance(cand))
     return cand
 
 
@@ -2206,7 +2316,7 @@ def load_jsonl_map(path: Path, value_key: str) -> Dict[str, Any]:
 
 def config_hash(cfg: CandidateGenConfig) -> str:
     payload = asdict(cfg)
-    payload["impl_version"] = "candidate_gen_v1_10_free"
+    payload["impl_version"] = "candidate_gen_v1_11_teacher_provenance"
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(blob).hexdigest()[:16]
 

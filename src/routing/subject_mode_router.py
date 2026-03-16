@@ -9,7 +9,7 @@ SUBJECT_MODE_TO_POLICY: Dict[str, str] = {
     "portrait_group": "portrait_group_v1",
     "object_single": "object_v1",
     "object_multi": "object_multi_v1",
-    "scene_landscape": "scene_v1",
+    "scene_general": "scene_v1",
     "background_texture_copyspace": "copyspace_v1",
     "text_document": "text_v1",
     "other_ambiguous": "generic_v1",
@@ -45,11 +45,25 @@ COPYSPACE_HINTS = (
 SCENE_HINTS = ("landscape", "cityscape", "interior", "architecture", "scenery", "panorama")
 OBJECT_HINTS = ("animal", "pet", "product", "vehicle", "car", "food", "object")
 BLANK_RATIO_COPYSPACE_MIN = 0.28
+BLANK_RATIO_COPYSPACE_STRONG = 0.40
+SCENE_SCORE_MIN = 0.35
+OBJECT_DOMINANCE_MIN = 0.18
+FOREGROUND_MASS_MIN = 0.12
 PERSON_CLASS_IDS = {0}
 PERSON_BOX_DEDUP_IOU = 0.85
 POSE_SCORE_PERSON_MIN = 0.30
 POSE_FACE_SCORE_MIN = 0.20
 POSE_C2_SUPPORT_IOU_MIN = 0.10
+SCENE_SUBTYPE_UNKNOWN = "scene_general_unknown"
+SCENE_HORIZON_TARGETS: Dict[str, List[float]] = {
+    "scene_landscape_nature": [1.0 / 3.0, 2.0 / 3.0],
+    "scene_reflection_symmetry": [0.5],
+    "scene_city_architecture": [1.0 / 3.0, 0.5, 2.0 / 3.0],
+    "scene_interior_architecture": [],
+    "scene_structural_pattern": [],
+    "scene_contextual_object": [],
+    SCENE_SUBTYPE_UNKNOWN: [],
+}
 
 
 def _safe_float(v: Any, default: float = 0.0) -> float:
@@ -165,6 +179,128 @@ def _box_area_ratio_xyxy(box: Sequence[float], width: int, height: int) -> float
     h = max(1.0, float(height))
     area = _box_area(box)
     return float(_clamp(area / (w * h), 0.0, 1.0))
+
+
+def _max_foreground_area_ratio(c2_instances: Sequence[Dict[str, Any]]) -> float:
+    best = 0.0
+    for inst in c2_instances:
+        if not isinstance(inst, dict) or bool(inst.get("bg_like", False)):
+            continue
+        best = max(best, _safe_float(inst.get("area_ratio", 0.0), 0.0))
+    return float(_clamp(best, 0.0, 1.0))
+
+
+def _foreground_mass_ratio(union_box: Optional[Sequence[float]], width: int, height: int) -> float:
+    if not isinstance(union_box, (list, tuple)) or len(union_box) != 4:
+        return 0.0
+    return _box_area_ratio_xyxy([float(v) for v in union_box], width, height)
+
+
+def _infer_copyspace_side(union_box: Optional[Sequence[float]], width: int, height: int) -> str:
+    if not isinstance(union_box, (list, tuple)) or len(union_box) != 4:
+        return "unknown"
+    x1, y1, x2, y2 = [float(v) for v in union_box]
+    w = max(1.0, float(width))
+    h = max(1.0, float(height))
+    margins = {
+        "left": max(0.0, x1) / w,
+        "right": max(0.0, w - x2) / w,
+        "top": max(0.0, y1) / h,
+        "bottom": max(0.0, h - y2) / h,
+    }
+    side, value = max(margins.items(), key=lambda kv: kv[1])
+    return side if value >= 0.10 else "unknown"
+
+
+def _infer_copyspace_quality(
+    *,
+    blank_ratio: float,
+    tag_signal: bool,
+    hint_signal: bool,
+    gate_passed: bool,
+) -> str:
+    if gate_passed and tag_signal and blank_ratio >= BLANK_RATIO_COPYSPACE_STRONG:
+        return "strong"
+    if gate_passed:
+        return "weak"
+    if tag_signal or hint_signal or blank_ratio >= BLANK_RATIO_COPYSPACE_MIN:
+        return "pseudo"
+    return "none"
+
+
+def _infer_copyspace_mode_fired_by(
+    *,
+    tag_signal: bool,
+    hint_signal: bool,
+    blank_signal: bool,
+) -> str:
+    if tag_signal and blank_signal:
+        return "tag+blank"
+    if blank_signal and hint_signal:
+        return "fallback_hint"
+    if tag_signal:
+        return "tag_only"
+    if blank_signal:
+        return "blank_only"
+    if hint_signal:
+        return "fallback_hint"
+    return "none"
+
+
+def _infer_scene_subtype(
+    *,
+    tags_norm: Sequence[str],
+    super_cat: str,
+    horizon_exists_prob: float,
+    horizon_conf: float,
+    symmetry_score: float,
+    largest_obj_area_ratio: float,
+    foreground_mass_ratio: float,
+) -> Tuple[str, float, float]:
+    text = " | ".join(str(x).strip().lower() for x in tags_norm if str(x).strip())
+    sc = str(super_cat or "").strip().lower()
+    is_nature = sc == "landscape_nature" or any(
+        k in text for k in ("landscape", "nature", "mountain", "beach", "sea", "scenery", "panorama")
+    )
+    is_city = sc == "architecture_exterior" or any(
+        k in text for k in ("cityscape", "skyline", "architecture", "building", "urban", "downtown")
+    )
+    is_interior = sc == "indoor_interior" or any(
+        k in text for k in ("interior", "indoor", "room", "lobby", "office", "corridor")
+    )
+    is_reflection = any(k in text for k in ("reflection", "reflective", "mirror", "mirrored", "lake", "water"))
+    is_pattern = any(k in text for k in ("pattern", "texture", "geometric", "geometry", "abstract"))
+
+    dominant_vertical_strength = 0.0
+    if is_city or is_interior:
+        dominant_vertical_strength = 0.60 + 0.30 * _clamp(symmetry_score, 0.0, 1.0)
+    elif is_pattern:
+        dominant_vertical_strength = 0.35 + 0.25 * _clamp(symmetry_score, 0.0, 1.0)
+
+    subtype = SCENE_SUBTYPE_UNKNOWN
+    conf = 0.35
+    if is_reflection and symmetry_score >= 0.45:
+        subtype = "scene_reflection_symmetry"
+        conf = 0.75 + 0.10 * _clamp(symmetry_score, 0.0, 1.0)
+    elif is_nature and horizon_exists_prob >= 0.15:
+        subtype = "scene_landscape_nature"
+        conf = 0.68 + 0.20 * _clamp(horizon_conf, 0.0, 1.0)
+    elif is_interior:
+        subtype = "scene_interior_architecture"
+        conf = 0.66 + 0.15 * _clamp(dominant_vertical_strength, 0.0, 1.0)
+    elif is_city:
+        subtype = "scene_city_architecture"
+        conf = 0.64 + 0.12 * _clamp(dominant_vertical_strength, 0.0, 1.0)
+    elif is_pattern and largest_obj_area_ratio < 0.18:
+        subtype = "scene_structural_pattern"
+        conf = 0.62 + 0.15 * _clamp(symmetry_score, 0.0, 1.0)
+    elif largest_obj_area_ratio >= 0.16 or foreground_mass_ratio >= 0.20:
+        subtype = "scene_contextual_object"
+        conf = 0.58 + 0.12 * _clamp(max(largest_obj_area_ratio, foreground_mass_ratio), 0.0, 1.0)
+    elif is_nature:
+        subtype = "scene_landscape_nature"
+        conf = 0.55 + 0.15 * _clamp(horizon_conf, 0.0, 1.0)
+    return subtype, float(_clamp(conf, 0.0, 0.99)), float(_clamp(dominant_vertical_strength, 0.0, 1.0))
 
 
 def _person_union_box(c3_pose: Any, width: int, height: int) -> Optional[List[float]]:
@@ -499,10 +635,18 @@ def _infer_mode(
     tags_norm: Sequence[str],
     super_cat: str,
     c3_person_count: int,
+    text_signal: bool,
+    text_evidence_strong: bool,
+    copyspace_gate_passed: bool,
+    object_signal: bool,
+    largest_obj_area_ratio: float,
+    foreground_mass_ratio: float,
+    scene_signal: bool,
+    scene_score: float,
 ) -> Tuple[str, float, List[str], str]:
     sc = str(super_cat or "").strip().lower()
     reasons: List[str] = []
-    if sc in TEXT_SUPER_CATS or _has_any_hint(tags_norm, TEXT_HINTS):
+    if text_signal and text_evidence_strong and (sc in TEXT_SUPER_CATS or _has_any_hint(tags_norm, TEXT_HINTS)):
         reasons.append("text_signal")
         return "text_document", 0.95, reasons, "rule_text"
     if c3_person_count >= 2 or _has_any_hint(tags_norm, GROUP_HINTS):
@@ -511,15 +655,20 @@ def _infer_mode(
     if c3_person_count == 1 or sc in PEOPLE_SUPER_CATS or _has_any_hint(tags_norm, PORTRAIT_HINTS):
         reasons.append("portrait_signal")
         return "portrait_single", 0.85, reasons, "rule_portrait"
-    if _has_any_hint(tags_norm, COPYSPACE_HINTS):
+    if copyspace_gate_passed:
         reasons.append("copyspace_signal")
         return "background_texture_copyspace", 0.80, reasons, "rule_copyspace"
-    if sc in SCENE_SUPER_CATS or _has_any_hint(tags_norm, SCENE_HINTS):
-        reasons.append("scene_signal")
-        return "scene_landscape", 0.75, reasons, "rule_scene"
-    if sc in OBJECT_SUPER_CATS or _has_any_hint(tags_norm, OBJECT_HINTS):
+    if object_signal and (
+        largest_obj_area_ratio >= OBJECT_DOMINANCE_MIN or foreground_mass_ratio >= FOREGROUND_MASS_MIN
+    ):
         reasons.append("object_signal")
         return "object_single", 0.60, reasons, "rule_object"
+    if scene_signal or scene_score >= SCENE_SCORE_MIN:
+        reasons.append("scene_signal")
+        return "scene_general", 0.75, reasons, "rule_scene"
+    if object_signal:
+        reasons.append("object_signal")
+        return "object_single", 0.55, reasons, "rule_object"
     reasons.append("fallback")
     return "other_ambiguous", 0.30, reasons, "rule_fallback"
 
@@ -529,20 +678,24 @@ def _fallback_mode_after_guard(
     tags_norm: Sequence[str],
     super_cat: str,
     text_signal: bool,
-    copyspace_allowed: bool,
+    text_evidence_strong: bool,
+    copyspace_gate_passed: bool,
+    object_signal: bool,
+    scene_signal: bool,
+    scene_score: float,
 ) -> Tuple[str, float, List[str], str]:
     sc = str(super_cat or "").strip().lower()
     reasons: List[str] = []
-    if text_signal and (sc in TEXT_SUPER_CATS or _has_any_hint(tags_norm, TEXT_HINTS)):
+    if text_signal and text_evidence_strong and (sc in TEXT_SUPER_CATS or _has_any_hint(tags_norm, TEXT_HINTS)):
         reasons.append("fallback_text_signal")
         return "text_document", 0.55, reasons, "fallback_text"
-    if copyspace_allowed:
+    if copyspace_gate_passed:
         reasons.append("fallback_copyspace_signal")
         return "background_texture_copyspace", 0.55, reasons, "fallback_copyspace"
-    if sc in SCENE_SUPER_CATS or _has_any_hint(tags_norm, SCENE_HINTS):
+    if scene_signal or scene_score >= SCENE_SCORE_MIN:
         reasons.append("fallback_scene_signal")
-        return "scene_landscape", 0.50, reasons, "fallback_scene"
-    if sc in OBJECT_SUPER_CATS or _has_any_hint(tags_norm, OBJECT_HINTS):
+        return "scene_general", 0.50, reasons, "fallback_scene"
+    if object_signal or sc in OBJECT_SUPER_CATS or _has_any_hint(tags_norm, OBJECT_HINTS):
         reasons.append("fallback_object_signal")
         return "object_single", 0.45, reasons, "fallback_object"
     reasons.append("fallback_ambiguous")
@@ -570,8 +723,6 @@ def route_subject_mode(
     c3_list = c3_pose if isinstance(c3_pose, list) else []
     person_stats = _person_signal_stats(c2_instances=c2_instances, c3_pose=c3_list, width=width, height=height)
     num_person = int(person_stats["num_person"])
-    mode, conf, reasons, base_rule_id = _infer_mode(tags_norm=tags_norm, super_cat=super_cat, c3_person_count=num_person)
-    router_rule_id = base_rule_id
 
     primary_idx_seed = int(c2_primary_idx) if c2_primary_idx is not None else -1
     primary_idx_seed = primary_idx_seed if 0 <= primary_idx_seed < len(c2_instances) else (-1 if not c2_instances else 0)
@@ -589,13 +740,16 @@ def route_subject_mode(
 
     has_text_hint = _has_any_hint(tags_norm, TEXT_HINTS)
     has_copyspace_tag = _has_any_hint(tags_norm, COPYSPACE_HINTS)
+    has_scene_hint = _has_any_hint(tags_norm, SCENE_HINTS)
+    has_object_hint = _has_any_hint(tags_norm, OBJECT_HINTS)
     text_boxes = max(0, int(_safe_float(ocr_text_boxes_count, 0.0)))
     text_overlay = bool(text_overlay_likely) if text_overlay_likely is not None else False
     ocr_method = str(ocr_backend_method or "").strip().lower()
     ocr_available = ocr_method not in {"", "unknown", "unavailable", "disabled"}
     strong_text_evidence = bool(text_boxes > 0 or text_overlay)
     text_signal = bool(has_text_hint or text_overlay or text_boxes > 0 or str(super_cat or "").strip().lower() in TEXT_SUPER_CATS)
-    copyspace_signal = bool(copy_space_flag) if copy_space_flag is not None else bool(has_copyspace_tag)
+    copyspace_hint_signal = bool(copy_space_flag) if copy_space_flag is not None else False
+    copyspace_signal = bool(has_copyspace_tag or copyspace_hint_signal)
 
     if blank_ratio_est is None:
         if isinstance(union_box_seed, list) and len(union_box_seed) == 4:
@@ -606,7 +760,55 @@ def route_subject_mode(
             blank_ratio = 0.0
     else:
         blank_ratio = _clamp(_safe_float(blank_ratio_est, 0.0), 0.0, 1.0)
-    copyspace_allowed = bool(copyspace_signal and blank_ratio >= BLANK_RATIO_COPYSPACE_MIN)
+    copyspace_blank_signal = bool(blank_ratio >= BLANK_RATIO_COPYSPACE_MIN)
+    copyspace_gate_passed = bool(copyspace_signal and copyspace_blank_signal)
+    copyspace_mode_fired_by = _infer_copyspace_mode_fired_by(
+        tag_signal=bool(has_copyspace_tag),
+        hint_signal=bool(copyspace_hint_signal),
+        blank_signal=bool(copyspace_blank_signal),
+    )
+    largest_obj_area_ratio = _max_foreground_area_ratio(c2_instances)
+    foreground_mass_ratio = _foreground_mass_ratio(union_box_seed, width, height)
+    scene_signal = bool(str(super_cat or "").strip().lower() in SCENE_SUPER_CATS or has_scene_hint)
+    object_signal = bool(str(super_cat or "").strip().lower() in OBJECT_SUPER_CATS or has_object_hint)
+    horizon_exists_prob = _clamp(_safe_float(horizon_conf, 0.0), 0.0, 1.0)
+    scene_score = float(
+        _clamp(
+            0.45 * (1.0 if scene_signal else 0.0)
+            + 0.20 * horizon_exists_prob
+            + 0.20 * _clamp(_safe_float(symmetry_score, 0.0), 0.0, 1.0)
+            + 0.15 * (1.0 - _clamp(largest_obj_area_ratio, 0.0, 1.0)),
+            0.0,
+            1.0,
+        )
+    )
+    scene_subtype = None
+    scene_conf = 0.0
+    dominant_vertical_strength = 0.0
+    mode, conf, reasons, base_rule_id = _infer_mode(
+        tags_norm=tags_norm,
+        super_cat=super_cat,
+        c3_person_count=num_person,
+        text_signal=text_signal,
+        text_evidence_strong=strong_text_evidence,
+        copyspace_gate_passed=copyspace_gate_passed,
+        object_signal=object_signal,
+        largest_obj_area_ratio=largest_obj_area_ratio,
+        foreground_mass_ratio=foreground_mass_ratio,
+        scene_signal=scene_signal,
+        scene_score=scene_score,
+    )
+    if mode == "scene_general":
+        scene_subtype, scene_conf, dominant_vertical_strength = _infer_scene_subtype(
+            tags_norm=tags_norm,
+            super_cat=super_cat,
+            horizon_exists_prob=horizon_exists_prob,
+            horizon_conf=_safe_float(horizon_conf, 0.0),
+            symmetry_score=_safe_float(symmetry_score, 0.0),
+            largest_obj_area_ratio=largest_obj_area_ratio,
+            foreground_mass_ratio=foreground_mass_ratio,
+        )
+    router_rule_id = base_rule_id
 
     guard_reasons: List[str] = []
 
@@ -617,7 +819,11 @@ def route_subject_mode(
             tags_norm=tags_norm,
             super_cat=super_cat,
             text_signal=text_signal,
-            copyspace_allowed=copyspace_allowed,
+            text_evidence_strong=strong_text_evidence,
+            copyspace_gate_passed=copyspace_gate_passed,
+            object_signal=object_signal,
+            scene_signal=scene_signal,
+            scene_score=scene_score,
         )
         reasons.extend(guard_reasons + fb_reasons)
         router_rule_id = f"{base_rule_id}|{fb_rule_id}"
@@ -630,10 +836,17 @@ def route_subject_mode(
             tags_norm=tags_norm,
             super_cat=super_cat,
             text_signal=False,
-            copyspace_allowed=copyspace_allowed,
+            text_evidence_strong=False,
+            copyspace_gate_passed=copyspace_gate_passed,
+            object_signal=object_signal,
+            scene_signal=scene_signal,
+            scene_score=scene_score,
         )
         reasons.extend(["guard_text_requires_c4_evidence"] + fb_reasons)
         router_rule_id = f"{base_rule_id}|{fb_rule_id}"
+    elif text_signal and not strong_text_evidence and "guard_text_requires_c4_evidence" not in reasons:
+        reasons.append("guard_text_requires_c4_evidence")
+        guard_reasons.append("guard_text_requires_c4_evidence")
 
     # P0 guard #3: copy-space tag only is insufficient when blank ratio is low.
     if mode == "background_texture_copyspace" and copyspace_signal and (blank_ratio < BLANK_RATIO_COPYSPACE_MIN):
@@ -642,10 +855,31 @@ def route_subject_mode(
             tags_norm=tags_norm,
             super_cat=super_cat,
             text_signal=text_signal,
-            copyspace_allowed=False,
+            text_evidence_strong=strong_text_evidence,
+            copyspace_gate_passed=False,
+            object_signal=object_signal,
+            scene_signal=scene_signal,
+            scene_score=scene_score,
         )
         reasons.extend(["guard_low_blank_ratio_for_copyspace"] + fb_reasons)
         router_rule_id = f"{base_rule_id}|{fb_rule_id}"
+    elif copyspace_signal and (blank_ratio < BLANK_RATIO_COPYSPACE_MIN) and "guard_low_blank_ratio_for_copyspace" not in reasons:
+        reasons.append("guard_low_blank_ratio_for_copyspace")
+        guard_reasons.append("guard_low_blank_ratio_for_copyspace")
+
+    if mode == "scene_general":
+        scene_subtype, scene_conf, dominant_vertical_strength = _infer_scene_subtype(
+            tags_norm=tags_norm,
+            super_cat=super_cat,
+            horizon_exists_prob=horizon_exists_prob,
+            horizon_conf=_safe_float(horizon_conf, 0.0),
+            symmetry_score=_safe_float(symmetry_score, 0.0),
+            largest_obj_area_ratio=largest_obj_area_ratio,
+            foreground_mass_ratio=foreground_mass_ratio,
+        )
+    else:
+        scene_subtype = None
+        scene_conf = 0.0
 
     # Finalize subject source/union after guard-corrected mode.
     primary_idx = int(primary_idx_seed)
@@ -680,7 +914,7 @@ def route_subject_mode(
                     union_box = [round(v, 3) for v in union_box]
         if mode == "object_multi":
             multi_subject = True
-    elif mode in {"scene_landscape", "background_texture_copyspace", "text_document"}:
+    elif mode in {"scene_general", "background_texture_copyspace", "text_document"}:
         primary_idx = -1
         primary_source = "none"
 
@@ -723,7 +957,7 @@ def route_subject_mode(
         primary_subject_type = "object"
     elif mode == "text_document":
         primary_subject_type = "text"
-    elif mode in {"scene_landscape", "background_texture_copyspace"}:
+    elif mode in {"scene_general", "background_texture_copyspace"}:
         primary_subject_type = "scene"
 
     mode_conflict = False
@@ -754,17 +988,46 @@ def route_subject_mode(
         "text_evidence_strong": bool(strong_text_evidence),
         "text_signal": bool(text_signal),
         "has_copyspace_tag": bool(has_copyspace_tag),
+        "copyspace_tag_signal": bool(has_copyspace_tag),
+        "copyspace_hint_signal": bool(copyspace_hint_signal),
         "copy_space_flag": bool(copyspace_signal),
         "blank_ratio_est": round(float(blank_ratio), 6),
         "blank_ratio_thr": float(BLANK_RATIO_COPYSPACE_MIN),
-        "copyspace_allowed": bool(copyspace_allowed),
+        "copyspace_blank_signal": bool(copyspace_blank_signal),
+        "copyspace_gate_passed": bool(copyspace_gate_passed),
+        "copyspace_mode_fired_by": str(copyspace_mode_fired_by),
+        "copyspace_allowed": bool(copyspace_gate_passed),
+        "horizon_exists_prob": round(float(horizon_exists_prob), 6),
         "horizon_conf": round(float(_safe_float(horizon_conf, 0.0)), 6),
         "symmetry_score": round(float(_safe_float(symmetry_score, 0.0)), 6),
+        "scene_tag_signal": bool(scene_signal),
+        "scene_score": round(float(scene_score), 6),
+        "largest_obj_area_ratio": round(float(largest_obj_area_ratio), 6),
+        "foreground_mass_ratio": round(float(foreground_mass_ratio), 6),
+        "dominant_vertical_strength": round(float(dominant_vertical_strength), 6),
+    }
+    copyspace = {
+        "tag_signal": bool(has_copyspace_tag),
+        "hint_signal": bool(copyspace_hint_signal),
+        "blank_signal": bool(copyspace_blank_signal),
+        "gate_passed": bool(copyspace_gate_passed),
+        "mode_fired_by": str(copyspace_mode_fired_by),
+        "side": _infer_copyspace_side(union_box_seed, width, height),
+        "blank_ratio_est": round(float(blank_ratio), 6),
+        "blank_ratio_thr": float(BLANK_RATIO_COPYSPACE_MIN),
+        "quality": _infer_copyspace_quality(
+            blank_ratio=float(blank_ratio),
+            tag_signal=bool(has_copyspace_tag),
+            hint_signal=bool(copyspace_hint_signal),
+            gate_passed=bool(copyspace_gate_passed),
+        ),
     }
 
     return {
         "subject_mode": mode,
         "subject_mode_conf": round(float(conf), 6),
+        "scene_subtype": scene_subtype,
+        "scene_conf": round(float(scene_conf), 6),
         "subject_mode_reasons": reasons,
         "subject_mode_flags": flags,
         "subject_mode_conflict": bool(mode_conflict),
@@ -788,4 +1051,5 @@ def route_subject_mode(
         "policy_id": SUBJECT_MODE_TO_POLICY.get(mode, "generic_v1"),
         "router_rule_id": str(router_rule_id),
         "router_signals": router_signals,
+        "copyspace": copyspace,
     }

@@ -13,9 +13,11 @@ from multiprocessing import Pool
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import argparse
 from tqdm import tqdm
-from collections import Counter
+from collections import Counter, defaultdict
 from itertools import chain
 import shutil
+
+DEFAULT_IMAGE_EXTS = (".jpg", ".jpeg", ".png", ".webp")
 
 
 def _parse_gpu_ids_csv(csv_text):
@@ -585,9 +587,6 @@ def extract_and_save_samples(df_curated, df_rejected, args):
 
 
 def export_curated_images(df_curated, args):
-    import tarfile
-    default_image_exts = {".jpg", ".jpeg", ".png", ".webp"}
-
     image_dir = (args.save_curated_images_dir or "").strip()
     if not image_dir:
         return
@@ -600,69 +599,137 @@ def export_curated_images(df_curated, args):
         print("[export_curated_images] Missing tar_name column. Skipping.")
         return
 
-    by_tar = {}
-    for _, row in df_curated.iterrows():
-        tar_name = str(row["tar_name"])
-        image_id = str(row["image_id"])
-        by_tar.setdefault(tar_name, set()).add(image_id)
+    by_tar = defaultdict(set)
+    for tar_name, image_id in zip(df_curated["tar_name"].astype(str), df_curated["image_id"].astype(str)):
+        by_tar[tar_name].add(image_id)
+
+    existing_stems = _collect_existing_image_stems(image_dir) if skip_existing else set()
+    skipped = 0
+    jobs = []
+    for tar_name, id_set in by_tar.items():
+        pending_ids = set(id_set)
+        if existing_stems:
+            already_saved = pending_ids & existing_stems
+            if already_saved:
+                skipped += len(already_saved)
+                pending_ids -= already_saved
+        if pending_ids:
+            jobs.append((tar_name, sorted(pending_ids), args.tar_dir, args.bucket, image_dir))
+
+    total_jobs = len(jobs)
+    workers = _resolve_cpu_workers(
+        requested=int(getattr(args, "save_curated_images_workers", 0)),
+        total_items=total_jobs,
+        auto_cap=int(getattr(args, "save_curated_images_auto_workers_cap", 8)),
+    )
+    chunksize = max(1, int(getattr(args, "save_curated_images_chunksize", 1)))
+
+    print(
+        f"[export_curated_images] jobs={total_jobs} workers={workers} "
+        f"chunksize={chunksize} pre_skipped={skipped}"
+    )
 
     saved = 0
-    skipped = 0
     missing = 0
-    for tar_name, id_set in tqdm(by_tar.items(), desc="Export curated images"):
-        if not id_set:
-            continue
-        tar_path = os.path.join(args.tar_dir, tar_name)
-        if not os.path.exists(tar_path):
-            tar_path = os.path.join(args.tar_dir, args.bucket, tar_name)
-        if not os.path.exists(tar_path):
-            missing += len(id_set)
-            continue
+    failed_jobs = 0
+    job_iter = None
+    pool = None
 
-        targets = set(id_set)
-        try:
-            with tarfile.open(tar_path, "r|") as tf:
-                for member in tf:
-                    if not member.isfile():
-                        continue
-                    base = os.path.basename(member.name)
-                    stem, ext = os.path.splitext(base)
-                    if stem not in targets:
-                        continue
-                    ext = ext.lower()
-                    if ext not in default_image_exts:
-                        # SSTK tar member order is often: .desc/.id/.jpg/.tags.
-                        # Only export real image payloads.
-                        continue
-                    out_path = os.path.join(image_dir, f"{stem}{ext}")
-                    has_existing = False
-                    if skip_existing:
-                        for e in default_image_exts:
-                            if os.path.exists(os.path.join(image_dir, f"{stem}{e}")):
-                                has_existing = True
-                                break
-                    if has_existing:
-                        skipped += 1
-                    else:
-                        fobj = tf.extractfile(member)
-                        if fobj is None:
-                            continue
-                        with open(out_path, "wb") as wf:
-                            wf.write(fobj.read())
-                        saved += 1
-                    targets.remove(stem)
-                    if not targets:
-                        break
-            if targets:
-                missing += len(targets)
-        except Exception as e:
-            print(f"[export_curated_images] Failed to export from {tar_name}: {e}")
-            missing += len(targets)
+    try:
+        if total_jobs > 0 and workers > 1:
+            pool = Pool(processes=workers)
+            job_iter = pool.imap_unordered(_export_curated_images_from_single_tar, jobs, chunksize=chunksize)
+        else:
+            job_iter = map(_export_curated_images_from_single_tar, jobs)
+
+        for result in tqdm(job_iter, total=total_jobs, desc="Export curated images"):
+            saved += int(result.get("saved", 0))
+            missing += int(result.get("missing", 0))
+            if result.get("error"):
+                failed_jobs += 1
+                if failed_jobs <= 20:
+                    print(
+                        "[export_curated_images] Failed to export from "
+                        f"{result.get('tar_name')}: {result.get('error')}"
+                    )
+    finally:
+        if pool is not None:
+            pool.close()
+            pool.join()
+
+    if failed_jobs > 20:
+        print(f"[export_curated_images] ... and {failed_jobs - 20} more tar export errors")
 
     print(
         f"[export_curated_images] done. saved={saved} skipped={skipped} "
-        f"missing={missing} total_targets={len(df_curated)}"
+        f"missing={missing} total_targets={len(df_curated)} failed_tars={failed_jobs}"
     )
+
+
+def _collect_existing_image_stems(image_dir):
+    stems = set()
+    try:
+        with os.scandir(image_dir) as it:
+            for entry in it:
+                if not entry.is_file():
+                    continue
+                stem, ext = os.path.splitext(entry.name)
+                if stem and ext.lower() in DEFAULT_IMAGE_EXTS:
+                    stems.add(stem)
+    except FileNotFoundError:
+        return set()
+    return stems
+
+
+def _resolve_curated_tar_path(tar_dir, bucket, tar_name):
+    candidates = [
+        os.path.join(tar_dir, tar_name),
+        os.path.join(tar_dir, bucket, tar_name) if bucket else "",
+    ]
+    for path in candidates:
+        if path and os.path.exists(path):
+            return path
+    return ""
+
+
+def _export_curated_images_from_single_tar(job):
+    import tarfile
+
+    tar_name, image_ids, tar_dir, bucket, image_dir = job
+    targets = set(image_ids)
+    tar_path = _resolve_curated_tar_path(tar_dir, bucket, tar_name)
+    if not tar_path:
+        return {"saved": 0, "missing": len(targets), "tar_name": tar_name, "error": "tar_not_found"}
+
+    saved = 0
+    try:
+        with tarfile.open(tar_path, "r|") as tf:
+            for member in tf:
+                if not member.isfile():
+                    continue
+                base = os.path.basename(member.name)
+                stem, ext = os.path.splitext(base)
+                if stem not in targets:
+                    continue
+                ext = ext.lower()
+                if ext not in DEFAULT_IMAGE_EXTS:
+                    # SSTK tar member order is often: .desc/.id/.jpg/.tags.
+                    # Only export real image payloads.
+                    continue
+                fobj = tf.extractfile(member)
+                if fobj is None:
+                    continue
+                out_path = os.path.join(image_dir, f"{stem}{ext}")
+                with open(out_path, "wb") as wf:
+                    shutil.copyfileobj(fobj, wf, length=1024 * 1024)
+                saved += 1
+                targets.remove(stem)
+                if not targets:
+                    break
+    except Exception as e:
+        return {"saved": saved, "missing": len(targets), "tar_name": tar_name, "error": str(e)}
+
+    return {"saved": saved, "missing": len(targets), "tar_name": tar_name, "error": ""}
 
 
 def _dir_has_parquet(path):
@@ -801,6 +868,24 @@ def main():
     parser.add_argument('--server_mode', type=int, default=1, help="If 1, no limits are applied. If not 1, limits the processed tar count for local debugging.")
     parser.add_argument('--save_curated_images_dir', type=str, default="", help="Optional local image export dir for curated pool")
     parser.add_argument('--save_curated_images_skip_existing', type=int, default=1, help="1=skip existing files while exporting curated images")
+    parser.add_argument(
+        '--save_curated_images_workers',
+        type=int,
+        default=0,
+        help="CPU workers for curated image export (-1=all cores, 0=auto(cap), >0=fixed).",
+    )
+    parser.add_argument(
+        '--save_curated_images_auto_workers_cap',
+        type=int,
+        default=8,
+        help="Auto-mode max workers cap for curated image export.",
+    )
+    parser.add_argument(
+        '--save_curated_images_chunksize',
+        type=int,
+        default=1,
+        help="Multiprocessing chunksize for curated image export jobs.",
+    )
     parser.add_argument(
         '--require_train_match',
         type=int,

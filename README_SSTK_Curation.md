@@ -15,6 +15,11 @@
 - 신규 end-to-end 오케스트레이터 추가
   - `src/scripts/run_phaseA_to_teacher_e2e.sh`
   - Filter → Precompute → Candidate → Teacher(+QA/+Viz) → VLM Teacher(옵션)까지 1개 커맨드로 실행
+- Teacher final score 구조 업데이트
+  - 최종 정렬은 `score_rank`
+  - keep/minimal/crop 정책은 `score_policy = score_rank + area prior`
+  - `teacher_scores_ar_*.jsonl`에는 `macro_scores`, `macro_components`, `macro_masks`, `score_rank`, `score_policy`, `final_legacy`가 함께 저장됨
+  - OpenCLIP align 모델은 `ViT-H-14` GPU OOM 시 즉시 CPU fallback 하지 않고 먼저 `ViT-B-32/openai`로 GPU downgrade 후 real-expensive를 유지
 - Precompute 통합 모드(`--precompute_mode unified`) 도입
   - C1/C2/C3/C4/C5/C6를 1-pass로 추출 가능 (`run_c1=1`일 때 C1 포함)
   - `enrich_c3_pose_jsonl.py`로 face/gaze proxy 보강 후 최종 병합 피처 직접 생성
@@ -179,6 +184,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 필터 결과가 이미 있을 때
 ```bash
 DATANAME=10K
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -190,12 +197,12 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
   --extract_mode auto \
-  --extract_gpu_ids 0,1,2,3,4,5,6,7 \
-  --num_workers 7 \
+  --extract_gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS} \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
-  --teacher_num_workers 7 \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 512 \
@@ -226,6 +233,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 Filter만 재실행하면서 태그 임베딩 멀티 GPU를 강제하려면:
 ```bash
 DATANAME=10K
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -234,7 +243,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_candidates 0 --run_teacher 0 --run_vlm_teacher 0 \
   --filter_require_train_match 1 \
   --filter_tag_embed_multi_gpu 1 \
-  --filter_tag_embed_gpu_ids 0,1,2,3,4,5,6,7 \
+  --filter_tag_embed_gpu_ids ${GPU_IDS} \
   --filter_tag_embed_batch_size 128 \
   --filter_tag_embed_chunk_size 0 \
   --filter_tag_embed_device auto \
@@ -249,6 +258,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 `5.5 공개 Teacher 추론/변환(설치 포함)`까지 같은 실행에서 자동 적용하려면:
 ```bash
 DATANAME=10K
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -262,13 +273,13 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teachers gaic,cacnet,cgs \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --public_infer_multi_gpu 1 \
-  --public_infer_gpu_ids 0,1,2 \
-  --public_infer_num_workers 3 \
+  --public_infer_gpu_ids ${GPU_IDS} \
+  --public_infer_num_workers ${N_WORKERS} \
   --public_teacher_max_images -1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
-  --teacher_num_workers 8 \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 128 \
@@ -299,6 +310,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 ### Teacher Scorer 단계 재실행
 ```bash
 DATANAME=10K_local
+GPU_IDS=0,1,2
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -310,8 +323,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2 \
-  --teacher_num_workers 4 \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 128 \
@@ -341,6 +354,13 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 아래 템플릿은 **현재 구현된 품질 최우선 모듈(C4=PP-OCRv5 server, C5=ScaleLSD 우선, C6=Gaze-LLE/Gazelle 우선)**까지 포함한 end-to-end 실행 템플릿입니다.
 
+중요:
+- `--run_filter 0`은 `data/SSTK/${DATANAME}/filtered_sstk_*.parquet`가 이미 있을 때만 사용하세요.
+- `DATANAME`이 신규 디렉토리이거나 필터 산출물이 없으면 `--run_filter 1`로 바꿔야 합니다.
+- `--run_filter 0`일 때는 `--curated_pool_size`, `--top_percentile`는 참고용으로만 남고 실제 필터링 재실행에는 쓰이지 않습니다.
+- `--skip_existing 1`은 새 `RUN_TAG`로 1회 실행할 때 권장입니다. 같은 `RUN_TAG`로 산출물을 다시 검증하거나 덮어쓸 때는 `--skip_existing 0`이 더 안전합니다.
+- 현재 `run_phaseA_to_teacher_e2e.sh`는 teacher/QA/detailed report뿐 아니라 학습 데이터 생성기(`pairwise/listwise/decision/checklist/regression`)까지 자동 생성할 수 있습니다.
+
 품질 최우선 백엔드 강제(권장):
 ```bash
 # C4 OCR
@@ -358,25 +378,28 @@ export C6_GAZELLE_DEVICE=cuda
 ```
 
 ```bash
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+
 POOL_SIZE=100
 DATANAME=Test_${POOL_SIZE}
-RUN_TAG=260309_r0
+RUN_TAG=260316_r2
 
 #POOL_SIZE=10000
 #DATANAME=Full_${POOL_SIZE}
-#RUN_TAG=260309_r0
+#RUN_TAG=260316_r1
 
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --bucket sstk_100 \
   --data_dir data/SSTK/${DATANAME} \
   --server_mode 1 \
   --tar_dir /sstk/20230916/sstk_100 \
-  --run_filter 1 \
+  --run_filter 0 \
   --curated_pool_size ${POOL_SIZE} \
   --top_percentile 0.2 \
   --filter_require_train_match 1 \
   --filter_tag_embed_multi_gpu 1 \
-  --filter_tag_embed_gpu_ids 0,1,2 \
+  --filter_tag_embed_gpu_ids ${GPU_IDS} \
   --filter_tag_embed_batch_size 128 \
   --filter_tag_embed_chunk_size 0 \
   --filter_tag_embed_device auto \
@@ -393,8 +416,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --subject_routing_allow_det_proxy 1 \
   --extract_mode auto \
   --extract_multi_gpu 1 \
-  --extract_gpu_ids 0,1,2 \
-  --num_workers 3 \
+  --extract_gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS} \
   --extract_priority quality_first \
   --c5_priority quality_first \
   --batch_size 512 \
@@ -411,8 +434,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teacher_device auto \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --public_infer_multi_gpu 1 \
-  --public_infer_gpu_ids 0,1,2,3,4,5,6,7 \
-  --public_infer_num_workers 8 \
+  --public_infer_gpu_ids ${GPU_IDS} \
+  --public_infer_num_workers ${N_WORKERS} \
   --public_infer_skip_on_oom 1 \
   --public_infer_fallback_cpu_on_oom 1 \
   --public_infer_fallback_cpu_max_images 3 \
@@ -442,11 +465,33 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   | tee src/scripts/logs/run_phaseA_to_teacher_${DATANAME}_${RUN_TAG}.log
 ```
 
+처음부터 완전 신규 실행이면 위 명령에서 아래 한 줄만 바꿔서 시작하세요.
+```bash
+  --run_filter 1 \
+```
+
+자동 생성 결과(teacher score 이후 후처리):
+- `train_pairwise.jsonl`
+- `train_listwise.jsonl`
+- `train_decision.jsonl`
+- `train_checklist.jsonl`
+- `train_regression.jsonl`
+- `qa_summary.json`
+- `TRAINING_DATA_REPORT_KO.md`
+
+최소 확인 포인트:
+- teacher score jsonl: `data/SSTK/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl`
+- detailed report: `data/SSTK/${DATANAME}/artifacts/reports/${RUN_TAG}_detailed/REPORT_DRAFT_KO.md`
+- training label QA: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/qa_summary.json`
+- training label report: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/TRAINING_DATA_REPORT_KO.md`
+
 권장 재실행 명령 기존 산출물을 덮어쓰는 가장 짧은 재실행입니다. 영향 범위는 subject routing -> teacher -> QA -> viz만입니다.
 ```bash
 POOL_SIZE=100
 DATANAME=Test_${POOL_SIZE}
 RUN_TAG=260309_r0
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --bucket sstk_100 \
@@ -470,8 +515,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teacher_device auto \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --public_infer_multi_gpu 1 \
-  --public_infer_gpu_ids 0,1,2,3,4,5,6,7 \
-  --public_infer_num_workers 8 \
+  --public_infer_gpu_ids ${GPU_IDS} \
+  --public_infer_num_workers ${N_WORKERS} \
   --public_infer_skip_on_oom 1 \
   --public_infer_fallback_cpu_on_oom 1 \
   --public_infer_fallback_cpu_max_images 3 \
@@ -513,8 +558,9 @@ Filter 태그 임베딩 멀티 GPU 옵션 설명:
 - `tag_cat_probs_cache_*.pkl`가 이미 유효하면 태그 임베딩 단계 자체가 skip됩니다.
 
 정리:
-- 위 `3.6` 템플릿 1회 실행으로 `Filter -> Precompute(C1~C6) -> Subject Routing -> Candidate -> Teacher -> VLM` 전체가 수행됩니다.
+- 위 `3.6` 템플릿 1회 실행으로 `Filter -> Precompute(C1~C6) -> Subject Routing -> Candidate -> Teacher -> QA -> Detailed Report -> Training Labels`까지 수행됩니다.
 - `--run_component_viz 1`을 켜면 precompute 시각화가 자동 생성되며, 출력은 기본적으로 `data/SSTK/<DATANAME>/artifacts/precompute/visualizations/components_<run_tag>/`에 저장됩니다.
+- 학습 데이터 생성 단계만 끄고 싶으면 `--run_training_labels 0`을 명시하세요.
 - precompute 시각화 산출물은 `original/`, `c2_seg/`, `c3_pose/`, `c4_ocr/`, `c5_geom/`, `c6_gaze/`, `combined_all/` 및 `viz_overview.json`입니다.
 - 기본 candidate AR 세트는 `FREE`를 포함합니다. (`--cand_ar_list`로 조정 가능)
 - `teacher_scores_jsonl`의 `results_by_ar`에 `FREE` 키가 함께 생성되며, `--vlm_target_ar all`이면 Stage10도 `FREE`를 포함해 라벨을 생성합니다.
@@ -674,6 +720,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 ```bash
 DATANAME=10K_local
 RUNTAG=rerun1_public_e2e_subject_mode
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 
 bash src/scripts/run_vlm_teacher_labeler_qwen3_env.sh \
   --qwen3_venv_path /group-volume/jaden.ju/Venvs/qwen3_vlm \
@@ -689,8 +737,8 @@ bash src/scripts/run_vlm_teacher_labeler_qwen3_env.sh \
   --top_m 12 \
   --top_k 5 \
   --multi_gpu 1 \
-  --gpu_ids 0,1,2,3,4,5,6,7 \
-  --num_workers 8
+  --gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS}
 ```
 
 참고:
@@ -704,6 +752,8 @@ Teacher Scorer 결과가 이미 있을 때(재추론 없이 10단계만 실행):
 DATANAME=10K_local
 BASE_TAG=rerun1_public_e2e
 SM_TAG=${BASE_TAG}_subject_mode
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -721,8 +771,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_top_k 5 \
   --vlm_fallback_backend heuristic \
   --vlm_multi_gpu 1 \
-  --vlm_gpu_ids 0,1,2,3,4,5,6,7 \
-  --vlm_num_workers 8 \
+  --vlm_gpu_ids ${GPU_IDS} \
+  --vlm_num_workers ${N_WORKERS} \
   --vlm_save_raw_response 1 \
   --vlm_strict_backend_init 1 \
   --skip_existing 0 \
@@ -733,6 +783,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 DATANAME=10K
 BASE_TAG=e2e_260227_r0
 SM_TAG=${BASE_TAG}_subject_mode
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -750,8 +802,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_top_k 5 \
   --vlm_fallback_backend heuristic \
   --vlm_multi_gpu 1 \
-  --vlm_gpu_ids 0,1,2,3,4,5,6,7 \
-  --vlm_num_workers 8 \
+  --vlm_gpu_ids ${GPU_IDS} \
+  --vlm_num_workers ${N_WORKERS} \
   --vlm_save_raw_response 1 \
   --vlm_strict_backend_init 1 \
   --skip_existing 0 \
@@ -983,6 +1035,8 @@ BASE_TAG=rerun1_public_e2e
 SM_TAG=${BASE_TAG}_subject_mode
 DATA_DIR=data/SSTK/${DATANAME}
 REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 # C1 전략: 0=기존 c1 재활용(권장), 1=C1 재생성(HF/OpenCLIP 다운로드 가능 환경)
 RUN_C1_REBUILD=0
 
@@ -1024,8 +1078,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
-  --teacher_num_workers 8 \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 128 \
@@ -1092,6 +1146,8 @@ BASE_TAG=rerun1_public_e2e
 SM_TAG=${BASE_TAG}_subject_mode
 DATA_DIR=data/SSTK/${DATANAME}
 REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 
 # 0) 선행 산출물 확인
 if [ ! -f "${DATA_DIR}/artifacts/teacher/scores/teacher_scores_ar_${SM_TAG}.jsonl" ]; then
@@ -1118,8 +1174,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_top_k 5 \
   --vlm_fallback_backend heuristic \
   --vlm_multi_gpu 1 \
-  --vlm_gpu_ids 0,1,2,3,4,5,6,7 \
-  --vlm_num_workers 8 \
+  --vlm_gpu_ids ${GPU_IDS} \
+  --vlm_num_workers ${N_WORKERS} \
   --vlm_save_raw_response 1 \
   --vlm_strict_backend_init 1 \
   --skip_existing 0 \
@@ -1149,6 +1205,8 @@ BASE_TAG=e2e_260227_r0
 SM_TAG=${BASE_TAG}_260304
 DATA_DIR=data/SSTK/${DATANAME}
 REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 # C1 전략: 0=기존 c1 재활용(권장), 1=C1 재생성(HF/OpenCLIP 다운로드 가능 환경)
 RUN_C1_REBUILD=0
 
@@ -1190,8 +1248,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
-  --teacher_num_workers 8 \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 128 \
@@ -1272,8 +1330,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_top_k 5 \
   --vlm_fallback_backend heuristic \
   --vlm_multi_gpu 1 \
-  --vlm_gpu_ids 0,1,2,3,4,5,6,7 \
-  --vlm_num_workers 8 \
+  --vlm_gpu_ids ${GPU_IDS} \
+  --vlm_num_workers ${N_WORKERS} \
   --vlm_save_raw_response 1 \
   --vlm_strict_backend_init 1 \
   --skip_existing 0 \
@@ -1310,6 +1368,8 @@ BASE_TAG=e2e_260227_r0
 SM_TAG=${BASE_TAG}_subject_mode
 DATA_DIR=data/SSTK/${DATANAME}
 REPORT_DIR=${DATA_DIR}/artifacts/reports/${SM_TAG}
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 # C1 전략: 0=기존 c1 재활용(권장), 1=C1 재생성(HF/OpenCLIP 다운로드 가능 환경)
 RUN_C1_REBUILD=0
 
@@ -1356,8 +1416,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_teacher 1 \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids 0,1,2,3,4,5,6,7 \
-  --teacher_num_workers 8 \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 512 \
@@ -1737,6 +1797,11 @@ Subject-Mode enrich(신규):
 - `--component_viz_num_samples`: precompute 시각화 샘플 수
 - `--component_viz_out_dir`: precompute 시각화 출력 경로
 - `--component_viz_image_ids`: precompute 시각화 대상 image_id CSV
+- `--run_training_labels -1|0|1`:
+  - `1` = teacher score 이후 `pairwise/listwise/decision/checklist/regression` 생성기 실행
+  - `0` = training labels 단계 skip
+  - `-1` = auto (`run_tag`가 있으면 on)
+- `--training_labels_dir`: training labels 출력 경로 (기본 `artifacts/training_labels/<run_tag>`)
 - `--component_viz_image_ids_file`: precompute 시각화 대상 image_id 파일(한 줄 1개)
 - `--run_candidates --run_teacher`
 - `--cand_ar_list`: candidate target AR CSV (기본: `FREE,1:1,9:16,16:9,3:4,4:3`)
@@ -1819,8 +1884,8 @@ v1.9 proposal 주입 관련:
   - `--aesthetic_mlp_path`, `--aesthetic_mlp_url`
 - 멀티 GPU 샤딩:
   - `--multi_gpu 1`
-  - `--gpu_ids 0,1,2,3`
-  - `--num_workers 4`
+  - `--gpu_ids ${GPU_IDS}`
+  - `--num_workers ${N_WORKERS}`
 - `--run_qa 1`, `--run_viz 1`, `--num_viz`
 - `--viz_image_ids`, `--viz_image_ids_file`: teacher viz 대상 image_id 고정(보고서/디버그용)
 - 자동 복구: `src/scripts/repair_teacher_outputs.py`
@@ -1840,6 +1905,8 @@ v1.9 proposal 주입 관련:
 1) 처음부터 끝까지 실행(설치 포함):
 ```bash
 DATANAME=10K
+GPU_IDS=0,1,2,3
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -1853,8 +1920,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teachers gaic,cacnet,cgs \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --public_infer_multi_gpu 1 \
-  --public_infer_gpu_ids 0,1,2,3 \
-  --public_infer_num_workers 4 \
+  --public_infer_gpu_ids ${GPU_IDS} \
+  --public_infer_num_workers ${N_WORKERS} \
   --public_infer_skip_on_oom 1 \
   --public_infer_fallback_cpu_on_oom 1 \
   --public_infer_fallback_cpu_max_images 3 \
@@ -1867,6 +1934,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 2) 필터 결과가 이미 있을 때(4.2~9 + 5.5 자동 적용):
 ```bash
 DATANAME=10K
+GPU_IDS=0,1,2,3
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -1880,8 +1949,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --public_teachers gaic,cacnet,cgs \
   --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
   --public_infer_multi_gpu 1 \
-  --public_infer_gpu_ids 0,1,2,3 \
-  --public_infer_num_workers 4 \
+  --public_infer_gpu_ids ${GPU_IDS} \
+  --public_infer_num_workers ${N_WORKERS} \
   --public_infer_skip_on_oom 1 \
   --public_infer_fallback_cpu_on_oom 1 \
   --public_infer_fallback_cpu_max_images 3 \
@@ -1916,8 +1985,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   - `--strict_backend_init` (기본 1)
 - 멀티 GPU 샤딩:
   - `--multi_gpu -1|0|1` (`-1`이면 qwen+cuda+multi-gpu 환경에서 auto on)
-  - `--gpu_ids 0,1,2,3`
-  - `--num_workers 4`
+  - `--gpu_ids ${GPU_IDS}`
+  - `--num_workers ${N_WORKERS}`
 - 디버그:
   - `--save_raw_response 1`
   - `--debug_dir <path>`
@@ -1993,8 +2062,10 @@ bash src/scripts/run_setup_public_cropping_teachers.sh \
 4-2. GAIC/CACNet/CGS raw 추론(JSONL):
 - `--prefer_curated_images 1` + `--curated_image_dir ...`를 사용하면 curated 이미지 디렉토리를 우선 사용하고, 누락 이미지만 `tar_dir`에서 fallback 로드합니다.
 - `--curated_image_dir`를 생략하면 래퍼가 기본값으로 `<input_parquet 디렉토리>/images`를 사용합니다.
-- 멀티 GPU를 강제하려면 `--multi_gpu 1 --gpu_ids 0,1,2,3 --num_workers 4`를 추가합니다.
+- 멀티 GPU를 강제하려면 `GPU_IDS=0,1,2,3`, `N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")`를 선언한 뒤 `--multi_gpu 1 --gpu_ids ${GPU_IDS} --num_workers ${N_WORKERS}`를 추가합니다.
 ```bash
+GPU_IDS=0,1,2,3
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_infer_public_cropping_teachers.sh \
   data/SSTK/10K_local/filtered_sstk_100.parquet \
   /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 \
@@ -2003,8 +2074,8 @@ bash src/scripts/run_infer_public_cropping_teachers.sh \
   --prefer_curated_images 1 \
   --curated_image_dir data/SSTK/10K_local/images \
   --multi_gpu 1 \
-  --gpu_ids 0,1,2,3 \
-  --num_workers 4 \
+  --gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS} \
   --gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
 ```
 

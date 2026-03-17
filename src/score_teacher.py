@@ -202,6 +202,12 @@ class TeacherScorerConfig:
     w_edge: float = 0.5
     w_teach: float = 0.10
     w_ar_free: float = 0.20
+    rank_weight_a: float = 1.0
+    rank_weight_s: float = 1.0
+    rank_weight_c: float = 1.0
+    rank_weight_t: float = 0.10
+    a_macro_aesthetic_weight: float = 0.75
+    a_macro_align_weight: float = 0.25
     aesthetic_score_min: float = 1.0
     aesthetic_score_max: float = 10.0
     expensive_eval_top_m: int = 0  # 0 means evaluate all cheap_top_m in expensive stage
@@ -322,6 +328,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--teach_require_consensus", type=int, default=1, help="1=gate R_teach by consensus")
     p.add_argument("--lambda_teach", type=float, default=0.10, help="cheap-stage R_teach weight")
     p.add_argument("--w_teach", type=float, default=0.10, help="expensive-stage R_teach weight")
+    p.add_argument("--rank_weight_a", type=float, default=1.0, help="macro rank fusion weight for A_macro")
+    p.add_argument("--rank_weight_s", type=float, default=1.0, help="macro rank fusion weight for S_macro")
+    p.add_argument("--rank_weight_c", type=float, default=1.0, help="macro rank fusion weight for C_macro")
+    p.add_argument("--rank_weight_t", type=float, default=0.10, help="macro rank fusion weight for T_macro")
+    p.add_argument(
+        "--a_macro_aesthetic_weight",
+        type=float,
+        default=0.75,
+        help="internal A_macro weight for crop aesthetic score",
+    )
+    p.add_argument(
+        "--a_macro_align_weight",
+        type=float,
+        default=0.25,
+        help="internal A_macro weight for image-text alignment quality",
+    )
     p.add_argument("--teacher_tau_boost_delta", type=float, default=0.02, help="tau_improve boost when baseline aligns with teacher consensus")
     p.add_argument("--teacher_tau_boost_baseline_iou", type=float, default=0.90, help="baseline IoU threshold for tau boost")
     p.add_argument("--hard_head_top_rule", type=int, default=1, help="1=portrait head-top(hair) cut hard reject")
@@ -3486,10 +3508,10 @@ def apply_expensive_score(
         + cfg.w_edge * r_edge
         + cfg.w_teach * r_teach
     )
-    final_score = exp_score + float(w_area) * math.log(max(1e-8, area))
+    legacy_final_score = exp_score + float(w_area) * math.log(max(1e-8, area))
 
     candidate["scores"]["expensive"] = float(exp_score)
-    candidate["scores"]["final"] = float(final_score)
+    candidate["scores"]["final_legacy"] = float(legacy_final_score)
     comps["aesthetic_raw"] = None if a_raw is None else float(a_raw)
     comps["aesthetic_norm"] = float(a_norm)
     comps["cosine_img_text"] = float(ca_val)
@@ -3503,6 +3525,240 @@ def apply_expensive_score(
     comps["aesthetic_mean_nima"] = None if a_mean_nima is None else float(a_mean_nima)
     comps["aesthetic_std_nima"] = None if a_std_nima is None else float(max(0.0, a_std_nima))
     comps["aesthetic_norm_nima"] = None if a_norm_nima is None else float(a_norm_nima)
+    macro_scores, macro_components, macro_masks = compute_macro_score_bundle(
+        candidate=candidate,
+        cfg=cfg,
+    )
+    score_rank = fuse_macro_scores(macro_scores=macro_scores, macro_masks=macro_masks, cfg=cfg)
+    area_log_prior = float(w_area) * math.log(max(1e-8, area))
+    score_policy = score_rank + area_log_prior
+    candidate["scores"]["rank"] = float(score_rank)
+    candidate["scores"]["policy"] = float(score_policy)
+    candidate["scores"]["final"] = float(score_rank)
+    candidate["scores"]["area_log_prior"] = float(area_log_prior)
+    candidate["macro_scores"] = macro_scores
+    candidate["macro_components"] = macro_components
+    candidate["macro_masks"] = macro_masks
+    candidate["policy"] = {
+        "area_ratio": float(area),
+        "area_log_prior": float(area_log_prior),
+    }
+
+
+def _score_from_centered_band(value: Optional[float], lo: float, hi: float) -> Optional[float]:
+    if value is None:
+        return None
+    lo_f = float(lo)
+    hi_f = float(hi)
+    if hi_f <= lo_f:
+        return 1.0 if float(value) >= lo_f else 0.0
+    v = float(value)
+    if lo_f <= v <= hi_f:
+        return 1.0
+    span = max(1e-6, hi_f - lo_f)
+    dist = (lo_f - v) if v < lo_f else (v - hi_f)
+    return clamp(1.0 - dist / span, 0.0, 1.0)
+
+
+def _score_from_signed_term(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    return clamp(0.5 + 0.5 * float(value), 0.0, 1.0)
+
+
+def _score_from_penalty(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    return clamp(1.0 - float(value), 0.0, 1.0)
+
+
+def _weighted_subset_average(values: Dict[str, Optional[float]], weights: Dict[str, float]) -> Optional[float]:
+    num = 0.0
+    den = 0.0
+    for key, weight in weights.items():
+        val = values.get(key)
+        w = max(0.0, float(weight))
+        if val is None or w <= 0.0:
+            continue
+        num += w * float(val)
+        den += w
+    if den <= 0.0:
+        return None
+    return num / den
+
+
+def compute_macro_score_bundle(
+    candidate: Dict[str, Any],
+    cfg: TeacherScorerConfig,
+) -> Tuple[Dict[str, Optional[float]], Dict[str, Optional[float]], Dict[str, int]]:
+    comps = candidate.get("scores", {}).get("components", {})
+    checklist = candidate.get("checklist", {}) if isinstance(candidate.get("checklist"), dict) else {}
+    flags = candidate.get("flags", {}) if isinstance(candidate.get("flags"), dict) else {}
+    subject_mode = str(candidate.get("subject_mode", "")).strip().lower()
+
+    align_value = clamp(0.5 * (safe_float(comps.get("cosine_img_text", 0.0), 0.0) + 1.0), 0.0, 1.0)
+    a_components = {
+        "A_aesthetic": clamp(safe_float(comps.get("aesthetic_norm", 0.0), 0.0), 0.0, 1.0),
+        "A_align": align_value,
+    }
+    A_macro = _weighted_subset_average(
+        a_components,
+        {
+            "A_aesthetic": float(cfg.a_macro_aesthetic_weight),
+            "A_align": float(cfg.a_macro_align_weight),
+        },
+    )
+
+    subject_scale = checklist.get("subject_scale", {}) if isinstance(checklist.get("subject_scale"), dict) else {}
+    scale_value = safe_optional_float(subject_scale.get("value"))
+    scale_target_range = subject_scale.get("target_range", [])
+    if isinstance(scale_target_range, (list, tuple)) and len(scale_target_range) >= 2:
+        scale_score = _score_from_centered_band(scale_value, scale_target_range[0], scale_target_range[1])
+    else:
+        scale_score = None
+    s_components = {
+        "S_cov": clamp(safe_float(comps.get("cov", 0.0), 0.0), 0.0, 1.0),
+        "S_scale": scale_score,
+        "S_border": 0.0 if bool(flags.get("subject_touch_border", False)) else 1.0,
+        "S_softcut_quality": _score_from_penalty(safe_optional_float(comps.get("p_cut"))),
+    }
+    if subject_mode.startswith("scene_"):
+        s_weights = {
+            "S_cov": 0.45,
+            "S_scale": 0.20,
+            "S_border": 0.15,
+            "S_softcut_quality": 0.20,
+        }
+    elif subject_mode.startswith("portrait"):
+        s_weights = {
+            "S_cov": 0.40,
+            "S_scale": 0.25,
+            "S_border": 0.20,
+            "S_softcut_quality": 0.15,
+        }
+    else:
+        s_weights = {
+            "S_cov": 0.35,
+            "S_scale": 0.25,
+            "S_border": 0.20,
+            "S_softcut_quality": 0.20,
+        }
+    S_macro = _weighted_subset_average(s_components, s_weights)
+
+    headroom_meta = checklist.get("headroom", {}) if isinstance(checklist.get("headroom"), dict) else {}
+    lookroom_meta = checklist.get("lookroom", {}) if isinstance(checklist.get("lookroom"), dict) else {}
+    horizon_meta = checklist.get("horizon", {}) if isinstance(checklist.get("horizon"), dict) else {}
+    context_meta = checklist.get("context", {}) if isinstance(checklist.get("context"), dict) else {}
+    horizon_dist = safe_optional_float(horizon_meta.get("third_dist"))
+    horizon_score = None
+    if horizon_dist is not None:
+        horizon_score = clamp(1.0 - float(horizon_dist) / max(1e-6, float(cfg.horizon_third_tau)), 0.0, 1.0)
+    context_value = safe_optional_float(context_meta.get("value"))
+    context_target_range = context_meta.get("target_range", [])
+    if isinstance(context_target_range, (list, tuple)) and len(context_target_range) >= 2:
+        context_score = _score_from_centered_band(context_value, context_target_range[0], context_target_range[1])
+    else:
+        context_score = None
+    copyspace_meta = checklist.get("copyspace", {}) if isinstance(checklist.get("copyspace"), dict) else {}
+    copyspace_score = clamp(safe_float(comps.get("r_copyspace", 0.0), 0.0), 0.0, 1.0)
+    c_components = {
+        "C_comp": clamp(safe_float(comps.get("r_comp", 0.0), 0.0), 0.0, 1.0),
+        "C_headroom": _score_from_signed_term(safe_optional_float(comps.get("r_headroom"))),
+        "C_lookroom": _score_from_signed_term(safe_optional_float(comps.get("r_lookroom"))),
+        "C_horizon_y": horizon_score,
+        "C_sym": clamp(safe_float(comps.get("r_sym", 0.0), 0.0), 0.0, 1.0),
+        "C_context": context_score,
+        "C_copyspace": copyspace_score if subject_mode == "background_copyspace" else None,
+    }
+    if subject_mode.startswith("portrait"):
+        c_weights = {
+            "C_comp": 0.20,
+            "C_headroom": 0.30,
+            "C_lookroom": 0.30,
+            "C_sym": 0.10,
+            "C_context": 0.10,
+        }
+    elif subject_mode in SCENE_MODES:
+        c_weights = {
+            "C_comp": 0.20,
+            "C_horizon_y": 0.30,
+            "C_sym": 0.10,
+            "C_context": 0.25,
+            "C_copyspace": 0.0,
+        }
+    elif subject_mode == "background_copyspace":
+        c_weights = {
+            "C_comp": 0.15,
+            "C_context": 0.25,
+            "C_copyspace": 0.45,
+            "C_sym": 0.15,
+        }
+    else:
+        c_weights = {
+            "C_comp": 0.35,
+            "C_sym": 0.20,
+            "C_context": 0.25,
+            "C_headroom": 0.10,
+            "C_lookroom": 0.10,
+        }
+    if subject_mode != "background_copyspace" and str(copyspace_meta.get("label", "")).strip() == "copyspace_preserved":
+        c_components["C_copyspace"] = None
+    C_macro = _weighted_subset_average(c_components, c_weights)
+
+    teacher_meta = checklist.get("teacher_consensus", {}) if isinstance(checklist.get("teacher_consensus"), dict) else {}
+    T_macro = None
+    if bool(teacher_meta.get("enabled", False)):
+        T_macro = clamp(safe_float(teacher_meta.get("value", 0.0), 0.0), 0.0, 1.0)
+
+    macro_scores = {
+        "A_macro": (None if A_macro is None else float(A_macro)),
+        "S_macro": (None if S_macro is None else float(S_macro)),
+        "C_macro": (None if C_macro is None else float(C_macro)),
+        "T_macro": (None if T_macro is None else float(T_macro)),
+    }
+    macro_components: Dict[str, Optional[float]] = {}
+    macro_components.update(a_components)
+    macro_components.update(s_components)
+    macro_components.update(c_components)
+    macro_components["T_teacher"] = T_macro
+    macro_masks = {
+        "A_active": int(A_macro is not None),
+        "S_active": int(S_macro is not None),
+        "C_active": int(C_macro is not None),
+        "T_active": int(T_macro is not None),
+    }
+    return macro_scores, macro_components, macro_masks
+
+
+def fuse_macro_scores(
+    macro_scores: Dict[str, Optional[float]],
+    macro_masks: Dict[str, int],
+    cfg: TeacherScorerConfig,
+) -> float:
+    score_map = {
+        "A_macro": max(0.0, float(cfg.rank_weight_a)),
+        "S_macro": max(0.0, float(cfg.rank_weight_s)),
+        "C_macro": max(0.0, float(cfg.rank_weight_c)),
+        "T_macro": max(0.0, float(cfg.rank_weight_t)),
+    }
+    mask_map = {
+        "A_macro": "A_active",
+        "S_macro": "S_active",
+        "C_macro": "C_active",
+        "T_macro": "T_active",
+    }
+    num = 0.0
+    den = 0.0
+    for key, weight in score_map.items():
+        value = macro_scores.get(key)
+        active = int(macro_masks.get(mask_map[key], 1))
+        if value is None or weight <= 0.0 or active <= 0:
+            continue
+        num += weight * float(value)
+        den += weight
+    if den <= 0.0:
+        return 0.0
+    return num / den
 
 
 def _has_hard_tag(candidate: Dict[str, Any], tag: str) -> bool:
@@ -4061,6 +4317,8 @@ def compute_candidate_scores(
         "ar": round(ar, 6),
         "area_ratio": round(area, 6),
         "source": candidate.get("source"),
+        "subject_mode": str(route.get("subject_mode", "other_ambiguous")),
+        "policy_id": str(route.get("policy_id", "generic_v1")),
         "source_types": candidate.get("source_types", []),
         "must_keep": bool(candidate.get("must_keep", False)),
         "priority": safe_float(candidate.get("priority", 0.0)),
@@ -4071,11 +4329,16 @@ def compute_candidate_scores(
             "cheap": float(cheap),
             "expensive": 0.0,
             "final": 0.0,
+            "rank": 0.0,
+            "policy": 0.0,
+            "final_legacy": 0.0,
+            "area_log_prior": 0.0,
             "components": {
                 "cov": float(cov),
                 "p_cut": float(p_cut),
                 "p_text": float(p_text),
                 "r_comp": float(r_comp),
+                "r_horizon": float(horizon["reward"]),
                 "r_headroom": float(hr["score"]),
                 "r_lookroom": float(lr["score"]),
                 "r_sym": float(sym),
@@ -4244,13 +4507,14 @@ def pick_baseline_candidates(cands: Sequence[Dict[str, Any]]) -> Tuple[Optional[
         return None, None
 
     def key_priority(c: Dict[str, Any]) -> Tuple[float, float, float, float]:
-        final_score = safe_float(c.get("scores", {}).get("final", -1e9), -1e9)
-        has_final = 1.0 if final_score > -1e8 else 0.0
+        policy_score = safe_float(c.get("scores", {}).get("policy", -1e9), -1e9)
+        rank_score = safe_float(c.get("scores", {}).get("rank", c.get("scores", {}).get("final", -1e9)), -1e9)
+        has_policy = 1.0 if policy_score > -1e8 else 0.0
         return (
-            has_final,
-            final_score,
+            has_policy,
+            policy_score,
+            rank_score,
             safe_float(c.get("priority", 0.0)),
-            safe_float(c.get("area_ratio", 0.0)),
         )
 
     baseline_full = [c for c in cands if str(c.get("source", "")).startswith("baseline_full")]
@@ -4285,7 +4549,7 @@ def pick_baseline_candidates(cands: Sequence[Dict[str, Any]]) -> Tuple[Optional[
 
 
 def normalize_final_scores(cands: Sequence[Dict[str, Any]]) -> None:
-    vals = [safe_float(c["scores"].get("final", 0.0)) for c in cands]
+    vals = [safe_float(c["scores"].get("rank", c["scores"].get("final", 0.0))) for c in cands]
     if not vals:
         return
     mn = min(vals)
@@ -4293,15 +4557,27 @@ def normalize_final_scores(cands: Sequence[Dict[str, Any]]) -> None:
     if mx - mn < 1e-9:
         for c in cands:
             c["scores"]["final_norm_0_100"] = 50.0
+            c["scores"]["rank_norm_0_100"] = 50.0
+            c["scores"]["policy_norm_0_100"] = 50.0
         return
+    policy_vals = [safe_float(c["scores"].get("policy", 0.0)) for c in cands]
+    policy_mn = min(policy_vals)
+    policy_mx = max(policy_vals)
     for c in cands:
-        v = safe_float(c["scores"].get("final", 0.0))
-        c["scores"]["final_norm_0_100"] = 100.0 * (v - mn) / (mx - mn)
+        v = safe_float(c["scores"].get("rank", c["scores"].get("final", 0.0)))
+        rank_norm = 100.0 * (v - mn) / (mx - mn)
+        c["scores"]["final_norm_0_100"] = rank_norm
+        c["scores"]["rank_norm_0_100"] = rank_norm
+        if policy_mx - policy_mn < 1e-9:
+            c["scores"]["policy_norm_0_100"] = 50.0
+        else:
+            p = safe_float(c["scores"].get("policy", 0.0))
+            c["scores"]["policy_norm_0_100"] = 100.0 * (p - policy_mn) / (policy_mx - policy_mn)
 
 
 def decide_keep_vs_crop(best: Dict[str, Any], baseline: Dict[str, Any], tau_improve: float) -> Dict[str, Any]:
-    b_best = safe_float(best["scores"].get("final", -1e9))
-    b_base = safe_float(baseline["scores"].get("final", -1e9))
+    b_best = safe_float(best["scores"].get("policy", best["scores"].get("final", -1e9)))
+    b_base = safe_float(baseline["scores"].get("policy", baseline["scores"].get("final", -1e9)))
     delta = b_best - b_base
 
     if delta < tau_improve:
@@ -4320,6 +4596,8 @@ def decide_keep_vs_crop(best: Dict[str, Any], baseline: Dict[str, Any], tau_impr
         "delta_improve": float(delta),
         "tau_improve": float(tau_improve),
         "chosen_candidate_id": chosen.get("candidate_id"),
+        "chosen_score_rank": float(safe_float(chosen["scores"].get("rank", chosen["scores"].get("final", 0.0)))),
+        "chosen_score_policy": float(safe_float(chosen["scores"].get("policy", chosen["scores"].get("final", 0.0)))),
     }
 
 
@@ -4391,7 +4669,7 @@ def select_topk_diverse(
 
 def select_hard_negatives(cands: Sequence[Dict[str, Any]], max_n: int = 5) -> List[Dict[str, Any]]:
     mids = [c for c in cands if 40.0 <= safe_float(c["scores"].get("final_norm_0_100", -1)) <= 60.0]
-    mids.sort(key=lambda x: safe_float(x["scores"].get("final", 0.0)), reverse=True)
+    mids.sort(key=lambda x: safe_float(x["scores"].get("rank", x["scores"].get("final", 0.0))), reverse=True)
     return mids[:max_n]
 
 
@@ -4408,10 +4686,20 @@ def candidate_brief(c: Dict[str, Any], rank: Optional[int] = None) -> Dict[str, 
         "scores": {
             "cheap": round(safe_float(c["scores"].get("cheap", 0.0)), 6),
             "expensive": round(safe_float(c["scores"].get("expensive", 0.0)), 6),
+            "rank": round(safe_float(c["scores"].get("rank", c["scores"].get("final", 0.0)), 0.0), 6),
+            "policy": round(safe_float(c["scores"].get("policy", c["scores"].get("final", 0.0)), 0.0), 6),
             "final": round(safe_float(c["scores"].get("final", 0.0)), 6),
+            "final_legacy": round(safe_float(c["scores"].get("final_legacy", 0.0)), 6),
             "final_norm_0_100": round(safe_float(c["scores"].get("final_norm_0_100", 0.0)), 3),
+            "rank_norm_0_100": round(safe_float(c["scores"].get("rank_norm_0_100", 0.0)), 3),
+            "policy_norm_0_100": round(safe_float(c["scores"].get("policy_norm_0_100", 0.0)), 3),
+            "area_log_prior": round(safe_float(c["scores"].get("area_log_prior", 0.0), 0.0), 6),
             "components": c["scores"].get("components", {}),
         },
+        "macro_scores": c.get("macro_scores", {}),
+        "macro_components": c.get("macro_components", {}),
+        "macro_masks": c.get("macro_masks", {}),
+        "policy": c.get("policy", {}),
         "flags": c.get("flags", {}),
         "checklist": c.get("checklist", {}),
         "checklist_labels": c.get("checklist_labels", {}),
@@ -5082,6 +5370,8 @@ def process_one_image(
                 "tau_improve": tau_effective,
                 "tau_improve_base": tau_base,
                 "w_area": route["w_area"],
+                "ranking_metric": "score_rank",
+                "decision_metric": "score_policy",
                 "force_include_baseline_in_topm": True,
                 "is_freeform": bool(is_freeform),
                 "teacher_tau_boost": {
@@ -5164,6 +5454,10 @@ def process_one_image(
                     "best_candidate_id": str(best.get("candidate_id", "")),
                     "delta_improve": float(decision.get("delta_improve", 0.0)),
                     "tau_improve": float(decision.get("tau_improve", tau_effective)),
+                    "best_score_rank": float(safe_float(best.get("scores", {}).get("rank", 0.0), 0.0)),
+                    "best_score_policy": float(safe_float(best.get("scores", {}).get("policy", 0.0), 0.0)),
+                    "baseline_score_rank": float(safe_float(baseline_effective.get("scores", {}).get("rank", 0.0), 0.0)),
+                    "baseline_score_policy": float(safe_float(baseline_effective.get("scores", {}).get("policy", 0.0), 0.0)),
                 },
                 "top1_explainability": {
                     "candidate_id": str(top1_selected.get("candidate_id", "")),
@@ -5178,6 +5472,11 @@ def process_one_image(
                         else []
                     ),
                     "why_text_template": str(top1_selected.get("why_text_template", "")),
+                    "macro_scores": (
+                        top1_selected.get("macro_scores", {})
+                        if isinstance(top1_selected.get("macro_scores"), dict)
+                        else {}
+                    ),
                 },
             },
         }
@@ -5279,6 +5578,12 @@ def run(args: argparse.Namespace) -> None:
         teach_require_consensus=bool(int(args.teach_require_consensus)),
         lambda_teach=float(args.lambda_teach),
         w_teach=float(args.w_teach),
+        rank_weight_a=float(args.rank_weight_a),
+        rank_weight_s=float(args.rank_weight_s),
+        rank_weight_c=float(args.rank_weight_c),
+        rank_weight_t=float(args.rank_weight_t),
+        a_macro_aesthetic_weight=float(args.a_macro_aesthetic_weight),
+        a_macro_align_weight=float(args.a_macro_align_weight),
         teacher_tau_boost_delta=float(args.teacher_tau_boost_delta),
         teacher_tau_boost_baseline_iou=float(args.teacher_tau_boost_baseline_iou),
         hard_head_top_rule=bool(int(args.hard_head_top_rule)),

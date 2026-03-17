@@ -4,6 +4,7 @@
 # End-to-end pipeline:
 #   Phase A Filter -> Phase B Perception Precompute(C1,C2,C3,C4,C5, enrich, merge)
 #   -> Candidate Generator -> Teacher Scorer(+QA/+Viz) -> VLM Teacher Labeler(Section 10, optional)
+#   -> FinalScore Training Labels(optional)
 # ------------------------------------------------------------------------------
 # C4 OCR(PP-OCRv5 det-only) 지원.
 # ==============================================================================
@@ -160,6 +161,8 @@ Core options
 --run_vlm_teacher 0|1           section10 VLM teacher 라벨 생성 실행 여부 (default: 0)
 --run_detailed_report -1|0|1    detailed report 패키지 생성 (-1=auto: run_tag가 있으면 on, default: -1)
 --report_dir PATH               detailed report 출력 경로 (default: <data_dir>/artifacts/reports/<run_tag>_detailed)
+--run_training_labels -1|0|1    finalscore training labels 생성 (-1=auto: run_tag가 있으면 on, default: -1)
+--training_labels_dir PATH      training labels 출력 경로 (default: <data_dir>/artifacts/training_labels/<run_tag>)
 --report_examples_per_bucket N  subject count/mode evidence 샘플 수 (default: 5)
 --report_viz_stage_dir PATH     report 전용 teacher viz staging 경로
 --vlm_backend NAME              qwen25_vl|heuristic (default: qwen25_vl)
@@ -235,6 +238,8 @@ RUN_DETAILED_REPORT=-1
 REPORT_DIR=""
 REPORT_EXAMPLES_PER_BUCKET=5
 REPORT_VIZ_STAGE_DIR=""
+RUN_TRAINING_LABELS=-1
+TRAINING_LABELS_DIR=""
 
 # Filter
 RUN_FILTER=1
@@ -530,6 +535,8 @@ while [ "$#" -gt 0 ]; do
     --run_vlm_teacher) RUN_VLM_TEACHER="$2"; shift 2 ;;
     --run_detailed_report) RUN_DETAILED_REPORT="$2"; shift 2 ;;
     --report_dir) REPORT_DIR="$2"; shift 2 ;;
+    --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
+    --training_labels_dir) TRAINING_LABELS_DIR="$2"; shift 2 ;;
     --report_examples_per_bucket) REPORT_EXAMPLES_PER_BUCKET="$2"; shift 2 ;;
     --report_viz_stage_dir) REPORT_VIZ_STAGE_DIR="$2"; shift 2 ;;
     --vlm_backend) VLM_BACKEND="$2"; shift 2 ;;
@@ -620,6 +627,13 @@ if [ "$RUN_DETAILED_REPORT" -lt 0 ]; then
     RUN_DETAILED_REPORT=0
   fi
 fi
+if [ "$RUN_TRAINING_LABELS" -lt 0 ]; then
+  if [ -n "$RUN_TAG" ]; then
+    RUN_TRAINING_LABELS=1
+  else
+    RUN_TRAINING_LABELS=0
+  fi
+fi
 
 # Backward-compatibility guard:
 # if user explicitly disabled C3 but did not mention C6, keep C6 off as well.
@@ -701,6 +715,7 @@ VLM_SUMMARY_DIR="${VLM_DIR}/summary"
 VLM_DEBUG_BASE_DIR="${VLM_DIR}/debug"
 CACHE_DIR="${DATA_DIR}/cache"
 REPORTS_DIR="${ARTIFACTS_DIR}/reports"
+TRAINING_LABELS_BASE_DIR="${ARTIFACTS_DIR}/training_labels"
 
 FEATS_C1_CANONICAL="${PRECOMPUTE_DIR}/feats_c1.jsonl"
 FEATS_C1="$FEATS_C1_CANONICAL"
@@ -763,6 +778,16 @@ fi
 if [ -z "$REPORT_VIZ_STAGE_DIR" ]; then
   REPORT_VIZ_STAGE_DIR="${REPORT_DIR}/assets/_staging_teacher_viz/teacher_scorer${SUFFIX}"
 fi
+if [ -z "$TRAINING_LABELS_DIR" ]; then
+  if [ -n "$RUN_TAG" ]; then
+    TRAINING_LABELS_DIR="${TRAINING_LABELS_BASE_DIR}/${RUN_TAG}"
+  else
+    TRAINING_LABELS_DIR="${TRAINING_LABELS_BASE_DIR}/latest"
+  fi
+fi
+TRAINING_LABELS_PAIRWISE_JSON="${TRAINING_LABELS_DIR}/train_pairwise.jsonl"
+TRAINING_LABELS_QA_JSON="${TRAINING_LABELS_DIR}/qa_summary.json"
+TRAINING_LABELS_REPORT_MD="${TRAINING_LABELS_DIR}/TRAINING_DATA_REPORT_KO.md"
 
 mkdir -p \
   "$PRECOMPUTE_DIR" \
@@ -779,7 +804,8 @@ mkdir -p \
   "$VLM_SUMMARY_DIR" \
   "$VLM_DEBUG_BASE_DIR" \
   "$CACHE_DIR" \
-  "$REPORTS_DIR"
+  "$REPORTS_DIR" \
+  "$TRAINING_LABELS_BASE_DIR"
 
 EFFECTIVE_IMAGE_DIR=""
 if [ "$PREFER_CURATED_IMAGES" -eq 1 ] && [ -d "$CURATED_IMAGE_DIR" ]; then
@@ -1011,6 +1037,7 @@ echo " teacher_public_ref  : save_public_teacher_ref_eval=$SAVE_PUBLIC_TEACHER_R
 echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC_PRIOR_LAION_WEIGHT nima_ckpt=$NIMA_MODEL_PATH require_ckpt=$NIMA_REQUIRE_CKPT"
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
+echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR)"
 echo " run_detailed_report : $RUN_DETAILED_REPORT (dir=$REPORT_DIR examples_per_bucket=$REPORT_EXAMPLES_PER_BUCKET)"
 echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
 echo " vlm strict init     : $VLM_STRICT_BACKEND_INIT"
@@ -1755,6 +1782,22 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
   fi
 fi
 
+# ------------------------------------------------------------------------------
+# 8) FinalScore Training Labels (optional)
+# ------------------------------------------------------------------------------
+if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
+  if [ ! -f "$TEACHER_JSONL" ]; then
+    echo "[error] training labels require teacher scores jsonl: $TEACHER_JSONL"
+    exit 1
+  fi
+  if ! should_skip_file "$TRAINING_LABELS_QA_JSON"; then
+    run_with_log "13_build_training_labels" \
+      python3 src/scripts/build_finalscore_training_data.py \
+        --teacher_scores_jsonl "$TEACHER_JSONL" \
+        --out_dir "$TRAINING_LABELS_DIR"
+  fi
+fi
+
 echo "========================================================"
 echo " Done"
 echo "========================================================"
@@ -1786,6 +1829,12 @@ echo " teacher viz dir  : $TEACHER_VIZ_DIR"
 if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
   echo " report dir       : $REPORT_DIR"
   echo " report viz stage : $REPORT_VIZ_STAGE_DIR"
+fi
+if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
+  echo " training labels  : $TRAINING_LABELS_DIR"
+  echo " training pairwise: $TRAINING_LABELS_PAIRWISE_JSON"
+  echo " training qa      : $TRAINING_LABELS_QA_JSON"
+  echo " training report  : $TRAINING_LABELS_REPORT_MD"
 fi
 if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
   echo " vlm labels jsonl : $VLM_OUTPUT_JSONL"

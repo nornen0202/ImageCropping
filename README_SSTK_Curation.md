@@ -476,14 +476,40 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - `train_decision.jsonl`
 - `train_checklist.jsonl`
 - `train_regression.jsonl`
+- `train_conditional_detr_canonical.jsonl`
+- `train_conditional_detr_batch.jsonl`
+- `train_conditional_detr_skipped.jsonl`
 - `qa_summary.json`
+- `validation_summary.json`
+- `subject_mode_vocab.json`
+- `checklist_target_schema.json`
 - `TRAINING_DATA_REPORT_KO.md`
+- `examples/*.png`
+- `coco/instances_conditional_detr_canonical.json`
+- `coco/instances_conditional_detr_batch.json`
+- `coco/coco_conversion_summary.json`
+- `coco/instances_conditional_detr_batch_gaic_like.json`
+- `coco/gaic_like_conversion_summary.json`
+- `coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md`
+
+Conditional-DETR training label 해석:
+- `train_conditional_detr_canonical.jsonl`: 사람이 읽고 QA/재가공하기 쉬운 canonical schema. `routing + baseline + decision + candidates[] + checklist_labels/checklist_scores + masks`를 유지합니다.
+- `train_conditional_detr_batch.jsonl`: dataloader 직전 derived schema. `matching_targets + candidate_pool + derived_checklist_targets(valid_mask 포함)` 중심으로 Hungarian matching과 auxiliary loss 계산에 바로 쓰도록 정리됩니다.
+- `train_conditional_detr_skipped.jsonl`: safe positive set이 없어 Conditional-DETR supervision에 넣지 않은 `(image_id, target_ar)` 그룹의 audit log입니다.
 
 최소 확인 포인트:
 - teacher score jsonl: `data/SSTK/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl`
 - detailed report: `data/SSTK/${DATANAME}/artifacts/reports/${RUN_TAG}_detailed/REPORT_DRAFT_KO.md`
 - training label QA: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/qa_summary.json`
+- training label validation: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/validation_summary.json`
+- conditional detr canonical: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/train_conditional_detr_canonical.jsonl`
+- conditional detr batch: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/train_conditional_detr_batch.jsonl`
+- conditional detr skipped: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/train_conditional_detr_skipped.jsonl`
 - training label report: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/TRAINING_DATA_REPORT_KO.md`
+- coco conversion summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/coco/coco_conversion_summary.json`
+- gaic-like json: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/coco/instances_conditional_detr_batch_gaic_like.json`
+- gaic-like summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/coco/gaic_like_conversion_summary.json`
+- gaic-like guide: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md`
 
 권장 재실행 명령 기존 산출물을 덮어쓰는 가장 짧은 재실행입니다. 영향 범위는 subject routing -> teacher -> QA -> viz만입니다.
 ```bash
@@ -561,6 +587,7 @@ Filter 태그 임베딩 멀티 GPU 옵션 설명:
 - 위 `3.6` 템플릿 1회 실행으로 `Filter -> Precompute(C1~C6) -> Subject Routing -> Candidate -> Teacher -> QA -> Detailed Report -> Training Labels`까지 수행됩니다.
 - `--run_component_viz 1`을 켜면 precompute 시각화가 자동 생성되며, 출력은 기본적으로 `data/SSTK/<DATANAME>/artifacts/precompute/visualizations/components_<run_tag>/`에 저장됩니다.
 - 학습 데이터 생성 단계만 끄고 싶으면 `--run_training_labels 0`을 명시하세요.
+- training labels 단계는 legacy `pairwise/listwise/decision/checklist/regression`과 함께 Conditional-DETR용 `canonical/batch` JSONL, `validation_summary.json`, 예시 이미지가 포함된 `TRAINING_DATA_REPORT_KO.md`, COCO 확장 변환본, GAIC-like 변환본과 설명 문서를 동시에 생성합니다.
 - precompute 시각화 산출물은 `original/`, `c2_seg/`, `c3_pose/`, `c4_ocr/`, `c5_geom/`, `c6_gaze/`, `combined_all/` 및 `viz_overview.json`입니다.
 - 기본 candidate AR 세트는 `FREE`를 포함합니다. (`--cand_ar_list`로 조정 가능)
 - `teacher_scores_jsonl`의 `results_by_ar`에 `FREE` 키가 함께 생성되며, `--vlm_target_ar all`이면 Stage10도 `FREE`를 포함해 라벨을 생성합니다.
@@ -1798,10 +1825,11 @@ Subject-Mode enrich(신규):
 - `--component_viz_out_dir`: precompute 시각화 출력 경로
 - `--component_viz_image_ids`: precompute 시각화 대상 image_id CSV
 - `--run_training_labels -1|0|1`:
-  - `1` = teacher score 이후 `pairwise/listwise/decision/checklist/regression` 생성기 실행
+  - `1` = teacher score 이후 legacy `pairwise/listwise/decision/checklist/regression` + Conditional-DETR용 `train_conditional_detr_canonical.jsonl` / `train_conditional_detr_batch.jsonl` + `validation_summary.json` + 예시 이미지 리포트 생성기 + COCO 변환 + GAIC-like 변환 실행
   - `0` = training labels 단계 skip
   - `-1` = auto (`run_tag`가 있으면 on)
 - `--training_labels_dir`: training labels 출력 경로 (기본 `artifacts/training_labels/<run_tag>`)
+- `--gaic_reference_json`: GAIC-like 변환 기준 JSON 경로 (기본 `data/Publics/GAIC/annotations_json/instances_train.json`)
 - `--component_viz_image_ids_file`: precompute 시각화 대상 image_id 파일(한 줄 1개)
 - `--run_candidates --run_teacher`
 - `--cand_ar_list`: candidate target AR CSV (기본: `FREE,1:1,9:16,16:9,3:4,4:3`)

@@ -163,6 +163,7 @@ Core options
 --report_dir PATH               detailed report 출력 경로 (default: <data_dir>/artifacts/reports/<run_tag>_detailed)
 --run_training_labels -1|0|1    finalscore training labels 생성 (-1=auto: run_tag가 있으면 on, default: -1)
 --training_labels_dir PATH      training labels 출력 경로 (default: <data_dir>/artifacts/training_labels/<run_tag>)
+--gaic_reference_json PATH      GAIC-like 변환 기준 json (default: data/Publics/GAIC/annotations_json/instances_train.json)
 --report_examples_per_bucket N  subject count/mode evidence 샘플 수 (default: 5)
 --report_viz_stage_dir PATH     report 전용 teacher viz staging 경로
 --vlm_backend NAME              qwen25_vl|heuristic (default: qwen25_vl)
@@ -537,6 +538,7 @@ while [ "$#" -gt 0 ]; do
     --report_dir) REPORT_DIR="$2"; shift 2 ;;
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
     --training_labels_dir) TRAINING_LABELS_DIR="$2"; shift 2 ;;
+    --gaic_reference_json) GAIC_REFERENCE_JSON="$2"; shift 2 ;;
     --report_examples_per_bucket) REPORT_EXAMPLES_PER_BUCKET="$2"; shift 2 ;;
     --report_viz_stage_dir) REPORT_VIZ_STAGE_DIR="$2"; shift 2 ;;
     --vlm_backend) VLM_BACKEND="$2"; shift 2 ;;
@@ -785,9 +787,23 @@ if [ -z "$TRAINING_LABELS_DIR" ]; then
     TRAINING_LABELS_DIR="${TRAINING_LABELS_BASE_DIR}/latest"
   fi
 fi
+if [ -z "${GAIC_REFERENCE_JSON:-}" ]; then
+  GAIC_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_train.json"
+fi
 TRAINING_LABELS_PAIRWISE_JSON="${TRAINING_LABELS_DIR}/train_pairwise.jsonl"
+TRAINING_LABELS_DETR_CANONICAL_JSON="${TRAINING_LABELS_DIR}/train_conditional_detr_canonical.jsonl"
+TRAINING_LABELS_DETR_BATCH_JSON="${TRAINING_LABELS_DIR}/train_conditional_detr_batch.jsonl"
+TRAINING_LABELS_DETR_SKIPPED_JSON="${TRAINING_LABELS_DIR}/train_conditional_detr_skipped.jsonl"
 TRAINING_LABELS_QA_JSON="${TRAINING_LABELS_DIR}/qa_summary.json"
+TRAINING_LABELS_VALIDATION_JSON="${TRAINING_LABELS_DIR}/validation_summary.json"
 TRAINING_LABELS_REPORT_MD="${TRAINING_LABELS_DIR}/TRAINING_DATA_REPORT_KO.md"
+TRAINING_LABELS_COCO_DIR="${TRAINING_LABELS_DIR}/coco"
+TRAINING_LABELS_COCO_CANONICAL_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_canonical.json"
+TRAINING_LABELS_COCO_BATCH_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_batch.json"
+TRAINING_LABELS_COCO_SUMMARY_JSON="${TRAINING_LABELS_COCO_DIR}/coco_conversion_summary.json"
+TRAINING_LABELS_GAIC_LIKE_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_batch_gaic_like.json"
+TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON="${TRAINING_LABELS_COCO_DIR}/gaic_like_conversion_summary.json"
+TRAINING_LABELS_GAIC_LIKE_GUIDE_MD="${TRAINING_LABELS_COCO_DIR}/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
 
 mkdir -p \
   "$PRECOMPUTE_DIR" \
@@ -1038,6 +1054,7 @@ echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
 echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR)"
+echo " gaic_reference_json : ${GAIC_REFERENCE_JSON:-<none>}"
 echo " run_detailed_report : $RUN_DETAILED_REPORT (dir=$REPORT_DIR examples_per_bucket=$REPORT_EXAMPLES_PER_BUCKET)"
 echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
 echo " vlm strict init     : $VLM_STRICT_BACKEND_INIT"
@@ -1790,11 +1807,38 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
     echo "[error] training labels require teacher scores jsonl: $TEACHER_JSONL"
     exit 1
   fi
-  if ! should_skip_file "$TRAINING_LABELS_QA_JSON"; then
+  if ! should_skip_file "$TRAINING_LABELS_VALIDATION_JSON"; then
     run_with_log "13_build_training_labels" \
       python3 src/scripts/build_finalscore_training_data.py \
         --teacher_scores_jsonl "$TEACHER_JSONL" \
-        --out_dir "$TRAINING_LABELS_DIR"
+        --out_dir "$TRAINING_LABELS_DIR" \
+        --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
+        --strict_validation 1 \
+        --report_examples 8
+  fi
+  if [ ! -f "$TRAINING_LABELS_DETR_CANONICAL_JSON" ] || [ ! -f "$TRAINING_LABELS_DETR_BATCH_JSON" ]; then
+    echo "[error] conditional detr training labels missing after build: $TRAINING_LABELS_DETR_CANONICAL_JSON | $TRAINING_LABELS_DETR_BATCH_JSON"
+    exit 1
+  fi
+  if ! should_skip_file "$TRAINING_LABELS_COCO_SUMMARY_JSON"; then
+    run_with_log "13b_convert_training_labels_coco" \
+      python3 src/scripts/convert_sstk_detr_labels_to_coco.py \
+        --canonical_jsonl "$TRAINING_LABELS_DETR_CANONICAL_JSON" \
+        --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
+        --out_dir "$TRAINING_LABELS_COCO_DIR"
+  fi
+  if [ ! -f "$GAIC_REFERENCE_JSON" ]; then
+    echo "[error] gaic-like conversion requires reference json: $GAIC_REFERENCE_JSON"
+    exit 1
+  fi
+  if ! should_skip_file "$TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON"; then
+    run_with_log "13c_convert_training_labels_gaic_like" \
+      python3 src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
+        --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
+        --gaic_reference_json "$GAIC_REFERENCE_JSON" \
+        --out_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
+        --out_summary_json "$TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON" \
+        --out_guide_md "$TRAINING_LABELS_GAIC_LIKE_GUIDE_MD"
   fi
 fi
 
@@ -1826,6 +1870,16 @@ echo " teacher jsonl    : $TEACHER_JSONL"
 echo " teacher overview : $TEACHER_OVERVIEW_JSON"
 echo " teacher QA       : $TEACHER_QA_JSON"
 echo " teacher viz dir  : $TEACHER_VIZ_DIR"
+if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
+  echo " training labels  : $TRAINING_LABELS_DIR"
+  echo " detr canonical   : $TRAINING_LABELS_DETR_CANONICAL_JSON"
+  echo " detr batch       : $TRAINING_LABELS_DETR_BATCH_JSON"
+  echo " detr skipped     : $TRAINING_LABELS_DETR_SKIPPED_JSON"
+  echo " training report  : $TRAINING_LABELS_REPORT_MD"
+  echo " coco summary     : $TRAINING_LABELS_COCO_SUMMARY_JSON"
+  echo " gaic-like json   : $TRAINING_LABELS_GAIC_LIKE_JSON"
+  echo " gaic-like guide  : $TRAINING_LABELS_GAIC_LIKE_GUIDE_MD"
+fi
 if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
   echo " report dir       : $REPORT_DIR"
   echo " report viz stage : $REPORT_VIZ_STAGE_DIR"
@@ -1833,7 +1887,11 @@ fi
 if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   echo " training labels  : $TRAINING_LABELS_DIR"
   echo " training pairwise: $TRAINING_LABELS_PAIRWISE_JSON"
+  echo " training detr canonical: $TRAINING_LABELS_DETR_CANONICAL_JSON"
+  echo " training detr batch: $TRAINING_LABELS_DETR_BATCH_JSON"
+  echo " training detr skipped: $TRAINING_LABELS_DETR_SKIPPED_JSON"
   echo " training qa      : $TRAINING_LABELS_QA_JSON"
+  echo " training validation: $TRAINING_LABELS_VALIDATION_JSON"
   echo " training report  : $TRAINING_LABELS_REPORT_MD"
 fi
 if [ "$RUN_VLM_TEACHER" -eq 1 ]; then

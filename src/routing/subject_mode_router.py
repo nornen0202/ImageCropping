@@ -49,6 +49,12 @@ BLANK_RATIO_COPYSPACE_STRONG = 0.40
 SCENE_SCORE_MIN = 0.35
 OBJECT_DOMINANCE_MIN = 0.18
 FOREGROUND_MASS_MIN = 0.12
+CONTEXTUAL_TINY_HUMAN_SINGLE_AREA_MAX = 0.03
+CONTEXTUAL_TINY_HUMAN_GROUP_AREA_MAX = 0.05
+CONTEXTUAL_TINY_HUMAN_SCENE_SCORE_MIN = 0.30
+CONTEXTUAL_TINY_HUMAN_BLANK_RATIO_MIN = 0.85
+CONTEXTUAL_TINY_HUMAN_FOREGROUND_MASS_MAX = 0.10
+PORTRAIT_TINY_SUBJECT_UNKNOWN_SHOT_MAX = 0.08
 PERSON_CLASS_IDS = {0}
 PERSON_BOX_DEDUP_IOU = 0.85
 POSE_SCORE_PERSON_MIN = 0.30
@@ -702,6 +708,36 @@ def _fallback_mode_after_guard(
     return "other_ambiguous", 0.30, reasons, "fallback_ambiguous"
 
 
+def _should_fallback_tiny_human_to_scene(
+    *,
+    mode: str,
+    num_person: int,
+    person_union_area_ratio: float,
+    blank_ratio: float,
+    scene_score: float,
+    foreground_mass_ratio: float,
+    has_explicit_people_hint: bool,
+) -> bool:
+    if not str(mode or "").startswith("portrait"):
+        return False
+    if int(num_person) <= 0:
+        return False
+    if has_explicit_people_hint:
+        return False
+    area_thr = (
+        CONTEXTUAL_TINY_HUMAN_GROUP_AREA_MAX
+        if int(num_person) >= 2
+        else CONTEXTUAL_TINY_HUMAN_SINGLE_AREA_MAX
+    )
+    return bool(
+        person_union_area_ratio > 0.0
+        and person_union_area_ratio <= float(area_thr)
+        and blank_ratio >= float(CONTEXTUAL_TINY_HUMAN_BLANK_RATIO_MIN)
+        and scene_score >= float(CONTEXTUAL_TINY_HUMAN_SCENE_SCORE_MIN)
+        and foreground_mass_ratio <= float(CONTEXTUAL_TINY_HUMAN_FOREGROUND_MASS_MAX)
+    )
+
+
 def route_subject_mode(
     *,
     tags_norm: Sequence[str],
@@ -723,6 +759,12 @@ def route_subject_mode(
     c3_list = c3_pose if isinstance(c3_pose, list) else []
     person_stats = _person_signal_stats(c2_instances=c2_instances, c3_pose=c3_list, width=width, height=height)
     num_person = int(person_stats["num_person"])
+    person_union_box = person_stats.get("person_union_box_xyxy")
+    person_union_area_ratio = (
+        _box_area_ratio_xyxy(person_union_box, width, height)
+        if isinstance(person_union_box, list) and len(person_union_box) == 4
+        else 0.0
+    )
 
     primary_idx_seed = int(c2_primary_idx) if c2_primary_idx is not None else -1
     primary_idx_seed = primary_idx_seed if 0 <= primary_idx_seed < len(c2_instances) else (-1 if not c2_instances else 0)
@@ -738,10 +780,12 @@ def route_subject_mode(
         c2_primary_area_ratio_seed = _safe_float(c2_instances[primary_idx_seed].get("area_ratio", 0.0), 0.0)
         c2_primary_bg_like_seed = bool(c2_instances[primary_idx_seed].get("bg_like", False))
 
+    sc = str(super_cat or "").strip().lower()
     has_text_hint = _has_any_hint(tags_norm, TEXT_HINTS)
     has_copyspace_tag = _has_any_hint(tags_norm, COPYSPACE_HINTS)
     has_scene_hint = _has_any_hint(tags_norm, SCENE_HINTS)
     has_object_hint = _has_any_hint(tags_norm, OBJECT_HINTS)
+    has_explicit_people_hint = bool(sc in PEOPLE_SUPER_CATS or _has_any_hint(tags_norm, PORTRAIT_HINTS) or _has_any_hint(tags_norm, GROUP_HINTS))
     text_boxes = max(0, int(_safe_float(ocr_text_boxes_count, 0.0)))
     text_overlay = bool(text_overlay_likely) if text_overlay_likely is not None else False
     ocr_method = str(ocr_backend_method or "").strip().lower()
@@ -769,8 +813,8 @@ def route_subject_mode(
     )
     largest_obj_area_ratio = _max_foreground_area_ratio(c2_instances)
     foreground_mass_ratio = _foreground_mass_ratio(union_box_seed, width, height)
-    scene_signal = bool(str(super_cat or "").strip().lower() in SCENE_SUPER_CATS or has_scene_hint)
-    object_signal = bool(str(super_cat or "").strip().lower() in OBJECT_SUPER_CATS or has_object_hint)
+    scene_signal = bool(sc in SCENE_SUPER_CATS or has_scene_hint)
+    object_signal = bool(sc in OBJECT_SUPER_CATS or has_object_hint)
     horizon_exists_prob = _clamp(_safe_float(horizon_conf, 0.0), 0.0, 1.0)
     scene_score = float(
         _clamp(
@@ -829,7 +873,6 @@ def route_subject_mode(
         router_rule_id = f"{base_rule_id}|{fb_rule_id}"
 
     # P0 guard #2: no C4-backed text evidence should not route text_document.
-    sc = str(super_cat or "").strip().lower()
     if mode == "text_document" and not strong_text_evidence:
         guard_reasons.append("guard_text_requires_c4_evidence")
         mode, conf, fb_reasons, fb_rule_id = _fallback_mode_after_guard(
@@ -866,6 +909,23 @@ def route_subject_mode(
     elif copyspace_signal and (blank_ratio < BLANK_RATIO_COPYSPACE_MIN) and "guard_low_blank_ratio_for_copyspace" not in reasons:
         reasons.append("guard_low_blank_ratio_for_copyspace")
         guard_reasons.append("guard_low_blank_ratio_for_copyspace")
+
+    contextual_tiny_human_scene = False
+    if _should_fallback_tiny_human_to_scene(
+        mode=mode,
+        num_person=num_person,
+        person_union_area_ratio=person_union_area_ratio,
+        blank_ratio=blank_ratio,
+        scene_score=scene_score,
+        foreground_mass_ratio=foreground_mass_ratio,
+        has_explicit_people_hint=has_explicit_people_hint,
+    ):
+        contextual_tiny_human_scene = True
+        guard_reasons.append("guard_tiny_human_contextual_scene")
+        reasons.append("guard_tiny_human_contextual_scene")
+        mode = "scene_general"
+        conf = max(0.55, min(0.85, 0.45 + 0.50 * float(scene_score)))
+        router_rule_id = f"{router_rule_id}|guard_tiny_human_contextual_scene"
 
     if mode == "scene_general":
         scene_subtype, scene_conf, dominant_vertical_strength = _infer_scene_subtype(
@@ -917,6 +977,8 @@ def route_subject_mode(
     elif mode in {"scene_general", "background_texture_copyspace", "text_document"}:
         primary_idx = -1
         primary_source = "none"
+        if contextual_tiny_human_scene:
+            union_box = None
 
     c2_primary_area_ratio = 0.0
     c2_primary_bg_like = False
@@ -929,6 +991,7 @@ def route_subject_mode(
         "has_text_heavy": bool(mode == "text_document"),
         "has_copyspace_tag": bool(has_copyspace_tag),
         "is_background_like": bool(0 <= primary_idx < len(c2_instances) and c2_primary_bg_like),
+        "contextual_tiny_human": bool(contextual_tiny_human_scene),
     }
 
     shot_type: Optional[str] = None
@@ -936,10 +999,14 @@ def route_subject_mode(
         shot_type = "group"
     elif mode == "portrait_single":
         if num_person > 0:
-            c3_union = _person_union_box(c3_list, width, height)
-            if c3_union is not None:
-                ar = _box_area(c3_union) / float(max(1, int(width) * int(height)))
-                if ar < 0.18:
+            portrait_union = person_union_box if isinstance(person_union_box, list) and len(person_union_box) == 4 else _person_union_box(c3_list, width, height)
+            if portrait_union is not None:
+                ar = _box_area(portrait_union) / float(max(1, int(width) * int(height)))
+                if ar < PORTRAIT_TINY_SUBJECT_UNKNOWN_SHOT_MAX:
+                    shot_type = "unknown"
+                    if "guard_tiny_human_unknown_shot" not in reasons:
+                        reasons.append("guard_tiny_human_unknown_shot")
+                elif ar < 0.18:
                     shot_type = "headshot"
                 elif ar < 0.45:
                     shot_type = "half"
@@ -977,6 +1044,7 @@ def route_subject_mode(
         "num_person_c2": int(person_stats.get("num_person_c2", 0)),
         "num_person_c3_supported": int(person_stats.get("num_person_c3_supported", 0)),
         "num_person_source": str(person_stats.get("num_person_source", "none")),
+        "person_union_area_ratio": round(float(person_union_area_ratio), 6),
         "c2_num_instances": int(len(c2_instances)),
         "c2_primary_bg_like": bool(c2_primary_bg_like),
         "c2_primary_area_ratio": round(float(c2_primary_area_ratio), 6),
@@ -1046,6 +1114,7 @@ def route_subject_mode(
             "primary_idx": int(primary_idx),
             "c2_primary_area_ratio": round(float(c2_primary_area_ratio), 6),
             "c2_primary_bg_like": bool(c2_primary_bg_like),
+            "person_union_area_ratio": round(float(person_union_area_ratio), 6),
             "multi_subject": bool(multi_subject or num_person >= 2),
         },
         "policy_id": SUBJECT_MODE_TO_POLICY.get(mode, "generic_v1"),

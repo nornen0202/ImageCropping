@@ -1550,12 +1550,31 @@ def choose_report_examples(
             continue
         if Path(str(image_path)).exists():
             available.append(row)
+    selected: List[Dict[str, Any]] = []
+    seen_keys: set[str] = set()
+    prioritized_contextual = sorted(
+        (
+            row
+            for row in available
+            if bool(safe_dict(safe_dict(row.get("routing")).get("flags")).get("contextual_tiny_human", False))
+        ),
+        key=lambda row: (
+            0 if str(safe_dict(row.get("decision")).get("decision_type", "")) == "keep_full" else 1,
+            str(safe_dict(row.get("routing")).get("subject_mode", "")),
+            str(row.get("image_id", "")),
+            str(row.get("target_ar", "")),
+        ),
+    )
+    for row in prioritized_contextual[: min(max_examples, 2)]:
+        group_key = f"{row.get('image_id')}::{row.get('target_ar')}"
+        if group_key in seen_keys:
+            continue
+        selected.append(row)
+        seen_keys.add(group_key)
     by_mode: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     for row in available:
         mode = str(safe_dict(row.get("routing")).get("subject_mode", "unknown"))
         by_mode[mode].append(row)
-    selected: List[Dict[str, Any]] = []
-    seen_keys: set[str] = set()
     mode_order = sorted(by_mode.keys(), key=lambda key: (-len(by_mode[key]), key))
     while len(selected) < max_examples:
         added = False
@@ -1586,9 +1605,34 @@ def draw_norm_box(draw: Any, bbox: Sequence[float], width: int, height: int, col
         text_bbox = draw.textbbox((0, 0), label, font=font)
         tw = text_bbox[2] - text_bbox[0]
         th = text_bbox[3] - text_bbox[1]
-        ty = max(0, y1 - th - 6)
-        draw.rectangle([x1, ty, x1 + tw + 6, ty + th + 4], fill=color)
-        draw.text((x1 + 3, ty + 2), label, fill="white", font=font)
+        label_w = tw + 6
+        label_h = th + 4
+        box_w = max(0, x2 - x1)
+        box_h = max(0, y2 - y1)
+
+        # Default: place bbox label inside the box near bottom-left to avoid top-left metadata occlusion.
+        tx = min(max(0, x1 + 1), max(0, width - label_w))
+        ty = y2 - label_h - 1
+        fits_inside_bottom = box_w >= label_w + 2 and box_h >= label_h + 2 and ty >= y1 + 1
+
+        if not fits_inside_bottom:
+            inside_top_ty = y1 + 1
+            fits_inside_top = box_w >= label_w + 2 and box_h >= label_h + 2 and inside_top_ty + label_h <= y2 - 1
+            if fits_inside_top:
+                ty = inside_top_ty
+            else:
+                below_ty = y2 + 2
+                above_ty = y1 - label_h - 2
+                tx = min(max(0, x1), max(0, width - label_w))
+                if below_ty + label_h <= height:
+                    ty = below_ty
+                elif above_ty >= 0:
+                    ty = above_ty
+                else:
+                    ty = min(max(0, y1), max(0, height - label_h))
+
+        draw.rectangle([tx, ty, tx + label_w, ty + label_h], fill=color)
+        draw.text((tx + 3, ty + 2), label, fill="white", font=font)
 
 
 def draw_text_block(draw: Any, x: int, y: int, lines: Sequence[str], font: Any, bg_color: str = "#111111", text_color: str = "white") -> None:
@@ -1805,6 +1849,10 @@ def build_report_examples(
                 "subject_mode": routing.get("subject_mode"),
                 "policy_id": routing.get("policy_id"),
                 "subject_mode_conf": routing.get("subject_mode_conf"),
+                "route_conf": routing.get("route_conf"),
+                "shot_type": routing.get("shot_type"),
+                "subject_prior_bbox_norm_xyxy": routing.get("subject_prior_bbox_norm_xyxy"),
+                "flags": safe_dict(routing.get("flags")),
             },
             "decision": {
                 "decision_type": decision.get("decision_type"),
@@ -1891,17 +1939,18 @@ def build_report_examples(
             for pool in negative_preview_candidates
         ]
         candidate_visuals: List[Dict[str, Any]] = []
-        visual_specs: List[Tuple[str, Dict[str, Any], str, List[str]]] = []
+        visual_specs: List[Tuple[str, str, Dict[str, Any], str, List[str]]] = []
         positive_candidate = first_target if first_target else safe_dict(chosen_candidate)
         if positive_candidate:
             positive_score = safe_float(safe_dict(positive_candidate.get("score_targets")).get("score_prob", 0.0))
+            positive_is_final_chosen = str(positive_candidate.get("candidate_id", "")) == str(decision_target.get("winner_post_gate_candidate_id", ""))
             positive_meta = [
-                f"{image_id} | {target_ar} | positive",
+                f"{image_id} | {target_ar} | matching_target_example",
                 f"candidate_id={positive_candidate.get('candidate_id', '')}",
                 f"score={positive_score:.6f} | gt_flag=1 | label_type=matching_target",
-                f"subject_mode_id={routing.get('subject_mode_id')} | decision_id={decision_target.get('decision_id')}",
+                f"decision={decision_target.get('decision_type')} | final_chosen={positive_is_final_chosen}",
             ]
-            visual_specs.append(("positive", positive_candidate, "#2ecc71", positive_meta))
+            visual_specs.append(("positive", "matching target", positive_candidate, "#2ecc71", positive_meta))
         for neg_idx, pool in enumerate(negative_preview_candidates, start=1):
             neg_score = safe_float(pool.get("score_prob", pool.get("score_rank_pct", 0.0)))
             neg_meta = [
@@ -1910,14 +1959,14 @@ def build_report_examples(
                 f"score={neg_score:.6f} | gt_flag=0 | label_type={pool.get('label_type', '')}",
                 f"hard={bool(pool.get('is_hard_negative'))} | unsafe={bool(pool.get('is_unsafe_negative'))}",
             ]
-            visual_specs.append((f"negative_{neg_idx}", pool, "#e74c3c" if bool(pool.get("is_hard_negative")) or bool(pool.get("is_unsafe_negative")) else "#f39c12", neg_meta))
-        for visual_name, candidate_row, color, meta_lines in visual_specs:
+            visual_specs.append((f"negative_{neg_idx}", f"negative {neg_idx}", pool, "#e74c3c" if bool(pool.get("is_hard_negative")) or bool(pool.get("is_unsafe_negative")) else "#f39c12", neg_meta))
+        for visual_name, display_title, candidate_row, color, meta_lines in visual_specs:
             visual_path = candidate_examples_dir / f"{idx:02d}_{image_id}_{safe_ar}_{visual_name}.png"
             if render_candidate_focus_example(
                 image_path_str,
                 candidate_row,
                 visual_path,
-                title=visual_name,
+                title=display_title,
                 color=color,
                 meta_lines=meta_lines,
             ):
@@ -1967,6 +2016,29 @@ def markdown_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str
     return "\n".join(lines)
 
 
+def infer_dataset_context(*paths: Path) -> Dict[str, str]:
+    for path in paths:
+        parts = [part for part in path.as_posix().split("/") if part]
+        if "data" in parts and "artifacts" in parts:
+            data_idx = parts.index("data")
+            art_idx = parts.index("artifacts")
+            dataset_parts = parts[data_idx + 1 : art_idx]
+            if dataset_parts:
+                dataset_label = "/".join(dataset_parts)
+                dataset_short = dataset_parts[0]
+                return {
+                    "dataset_label": dataset_label,
+                    "dataset_short": dataset_short,
+                    "report_title": f"{dataset_short} Training Label Report",
+                }
+    fallback = paths[0].parent.name if paths else "Dataset"
+    return {
+        "dataset_label": fallback,
+        "dataset_short": fallback,
+        "report_title": "Training Label Report",
+    }
+
+
 def collect_label_guide_summary(
     canonical_rows: Sequence[Dict[str, Any]],
     batch_rows: Sequence[Dict[str, Any]],
@@ -1983,6 +2055,7 @@ def collect_label_guide_summary(
     mode_to_policy: Dict[str, str] = {}
     why_tags: set[str] = set()
     reject_tags: set[str] = set()
+    routing_flag_counts: Counter[str] = Counter()
 
     for row in canonical_rows:
         routing = safe_dict(row.get("routing"))
@@ -1998,6 +2071,9 @@ def collect_label_guide_summary(
         shot_type = str(routing.get("shot_type", ""))
         if shot_type:
             shot_types.add(shot_type)
+        for flag_name, flag_value in safe_dict(routing.get("flags")).items():
+            if bool(flag_value):
+                routing_flag_counts[str(flag_name)] += 1
         decision_type = str(decision.get("decision_type", ""))
         if decision_type:
             decision_type_to_id[decision_type] = int(decision.get("decision_id", -1))
@@ -2039,6 +2115,7 @@ def collect_label_guide_summary(
         "mode_to_policy": dict(sorted(mode_to_policy.items())),
         "why_tags": sorted(why_tags),
         "reject_tags": sorted(reject_tags),
+        "routing_flag_counts": dict(sorted(routing_flag_counts.items())),
     }
 
 
@@ -2070,6 +2147,9 @@ def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict
 
 
 def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
+    dataset_label = str(label_guide.get("dataset_label") or "current dataset")
+    run_label = str(label_guide.get("run_label") or "").strip()
+    observed_scope = f"{dataset_label} / {run_label}" if run_label else dataset_label
     score_values = label_guide["score_values"]
     macro_values = label_guide["macro_values"]
     checklist_score_values = label_guide["checklist_score_values"]
@@ -2082,6 +2162,7 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
     mode_to_policy = label_guide["mode_to_policy"]
     why_tags = label_guide["why_tags"]
     reject_tags = label_guide["reject_tags"]
+    routing_flag_counts = label_guide["routing_flag_counts"]
 
     dataset_view_rows = [
         (
@@ -2186,7 +2267,7 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
         ),
     ]
     mode_policy_rows = [
-        (mode, policy, "Test_100 observed mapping")
+        (mode, policy, f"{dataset_label} observed mapping")
         for mode, policy in mode_to_policy.items()
     ]
 
@@ -2276,14 +2357,14 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
             "horizon_state",
             ", ".join(checklist_label_values.get("horizon_state", [])),
             "`horizon_y`, `horizon_visible_ratio`, state",
-            "현재 Test_100 canonical positive들에서는 전부 `na`; scene routing이어도 `observed_mask`가 0일 수 있음",
+            f"현재 {dataset_label} canonical positive들에서는 전부 `na`; scene routing이어도 `observed_mask`가 0일 수 있음",
             f"`reg_targets.horizon_y`/`horizon_visible_ratio`는 연속값이고 `valid_mask.horizon_*`는 `1=loss 사용, 0=ignore`; 현재 `valid_mask.horizon_y` 범위 `{format_range(derived_values.get(('valid_mask', 'horizon_y'), []))}`",
         ),
         (
             "text_keep",
             ", ".join(checklist_label_values.get("text_keep", [])),
             "`text_keep_ratio`",
-            "현재 Test_100 canonical positive들에서는 전부 `na`; 전체 ontology는 `text_cut/partial/preserved`를 가질 수 있음",
+            f"현재 {dataset_label} canonical positive들에서는 전부 `na`; 전체 ontology는 `text_cut/partial/preserved`를 가질 수 있음",
             f"`ord_targets.text_keep`는 전체 ontology에서 `0=cut, 1=partial, 2=preserved`; 현재 subset은 비관측이라 `valid_mask.text_keep` 범위 `{format_range(derived_values.get(('valid_mask', 'text_keep'), []))}`",
         ),
     ]
@@ -2292,7 +2373,7 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
         [
             "## 4. Train Label Field Guide",
             "",
-            "- 아래 표의 `empirical range`는 현재 `Test_100 / 260319_cond_detr_v1` 산출물에서 실제 관측된 범위입니다. theoretical range와 다를 수 있습니다.",
+            f"- 아래 표의 `empirical range`는 현재 `{observed_scope}` 산출물에서 실제 관측된 범위입니다. theoretical range와 다를 수 있습니다.",
             "- `canonical`은 사람이 읽기 좋은 원본형 라벨이고, `batch`는 dataloader에서 바로 쓰는 파생형입니다. 표의 마지막 열은 batch에서 실제로 어떻게 소비되는지를 요약합니다.",
             "",
             "### 4.0 Canonical vs Batch Usage",
@@ -2310,7 +2391,7 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
             "### 4.1 Routing / Policy / Decision Fields",
             "",
             markdown_table(
-                ["field", "observed values (Test_100)", "semantic", "note"],
+                [f"field", f"observed values ({dataset_label})", "semantic", "note"],
                 [list(row) for row in routing_rows],
             ),
             "",
@@ -2323,6 +2404,15 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
             "- 다만 `rank_pct`, `z_local`, `softmax_local`, `score_prob`는 이미 계산된 raw score를 동일 `(image_id, target_ar)` 그룹 안에서 다시 정규화한 값이므로, mode의 직접 효과라기보다 mode-conditioned raw score 분포의 간접 결과로 보는 편이 맞습니다.",
             "- 즉 `subject_mode`가 달라지면 분포 차이가 가장 직접적으로 나타나는 필드는 `score_raw_rank`, `score_raw_policy`, 그리고 decision의 `tau_improve`이며, 나머지 score target은 그 상대 순위/분산을 local normalization으로 압축한 값입니다.",
             "",
+            "### 4.1c Subject Prior / Tiny-Human Guard",
+            "",
+            "- `subject prior`는 최종 crop 정답 박스가 아니라, router가 후단 candidate generation과 portrait safety 판단을 위해 남겨 두는 앵커 박스입니다.",
+            "- 기본적으로는 person/subject union box를 우선 사용하지만, tiny human만 검출된 wide scene에서는 이 박스를 그대로 쓰면 과도한 portrait crop으로 붕괴할 수 있습니다.",
+            "- 이를 막기 위해 `routing.flags.contextual_tiny_human=true`이면 router가 tiny human 검출을 portrait anchor로 보지 않고 `scene_general` 쪽으로 fallback합니다.",
+            "- 이 경우 routing 단계에서 `union_box_xyxy`를 비우고, candidate generation에서는 stale person union을 재사용하지 않으며 scene fallback prior `[0.2, 0.2, 0.8, 0.8]`를 subject prior로 사용합니다.",
+            f"- 현재 `{observed_scope}`에서 `contextual_tiny_human`이 관측된 row 수는 `{routing_flag_counts.get('contextual_tiny_human', 0)}`입니다.",
+            "- 따라서 orange box가 항상 detector가 본 사람 bbox를 뜻하는 것은 아닙니다. scene fallback이 발동한 샘플에서는 '장면 중앙의 보수적 prior'를 뜻합니다.",
+            "",
             "### 4.1a Observed Mode-Policy Mapping",
             "",
             markdown_table(
@@ -2330,7 +2420,7 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
                 [list(row) for row in mode_policy_rows],
             ),
             "",
-            "- 현재 `Test_100`에 실제 관측된 mode들은 policy와 사실상 1:1로 매핑됩니다. 즉 이 subset 안에서는 서로 다른 `subject_mode`가 완전히 동일한 `policy_id`를 공유하는 경우는 없습니다.",
+            f"- 현재 `{dataset_label}`에 실제 관측된 mode들은 policy와 사실상 1:1로 매핑됩니다. 즉 이 subset 안에서는 서로 다른 `subject_mode`가 완전히 동일한 `policy_id`를 공유하는 경우는 없습니다.",
             "- 하지만 구현 레벨에서는 정책 묶음이 있습니다. 모든 `scene_*` mode는 `scene_v1` branch를 공유하고, `portrait_single/portrait_group`는 같은 portrait branch를 쓰되 group 전용 보정만 다르며, `object_single/object_multi`도 같은 object branch를 쓰되 multi일 때 coverage 가중이 더 강해집니다.",
             "- `other_ambiguous`와 person-signal 부족 fallback은 `generic_v1`로 수렴합니다. 따라서 데이터셋이 넓어지면 서로 다른 세부 mode가 동일 scoring policy family를 공유할 수 있습니다.",
             "",
@@ -2341,8 +2431,8 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
                 [list(row) for row in operational_rows],
             ),
             "",
-            f"- `why_tags` observed examples in Test_100: `{', '.join(why_tags[:20])}`",
-            f"- `reject_tags` observed examples in Test_100: `{', '.join(reject_tags[:20])}`",
+            f"- `why_tags` observed examples in {dataset_label}: `{', '.join(why_tags[:20])}`",
+            f"- `reject_tags` observed examples in {dataset_label}: `{', '.join(reject_tags[:20])}`",
             "",
             "### 4.2 Score Targets",
             "",
@@ -2374,7 +2464,7 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
             "- `valid_mask.*`는 값 자체의 quality가 아니라 loss on/off 스위치입니다. `1`이면 해당 항목을 학습 손실에 포함하고, `0`이면 비적용/미관측이어서 무시합니다.",
             "",
             markdown_table(
-                ["field", "observed labels (Test_100)", "score source", "labeling rule / threshold", "batch view"],
+                ["field", f"observed labels ({dataset_label})", "score source", "labeling rule / threshold", "batch view"],
                 [list(row) for row in checklist_rows],
             ),
             "",
@@ -2391,10 +2481,12 @@ def build_markdown_report(
     examples: Sequence[Dict[str, Any]],
     label_guide: Dict[str, Any],
     gaic_like_summary: Dict[str, Any],
+    dataset_context: Dict[str, str],
 ) -> str:
     counts = qa_summary["counts"]
+    report_title = str(dataset_context.get("report_title") or "Training Label Report")
     lines = [
-        "# SSTK Training Label Report",
+        f"# {report_title}",
         "",
         f"- input teacher scores: `{teacher_scores_jsonl}`",
         f"- output dir: `{out_dir}`",
@@ -2475,6 +2567,7 @@ def build_markdown_report(
                 json_block(example["canonical_core"]),
                 "",
                 "- `canonical_core.routing`은 이 샘플을 어떤 mode/policy로 해석했는지 보여 주는 image-level 조건부 정보입니다.",
+                "- `canonical_core.routing.subject_prior_bbox_norm_xyxy`는 orange box 좌표입니다. `flags.contextual_tiny_human=true`이면 detector person box가 아니라 scene fallback prior일 수 있습니다.",
                 "- `canonical_core.decision`은 최종 teacher decision과 `delta_vs_base`, `tau_improve`, winner id를 요약합니다.",
                 "- `canonical_core.chosen_candidate`는 최종 선택 crop의 핵심 score/macro/checklist label만 추린 것입니다.",
                 "",
@@ -2504,6 +2597,7 @@ def build_markdown_report(
                 "candidate 별 시각화:",
                 "",
                 "- 각 candidate 시각화는 해당 후보 bbox 하나만 강조하며, 상단 검은 박스에는 `image_id | target_ar | positive/negative`, `candidate_id`, `score`, `gt_flag`, `label_type`, 필요 시 `hard/unsafe` 상태를 적었습니다.",
+                "- 여기서 `positive` 시각화는 `final chosen`과 동의어가 아니라, `matching_targets` 안에 포함된 safe positive 예시 1개입니다. 따라서 `keep_full`/`minimal_crop` 샘플에서는 full-image baseline이 최종 선택이어도 crop 후보가 positive로 함께 남을 수 있습니다.",
                 "",
             ]
         )
@@ -2551,6 +2645,7 @@ def main() -> None:
     teacher_scores_jsonl = Path(args.teacher_scores_jsonl)
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
+    dataset_context = infer_dataset_context(out_dir, teacher_scores_jsonl)
 
     teacher_records = load_teacher_records(teacher_scores_jsonl)
     subject_mode_vocab = build_subject_mode_vocab(teacher_records)
@@ -2574,6 +2669,8 @@ def main() -> None:
         datasets["conditional_detr_canonical"],
         datasets["conditional_detr_batch"],
     )
+    label_guide["dataset_label"] = dataset_context["dataset_label"]
+    label_guide["run_label"] = out_dir.name
     gaic_like_summary = build_gaic_like_report_summary(datasets["conditional_detr_batch"])
     examples = build_report_examples(
         datasets["conditional_detr_canonical"],
@@ -2620,6 +2717,7 @@ def main() -> None:
         examples=examples,
         label_guide=label_guide,
         gaic_like_summary=gaic_like_summary,
+        dataset_context=dataset_context,
     )
     (out_dir / "TRAINING_DATA_REPORT_KO.md").write_text(report_text, encoding="utf-8")
 

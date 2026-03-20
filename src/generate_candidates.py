@@ -1128,12 +1128,16 @@ def resolve_subject_prior(
     mode = ""
     policy_id = ""
     subject_set: Dict[str, Any] = {}
+    subject_mode_flags: Dict[str, Any] = {}
     if isinstance(routing, dict):
         mode = str(routing.get("subject_mode", ""))
         policy_id = str(routing.get("policy_id", ""))
         ss = routing.get("subject_set", {})
         if isinstance(ss, dict):
             subject_set = ss
+        smf = routing.get("subject_mode_flags", {})
+        if isinstance(smf, dict):
+            subject_mode_flags = smf
 
     # Prefer explicit person detections when available.
     det_person_boxes: List[List[float]] = []
@@ -1197,8 +1201,9 @@ def resolve_subject_prior(
                 boxes.append(pb)
                 source_parts.append("c3")
 
+    contextual_tiny_human = bool(subject_mode_flags.get("contextual_tiny_human", False))
     union_pref = None
-    if isinstance(c2_union_box_xyxy, (list, tuple)) and len(c2_union_box_xyxy) == 4:
+    if (not contextual_tiny_human) and isinstance(c2_union_box_xyxy, (list, tuple)) and len(c2_union_box_xyxy) == 4:
         union_pref = norm_box_xyxy(c2_union_box_xyxy, float(width), float(height))
     union_in_routing = subject_set.get("union_box_xyxy")
     if isinstance(union_in_routing, (list, tuple)) and len(union_in_routing) == 4:

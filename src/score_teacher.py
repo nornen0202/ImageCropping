@@ -154,6 +154,8 @@ class TeacherScorerConfig:
     hard_face_rule: bool = True
     hard_head_top_rule: bool = True
     hard_portrait_lookroom_rule: bool = True
+    lookroom_hard_reject_min_subject_area_ratio: float = 0.04
+    lookroom_hard_reject_min_route_conf: float = 0.88
     severe_kp_margin_alpha: float = 0.03
     hard_joint_reject_count: int = 2
     head_top_face_expand_alpha: float = 0.35
@@ -348,6 +350,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--teacher_tau_boost_baseline_iou", type=float, default=0.90, help="baseline IoU threshold for tau boost")
     p.add_argument("--hard_head_top_rule", type=int, default=1, help="1=portrait head-top(hair) cut hard reject")
     p.add_argument("--hard_portrait_lookroom_rule", type=int, default=1, help="1=portrait insufficient lookroom hard reject")
+    p.add_argument(
+        "--lookroom_hard_reject_min_subject_area_ratio",
+        type=float,
+        default=0.04,
+        help="disable portrait lookroom hard reject when routed subject is smaller than this image-area ratio",
+    )
+    p.add_argument(
+        "--lookroom_hard_reject_min_route_conf",
+        type=float,
+        default=0.88,
+        help="disable portrait lookroom hard reject when subject-mode confidence is below this threshold",
+    )
     p.add_argument("--head_top_face_expand_alpha", type=float, default=0.35, help="head-top estimate: face_y1 - alpha*face_h")
     p.add_argument("--head_top_kp_expand", type=float, default=0.06, help="head-top estimate from keypoints: top_kp_y - value")
     p.add_argument("--head_top_min_margin", type=float, default=0.008, help="minimum safety margin for head-top inclusion")
@@ -3286,6 +3300,7 @@ def apply_subject_policy_overrides(
         flags["subject_mode_has_text_heavy"] = bool(sm_flags.get("has_text_heavy", False))
         flags["subject_mode_has_copyspace_tag"] = bool(sm_flags.get("has_copyspace_tag", False))
         flags["subject_mode_is_background_like"] = bool(sm_flags.get("is_background_like", False))
+        flags["subject_mode_contextual_tiny_human"] = bool(sm_flags.get("contextual_tiny_human", False))
     if isinstance(routing_hint.get("copyspace"), dict):
         flags["has_copy_space"] = bool(routing_hint.get("copyspace", {}).get("gate_passed", flags.get("has_copy_space", False)))
 
@@ -3925,11 +3940,23 @@ def compute_candidate_scores(
         sigma_l=cfg.sigma_l,
         gamma_l=cfg.gamma_l,
     )
+    subject_box_area_full = box_area(subject_box)
+    route_subject_set = route.get("subject_set", {}) if isinstance(route.get("subject_set"), dict) else {}
+    route_primary_area_ratio = safe_float(route_subject_set.get("c2_primary_area_ratio", subject_box_area_full))
+    route_conf = safe_float(route.get("subject_mode_conf", 0.0))
+    relax_lookroom_hard_reject = bool(
+        subject_box_area_full < cfg.lookroom_hard_reject_min_subject_area_ratio
+        or route_primary_area_ratio < cfg.lookroom_hard_reject_min_subject_area_ratio
+        or route_conf < cfg.lookroom_hard_reject_min_route_conf
+        or str(route.get("shot_type", "unknown")).strip().lower() == "unknown"
+        or bool(route.get("flags", {}).get("subject_mode_contextual_tiny_human", False))
+    )
     lookroom_cut = (
         bool(cfg.hard_portrait_lookroom_rule)
         and is_portrait_mode
         and lr["gaze_dir"] in {"left", "right"}
         and (not bool(lr["pass"]))
+        and (not relax_lookroom_hard_reject)
     )
     if lookroom_cut:
         hard_reject_tags.append("lookroom_cut")
@@ -3938,7 +3965,6 @@ def compute_candidate_scores(
 
     scale_lo, scale_hi = route.get("subject_scale_range", route.get("legacy_context_range", route["context_range"]))
     ctx_lo, ctx_hi = route["context_range"]
-    subject_box_area_full = box_area(subject_box)
     text_keep_ratio = (
         clamp(safe_float(text_eval.get("text_keep_ratio", 1.0), 1.0), 0.0, 1.0)
         if bool(text_eval.get("available", False))
@@ -4306,7 +4332,7 @@ def compute_candidate_scores(
         reject_tags.append("joint_cutoff")
     if bool(text_eval.get("available", False)) and (not bool(text_eval.get("pass", True))) and "text_cutoff" not in reject_tags:
         reject_tags.append("text_cutoff")
-    if lr["gaze_dir"] in {"left", "right"} and not lr["pass"]:
+    if is_portrait_mode and lr["gaze_dir"] in {"left", "right"} and not lr["pass"]:
         reject_tags.append("lookroom_violation")
     if lookroom_cut and "lookroom_cut" not in reject_tags:
         reject_tags.append("lookroom_cut")
@@ -5588,6 +5614,8 @@ def run(args: argparse.Namespace) -> None:
         teacher_tau_boost_baseline_iou=float(args.teacher_tau_boost_baseline_iou),
         hard_head_top_rule=bool(int(args.hard_head_top_rule)),
         hard_portrait_lookroom_rule=bool(int(args.hard_portrait_lookroom_rule)),
+        lookroom_hard_reject_min_subject_area_ratio=float(args.lookroom_hard_reject_min_subject_area_ratio),
+        lookroom_hard_reject_min_route_conf=float(args.lookroom_hard_reject_min_route_conf),
         head_top_face_expand_alpha=float(args.head_top_face_expand_alpha),
         head_top_kp_expand=float(args.head_top_kp_expand),
         head_top_min_margin=float(args.head_top_min_margin),

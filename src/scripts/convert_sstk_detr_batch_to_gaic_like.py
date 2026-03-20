@@ -260,13 +260,41 @@ def build_format_guide(
     gaic_images = safe_list(gaic_reference.get("images"))
     gaic_annotations = safe_list(gaic_reference.get("annotations"))
     gaic_categories = safe_list(gaic_reference.get("categories"))
+    gaic_meta = safe_dict(gaic_reference.get("_meta"))
     sample_image = gaic_images[0] if gaic_images else {}
     sample_annotation = gaic_annotations[0] if gaic_annotations else {}
+    sample_positive_annotation = next(
+        (ann for ann in gaic_annotations if safe_int(safe_dict(ann).get("gt_flag"), -1) == 1),
+        sample_annotation,
+    )
+    sample_negative_annotation = next(
+        (ann for ann in gaic_annotations if safe_int(safe_dict(ann).get("gt_flag"), -1) == 0),
+        sample_annotation,
+    )
     sample_category = gaic_categories[0] if gaic_categories else {}
     converted_images = safe_list(converted_payload.get("images"))
     converted_annotations = safe_list(converted_payload.get("annotations"))
     converted_sample_image = converted_images[0] if converted_images else {}
     converted_sample_annotation = converted_annotations[0] if converted_annotations else {}
+    converted_positive_annotation = next(
+        (ann for ann in converted_annotations if safe_int(safe_dict(ann).get("gt_flag"), -1) == 1),
+        converted_sample_annotation,
+    )
+    converted_negative_annotation = next(
+        (ann for ann in converted_annotations if safe_int(safe_dict(ann).get("gt_flag"), -1) == 0),
+        converted_sample_annotation,
+    )
+    converted_hard_or_unsafe_annotation = next(
+        (
+            ann
+            for ann in converted_annotations
+            if bool(safe_dict(ann).get("is_hard_negative", False))
+            or bool(safe_dict(ann).get("is_unsafe_negative", False))
+        ),
+        {},
+    )
+    gaic_gt_count = sum(1 for ann in gaic_annotations if safe_int(safe_dict(ann).get("gt_flag"), -1) == 1)
+    gaic_negative_count = sum(1 for ann in gaic_annotations if safe_int(safe_dict(ann).get("gt_flag"), -1) == 0)
     lines = [
         "# GAIC instances_train Format Guide",
         "",
@@ -282,6 +310,8 @@ def build_format_guide(
         f"- images: `{len(gaic_images)}`",
         f"- annotations: `{len(gaic_annotations)}`",
         f"- categories: `{len(gaic_categories)}`",
+        f"- gt_flag=1 annotations: `{gaic_gt_count}`",
+        f"- gt_flag=0 annotations: `{gaic_negative_count}`",
         "",
         "### 1.2 GAIC sample rows",
         "",
@@ -297,11 +327,29 @@ def build_format_guide(
         json.dumps(sample_annotation, ensure_ascii=False, indent=2),
         "```",
         "",
+        "sample positive `annotations[]`:",
+        "",
+        "```json",
+        json.dumps(sample_positive_annotation, ensure_ascii=False, indent=2),
+        "```",
+        "",
+        "sample negative `annotations[]`:",
+        "",
+        "```json",
+        json.dumps(sample_negative_annotation, ensure_ascii=False, indent=2),
+        "```",
+        "",
         "sample `categories[0]`:",
         "",
         "```json",
         json.dumps(sample_category, ensure_ascii=False, indent=2),
         "```",
+        "",
+        "### 1.3 로컬 참조 생성 범위",
+        "",
+        f"- source annotation jsons: `{', '.join(str(path) for path in safe_list(gaic_meta.get('source_annotation_jsons'))) or 'n/a'}`",
+        f"- available images after local filtering: `{safe_int(gaic_meta.get('available_image_count'), len(gaic_images))}`",
+        f"- available annotations after local filtering: `{safe_int(gaic_meta.get('available_annotation_count'), len(gaic_annotations))}`",
         "",
         "## 2. 필드 해석",
         "",
@@ -326,6 +374,7 @@ def build_format_guide(
         f"- images: `{len(converted_images)}`",
         f"- annotations: `{len(converted_annotations)}`",
         f"- validation status: `{validation_summary.get('status')}`",
+        f"- label_type counts: `{json.dumps(validation_summary.get('label_type_counts', {}), ensure_ascii=False)}`",
         "",
         "- SSTK 변환본은 GAIC와 같은 top-level skeleton을 유지하되, `matching_targets`는 `gt_flag=1`, `candidate_pool`은 `gt_flag=0`으로 함께 담았습니다.",
         "- 따라서 이 변환본은 safe positive와 negative/hard/unsafe 후보를 함께 보관하는 GAIC-style annotation set입니다.",
@@ -344,6 +393,24 @@ def build_format_guide(
         "",
         "```json",
         json.dumps(converted_sample_annotation, ensure_ascii=False, indent=2),
+        "```",
+        "",
+        "sample converted positive `annotations[]`:",
+        "",
+        "```json",
+        json.dumps(converted_positive_annotation, ensure_ascii=False, indent=2),
+        "```",
+        "",
+        "sample converted negative `annotations[]`:",
+        "",
+        "```json",
+        json.dumps(converted_negative_annotation, ensure_ascii=False, indent=2),
+        "```",
+        "",
+        "sample converted hard/unsafe negative `annotations[]`:",
+        "",
+        "```json",
+        json.dumps(converted_hard_or_unsafe_annotation, ensure_ascii=False, indent=2),
         "```",
         "",
         "## 4. GAIC 원본과의 대응 관계",

@@ -22,7 +22,16 @@ SEVERE_REJECT_TAGS = {
     "head_top_cut",
     "text_cutoff",
     "lookroom_cut",
-    "lookroom_violation",
+}
+SAFE_LEFTOVER_POLICIES = {
+    "keep_negative",
+    "ignore",
+    "promote_soft_positive",
+}
+SAFE_LEFTOVER_POLICY_DESCRIPTIONS = {
+    "keep_negative": "safe high-score leftover를 기존 negative/near_negative로 유지",
+    "ignore": "safe high-score leftover를 negative pool에서 제외하고 ignored_candidates로 분리",
+    "promote_soft_positive": "safe high-score leftover를 soft_positive로 승격해 matching_targets에 포함",
 }
 SOFT_ISSUE_TOKENS = (
     "loose",
@@ -142,6 +151,10 @@ def sigmoid(value: float) -> float:
         return 1.0 / (1.0 + z)
     z = math.exp(value)
     return z / (1.0 + z)
+
+
+def score_prob_from_annotated_candidate(candidate: Dict[str, Any]) -> float:
+    return sigmoid(safe_float(candidate.get("score_z_local", 0.0)))
 
 
 def softmax_local(scores: Sequence[float], tau: float) -> List[float]:
@@ -394,6 +407,172 @@ def is_unsafe_candidate(candidate: Dict[str, Any]) -> bool:
     if bool(candidate.get("hard_reject", False)):
         return True
     return len(reject_tags.intersection(SEVERE_REJECT_TAGS)) > 0
+
+
+def candidate_rank_score(candidate: Dict[str, Any]) -> float:
+    scores = safe_dict(candidate.get("scores"))
+    return safe_float(scores.get("rank", scores.get("final", -1e9)), -1e9)
+
+
+def maybe_repair_training_decision(
+    image_id: str,
+    target_ar: str,
+    ar_res: Dict[str, Any],
+    candidates: Sequence[Dict[str, Any]],
+    *,
+    softmax_tau: float,
+    hard_negative_rank_pct_max: float,
+    near_margin_max: float,
+) -> Tuple[Dict[str, Any], List[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    decision = safe_dict(ar_res.get("decision"))
+    chosen_id = str(decision.get("chosen_candidate_id", ""))
+    chosen = find_candidate(candidates, chosen_id)
+    if chosen is None or not is_unsafe_candidate(chosen):
+        return ar_res, list(candidates), None
+
+    baseline = find_candidate(candidates, str(safe_dict(ar_res.get("baseline_candidate")).get("candidate_id", "")))
+    baseline_safe = baseline if baseline is not None and not is_unsafe_candidate(baseline) else None
+    safe_candidates = [c for c in candidates if not is_unsafe_candidate(c)]
+    safe_selected_crop = [
+        c for c in candidates if bool(c.get("is_selected_topk", False)) and (not bool(c.get("is_baseline_candidate", False))) and (not is_unsafe_candidate(c))
+    ]
+    safe_any_crop = [
+        c for c in safe_candidates if not bool(c.get("is_baseline_candidate", False))
+    ]
+    safe_crop = max((safe_selected_crop or safe_any_crop), key=candidate_rank_score, default=None)
+
+    original_decision_type = str(decision.get("decision_type", ""))
+    replacement: Optional[Dict[str, Any]]
+    if original_decision_type == "crop":
+        replacement = safe_crop or baseline_safe
+    else:
+        replacement = baseline_safe or safe_crop
+    if replacement is None:
+        return ar_res, list(candidates), None
+
+    baseline_source = str(safe_dict(ar_res.get("baseline_candidate")).get("source", ""))
+    if baseline_safe is not None and str(replacement.get("candidate_id", "")) == str(baseline_safe.get("candidate_id", "")):
+        repaired_decision_type = "keep_full" if baseline_source.startswith("baseline_full") else "minimal_crop"
+    else:
+        repaired_decision_type = "crop"
+
+    repaired = copy.deepcopy(ar_res)
+    repaired_decision = copy.deepcopy(decision)
+    replacement_scores = safe_dict(replacement.get("scores"))
+    repaired_decision["decision_type"] = repaired_decision_type
+    repaired_decision["chosen_candidate_id"] = str(replacement.get("candidate_id", ""))
+    repaired_decision["chosen_score_rank"] = float(candidate_rank_score(replacement))
+    repaired_decision["chosen_score_policy"] = float(
+        safe_float(replacement_scores.get("policy", replacement_scores.get("final", 0.0)), 0.0)
+    )
+
+    repair_info = {
+        "applied": True,
+        "reason": "unsafe_post_gate_choice",
+        "original_decision_type": original_decision_type,
+        "repaired_decision_type": repaired_decision_type,
+        "original_chosen_candidate_id": chosen_id,
+        "repaired_chosen_candidate_id": str(replacement.get("candidate_id", "")),
+        "original_reject_tags": list(safe_list(chosen.get("reject_tags"))),
+    }
+    repaired_decision["training_repair"] = repair_info
+    repaired["decision"] = repaired_decision
+    repaired["training_repair"] = repair_info
+
+    selected_topk = safe_list(repaired.get("selected_topk"))
+    target_len = max(1, len(selected_topk))
+    repaired_selected: List[Dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for cand in [replacement] + [
+        c for c in candidates if bool(c.get("is_selected_topk", False)) and not is_unsafe_candidate(c)
+    ]:
+        cid = str(cand.get("candidate_id", ""))
+        if not cid or cid in seen_ids:
+            continue
+        repaired_selected.append(copy.deepcopy(cand))
+        seen_ids.add(cid)
+        if len(repaired_selected) >= target_len:
+            break
+    if baseline_safe is not None:
+        baseline_id = str(baseline_safe.get("candidate_id", ""))
+        if baseline_id and baseline_id not in seen_ids and len(repaired_selected) < target_len:
+            repaired_selected.append(copy.deepcopy(baseline_safe))
+    repaired["selected_topk"] = repaired_selected[:target_len]
+
+    repaired_candidates = annotate_group_candidates(
+        image_id=image_id,
+        target_ar=target_ar,
+        ar_res=repaired,
+        softmax_tau=softmax_tau,
+        hard_negative_rank_pct_max=hard_negative_rank_pct_max,
+        near_margin_max=near_margin_max,
+    )
+    return repaired, repaired_candidates, repair_info
+
+
+def apply_safe_leftover_policy(
+    candidates: Sequence[Dict[str, Any]],
+    *,
+    chosen_candidate_id: str,
+    safe_leftover_policy: str,
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    policy = str(safe_leftover_policy or "keep_negative").strip()
+    if policy not in SAFE_LEFTOVER_POLICIES:
+        raise ValueError(f"unsupported safe_leftover_policy={policy}")
+
+    chosen = find_candidate(candidates, chosen_candidate_id)
+    chosen_score_prob = score_prob_from_annotated_candidate(chosen or {})
+    stats = {
+        "safe_high_score_leftover_total": 0,
+        "safe_high_score_leftover_kept_negative": 0,
+        "safe_high_score_leftover_ignored": 0,
+        "safe_high_score_leftover_promoted_soft_positive": 0,
+    }
+    updated: List[Dict[str, Any]] = []
+    for candidate in candidates:
+        row = copy.deepcopy(candidate)
+        row["safe_leftover_policy"] = policy
+        row["is_safe_high_score_leftover"] = False
+        row["safe_leftover_policy_state"] = "none"
+        row["is_ignore_candidate"] = False
+
+        candidate_id = str(row.get("candidate_id", ""))
+        is_candidate_leftover = bool(
+            candidate_id
+            and candidate_id != chosen_candidate_id
+            and (not bool(row.get("is_positive_candidate", False)))
+            and (not bool(row.get("is_unsafe_negative", False)))
+            and score_prob_from_annotated_candidate(row) > chosen_score_prob + 1e-9
+        )
+        if not is_candidate_leftover:
+            updated.append(row)
+            continue
+
+        row["is_safe_high_score_leftover"] = True
+        stats["safe_high_score_leftover_total"] += 1
+        if policy == "ignore":
+            row["is_ignore_candidate"] = True
+            row["is_positive_candidate"] = False
+            row["is_soft_positive"] = False
+            row["is_hard_negative"] = False
+            row["is_near_negative"] = False
+            row["label_type"] = "ignore"
+            row["safe_leftover_policy_state"] = "ignored"
+            stats["safe_high_score_leftover_ignored"] += 1
+        elif policy == "promote_soft_positive":
+            row["is_ignore_candidate"] = False
+            row["is_positive_candidate"] = True
+            row["is_soft_positive"] = True
+            row["is_hard_negative"] = False
+            row["is_near_negative"] = False
+            row["label_type"] = "soft_positive"
+            row["safe_leftover_policy_state"] = "promoted_soft_positive"
+            stats["safe_high_score_leftover_promoted_soft_positive"] += 1
+        else:
+            row["safe_leftover_policy_state"] = "kept_negative"
+            stats["safe_high_score_leftover_kept_negative"] += 1
+        updated.append(row)
+    return updated, stats
 
 
 def annotate_group_candidates(
@@ -761,6 +940,10 @@ def build_candidate_canonical_record(candidate: Dict[str, Any], routing: Dict[st
         "is_soft_positive": bool(candidate.get("is_soft_positive", False)),
         "is_hard_negative": bool(candidate.get("is_hard_negative", False)),
         "is_unsafe_negative": bool(candidate.get("is_unsafe_negative", False)),
+        "is_ignore_candidate": bool(candidate.get("is_ignore_candidate", False)),
+        "is_safe_high_score_leftover": bool(candidate.get("is_safe_high_score_leftover", False)),
+        "safe_leftover_policy_state": str(candidate.get("safe_leftover_policy_state", "none")),
+        "safe_leftover_policy": str(candidate.get("safe_leftover_policy", "keep_negative")),
         "bbox_norm_xyxy": bbox,
         "bbox_cxcywh": bbox_xyxy_to_cxcywh(bbox),
         "area_ratio": round(safe_float(candidate.get("area_ratio", 0.0)), 6),
@@ -795,6 +978,23 @@ def build_candidate_canonical_record(candidate: Dict[str, Any], routing: Dict[st
     }
 
 
+def build_label_generation_record(
+    candidates: Sequence[Dict[str, Any]],
+    *,
+    safe_leftover_policy: str,
+) -> Dict[str, Any]:
+    state_counts = Counter(
+        str(candidate.get("safe_leftover_policy_state", "none"))
+        for candidate in candidates
+        if bool(candidate.get("is_safe_high_score_leftover", False))
+    )
+    return {
+        "safe_leftover_policy": str(safe_leftover_policy),
+        "safe_high_score_leftover_count": int(sum(state_counts.values())),
+        "safe_high_score_leftover_state_counts": dict(state_counts),
+    }
+
+
 def build_decision_record(
     image_id: str,
     target_ar: str,
@@ -811,7 +1011,7 @@ def build_decision_record(
     if chosen is None and chosen_id == str(best.get("candidate_id", "")):
         chosen = best
     decision_type = str(decision.get("decision_type", ""))
-    return {
+    out = {
         "image_id": image_id,
         "target_ar": target_ar,
         "decision_type": decision_type,
@@ -833,10 +1033,14 @@ def build_decision_record(
         "chosen_score_rank": round(safe_float(decision.get("chosen_score_rank", 0.0)), 6),
         "chosen_score_policy": round(safe_float(decision.get("chosen_score_policy", 0.0)), 6),
     }
+    training_repair = safe_dict(decision.get("training_repair") or ar_res.get("training_repair"))
+    if training_repair:
+        out["training_repair"] = copy.deepcopy(training_repair)
+    return out
 
 
 def build_structured_decision(decision_row: Dict[str, Any]) -> Dict[str, Any]:
-    return {
+    out = {
         "decision_type": decision_row["decision_type"],
         "decision_id": decision_row["decision_id"],
         "delta_vs_base": decision_row["delta_vs_base"],
@@ -850,6 +1054,9 @@ def build_structured_decision(decision_row: Dict[str, Any]) -> Dict[str, Any]:
         "chosen_score_rank": decision_row["chosen_score_rank"],
         "chosen_score_policy": decision_row["chosen_score_policy"],
     }
+    if safe_dict(decision_row.get("training_repair")):
+        out["training_repair"] = copy.deepcopy(safe_dict(decision_row.get("training_repair")))
+    return out
 
 
 def build_teacher_meta(routing: Dict[str, Any], annotated_candidates: Sequence[Dict[str, Any]], ar_res: Dict[str, Any]) -> Dict[str, Any]:
@@ -862,11 +1069,19 @@ def build_teacher_meta(routing: Dict[str, Any], annotated_candidates: Sequence[D
         consensus = best_softmax
     route_conf = safe_float(routing.get("route_conf", routing.get("subject_mode_conf", 0.0)), 0.0)
     reliability = 0.5 * clamp(consensus or 0.0, 0.0, 1.0) + 0.5 * clamp(route_conf, 0.0, 1.0)
+    safe_leftover_state_counts = Counter(
+        str(candidate.get("safe_leftover_policy_state", "none"))
+        for candidate in annotated_candidates
+        if bool(candidate.get("is_safe_high_score_leftover", False))
+    )
     return {
         "teacher_confidence": round(clamp(consensus or 0.0, 0.0, 1.0), 6),
         "target_reliability": round(clamp(reliability, 0.0, 1.0), 6),
         "route_conf": round(clamp(route_conf, 0.0, 1.0), 6),
         "candidate_count": len(annotated_candidates),
+        "safe_leftover_policy": str(first_nonempty(*(candidate.get("safe_leftover_policy") for candidate in annotated_candidates), "keep_negative")),
+        "safe_high_score_leftover_count": int(sum(safe_leftover_state_counts.values())),
+        "safe_high_score_leftover_state_counts": dict(safe_leftover_state_counts),
     }
 
 
@@ -891,6 +1106,9 @@ def build_matching_target(candidate_record: Dict[str, Any], target_index: int) -
         "observed_mask": candidate_record["observed_mask"],
         "derived_checklist_targets": derived_targets,
         "why_tags": candidate_record["why_tags"],
+        "is_safe_high_score_leftover": bool(candidate_record.get("is_safe_high_score_leftover", False)),
+        "safe_leftover_policy_state": str(candidate_record.get("safe_leftover_policy_state", "none")),
+        "safe_leftover_policy": str(candidate_record.get("safe_leftover_policy", "keep_negative")),
     }
 
 
@@ -911,6 +1129,10 @@ def build_candidate_pool_entry(candidate_record: Dict[str, Any]) -> Dict[str, An
         "is_positive_candidate": candidate_record["is_positive_candidate"],
         "is_hard_negative": candidate_record["is_hard_negative"],
         "is_unsafe_negative": candidate_record["is_unsafe_negative"],
+        "is_ignore_candidate": bool(candidate_record.get("is_ignore_candidate", False)),
+        "is_safe_high_score_leftover": bool(candidate_record.get("is_safe_high_score_leftover", False)),
+        "safe_leftover_policy_state": str(candidate_record.get("safe_leftover_policy_state", "none")),
+        "safe_leftover_policy": str(candidate_record.get("safe_leftover_policy", "keep_negative")),
         "why_tags": candidate_record["why_tags"],
         "reject_tags": candidate_record["reject_tags"],
     }
@@ -940,6 +1162,10 @@ def candidate_training_view(candidate: Dict[str, Any], routing: Optional[Dict[st
         "is_soft_positive": canonical["is_soft_positive"],
         "is_hard_negative": canonical["is_hard_negative"],
         "is_unsafe_negative": canonical["is_unsafe_negative"],
+        "is_ignore_candidate": bool(canonical.get("is_ignore_candidate", False)),
+        "is_safe_high_score_leftover": bool(canonical.get("is_safe_high_score_leftover", False)),
+        "safe_leftover_policy_state": str(canonical.get("safe_leftover_policy_state", "none")),
+        "safe_leftover_policy": str(canonical.get("safe_leftover_policy", "keep_negative")),
         "macro_scores": canonical["macro_targets"],
         "checklist_labels": canonical["checklist_labels"],
         "checklist_scores": canonical["checklist_scores"],
@@ -972,6 +1198,8 @@ def build_pairwise_records(
     seen: set[Tuple[str, str, str]] = set()
 
     def add_pair(a: Dict[str, Any], b: Dict[str, Any], pair_type: str) -> None:
+        if bool(a.get("is_ignore_candidate", False)) or bool(b.get("is_ignore_candidate", False)):
+            return
         key = (str(a.get("candidate_id", "")), str(b.get("candidate_id", "")), pair_type)
         if not key[0] or not key[1] or key in seen:
             return
@@ -1038,6 +1266,8 @@ def build_listwise_record(
     seen: set[str] = set()
 
     def maybe_add(cand: Dict[str, Any]) -> None:
+        if bool(cand.get("is_ignore_candidate", False)):
+            return
         cid = str(cand.get("candidate_id", ""))
         if not cid or cid in seen:
             return
@@ -1089,6 +1319,8 @@ def build_checklist_records(
     decision_type = str(safe_dict(ar_res.get("decision")).get("decision_type", ""))
     out = []
     for cand in candidates:
+        if bool(cand.get("is_ignore_candidate", False)):
+            continue
         row = candidate_training_view(cand, routing=routing)
         row.update(
             {
@@ -1114,6 +1346,8 @@ def build_regression_records(
     decision_type = str(safe_dict(ar_res.get("decision")).get("decision_type", ""))
     rows = []
     for cand in candidates:
+        if bool(cand.get("is_ignore_candidate", False)):
+            continue
         row = candidate_training_view(cand, routing=routing)
         row.update(
             {
@@ -1135,22 +1369,27 @@ def build_conditional_detr_records(
     candidates: Sequence[Dict[str, Any]],
     subject_mode_to_id: Dict[str, int],
     image_root: Optional[Path],
+    safe_leftover_policy: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     routing = build_routing_record(teacher_record, ar_res, subject_mode_to_id)
     baseline = build_baseline_record(ar_res)
     decision_row = build_decision_record(image_id, target_ar, ar_res, candidates)
     decision = build_structured_decision(decision_row)
     image_path = resolve_image_path(image_root, image_id)
+    label_generation = build_label_generation_record(candidates, safe_leftover_policy=safe_leftover_policy)
 
     canonical_candidates: List[Dict[str, Any]] = []
     matching_targets: List[Dict[str, Any]] = []
     candidate_pool: List[Dict[str, Any]] = []
+    ignored_candidates: List[Dict[str, Any]] = []
 
     for candidate in candidates:
         candidate_record = build_candidate_canonical_record(candidate, routing)
         candidate_record["_source_candidate"] = copy.deepcopy(candidate)
         canonical_candidates.append(candidate_record)
-        if candidate_record["is_positive_candidate"] and not candidate_record["is_unsafe_negative"]:
+        if candidate_record["is_ignore_candidate"]:
+            ignored_candidates.append(build_candidate_pool_entry(candidate_record))
+        elif candidate_record["is_positive_candidate"] and not candidate_record["is_unsafe_negative"]:
             matching_targets.append(build_matching_target(candidate_record, len(matching_targets)))
         else:
             candidate_pool.append(build_candidate_pool_entry(candidate_record))
@@ -1178,6 +1417,7 @@ def build_conditional_detr_records(
         "image_id": image_id,
         "image_path": str(image_path) if image_path is not None else None,
         "target_ar": target_ar,
+        "label_generation": label_generation,
         "routing": routing,
         "baseline": baseline,
         "decision": decision,
@@ -1190,11 +1430,13 @@ def build_conditional_detr_records(
         "image_id": image_id,
         "image_path": str(image_path) if image_path is not None else None,
         "target_ar": target_ar,
+        "label_generation": label_generation,
         "routing": routing,
         "baseline": baseline,
         "decision_target": decision,
         "matching_targets": matching_targets,
         "candidate_pool": candidate_pool,
+        "ignored_candidates": ignored_candidates,
         "teacher_meta": teacher_meta,
         "checklist_schema_version": "sstk_check_v2",
     }
@@ -1211,6 +1453,7 @@ def build_training_datasets(
     near_margin_max: float,
     max_hard_pairs: int,
     max_near_pairs: int,
+    safe_leftover_policy: str,
     subject_mode_to_id: Optional[Dict[str, int]] = None,
     image_root: Optional[Path] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
@@ -1228,17 +1471,31 @@ def build_training_datasets(
         image_id = str(rec.get("image_id", ""))
         results_by_ar = safe_dict(safe_dict(rec.get("teacher_scorer")).get("results_by_ar"))
         for target_ar, ar_res in results_by_ar.items():
+            ar_res_dict = safe_dict(ar_res)
             candidates = annotate_group_candidates(
                 image_id=image_id,
                 target_ar=str(target_ar),
-                ar_res=safe_dict(ar_res),
+                ar_res=ar_res_dict,
                 softmax_tau=softmax_tau,
                 hard_negative_rank_pct_max=hard_negative_rank_pct_max,
                 near_margin_max=near_margin_max,
             )
             if not candidates:
                 continue
-            ar_res_dict = safe_dict(ar_res)
+            ar_res_dict, candidates, _repair_info = maybe_repair_training_decision(
+                image_id=image_id,
+                target_ar=str(target_ar),
+                ar_res=ar_res_dict,
+                candidates=candidates,
+                softmax_tau=softmax_tau,
+                hard_negative_rank_pct_max=hard_negative_rank_pct_max,
+                near_margin_max=near_margin_max,
+            )
+            candidates, _safe_leftover_stats = apply_safe_leftover_policy(
+                candidates,
+                chosen_candidate_id=str(safe_dict(ar_res_dict.get("decision")).get("chosen_candidate_id", "")),
+                safe_leftover_policy=safe_leftover_policy,
+            )
             pairwise_rows.extend(
                 build_pairwise_records(
                     image_id=image_id,
@@ -1279,6 +1536,7 @@ def build_training_datasets(
                 candidates=candidates,
                 subject_mode_to_id=subject_mode_to_id,
                 image_root=image_root,
+                safe_leftover_policy=safe_leftover_policy,
             )
             if batch_record["matching_targets"]:
                 canonical_rows.append(canonical_record)
@@ -1314,7 +1572,11 @@ def counter_ratios(num: Counter, den: Counter) -> Dict[str, float]:
     return out
 
 
-def build_qa_summary(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+def build_qa_summary(
+    datasets: Dict[str, List[Dict[str, Any]]],
+    *,
+    safe_leftover_policy: str,
+) -> Dict[str, Any]:
     pairwise_rows = datasets["pairwise"]
     listwise_rows = datasets["listwise"]
     decision_rows = datasets["decision"]
@@ -1363,6 +1625,7 @@ def build_qa_summary(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any
     canonical_candidate_counts = [len(row.get("candidates", [])) for row in canonical_rows]
     matching_target_counts = [len(row.get("matching_targets", [])) for row in batch_rows]
     candidate_pool_counts = [len(row.get("candidate_pool", [])) for row in batch_rows]
+    ignored_candidate_counts = [len(row.get("ignored_candidates", [])) for row in batch_rows]
     route_conf_values = [safe_float(safe_dict(row.get("routing")).get("route_conf", 0.0)) for row in canonical_rows]
     reliability_values = [safe_float(safe_dict(row.get("teacher_meta")).get("target_reliability", 0.0)) for row in canonical_rows]
     applicable_num = Counter()
@@ -1371,6 +1634,25 @@ def build_qa_summary(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any
     observed_den = Counter()
     valid_num = Counter()
     valid_den = Counter()
+    batch_map = {
+        (str(row.get("image_id", "")), str(row.get("target_ar", ""))): row
+        for row in batch_rows
+    }
+    consistency_audit = {
+        "safe_leftover_policy": str(safe_leftover_policy),
+        "safe_leftover_policy_description": SAFE_LEFTOVER_POLICY_DESCRIPTIONS.get(str(safe_leftover_policy), ""),
+        "safe_high_score_leftover_total": 0,
+        "safe_high_score_leftover_state_counts": Counter(),
+        "winner_missing_from_matching_targets": 0,
+        "matching_targets_with_severe_reject_tags": 0,
+        "chosen_candidates_with_severe_reject_tags": 0,
+        "training_repair_count": 0,
+        "training_repair_by_reason": Counter(),
+        "rows_with_higher_scored_safe_pool_candidates": 0,
+        "rows_with_higher_scored_unsafe_pool_candidates": 0,
+        "higher_scored_safe_pool_candidate_count": 0,
+        "higher_scored_unsafe_pool_candidate_count": 0,
+    }
     for row in batch_rows:
         for target in row.get("matching_targets", []):
             applicable = safe_dict(target.get("applicable_mask"))
@@ -1385,8 +1667,69 @@ def build_qa_summary(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any
             for key, value in valid.items():
                 valid_den[key] += 1
                 valid_num[key] += int(bool(value))
+            reject_tags = {str(tag) for tag in safe_list(target.get("reject_tags"))}
+            if reject_tags.intersection(SEVERE_REJECT_TAGS):
+                consistency_audit["matching_targets_with_severe_reject_tags"] += 1
+        for ignored in row.get("ignored_candidates", []):
+            if bool(ignored.get("is_ignore_candidate", False)) and bool(ignored.get("is_positive_candidate", False)):
+                internal_errors = consistency_audit.setdefault("internal_errors", [])
+                internal_errors.append(f"{row.get('image_id')}::{row.get('target_ar')} ignored candidate marked positive")
+
+    for row in canonical_rows:
+        key = (str(row.get("image_id", "")), str(row.get("target_ar", "")))
+        batch_row = safe_dict(batch_map.get(key))
+        decision = safe_dict(row.get("decision"))
+        chosen_id = str(decision.get("winner_post_gate_candidate_id", ""))
+        candidates = safe_list(row.get("candidates"))
+        chosen_candidate = next(
+            (candidate for candidate in candidates if str(candidate.get("candidate_id", "")) == chosen_id),
+            None,
+        )
+        matching_target_ids = {
+            str(target.get("candidate_id", "")) for target in safe_list(batch_row.get("matching_targets"))
+        }
+        if chosen_id and chosen_id not in matching_target_ids:
+            consistency_audit["winner_missing_from_matching_targets"] += 1
+        if chosen_candidate is not None and is_unsafe_candidate(chosen_candidate):
+            consistency_audit["chosen_candidates_with_severe_reject_tags"] += 1
+        for candidate in candidates:
+            if bool(candidate.get("is_safe_high_score_leftover", False)):
+                consistency_audit["safe_high_score_leftover_total"] += 1
+                consistency_audit["safe_high_score_leftover_state_counts"][
+                    str(candidate.get("safe_leftover_policy_state", "none"))
+                ] += 1
+        repair = safe_dict(decision.get("training_repair"))
+        if repair.get("applied"):
+            consistency_audit["training_repair_count"] += 1
+            consistency_audit["training_repair_by_reason"][str(repair.get("reason", "unknown"))] += 1
+        if chosen_candidate is None:
+            continue
+        chosen_score = safe_float(safe_dict(chosen_candidate.get("score_targets")).get("score_prob", 0.0))
+        has_safe_higher = False
+        has_unsafe_higher = False
+        for pool_row in safe_list(batch_row.get("candidate_pool")):
+            pool_score = safe_float(pool_row.get("score_prob", pool_row.get("score_rank_pct", 0.0)))
+            if pool_score <= chosen_score:
+                continue
+            if bool(pool_row.get("is_hard_negative")) or bool(pool_row.get("is_unsafe_negative")):
+                has_unsafe_higher = True
+                consistency_audit["higher_scored_unsafe_pool_candidate_count"] += 1
+            else:
+                has_safe_higher = True
+                consistency_audit["higher_scored_safe_pool_candidate_count"] += 1
+        if has_safe_higher:
+            consistency_audit["rows_with_higher_scored_safe_pool_candidates"] += 1
+        if has_unsafe_higher:
+            consistency_audit["rows_with_higher_scored_unsafe_pool_candidates"] += 1
+
+    consistency_audit["training_repair_by_reason"] = dict(consistency_audit["training_repair_by_reason"])
+    consistency_audit["safe_high_score_leftover_state_counts"] = dict(consistency_audit["safe_high_score_leftover_state_counts"])
 
     return {
+        "generation_policy": {
+            "safe_leftover_policy": str(safe_leftover_policy),
+            "safe_leftover_policy_description": SAFE_LEFTOVER_POLICY_DESCRIPTIONS.get(str(safe_leftover_policy), ""),
+        },
         "counts": {
             "pairwise": len(pairwise_rows),
             "listwise": len(listwise_rows),
@@ -1430,6 +1773,7 @@ def build_qa_summary(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any
             "candidate_count_distribution": summarize_numeric(canonical_candidate_counts),
             "matching_target_count_distribution": summarize_numeric(matching_target_counts),
             "candidate_pool_count_distribution": summarize_numeric(candidate_pool_counts),
+            "ignored_candidate_count_distribution": summarize_numeric(ignored_candidate_counts),
             "route_conf_distribution": summarize_numeric(route_conf_values),
             "target_reliability_distribution": summarize_numeric(reliability_values),
             "skipped_count": len(skipped_rows),
@@ -1437,6 +1781,7 @@ def build_qa_summary(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any
             "observed_rate_by_key": counter_ratios(observed_num, observed_den),
             "valid_rate_by_key": counter_ratios(valid_num, valid_den),
         },
+        "consistency_audit": consistency_audit,
     }
 
 
@@ -1486,6 +1831,8 @@ def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, An
         prefix = f"{image_id}::{target_ar}"
         targets = row.get("matching_targets", [])
         pool = row.get("candidate_pool", [])
+        ignored = row.get("ignored_candidates", [])
+        decision_target = safe_dict(row.get("decision_target"))
         if not targets:
             errors.append(f"{prefix} has no matching_targets")
         seen_target_ids: set[str] = set()
@@ -1499,6 +1846,9 @@ def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, An
             matched_candidate_ids.add(candidate_id)
             if not bbox_is_valid(target.get("bbox_norm_xyxy")):
                 errors.append(f"{prefix} invalid matching target bbox for {candidate_id}")
+            reject_tags = {str(tag) for tag in safe_list(target.get("reject_tags"))}
+            if reject_tags.intersection(SEVERE_REJECT_TAGS):
+                errors.append(f"{prefix} matching target {candidate_id} contains severe reject_tags={sorted(reject_tags)}")
             derived = safe_dict(target.get("derived_checklist_targets"))
             valid_mask = safe_dict(derived.get("valid_mask"))
             for key, value in valid_mask.items():
@@ -1510,6 +1860,24 @@ def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, An
                 errors.append(f"{prefix} candidate_id={candidate_id} appears in both matching_targets and candidate_pool")
             if not bbox_is_valid(pool_candidate.get("bbox_norm_xyxy")):
                 errors.append(f"{prefix} invalid candidate_pool bbox for {candidate_id}")
+        pool_candidate_ids = {str(pool_candidate.get("candidate_id", "")) for pool_candidate in pool}
+        ignored_candidate_ids: set[str] = set()
+        for ignored_candidate in ignored:
+            candidate_id = str(ignored_candidate.get("candidate_id", ""))
+            if candidate_id in matched_candidate_ids:
+                errors.append(f"{prefix} candidate_id={candidate_id} appears in both matching_targets and ignored_candidates")
+            if candidate_id in ignored_candidate_ids:
+                errors.append(f"{prefix} duplicate ignored candidate_id={candidate_id}")
+            ignored_candidate_ids.add(candidate_id)
+            if candidate_id in pool_candidate_ids:
+                errors.append(f"{prefix} candidate_id={candidate_id} appears in both candidate_pool and ignored_candidates")
+            if not bbox_is_valid(ignored_candidate.get("bbox_norm_xyxy")):
+                errors.append(f"{prefix} invalid ignored_candidate bbox for {candidate_id}")
+            if not bool(ignored_candidate.get("is_ignore_candidate", False)):
+                errors.append(f"{prefix} ignored_candidate {candidate_id} missing is_ignore_candidate flag")
+        chosen_id = str(decision_target.get("winner_post_gate_candidate_id", ""))
+        if chosen_id and chosen_id not in matched_candidate_ids:
+            errors.append(f"{prefix} decision winner {chosen_id} missing from matching_targets")
         if row.get("image_path") is None:
             warnings.append(f"{prefix} image_path unresolved")
 
@@ -1552,11 +1920,52 @@ def choose_report_examples(
             available.append(row)
     selected: List[Dict[str, Any]] = []
     seen_keys: set[str] = set()
+    prioritized_repaired = sorted(
+        (
+            row
+            for row in available
+            if bool(safe_dict(safe_dict(row.get("decision")).get("training_repair")).get("applied", False))
+        ),
+        key=lambda row: (
+            str(safe_dict(row.get("routing")).get("subject_mode", "")),
+            str(row.get("image_id", "")),
+            str(row.get("target_ar", "")),
+        ),
+    )
+    for row in prioritized_repaired[: min(max_examples, 2)]:
+        group_key = f"{row.get('image_id')}::{row.get('target_ar')}"
+        if group_key in seen_keys:
+            continue
+        selected.append(row)
+        seen_keys.add(group_key)
+    prioritized_leftovers = sorted(
+        (
+            row
+            for row in available
+            if any(bool(candidate.get("is_safe_high_score_leftover", False)) for candidate in safe_list(row.get("candidates")))
+        ),
+        key=lambda row: (
+            0
+            if str(safe_dict(row.get("label_generation")).get("safe_leftover_policy", "")) in {"ignore", "promote_soft_positive"}
+            else 1,
+            str(row.get("image_id", "")),
+            str(row.get("target_ar", "")),
+        ),
+    )
+    for row in prioritized_leftovers[: min(max_examples, 2)]:
+        group_key = f"{row.get('image_id')}::{row.get('target_ar')}"
+        if group_key in seen_keys:
+            continue
+        selected.append(row)
+        seen_keys.add(group_key)
     prioritized_contextual = sorted(
         (
             row
             for row in available
-            if bool(safe_dict(safe_dict(row.get("routing")).get("flags")).get("contextual_tiny_human", False))
+            if bool(
+                safe_dict(safe_dict(row.get("routing")).get("flags")).get("subject_mode_contextual_tiny_human", False)
+                or safe_dict(safe_dict(row.get("routing")).get("flags")).get("contextual_tiny_human", False)
+            )
         ),
         key=lambda row: (
             0 if str(safe_dict(row.get("decision")).get("decision_type", "")) == "keep_full" else 1,
@@ -1842,8 +2251,48 @@ def build_report_examples(
             canonical_candidates[0] if canonical_candidates else {},
         )
         matching_targets = safe_list(batch_record.get("matching_targets"))
-        first_target = safe_dict(matching_targets[0]) if matching_targets else {}
+        matching_targets_sorted = sorted(
+            matching_targets,
+            key=lambda target: safe_float(safe_dict(target.get("score_targets")).get("score_prob", 0.0)),
+            reverse=True,
+        )
         candidate_pool = safe_list(batch_record.get("candidate_pool"))
+        ignored_candidates = safe_list(batch_record.get("ignored_candidates"))
+        candidate_pool_sorted = sorted(
+            candidate_pool,
+            key=lambda pool: (
+                int(bool(pool.get("is_hard_negative")) or bool(pool.get("is_unsafe_negative"))),
+                safe_float(pool.get("score_prob", pool.get("score_rank_pct", 0.0))),
+            ),
+            reverse=True,
+        )
+        positive_candidate = next(
+            (
+                target
+                for target in matching_targets_sorted
+                if str(target.get("candidate_id", "")) == str(decision.get("winner_post_gate_candidate_id", ""))
+            ),
+            matching_targets_sorted[0] if matching_targets_sorted else safe_dict(chosen_candidate),
+        )
+        top_positive_candidate = safe_dict(matching_targets_sorted[0]) if matching_targets_sorted else safe_dict(chosen_candidate)
+        first_target = safe_dict(positive_candidate) if positive_candidate else {}
+        negative_preview_candidates: List[Dict[str, Any]] = []
+        preferred_negative = next(
+            (
+                pool
+                for pool in candidate_pool_sorted
+                if bool(pool.get("is_hard_negative")) or bool(pool.get("is_unsafe_negative"))
+            ),
+            None,
+        )
+        if preferred_negative is not None:
+            negative_preview_candidates.append(preferred_negative)
+        for pool in candidate_pool_sorted:
+            if len(negative_preview_candidates) >= 2:
+                break
+            if preferred_negative is not None and str(pool.get("candidate_id", "")) == str(preferred_negative.get("candidate_id", "")):
+                continue
+            negative_preview_candidates.append(pool)
         canonical_core = {
             "routing": {
                 "subject_mode": routing.get("subject_mode"),
@@ -1854,6 +2303,7 @@ def build_report_examples(
                 "subject_prior_bbox_norm_xyxy": routing.get("subject_prior_bbox_norm_xyxy"),
                 "flags": safe_dict(routing.get("flags")),
             },
+            "label_generation": safe_dict(row.get("label_generation")),
             "decision": {
                 "decision_type": decision.get("decision_type"),
                 "delta_vs_base": decision.get("delta_vs_base"),
@@ -1873,8 +2323,22 @@ def build_report_examples(
             },
         }
         batch_core = {
+            "label_generation": safe_dict(batch_record.get("label_generation")),
             "matching_target_count": len(matching_targets),
             "candidate_pool_count": len(candidate_pool),
+            "ignored_candidate_count": len(ignored_candidates),
+            "chosen_matching_target": {
+                "candidate_id": positive_candidate.get("candidate_id"),
+                "score_prob": safe_dict(positive_candidate.get("score_targets")).get("score_prob"),
+            }
+            if positive_candidate
+            else {},
+            "top_matching_target": {
+                "candidate_id": top_positive_candidate.get("candidate_id"),
+                "score_prob": safe_dict(top_positive_candidate.get("score_targets")).get("score_prob"),
+            }
+            if top_positive_candidate
+            else {},
             "first_matching_target": {
                 "target_id": first_target.get("target_id"),
                 "candidate_id": first_target.get("candidate_id"),
@@ -1889,10 +2353,21 @@ def build_report_examples(
                 {
                     "candidate_id": pool_row.get("candidate_id"),
                     "label_type": pool_row.get("label_type"),
+                    "score_prob": pool_row.get("score_prob"),
                     "is_hard_negative": pool_row.get("is_hard_negative"),
                     "is_unsafe_negative": pool_row.get("is_unsafe_negative"),
+                    "reject_tags": pool_row.get("reject_tags"),
                 }
-                for pool_row in candidate_pool[:3]
+                for pool_row in candidate_pool_sorted[:3]
+            ],
+            "ignored_candidates_head": [
+                {
+                    "candidate_id": ignored_row.get("candidate_id"),
+                    "label_type": ignored_row.get("label_type"),
+                    "score_prob": ignored_row.get("score_prob"),
+                    "safe_leftover_policy_state": ignored_row.get("safe_leftover_policy_state"),
+                }
+                for ignored_row in ignored_candidates[:3]
             ],
         }
         decision_target = safe_dict(batch_record.get("decision_target"))
@@ -1909,23 +2384,13 @@ def build_report_examples(
                 routing=routing,
                 decision_target=decision_target,
                 target_ar=target_ar,
-                candidate=first_target if first_target else safe_dict(chosen_candidate),
+                candidate=positive_candidate,
                 gt_flag=1,
             )
             if first_target or chosen_candidate
             else {},
             "negative_annotations": [],
         }
-        negative_preview_candidates: List[Dict[str, Any]] = []
-        preferred_negative = next((pool for pool in candidate_pool if bool(pool.get("is_hard_negative")) or bool(pool.get("is_unsafe_negative"))), None)
-        if preferred_negative is not None:
-            negative_preview_candidates.append(preferred_negative)
-        for pool in candidate_pool:
-            if len(negative_preview_candidates) >= 2:
-                break
-            if preferred_negative is not None and str(pool.get("candidate_id", "")) == str(preferred_negative.get("candidate_id", "")):
-                continue
-            negative_preview_candidates.append(pool)
         gaic_like_preview["negative_annotations"] = [
             build_gaic_like_annotation_preview(
                 image_entry_id=idx,
@@ -1940,17 +2405,38 @@ def build_report_examples(
         ]
         candidate_visuals: List[Dict[str, Any]] = []
         visual_specs: List[Tuple[str, str, Dict[str, Any], str, List[str]]] = []
-        positive_candidate = first_target if first_target else safe_dict(chosen_candidate)
         if positive_candidate:
             positive_score = safe_float(safe_dict(positive_candidate.get("score_targets")).get("score_prob", 0.0))
             positive_is_final_chosen = str(positive_candidate.get("candidate_id", "")) == str(decision_target.get("winner_post_gate_candidate_id", ""))
+            repair_info = safe_dict(decision_target.get("training_repair"))
             positive_meta = [
                 f"{image_id} | {target_ar} | matching_target_example",
                 f"candidate_id={positive_candidate.get('candidate_id', '')}",
                 f"score={positive_score:.6f} | gt_flag=1 | label_type=matching_target",
                 f"decision={decision_target.get('decision_type')} | final_chosen={positive_is_final_chosen}",
             ]
-            visual_specs.append(("positive", "matching target", positive_candidate, "#2ecc71", positive_meta))
+            if repair_info:
+                positive_meta.append(
+                    f"repair={repair_info.get('original_chosen_candidate_id')} -> {repair_info.get('repaired_chosen_candidate_id')}"
+                )
+            if bool(positive_candidate.get("is_safe_high_score_leftover", False)):
+                positive_meta.append(
+                    f"safe_leftover_state={positive_candidate.get('safe_leftover_policy_state', 'none')}"
+                )
+            visual_specs.append(("positive_chosen", "chosen positive", positive_candidate, "#2ecc71", positive_meta))
+        if top_positive_candidate and str(top_positive_candidate.get("candidate_id", "")) != str(positive_candidate.get("candidate_id", "")):
+            top_positive_score = safe_float(safe_dict(top_positive_candidate.get("score_targets")).get("score_prob", 0.0))
+            top_positive_meta = [
+                f"{image_id} | {target_ar} | positive_top_score",
+                f"candidate_id={top_positive_candidate.get('candidate_id', '')}",
+                f"score={top_positive_score:.6f} | gt_flag=1 | label_type=matching_target",
+                f"decision={decision_target.get('decision_type')} | final_chosen=False",
+            ]
+            if bool(top_positive_candidate.get("is_safe_high_score_leftover", False)):
+                top_positive_meta.append(
+                    f"safe_leftover_state={top_positive_candidate.get('safe_leftover_policy_state', 'none')}"
+                )
+            visual_specs.append(("positive_top_score", "top-score positive", top_positive_candidate, "#27ae60", top_positive_meta))
         for neg_idx, pool in enumerate(negative_preview_candidates, start=1):
             neg_score = safe_float(pool.get("score_prob", pool.get("score_rank_pct", 0.0)))
             neg_meta = [
@@ -1959,7 +2445,22 @@ def build_report_examples(
                 f"score={neg_score:.6f} | gt_flag=0 | label_type={pool.get('label_type', '')}",
                 f"hard={bool(pool.get('is_hard_negative'))} | unsafe={bool(pool.get('is_unsafe_negative'))}",
             ]
+            reject_tags = [str(tag) for tag in safe_list(pool.get("reject_tags"))]
+            if reject_tags:
+                neg_meta.append("reject_tags=" + ",".join(reject_tags))
+            if bool(pool.get("is_safe_high_score_leftover", False)):
+                neg_meta.append(f"safe_leftover_state={pool.get('safe_leftover_policy_state', 'none')}")
             visual_specs.append((f"negative_{neg_idx}", f"negative {neg_idx}", pool, "#e74c3c" if bool(pool.get("is_hard_negative")) or bool(pool.get("is_unsafe_negative")) else "#f39c12", neg_meta))
+        if ignored_candidates:
+            ignored_candidate = safe_dict(ignored_candidates[0])
+            ignored_score = safe_float(ignored_candidate.get("score_prob", ignored_candidate.get("score_rank_pct", 0.0)))
+            ignored_meta = [
+                f"{image_id} | {target_ar} | ignored_1",
+                f"candidate_id={ignored_candidate.get('candidate_id', '')}",
+                f"score={ignored_score:.6f} | label_type={ignored_candidate.get('label_type', '')}",
+                f"safe_leftover_state={ignored_candidate.get('safe_leftover_policy_state', 'none')}",
+            ]
+            visual_specs.append(("ignored_1", "ignored", ignored_candidate, "#95a5a6", ignored_meta))
         for visual_name, display_title, candidate_row, color, meta_lines in visual_specs:
             visual_path = candidate_examples_dir / f"{idx:02d}_{image_id}_{safe_ar}_{visual_name}.png"
             if render_candidate_focus_example(
@@ -2121,12 +2622,16 @@ def collect_label_guide_summary(
 
 def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
     label_type_counts: Counter[str] = Counter()
+    omitted_label_type_counts: Counter[str] = Counter()
     positive_count = 0
     negative_count = 0
+    ignored_count = 0
     score_values: List[float] = []
     raw_image_ids: set[str] = set()
+    safe_leftover_policies: Counter[str] = Counter()
     for row in batch_rows:
         raw_image_ids.add(str(row.get("image_id", "")))
+        safe_leftover_policies[str(safe_dict(row.get("label_generation")).get("safe_leftover_policy", "keep_negative"))] += 1
         for target in safe_list(row.get("matching_targets")):
             positive_count += 1
             label_type_counts["matching_target"] += 1
@@ -2135,13 +2640,19 @@ def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict
             negative_count += 1
             label_type_counts[str(candidate.get("label_type", ""))] += 1
             score_values.append(safe_float(candidate.get("score_prob", candidate.get("score_rank_pct", 0.0))))
+        for candidate in safe_list(row.get("ignored_candidates")):
+            ignored_count += 1
+            omitted_label_type_counts[str(candidate.get("label_type", "ignore"))] += 1
     return {
         "image_rows": len(batch_rows),
         "unique_raw_images": len(raw_image_ids),
         "annotation_rows": positive_count + negative_count,
         "gt_flag_1_rows": positive_count,
         "gt_flag_0_rows": negative_count,
+        "ignored_rows_omitted_from_annotations": ignored_count,
+        "safe_leftover_policy_counts": dict(safe_leftover_policies),
         "label_type_counts": dict(label_type_counts),
+        "omitted_label_type_counts": dict(omitted_label_type_counts),
         "score_range": format_range(score_values),
     }
 
@@ -2180,6 +2691,12 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
     ]
     operational_rows = [
         (
+            "label_generation.safe_leftover_policy",
+            "canonical/batch",
+            "safe leftover 처리 정책",
+            "`keep_negative`, `ignore`, `promote_soft_positive` 중 어떤 정책으로 safe high-score leftover를 처리했는지 표시",
+        ),
+        (
             "matching_targets",
             "batch",
             "safe positive set",
@@ -2192,10 +2709,16 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
             "hard/unsafe/near/general negative를 보관. main DETR target은 아니고 negative mining, ranking, audit 용도",
         ),
         (
+            "ignored_candidates",
+            "batch",
+            "negative pool에서 제외된 ignore 집합",
+            "`safe_leftover_policy=ignore`일 때 safe high-score leftover를 별도로 분리한 버킷. COCO/GAIC-like negative annotation에는 넣지 않음",
+        ),
+        (
             "label_type",
             "canonical/batch",
             "candidate provenance class",
-            "`top1`, `soft_positive`, `baseline_positive`, `near_negative`, `hard_negative`, `unsafe_negative` 등",
+            "`top1`, `soft_positive`, `baseline_positive`, `near_negative`, `hard_negative`, `unsafe_negative`, `ignore` 등",
         ),
         (
             "why_tags",
@@ -2226,6 +2749,12 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
             "batch derived",
             "`applicable_mask ∧ observed_mask`",
             "실제 auxiliary loss에 넣을지 결정하는 최종 마스크",
+        ),
+        (
+            "decision.training_repair",
+            "decision_target + canonical decision",
+            "builder-side safety repair metadata",
+            "scorer chosen box가 training 관점 severe reject면 safe crop/baseline으로 치환한 이력",
         ),
     ]
     routing_rows = [
@@ -2408,9 +2937,9 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
             "",
             "- `subject prior`는 최종 crop 정답 박스가 아니라, router가 후단 candidate generation과 portrait safety 판단을 위해 남겨 두는 앵커 박스입니다.",
             "- 기본적으로는 person/subject union box를 우선 사용하지만, tiny human만 검출된 wide scene에서는 이 박스를 그대로 쓰면 과도한 portrait crop으로 붕괴할 수 있습니다.",
-            "- 이를 막기 위해 `routing.flags.contextual_tiny_human=true`이면 router가 tiny human 검출을 portrait anchor로 보지 않고 `scene_general` 쪽으로 fallback합니다.",
+            "- 이를 막기 위해 `routing.flags.subject_mode_contextual_tiny_human=true`이면 router가 tiny human 검출을 portrait anchor로 보지 않고 `scene_general` 쪽으로 fallback합니다.",
             "- 이 경우 routing 단계에서 `union_box_xyxy`를 비우고, candidate generation에서는 stale person union을 재사용하지 않으며 scene fallback prior `[0.2, 0.2, 0.8, 0.8]`를 subject prior로 사용합니다.",
-            f"- 현재 `{observed_scope}`에서 `contextual_tiny_human`이 관측된 row 수는 `{routing_flag_counts.get('contextual_tiny_human', 0)}`입니다.",
+            f"- 현재 `{observed_scope}`에서 `subject_mode_contextual_tiny_human`이 관측된 row 수는 `{routing_flag_counts.get('subject_mode_contextual_tiny_human', routing_flag_counts.get('contextual_tiny_human', 0))}`입니다.",
             "- 따라서 orange box가 항상 detector가 본 사람 bbox를 뜻하는 것은 아닙니다. scene fallback이 발동한 샘플에서는 '장면 중앙의 보수적 prior'를 뜻합니다.",
             "",
             "### 4.1a Observed Mode-Policy Mapping",
@@ -2484,6 +3013,7 @@ def build_markdown_report(
     dataset_context: Dict[str, str],
 ) -> str:
     counts = qa_summary["counts"]
+    generation_policy = safe_dict(qa_summary.get("generation_policy"))
     report_title = str(dataset_context.get("report_title") or "Training Label Report")
     lines = [
         f"# {report_title}",
@@ -2491,6 +3021,8 @@ def build_markdown_report(
         f"- input teacher scores: `{teacher_scores_jsonl}`",
         f"- output dir: `{out_dir}`",
         f"- image root: `{image_root}`" if image_root is not None else "- image root: `<unresolved>`",
+        f"- safe_leftover_policy: `{generation_policy.get('safe_leftover_policy', 'keep_negative')}`"
+        f" ({generation_policy.get('safe_leftover_policy_description', '')})",
         "",
         "## 1. 산출물 개요",
         "",
@@ -2510,6 +3042,16 @@ def build_markdown_report(
         "## 3. 검증 결과",
         "",
         json_block(compact_validation_summary(validation_summary)),
+        "",
+        "## 3.1 Label Consistency Audit",
+        "",
+        "- 아래 수치는 최종 `train_conditional_detr_canonical.jsonl`과 `train_conditional_detr_batch.jsonl`을 교차 점검한 결과입니다.",
+        "- `winner_missing_from_matching_targets`, `matching_targets_with_severe_reject_tags`, `chosen_candidates_with_severe_reject_tags`는 모두 `0`이어야 안전합니다.",
+        "- `rows_with_higher_scored_safe_pool_candidates`는 버그 카운트가 아니라, `matching_targets`가 '모든 safe 후보'가 아닌 `selected_topk` 기반의 diverse positive set이라는 현재 설계의 부산물입니다.",
+        "- `safe_leftover_policy=keep_negative`일 때는 일부 `candidate_pool` candidate가 chosen보다 점수가 높더라도 `negative/near_negative`로 남을 수 있습니다.",
+        "- `safe_leftover_policy=ignore`에서는 이 후보들이 `ignored_candidates`로 분리되고, `promote_soft_positive`에서는 `soft_positive`로 승격됩니다.",
+        "",
+        json_block(qa_summary.get("consistency_audit", {})),
         "",
         build_label_guide_section(label_guide),
         "",
@@ -2567,8 +3109,10 @@ def build_markdown_report(
                 json_block(example["canonical_core"]),
                 "",
                 "- `canonical_core.routing`은 이 샘플을 어떤 mode/policy로 해석했는지 보여 주는 image-level 조건부 정보입니다.",
-                "- `canonical_core.routing.subject_prior_bbox_norm_xyxy`는 orange box 좌표입니다. `flags.contextual_tiny_human=true`이면 detector person box가 아니라 scene fallback prior일 수 있습니다.",
+                "- `canonical_core.routing.subject_prior_bbox_norm_xyxy`는 orange box 좌표입니다. `flags.subject_mode_contextual_tiny_human=true`이면 detector person box가 아니라 scene fallback prior일 수 있습니다.",
+                "- `canonical_core.label_generation`은 safe high-score leftover를 어떤 정책으로 처리했는지와, 현재 샘플에서 해당 후보가 몇 개였는지를 요약합니다.",
                 "- `canonical_core.decision`은 최종 teacher decision과 `delta_vs_base`, `tau_improve`, winner id를 요약합니다.",
+                "- `canonical_core.decision.training_repair`가 있으면, scorer가 고른 chosen crop이 training-safe하지 않아 builder가 safe crop/baseline으로 치환했다는 뜻입니다.",
                 "- `canonical_core.chosen_candidate`는 최종 선택 crop의 핵심 score/macro/checklist label만 추린 것입니다.",
                 "",
                 "batch 핵심 train labels:",
@@ -2577,12 +3121,16 @@ def build_markdown_report(
                 "",
                 "- `matching_target_count`는 Hungarian matching에 실제로 들어가는 safe positive 개수입니다.",
                 "- `candidate_pool_count`는 matching target으로 채택되지 않은 나머지 후보 수입니다.",
-                "- `first_matching_target`는 batch 안 positive target 하나의 축약 예시입니다.",
+                "- `ignored_candidate_count`는 `safe_leftover_policy=ignore`일 때 negative pool에서 제외된 safe high-score leftover 수입니다.",
+                "- `chosen_matching_target`은 final chosen과 같은 positive를, `top_matching_target`은 matching_targets 중 최고 score positive를 요약합니다.",
+                "- `first_matching_target`는 기본적으로 final chosen과 동일한 positive를 우선 보여 줍니다.",
                 "- `bin_targets`는 binary class id입니다. 보통 `0=문제 없음`, `1=문제 있음`으로 읽습니다.",
                 "- `ord_targets`는 연속 점수가 아니라 field별 discrete class id입니다. 예: `headroom`은 `0=tight, 1=ok, 2=loose`입니다.",
                 "- `reg_targets`는 실제 연속형 측정값입니다.",
                 "- `valid_mask`는 값의 크기가 아니라 loss on/off 스위치입니다. `1=해당 항목 학습`, `0=비적용/미관측으로 무시`입니다.",
-                "- `candidate_pool_head`는 남은 후보 중 앞부분 몇 개를 보여 주는 미리보기이며, 여기의 `hard/unsafe` 정보는 negative mining이나 audit용입니다.",
+                "- `candidate_pool_head`는 report용으로 `unsafe/hard` 우선, 그다음 score 순으로 정렬한 미리보기입니다. `reject_tags`를 함께 보며 왜 negative인지 해석해야 합니다.",
+                "- `ignored_candidates_head`는 존재할 때만 채워지며, ignore variant에서 negative pool 바깥으로 분리된 후보 미리보기입니다.",
+                "- `keep_full`/`minimal_crop` 샘플에서는 final chosen이 baseline 계열이라 `first_matching_target`보다 score가 낮을 수 있습니다. 이는 policy decision과 safe positive set이 분리돼 있기 때문입니다.",
                 "",
                 "GAIC-like 변환본 핵심 preview:",
                 "",
@@ -2590,14 +3138,15 @@ def build_markdown_report(
                 "",
                 "- `image`는 GAIC-like `images[]` 행의 축약 예시입니다.",
                 "- `positive_annotation`은 `matching_targets` 중 1개가 `gt_flag=1`로 변환된 모습입니다.",
-                "- `negative_annotations`는 `candidate_pool`에서 추린 예시이며 `gt_flag=0`으로 들어갑니다.",
+                "- `negative_annotations`는 `candidate_pool`에서 추린 예시이며 `gt_flag=0`으로 들어갑니다. `ignored_candidates`는 여기에 포함되지 않습니다.",
                 "",
                 f"![]({example['path']})",
                 "",
                 "candidate 별 시각화:",
                 "",
-                "- 각 candidate 시각화는 해당 후보 bbox 하나만 강조하며, 상단 검은 박스에는 `image_id | target_ar | positive/negative`, `candidate_id`, `score`, `gt_flag`, `label_type`, 필요 시 `hard/unsafe` 상태를 적었습니다.",
-                "- 여기서 `positive` 시각화는 `final chosen`과 동의어가 아니라, `matching_targets` 안에 포함된 safe positive 예시 1개입니다. 따라서 `keep_full`/`minimal_crop` 샘플에서는 full-image baseline이 최종 선택이어도 crop 후보가 positive로 함께 남을 수 있습니다.",
+                "- 각 candidate 시각화는 해당 후보 bbox 하나만 강조하며, 상단 검은 박스에는 `image_id | target_ar | positive/negative`, `candidate_id`, `score`, `gt_flag`, `label_type`, 필요 시 `hard/unsafe` 상태와 `reject_tags`, `safe_leftover_state`를 적었습니다.",
+                "- `positive_chosen`은 final chosen을, `positive_top_score`는 matching_targets 중 최고 score positive를 뜻합니다. 둘이 다르면 policy가 baseline/보수 crop을 택했지만 더 높은 score의 safe crop도 positive set 안에 함께 남아 있다는 뜻입니다.",
+                "- 따라서 `keep_full`/`minimal_crop` 샘플에서는 full-image baseline이 최종 선택이어도 crop 후보가 positive로 함께 남을 수 있습니다.",
                 "",
             ]
         )
@@ -2635,6 +3184,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--near_margin_max", type=float, default=0.05)
     parser.add_argument("--max_hard_pairs", type=int, default=4)
     parser.add_argument("--max_near_pairs", type=int, default=4)
+    parser.add_argument(
+        "--safe_leftover_policy",
+        default="ignore",
+        choices=sorted(SAFE_LEFTOVER_POLICIES),
+        help="safe high-score leftover 처리 정책",
+    )
     parser.add_argument("--report_examples", type=int, default=8)
     parser.add_argument("--strict_validation", type=int, default=1)
     return parser.parse_args()
@@ -2660,10 +3215,11 @@ def main() -> None:
         near_margin_max=max(0.0, float(args.near_margin_max)),
         max_hard_pairs=max(0, int(args.max_hard_pairs)),
         max_near_pairs=max(0, int(args.max_near_pairs)),
+        safe_leftover_policy=str(args.safe_leftover_policy),
         subject_mode_to_id=subject_mode_vocab,
         image_root=image_root,
     )
-    qa_summary = build_qa_summary(datasets)
+    qa_summary = build_qa_summary(datasets, safe_leftover_policy=str(args.safe_leftover_policy))
     validation_summary = validate_datasets(datasets)
     label_guide = collect_label_guide_summary(
         datasets["conditional_detr_canonical"],
@@ -2725,6 +3281,7 @@ def main() -> None:
         json.dumps(
             {
                 "out_dir": str(out_dir),
+                "safe_leftover_policy": str(args.safe_leftover_policy),
                 "counts": counts,
                 "qa_summary_path": str(out_dir / "qa_summary.json"),
                 "validation_summary_path": str(out_dir / "validation_summary.json"),

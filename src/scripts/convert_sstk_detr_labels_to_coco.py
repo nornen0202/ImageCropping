@@ -82,6 +82,7 @@ def build_common_image_entry(
         "height": height,
         "orig_image_id": record.get("image_id"),
         "target_ar": record.get("target_ar"),
+        "label_generation": safe_dict(record.get("label_generation")),
         "routing": safe_dict(record.get("routing")),
         "baseline": safe_dict(record.get("baseline")),
         "teacher_meta": safe_dict(record.get("teacher_meta")),
@@ -99,6 +100,7 @@ def build_batch_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, 
         image_row["decision_target"] = safe_dict(record.get("decision_target"))
         image_row["matching_target_count"] = len(safe_list(record.get("matching_targets")))
         image_row["candidate_pool_count"] = len(safe_list(record.get("candidate_pool")))
+        image_row["ignored_candidate_count"] = len(safe_list(record.get("ignored_candidates")))
         images.append(image_row)
         for target in safe_list(record.get("matching_targets")):
             bbox = norm_xyxy_to_coco_bbox(target.get("bbox_norm_xyxy", [0, 0, 1, 1]), width, height)
@@ -122,6 +124,8 @@ def build_batch_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, 
                     "observed_mask": safe_dict(target.get("observed_mask")),
                     "derived_checklist_targets": safe_dict(target.get("derived_checklist_targets")),
                     "why_tags": safe_list(target.get("why_tags")),
+                    "is_safe_high_score_leftover": bool(target.get("is_safe_high_score_leftover", False)),
+                    "safe_leftover_policy_state": target.get("safe_leftover_policy_state"),
                 }
             )
             ann_id += 1
@@ -134,6 +138,12 @@ def build_batch_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, 
             "source_schema": "sstk_conditional_detr_batch_v2",
             "image_unit": "(image_id, target_ar)",
             "note": "Each COCO image row corresponds to one conditioned crop sample, not one raw image across all aspect ratios.",
+            "safe_leftover_policies": sorted(
+                {
+                    str(safe_dict(record.get("label_generation")).get("safe_leftover_policy", "keep_negative"))
+                    for record in records
+                }
+            ),
         },
     }
 
@@ -169,6 +179,9 @@ def build_canonical_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[s
                     "is_soft_positive": bool(candidate.get("is_soft_positive", False)),
                     "is_hard_negative": bool(candidate.get("is_hard_negative", False)),
                     "is_unsafe_negative": is_unsafe,
+                    "is_ignore_candidate": bool(candidate.get("is_ignore_candidate", False)),
+                    "is_safe_high_score_leftover": bool(candidate.get("is_safe_high_score_leftover", False)),
+                    "safe_leftover_policy_state": candidate.get("safe_leftover_policy_state"),
                     "score_targets": safe_dict(candidate.get("score_targets")),
                     "macro_targets": safe_dict(candidate.get("macro_targets")),
                     "checklist_labels": safe_dict(candidate.get("checklist_labels")),
@@ -189,6 +202,12 @@ def build_canonical_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[s
             "source_schema": "sstk_detr_train_v2",
             "image_unit": "(image_id, target_ar)",
             "note": "Canonical COCO keeps all candidates as annotations and uses gt_flag to mark safe positive candidates.",
+            "safe_leftover_policies": sorted(
+                {
+                    str(safe_dict(record.get("label_generation")).get("safe_leftover_policy", "keep_negative"))
+                    for record in records
+                }
+            ),
         },
     }
 

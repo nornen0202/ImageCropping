@@ -29,6 +29,7 @@ from tqdm import tqdm
 
 from worker_core import (
     FeatureWorker,
+    _get_c1_text,
     _get_tags,
     iter_local_images,
     iter_tar_images,
@@ -158,7 +159,8 @@ def main():
             for img_id, img in id_to_img.items():
                 row  = id_to_row.get(img_id, {})
                 tags = _get_tags(row)
-                batch_all.append((img_id, img, tags))
+                c1_text = _get_c1_text(row)
+                batch_all.append((img_id, img, tags, c1_text))
 
             for i in range(0, len(batch_all), args.batch_size):
                 chunk  = batch_all[i : i + args.batch_size]

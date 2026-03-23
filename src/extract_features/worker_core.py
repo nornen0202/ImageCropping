@@ -29,6 +29,28 @@ def _get_tags(row) -> List[str]:
         return []
 
 
+def _get_caption(row) -> str:
+    """parquet 컬럼에서 caption 문자열을 안전하게 추출."""
+    c = row.get("caption", "") if isinstance(row, dict) else row.get("caption", "")
+    if c is None:
+        return ""
+    return str(c).strip()
+
+
+def _get_c1_text(row) -> str:
+    """
+    C1 text branch 전용 입력 문자열.
+    routing용 tags와 분리해 caption을 우선 사용하고, tags가 있으면 보조 키워드로만 덧붙인다.
+    """
+    caption = _get_caption(row)
+    tags = _get_tags(row)
+    if caption and tags:
+        return f"{caption} Keywords: {', '.join(tags)}"
+    if caption:
+        return caption
+    return ", ".join(tags)
+
+
 class FeatureWorker:
     """
     단일 GPU에서 동작하는 모델 컨테이너.
@@ -125,21 +147,30 @@ class FeatureWorker:
     ) -> List[dict]:
         """
         Args:
-            batch_data: list of (image_id, PIL.Image, tags: List[str])
+            batch_data: list of (image_id, PIL.Image, tags: List[str], c1_text: str)
         Returns:
             list of result dicts (one per image)
         """
         results = []
 
+        normalized_batch: List[Tuple[str, Image.Image, List[str], str]] = []
+        for item in batch_data:
+            if len(item) >= 4:
+                img_id, img, tags, c1_text = item[0], item[1], item[2], item[3]
+            else:
+                img_id, img, tags = item[0], item[1], item[2]
+                c1_text = ", ".join(tags)
+            normalized_batch.append((str(img_id), img, list(tags), str(c1_text or "")))
+
         # C1 — batched encode (efficient)
         c1_img_feats = c1_txt_feats = None
         if self.c1:
-            images = [x[1] for x in batch_data]
-            texts  = [", ".join(x[2]) for x in batch_data]
+            images = [x[1] for x in normalized_batch]
+            texts  = [x[3] for x in normalized_batch]
             c1_img_feats = self.c1.encode_images(images)
             c1_txt_feats = self.c1.encode_texts(texts)
 
-        for i, (img_id, img, tags) in enumerate(batch_data):
+        for i, (img_id, img, tags, _) in enumerate(normalized_batch):
             res: dict = {"image_id": img_id}
             c2_seg = []
             c2_det = []

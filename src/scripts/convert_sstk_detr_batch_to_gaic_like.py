@@ -84,11 +84,14 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
     annotations: List[Dict[str, Any]] = []
     size_cache: Dict[str, Tuple[int, int]] = {}
     ann_id = 1
+    safe_leftover_policies: set[str] = set()
     for image_entry_id, record in enumerate(batch_records, start=1):
         image_path = str(record.get("image_path") or "")
         width, height = load_image_size(image_path, size_cache)
         routing = safe_dict(record.get("routing"))
         decision_target = safe_dict(record.get("decision_target"))
+        label_generation = safe_dict(record.get("label_generation"))
+        safe_leftover_policies.add(str(label_generation.get("safe_leftover_policy", "keep_negative")))
         images.append(
             {
                 "file_name": basename_only(image_path),
@@ -97,6 +100,8 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
                 "id": image_entry_id,
                 "sstk_image_id": record.get("image_id"),
                 "target_ar": record.get("target_ar"),
+                "label_generation": label_generation,
+                "ignored_candidate_count": len(safe_list(record.get("ignored_candidates"))),
             }
         )
         for target in safe_list(record.get("matching_targets")):
@@ -120,6 +125,8 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
                     "label_type": "matching_target",
                     "is_hard_negative": False,
                     "is_unsafe_negative": False,
+                    "is_safe_high_score_leftover": bool(target.get("is_safe_high_score_leftover", False)),
+                    "safe_leftover_policy_state": target.get("safe_leftover_policy_state"),
                 }
             )
             ann_id += 1
@@ -142,6 +149,8 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
                     "label_type": candidate.get("label_type"),
                     "is_hard_negative": bool(candidate.get("is_hard_negative", False)),
                     "is_unsafe_negative": bool(candidate.get("is_unsafe_negative", False)),
+                    "is_safe_high_score_leftover": bool(candidate.get("is_safe_high_score_leftover", False)),
+                    "safe_leftover_policy_state": candidate.get("safe_leftover_policy_state"),
                 }
             )
             ann_id += 1
@@ -150,6 +159,9 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
         "type": "instances",
         "annotations": annotations,
         "categories": [{"supercategory": "none", "id": 0, "name": "crop"}],
+        "sstk_meta": {
+            "safe_leftover_policies": sorted(safe_leftover_policies),
+        },
     }
 
 
@@ -274,6 +286,7 @@ def build_format_guide(
     sample_category = gaic_categories[0] if gaic_categories else {}
     converted_images = safe_list(converted_payload.get("images"))
     converted_annotations = safe_list(converted_payload.get("annotations"))
+    converted_meta = safe_dict(converted_payload.get("sstk_meta"))
     converted_sample_image = converted_images[0] if converted_images else {}
     converted_sample_annotation = converted_annotations[0] if converted_annotations else {}
     converted_positive_annotation = next(
@@ -375,8 +388,11 @@ def build_format_guide(
         f"- annotations: `{len(converted_annotations)}`",
         f"- validation status: `{validation_summary.get('status')}`",
         f"- label_type counts: `{json.dumps(validation_summary.get('label_type_counts', {}), ensure_ascii=False)}`",
+        f"- safe_leftover_policies: `{json.dumps(converted_meta.get('safe_leftover_policies', []), ensure_ascii=False)}`",
         "",
         "- SSTK 변환본은 GAIC와 같은 top-level skeleton을 유지하되, `matching_targets`는 `gt_flag=1`, `candidate_pool`은 `gt_flag=0`으로 함께 담았습니다.",
+        "- `ignored_candidates`가 있는 variant에서는 해당 후보를 GAIC-like annotation에서 제외하고, 대신 `images[].ignored_candidate_count`와 `label_generation` metadata에만 남깁니다.",
+        "- `safe_leftover_policy=promote_soft_positive` variant에서는 원래 candidate_pool에 있던 safe high-score leftover가 `matching_targets`로 승격되어 positive annotation 수가 증가할 수 있습니다.",
         "- 따라서 이 변환본은 safe positive와 negative/hard/unsafe 후보를 함께 보관하는 GAIC-style annotation set입니다.",
         "- GAIC 유사성을 위해 `file_name`은 경로를 제거하고 `파일명.확장자`만 저장했습니다.",
         "- SSTK 조건부 학습에 필요한 `subject_mode_id`, `decision_id`, `candidate_id`, `target_ar`는 annotation custom field로 추가했습니다.",
@@ -432,10 +448,13 @@ def build_format_guide(
         "| 없음 | `annotations[].label_type` | `matching_target`, `near_negative`, `hard_negative`, `unsafe_negative` 등 provenance |",
         "| 없음 | `annotations[].is_hard_negative` | hard negative 여부 |",
         "| 없음 | `annotations[].is_unsafe_negative` | unsafe negative 여부 |",
+        "| 없음 | `images[].label_generation.safe_leftover_policy` | safe high-score leftover 처리 정책 metadata |",
+        "| 없음 | `images[].ignored_candidate_count` | ignore variant에서 annotation으로 내보내지 않은 후보 수 |",
         "",
         "## 5. 해석 시 주의점",
         "",
         "- GAIC 원본 `instances_train.json`처럼 positive/negative 후보가 함께 들어가지만, SSTK에서는 positive가 `matching_targets`, negative가 `candidate_pool`에서 왔다는 점이 다릅니다.",
+        "- 따라서 ignore variant에서는 일부 safe 후보가 아예 annotation set 밖으로 빠지고, soft-positive variant에서는 positive 쪽으로 이동합니다.",
         "- `score`는 positive/negative 모두 [0,1] 계열 SSTK local score를 사용하므로, GAIC 원본의 1~5대 점수 스케일과 직접 같지는 않습니다.",
         "- 이 변환본은 `GAIC-like`이지 완전한 GAIC 복제는 아닙니다. 동일한 outer format에 SSTK 전용 필드를 덧붙인 학습용 export입니다.",
         "",
@@ -485,6 +504,7 @@ def main() -> None:
             "out_json": str(out_json),
             "source_batch_jsonl": str(batch_jsonl),
             "gaic_reference_json": str(gaic_reference_json),
+            "sstk_meta": safe_dict(payload.get("sstk_meta")),
             "validation": validation_summary,
         },
     )

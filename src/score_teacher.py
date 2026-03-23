@@ -3486,13 +3486,14 @@ def apply_expensive_score(
     r_teach = safe_float(comps.get("r_teach", 0.0))
     area = safe_float(candidate.get("area_ratio", 0.0))
 
-    a_backend = "proxy"
+    a_backend = "disabled"
     a_prior_laion_w = None
     a_raw_laion = None
     a_norm_laion = None
     a_mean_nima = None
     a_std_nima = None
     a_norm_nima = None
+    expensive_active = False
     if expensive_signal is not None:
         a_raw = safe_float(expensive_signal.get("aesthetic_raw", 0.0))
         a_norm = clamp(safe_float(expensive_signal.get("aesthetic_norm", 0.0)), 0.0, 1.0)
@@ -3507,23 +3508,28 @@ def apply_expensive_score(
         nima_norm_val = safe_optional_float(expensive_signal.get("aesthetic_norm_nima"))
         a_norm_nima = None if nima_norm_val is None else clamp(nima_norm_val, 0.0, 1.0)
         source = "real"
+        expensive_active = True
     else:
         a_raw = None
-        a_norm = clamp(safe_float(comps.get("aesthetic_proxy", 0.0)), 0.0, 1.0)
-        ca_val = clamp(safe_float(comps.get("ca_proxy", 0.0)), -1.0, 1.0)
-        source = "proxy"
+        a_norm = 0.0
+        ca_val = 0.0
+        source = "missing" if bool(cfg.use_real_expensive) else "disabled"
 
-    exp_score = (
-        cfg.w_a * a_norm
-        + cfg.w_ca * ca_val
-        + cfg.w_cov * cov
-        - cfg.w_cut * p_cut
-        - cfg.w_text * p_text
-        - cfg.w_ar_free * p_ar_free
-        + cfg.w_edge * r_edge
-        + cfg.w_teach * r_teach
-    )
-    legacy_final_score = exp_score + float(w_area) * math.log(max(1e-8, area))
+    if expensive_active:
+        exp_score = (
+            cfg.w_a * a_norm
+            + cfg.w_ca * ca_val
+            + cfg.w_cov * cov
+            - cfg.w_cut * p_cut
+            - cfg.w_text * p_text
+            - cfg.w_ar_free * p_ar_free
+            + cfg.w_edge * r_edge
+            + cfg.w_teach * r_teach
+        )
+        legacy_final_score = exp_score + float(w_area) * math.log(max(1e-8, area))
+    else:
+        exp_score = 0.0
+        legacy_final_score = 0.0
 
     candidate["scores"]["expensive"] = float(exp_score)
     candidate["scores"]["final_legacy"] = float(legacy_final_score)
@@ -3531,6 +3537,7 @@ def apply_expensive_score(
     comps["aesthetic_norm"] = float(a_norm)
     comps["cosine_img_text"] = float(ca_val)
     comps["expensive_source"] = source
+    comps["expensive_active"] = bool(expensive_active)
     comps["aesthetic_backend"] = str(a_backend)
     comps["aesthetic_prior_laion_weight"] = (
         None if a_prior_laion_w is None else float(clamp(a_prior_laion_w, 0.0, 1.0))
@@ -3610,19 +3617,23 @@ def compute_macro_score_bundle(
     checklist = candidate.get("checklist", {}) if isinstance(candidate.get("checklist"), dict) else {}
     flags = candidate.get("flags", {}) if isinstance(candidate.get("flags"), dict) else {}
     subject_mode = str(candidate.get("subject_mode", "")).strip().lower()
+    expensive_source = str(comps.get("expensive_source", "")).strip().lower()
+    expensive_active = expensive_source == "real"
 
-    align_value = clamp(0.5 * (safe_float(comps.get("cosine_img_text", 0.0), 0.0) + 1.0), 0.0, 1.0)
+    align_value = clamp(0.5 * (safe_float(comps.get("cosine_img_text", 0.0), 0.0) + 1.0), 0.0, 1.0) if expensive_active else 0.0
     a_components = {
-        "A_aesthetic": clamp(safe_float(comps.get("aesthetic_norm", 0.0), 0.0), 0.0, 1.0),
+        "A_aesthetic": clamp(safe_float(comps.get("aesthetic_norm", 0.0), 0.0), 0.0, 1.0) if expensive_active else 0.0,
         "A_align": align_value,
     }
-    A_macro = _weighted_subset_average(
-        a_components,
-        {
-            "A_aesthetic": float(cfg.a_macro_aesthetic_weight),
-            "A_align": float(cfg.a_macro_align_weight),
-        },
-    )
+    A_macro = None
+    if expensive_active:
+        A_macro = _weighted_subset_average(
+            a_components,
+            {
+                "A_aesthetic": float(cfg.a_macro_aesthetic_weight),
+                "A_align": float(cfg.a_macro_align_weight),
+            },
+        )
 
     subject_scale = checklist.get("subject_scale", {}) if isinstance(checklist.get("subject_scale"), dict) else {}
     scale_value = safe_optional_float(subject_scale.get("value"))
@@ -3789,6 +3800,22 @@ def _is_face_safe(candidate: Dict[str, Any]) -> bool:
         _has_hard_tag(candidate, tag)
         for tag in ("face_cut", "head_top_cut", "lookroom_cut")
     )
+
+
+TRAINING_SEVERE_REJECT_TAGS = {
+    "face_cut",
+    "head_top_cut",
+    "joint_cutoff",
+    "text_cutoff",
+    "lookroom_cut",
+}
+
+
+def _has_training_severe_reject(candidate: Dict[str, Any]) -> bool:
+    if bool(candidate.get("hard_reject", False)):
+        return True
+    reject_tags = {str(tag) for tag in (candidate.get("reject_tags") or [])}
+    return any(tag in TRAINING_SEVERE_REJECT_TAGS for tag in reject_tags)
 
 
 def _relax_joint_only_hard_reject(candidate: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -5162,7 +5189,7 @@ def process_one_image(
 
         baseline, ref_center = pick_baseline_candidates(scored)
 
-        strict_valid = [c for c in scored if not bool(c.get("hard_reject", False))]
+        strict_valid = [c for c in scored if not _has_training_severe_reject(c)]
         fallback_info: Dict[str, Any] = {
             "activated": False,
             "mode": "none",
@@ -5231,7 +5258,7 @@ def process_one_image(
         # Baseline is included only when it is not hard-invalid,
         # except for fully-failed fallback modes where no clean option exists.
         if baseline is not None:
-            baseline_hard = bool(baseline.get("hard_reject", False))
+            baseline_hard = _has_training_severe_reject(baseline)
             allow_hard_baseline = fallback_info["mode"] in {"all_structural_invalid", "non_structural_only"}
             if baseline_hard and not allow_hard_baseline:
                 baseline = None
@@ -5307,7 +5334,7 @@ def process_one_image(
 
         normalize_final_scores(cheap_top_m)
         exp_sorted = sorted(cheap_top_m, key=lambda x: safe_float(x["scores"].get("final", -1e9)), reverse=True)
-        non_hard_sorted = [c for c in exp_sorted if not bool(c.get("hard_reject", False))]
+        non_hard_sorted = [c for c in exp_sorted if not _has_training_severe_reject(c)]
         rank_pool = non_hard_sorted if non_hard_sorted else exp_sorted
 
         if rank_pool:
@@ -5376,7 +5403,7 @@ def process_one_image(
             top1_selected = {}
 
         rejected_sorted = sorted(
-            [c for c in scored if c.get("hard_reject", False)],
+            [c for c in scored if _has_training_severe_reject(c)],
             key=lambda x: safe_float(x["scores"].get("cheap", -1e9)),
             reverse=True,
         )

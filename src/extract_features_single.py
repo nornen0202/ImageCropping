@@ -38,6 +38,7 @@ from tqdm import tqdm
 # run_extract_component.sh 가 자동으로 설정해 준다.
 from worker_core import (
     FeatureWorker,
+    _get_c1_text,
     _get_tags,
     iter_local_images,
     iter_tar_images,
@@ -162,12 +163,13 @@ def main():
                 else:
                     id_to_img.update(dict(iter_tar_images(tar_path, missing_ids)))
 
-            # (image_id, PIL.Image, tags) 목록 구성
+            # (image_id, PIL.Image, tags, c1_text) 목록 구성
             batch_all = []
             for img_id, img in id_to_img.items():
                 row  = id_to_row.get(img_id, {})
                 tags = _get_tags(row)
-                batch_all.append((img_id, img, tags))
+                c1_text = _get_c1_text(row)
+                batch_all.append((img_id, img, tags, c1_text))
 
             # 배치 단위로 처리
             for i in range(0, len(batch_all), args.batch_size):

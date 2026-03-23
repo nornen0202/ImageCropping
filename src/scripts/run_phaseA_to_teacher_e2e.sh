@@ -163,6 +163,7 @@ Core options
 --report_dir PATH               detailed report 출력 경로 (default: <data_dir>/artifacts/reports/<run_tag>_detailed)
 --run_training_labels -1|0|1    finalscore training labels 생성 (-1=auto: run_tag가 있으면 on, default: -1)
 --training_labels_dir PATH      training labels 출력 경로 (default: <data_dir>/artifacts/training_labels/<run_tag>)
+--safe_leftover_policy NAME     keep_negative|ignore|promote_soft_positive (default: ignore)
 --gaic_reference_json PATH      GAIC-like 변환 기준 json (default: data/Publics/GAIC/annotations_json/instances_train.json)
 --report_examples_per_bucket N  subject count/mode evidence 샘플 수 (default: 5)
 --report_viz_stage_dir PATH     report 전용 teacher viz staging 경로
@@ -241,6 +242,7 @@ REPORT_EXAMPLES_PER_BUCKET=5
 REPORT_VIZ_STAGE_DIR=""
 RUN_TRAINING_LABELS=-1
 TRAINING_LABELS_DIR=""
+SAFE_LEFTOVER_POLICY="ignore"
 
 # Filter
 RUN_FILTER=1
@@ -538,6 +540,7 @@ while [ "$#" -gt 0 ]; do
     --report_dir) REPORT_DIR="$2"; shift 2 ;;
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
     --training_labels_dir) TRAINING_LABELS_DIR="$2"; shift 2 ;;
+    --safe_leftover_policy) SAFE_LEFTOVER_POLICY="$2"; shift 2 ;;
     --gaic_reference_json) GAIC_REFERENCE_JSON="$2"; shift 2 ;;
     --report_examples_per_bucket) REPORT_EXAMPLES_PER_BUCKET="$2"; shift 2 ;;
     --report_viz_stage_dir) REPORT_VIZ_STAGE_DIR="$2"; shift 2 ;;
@@ -1053,7 +1056,7 @@ echo " teacher_public_ref  : save_public_teacher_ref_eval=$SAVE_PUBLIC_TEACHER_R
 echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC_PRIOR_LAION_WEIGHT nima_ckpt=$NIMA_MODEL_PATH require_ckpt=$NIMA_REQUIRE_CKPT"
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
-echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR)"
+echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR policy=$SAFE_LEFTOVER_POLICY)"
 echo " gaic_reference_json : ${GAIC_REFERENCE_JSON:-<none>}"
 echo " run_detailed_report : $RUN_DETAILED_REPORT (dir=$REPORT_DIR examples_per_bucket=$REPORT_EXAMPLES_PER_BUCKET)"
 echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
@@ -1813,6 +1816,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
         --teacher_scores_jsonl "$TEACHER_JSONL" \
         --out_dir "$TRAINING_LABELS_DIR" \
         --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
+        --safe_leftover_policy "$SAFE_LEFTOVER_POLICY" \
         --strict_validation 1 \
         --report_examples 8
   fi

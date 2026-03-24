@@ -88,6 +88,24 @@ def _compute_blank_ratio_from_union(union_box: Any, width: int, height: int) -> 
     return float(max(0.0, min(1.0, 1.0 - ratio)))
 
 
+def _compute_blank_ratio_with_saliency(rec: Dict[str, Any], width: int, height: int) -> float:
+    c7 = rec.get("c7_saliency", {}) if isinstance(rec.get("c7_saliency"), dict) else {}
+    if bool(c7.get("available", False)):
+        return float(
+            max(
+                0.0,
+                min(
+                    1.0,
+                    c7.get(
+                        "blank_ratio_est",
+                        1.0 - float(c7.get("foreground_area_ratio", 0.0) or 0.0),
+                    ),
+                ),
+            )
+        )
+    return _compute_blank_ratio_from_union(rec.get("c2_union_box_xyxy"), width, height)
+
+
 def main() -> None:
     args = parse_args()
     input_jsonl = Path(args.input_feats_jsonl)
@@ -181,7 +199,7 @@ def main() -> None:
                 ],
                 default=False,
             )
-            blank_ratio_est = _compute_blank_ratio_from_union(rec.get("c2_union_box_xyxy"), width, height)
+            blank_ratio_est = _compute_blank_ratio_with_saliency(rec, width, height)
             c5_geom = rec.get("c5_geom", {}) if isinstance(rec.get("c5_geom"), dict) else {}
             c4_meta = rec.get("c4_ocr_meta", {}) if isinstance(rec.get("c4_ocr_meta"), dict) else {}
             horizon_conf = c5_geom.get("horizon_conf", 0.0)
@@ -195,6 +213,7 @@ def main() -> None:
                 c2_primary_idx=int(rec.get("c2_primary_idx", -1)),
                 width=width,
                 height=height,
+                c7_saliency=rec.get("c7_saliency", {}),
                 ocr_text_boxes_count=ocr_text_boxes,
                 text_overlay_likely=text_overlay_likely,
                 copy_space_flag=copy_space_flag,

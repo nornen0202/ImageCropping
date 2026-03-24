@@ -2016,8 +2016,39 @@ def build_subject_bbox(
     routing = candidate_rec.get("routing", {})
     if not isinstance(routing, dict):
         routing = feat_rec.get("routing", {}) if isinstance(feat_rec.get("routing"), dict) else {}
+    elif isinstance(feat_rec.get("routing"), dict):
+        routing = {**routing, **feat_rec.get("routing", {})}
     subject_set = routing.get("subject_set", {}) if isinstance(routing.get("subject_set"), dict) else {}
     mode = str(routing.get("subject_mode", "")).strip().lower()
+
+    effective_subject_region = (
+        routing.get("effective_subject_region", {})
+        if isinstance(routing.get("effective_subject_region"), dict)
+        else {}
+    )
+    effective_box = effective_subject_region.get("effective_bbox_norm_xyxy")
+    if isinstance(effective_box, (list, tuple)) and len(effective_box) == 4:
+        eb = clip_box01(effective_box)
+        if box_area(eb) > 0:
+            return eb
+
+    sp = candidate_rec.get("subject_prior", {})
+    if isinstance(sp, dict):
+        nested_effective = (
+            sp.get("effective_subject_region", {})
+            if isinstance(sp.get("effective_subject_region"), dict)
+            else {}
+        )
+        for key in ("effective_bbox_norm_xyxy",):
+            box = nested_effective.get(key)
+            if isinstance(box, (list, tuple)) and len(box) == 4:
+                eb = clip_box01(box)
+                if box_area(eb) > 0:
+                    return eb
+        b = sp.get("effective_bbox_norm_xyxy")
+        if isinstance(b, (list, tuple)) and len(b) == 4 and box_area(b) > 0:
+            return clip_box01(b)
+
     union_box = subject_set.get("union_box_xyxy")
     if isinstance(union_box, (list, tuple)) and len(union_box) == 4:
         ub = clip_box01(norm_box_xyxy(union_box, width, height))
@@ -2025,7 +2056,6 @@ def build_subject_bbox(
             if mode in {"portrait_group", "object_multi", "scene_general", "scene_landscape", "background_texture_copyspace"}:
                 return ub
 
-    sp = candidate_rec.get("subject_prior", {})
     if isinstance(sp, dict):
         b = sp.get("bbox_norm_xyxy")
         if isinstance(b, (list, tuple)) and len(b) == 4 and box_area(b) > 0:
@@ -3308,6 +3338,17 @@ def apply_subject_policy_overrides(
     policy = str(policy_id or "").strip().lower()
     scene_subtype = normalize_scene_subtype(routing_hint.get("scene_subtype"))
     copyspace_meta = routing_hint.get("copyspace", {}) if isinstance(routing_hint.get("copyspace"), dict) else {}
+    effective_subject_region = (
+        routing_hint.get("effective_subject_region", {})
+        if isinstance(routing_hint.get("effective_subject_region"), dict)
+        else {}
+    )
+    effective_subject_state = str(effective_subject_region.get("state", "") or "")
+    effective_score_mode = str(effective_subject_region.get("score_mode", "") or "")
+    effective_repr_type = str(effective_subject_region.get("subject_repr_type", "") or "")
+    subject_reliability = clamp(safe_float(effective_subject_region.get("subject_reliability", 1.0), 1.0), 0.0, 1.0)
+    subject_placeholder_flag = bool(effective_subject_region.get("placeholder_flag", False))
+    subject_terms_neutralized = effective_score_mode == "neutralized"
     if not mode:
         mode = "other_ambiguous"
     if not policy:
@@ -3412,6 +3453,13 @@ def apply_subject_policy_overrides(
 
     for k in list(lambdas.keys()):
         lambdas[k] = max(0.0, float(lambdas[k]))
+    if subject_terms_neutralized:
+        lambdas["cov"] = 0.0
+    else:
+        lambdas["cov"] = float(lambdas.get("cov", 0.0)) * subject_reliability
+        lambdas["cut"] = float(lambdas.get("cut", 0.0)) * max(subject_reliability, 0.35)
+        if subject_placeholder_flag and subject_reliability <= 0.25:
+            lambdas["cov"] = 0.0
 
     out["flags"] = flags
     out["lambdas"] = lambdas
@@ -3438,6 +3486,13 @@ def apply_subject_policy_overrides(
         if isinstance(routing_hint.get("router_signals"), dict)
         else {}
     )
+    out["effective_subject_region"] = effective_subject_region
+    out["flags"]["subject_effective_state"] = effective_subject_state
+    out["flags"]["subject_score_mode"] = effective_score_mode
+    out["flags"]["subject_repr_type"] = effective_repr_type
+    out["flags"]["subject_reliability"] = float(subject_reliability)
+    out["flags"]["subject_placeholder_flag"] = bool(subject_placeholder_flag)
+    out["flags"]["subject_terms_neutralized"] = bool(subject_terms_neutralized)
     return out
 
 
@@ -3619,6 +3674,7 @@ def compute_macro_score_bundle(
     subject_mode = str(candidate.get("subject_mode", "")).strip().lower()
     expensive_source = str(comps.get("expensive_source", "")).strip().lower()
     expensive_active = expensive_source == "real"
+    subject_terms_neutralized = bool(flags.get("subject_terms_neutralized", False))
 
     align_value = clamp(0.5 * (safe_float(comps.get("cosine_img_text", 0.0), 0.0) + 1.0), 0.0, 1.0) if expensive_active else 0.0
     a_components = {
@@ -3648,6 +3704,10 @@ def compute_macro_score_bundle(
         "S_border": 0.0 if bool(flags.get("subject_touch_border", False)) else 1.0,
         "S_softcut_quality": _score_from_penalty(safe_optional_float(comps.get("p_cut"))),
     }
+    if subject_terms_neutralized:
+        s_components["S_cov"] = None
+        s_components["S_scale"] = None
+        s_components["S_border"] = None
     if subject_mode.startswith("scene_"):
         s_weights = {
             "S_cov": 0.45,
@@ -3900,8 +3960,10 @@ def compute_candidate_scores(
         hard_reject_tags.append("joint_cutoff")
 
     # Cheap terms
+    subject_terms_neutralized = bool(route.get("flags", {}).get("subject_terms_neutralized", False))
     cov, subj_area_ratio = subject_coverage(subject_box, crop)
-    subj_touch = subject_border_touch(subject_box, crop)
+    subj_touch_raw = subject_border_touch(subject_box, crop)
+    subj_touch = False if subject_terms_neutralized else subj_touch_raw
 
     p_cut = (
         cfg.alpha_face_cut * (1.0 if f_cut else 0.0)
@@ -4047,8 +4109,12 @@ def compute_candidate_scores(
 
     # Explainability labels (continuous value + categorical label).
     ar_error = (None if is_freeform else float(abs(ar - float(target_ar))))
-    subject_cov_label = classify_subject_coverage_label(cov)
-    subject_scale_label = classify_subject_scale_label(subj_area_ratio, (scale_lo, scale_hi))
+    if subject_terms_neutralized:
+        subject_cov_label = "subject_coverage_na"
+        subject_scale_label = "subject_scale_na"
+    else:
+        subject_cov_label = classify_subject_coverage_label(cov)
+        subject_scale_label = classify_subject_scale_label(subj_area_ratio, (scale_lo, scale_hi))
     face_cut_label = "face_cut" if f_cut else "no_face_cut"
     joint_cut_label = classify_joint_cut_label(joint["joint_cut_score"], joint["severe_count"])
     headroom_label = classify_headroom_label(hr.get("value"), hr.get("target_range", []))
@@ -4095,12 +4161,12 @@ def compute_candidate_scores(
 
     checklist = {
         "subject_coverage": {
-            "value": float(cov),
+            "value": (None if subject_terms_neutralized else float(cov)),
             "label": subject_cov_label,
             "thresholds": {"excellent": 0.95, "good": 0.85, "marginal": 0.70},
         },
         "subject_scale": {
-            "value": float(subj_area_ratio),
+            "value": (None if subject_terms_neutralized else float(subj_area_ratio)),
             "label": subject_scale_label,
             "target_range": [round(float(scale_lo), 4), round(float(scale_hi), 4)],
             "target_region": str(route.get("subject_scale_target_region", "primary_subject")),
@@ -4190,18 +4256,21 @@ def compute_candidate_scores(
 
     # Deterministic tags/checks for rationale.
     why_tags: List[str] = []
-    if subject_cov_label in {"excellent", "good"}:
+    if subject_terms_neutralized:
+        why_tags.append("subject_terms_neutralized")
+    elif subject_cov_label in {"excellent", "good"}:
         why_tags.append("subject_preserved")
     elif subject_cov_label == "marginal":
         why_tags.append("subject_marginal")
     else:
         why_tags.append("subject_poor")
-    if subject_scale_label == "ideal_scale":
-        why_tags.append("subject_scale_ideal")
-    elif subject_scale_label == "too_tight":
-        why_tags.append("subject_scale_tight")
-    else:
-        why_tags.append("subject_scale_loose")
+    if not subject_terms_neutralized:
+        if subject_scale_label == "ideal_scale":
+            why_tags.append("subject_scale_ideal")
+        elif subject_scale_label == "too_tight":
+            why_tags.append("subject_scale_tight")
+        else:
+            why_tags.append("subject_scale_loose")
     if d_third <= 0.18:
         why_tags.append("rule_of_thirds")
     if d_phi <= 0.15:
@@ -4249,16 +4318,16 @@ def compute_candidate_scores(
         {
             "why_tag": "subject_preserved",
             "metric": "subject_coverage",
-            "value": float(cov),
+            "value": (None if subject_terms_neutralized else float(cov)),
             "label": subject_cov_label,
-            "pass": bool(cov >= 0.85),
+            "pass": (None if subject_terms_neutralized else bool(cov >= 0.85)),
         },
         {
             "why_tag": "subject_scale_ideal",
             "metric": "subject_scale",
-            "value": float(subj_area_ratio),
+            "value": (None if subject_terms_neutralized else float(subj_area_ratio)),
             "label": subject_scale_label,
-            "pass": bool(subject_scale_label == "ideal_scale"),
+            "pass": (None if subject_terms_neutralized else bool(subject_scale_label == "ideal_scale")),
         },
         {
             "why_tag": "avoid_face_cut",
@@ -4390,6 +4459,9 @@ def compute_candidate_scores(
                 "cov": float(cov),
                 "p_cut": float(p_cut),
                 "p_text": float(p_text),
+                "subject_terms_neutralized": bool(subject_terms_neutralized),
+                "subject_cov_raw": float(cov),
+                "subject_area_raw": float(subj_area_ratio),
                 "r_comp": float(r_comp),
                 "r_horizon": float(horizon["reward"]),
                 "r_headroom": float(hr["score"]),
@@ -4426,6 +4498,9 @@ def compute_candidate_scores(
             "joint_cutoff_score": float(joint["joint_cut_score"]),
             "joint_severe_count": int(joint["severe_count"]),
             "subject_touch_border": bool(subj_touch),
+            "subject_touch_border_raw": bool(subj_touch_raw),
+            "subject_terms_neutralized": bool(subject_terms_neutralized),
+            "subject_effective_state": str(route.get("flags", {}).get("subject_effective_state", "")),
             "subject_coverage": float(cov),
             "subject_area": float(subj_area_ratio),
             "ar_error": ar_error,
@@ -4830,7 +4905,7 @@ def update_stats(
         stats.top1_head_top_cut_count += 1
     if safe_float(flags.get("joint_cutoff_score", 0.0)) > 0.35:
         stats.top1_joint_cut_count += 1
-    if safe_float(flags.get("subject_coverage", 0.0)) < cfg.subject_coverage_fail_thr:
+    if (not bool(flags.get("subject_terms_neutralized", False))) and safe_float(flags.get("subject_coverage", 0.0)) < cfg.subject_coverage_fail_thr:
         stats.top1_subject_cov_fail_count += 1
 
     if len(topk) >= 2:

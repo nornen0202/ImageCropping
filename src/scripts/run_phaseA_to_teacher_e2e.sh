@@ -2,7 +2,7 @@
 # ==============================================================================
 # run_phaseA_to_teacher_e2e.sh
 # End-to-end pipeline:
-#   Phase A Filter -> Phase B Perception Precompute(C1,C2,C3,C4,C5, enrich, merge)
+#   Phase A Filter -> Phase B Perception Precompute(C1,C2,C3,C4,C5,C6, enrich, merge, optional C7 saliency)
 #   -> Candidate Generator -> Teacher Scorer(+QA/+Viz) -> VLM Teacher Labeler(Section 10, optional)
 #   -> FinalScore Training Labels(optional)
 # ------------------------------------------------------------------------------
@@ -46,6 +46,15 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_component_viz 1 \
   --component_viz_num_samples 120 \
   --run_tag with_comp_viz
+
+# C7 saliency(subject-region 보강)까지 포함
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --precompute_mode unified \
+  --export_curated_images 1 \
+  --prefer_curated_images 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --run_tag with_c7_saliency
 
 # 공개 Teacher proposal 주입(5.5 설치/추론/변환 자동 포함)
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
@@ -136,6 +145,10 @@ Core options
 --public_infer_gpu_ids CSV 공개 teacher multi-gpu 대상 GPU 목록 (예: 0,1)
 --public_infer_num_workers INT 공개 teacher shard worker 수 (default: gpu 개수)
 --precompute_mode MODE          unified|split (default: unified)
+--run_c7_saliency 0|1           merged/routed feats에 c7_saliency 추가 (default: 0)
+--c7_saliency_priority NAME     quality_first|high_efficiency (default: quality_first)
+--c7_saliency_weights_dir PATH  c7 saliency weights/cache 경로
+--c7_saliency_device STR        auto|cuda|cuda:0|cpu (default: auto)
 --extract_multi_gpu -1|0|1      precompute multi-gpu on/off (-1=auto, 0=single, 1=multi; ray는 별도 --extract_mode ray)
 --extract_gpu_ids CSV           precompute에서 사용할 GPU 목록 (예: 0,1,2,3)
 --num_workers INT               precompute shard worker 수 (multi 모드에서 권장: gpu 개수)
@@ -276,6 +289,10 @@ RUN_SUBJECT_ROUTING=1
 SUBJECT_ROUTING_TOP_N=5
 SUBJECT_ROUTING_UNION_TOP_M=3
 SUBJECT_ROUTING_ALLOW_DET_PROXY=1
+RUN_C7_SALIENCY=0
+C7_SALIENCY_PRIORITY="quality_first"
+C7_SALIENCY_WEIGHTS_DIR=""
+C7_SALIENCY_DEVICE="auto"
 EXTRACT_MODE="auto"
 EXTRACT_MULTI_GPU=-1
 EXTRACT_MODE_EXPLICIT=0
@@ -447,6 +464,10 @@ while [ "$#" -gt 0 ]; do
     --subject_routing_top_n) SUBJECT_ROUTING_TOP_N="$2"; shift 2 ;;
     --subject_routing_union_top_m) SUBJECT_ROUTING_UNION_TOP_M="$2"; shift 2 ;;
     --subject_routing_allow_det_proxy) SUBJECT_ROUTING_ALLOW_DET_PROXY="$2"; shift 2 ;;
+    --run_c7_saliency) RUN_C7_SALIENCY="$2"; shift 2 ;;
+    --c7_saliency_priority) C7_SALIENCY_PRIORITY="$2"; shift 2 ;;
+    --c7_saliency_weights_dir) C7_SALIENCY_WEIGHTS_DIR="$2"; shift 2 ;;
+    --c7_saliency_device) C7_SALIENCY_DEVICE="$2"; shift 2 ;;
     --extract_mode) EXTRACT_MODE="$2"; EXTRACT_MODE_EXPLICIT=1; shift 2 ;;
     --extract_multi_gpu) EXTRACT_MULTI_GPU="$2"; EXTRACT_MULTI_GPU_EXPLICIT=1; shift 2 ;;
     --extract_priority) EXTRACT_PRIORITY="$2"; shift 2 ;;
@@ -733,6 +754,9 @@ FEATS_C6="${PRECOMPUTE_DIR}/feats_c6.jsonl"
 FEATS_C2C3C5_RAW="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_raw.jsonl"
 MERGED_FEATS="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched.jsonl"
 MERGED_FEATS_ROUTED="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed.jsonl"
+MERGED_FEATS_C7="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl"
+MERGED_FEATS_ROUTED_C7="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl"
+C7_SALIENCY_SUMMARY_JSON="${PRECOMPUTE_DIR}/c7_saliency${SUFFIX}_summary.json"
 DOWNSTREAM_FEATS="$MERGED_FEATS"
 
 CANDIDATES_JSONL="${CANDIDATES_DIR}/candidates_ar${SUFFIX}.jsonl"
@@ -938,6 +962,8 @@ promote_from_legacy_or_cleanup "$FEATS_C6"
 promote_from_legacy_or_cleanup "$FEATS_C2C3C5_RAW"
 promote_from_legacy_or_cleanup "$MERGED_FEATS"
 promote_from_legacy_or_cleanup "$MERGED_FEATS_ROUTED"
+promote_from_legacy_or_cleanup "$MERGED_FEATS_C7"
+promote_from_legacy_or_cleanup "$MERGED_FEATS_ROUTED_C7"
 promote_from_legacy_or_cleanup "$CANDIDATES_JSONL"
 promote_from_legacy_or_cleanup "$PUBLIC_TEACHER_RAW_JSONL"
 promote_from_legacy_or_cleanup "$PUBLIC_TEACHER_PROPOSALS_JSONL"
@@ -1038,6 +1064,7 @@ echo " extract_mode        : $EXTRACT_MODE (extract_multi_gpu=${EXTRACT_MULTI_GP
 echo " run_c1/c2/c3/c4/c5/c6 : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C4/$RUN_C5/$RUN_C6"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
 echo " subject routing     : run=$RUN_SUBJECT_ROUTING top_n=$SUBJECT_ROUTING_TOP_N union_top_m=$SUBJECT_ROUTING_UNION_TOP_M det_proxy=$SUBJECT_ROUTING_ALLOW_DET_PROXY"
+echo " c7 saliency         : run=$RUN_C7_SALIENCY priority=$C7_SALIENCY_PRIORITY device=$C7_SALIENCY_DEVICE"
 echo " run_component_viz   : $RUN_COMPONENT_VIZ (out=$COMPONENT_VIZ_OUT_DIR, num_samples=$COMPONENT_VIZ_NUM_SAMPLES)"
 echo " public proposals    : enable=$ENABLE_PUBLIC_TEACHER_PROPOSALS setup=$PUBLIC_TEACHER_SETUP teachers=$PUBLIC_TEACHERS max_images=$PUBLIC_TEACHER_MAX_IMAGES"
 echo " public raw/proposal : $PUBLIC_TEACHER_RAW_JSONL | $PUBLIC_TEACHER_PROPOSALS_JSONL"
@@ -1345,6 +1372,50 @@ if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
     DOWNSTREAM_FEATS="$MERGED_FEATS_ROUTED"
   else
     echo "[warn] subject routing output missing. fallback to merged feats: $MERGED_FEATS"
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 2.4a) Optional C7 saliency augment
+# ------------------------------------------------------------------------------
+if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
+  if [ -z "$EFFECTIVE_IMAGE_DIR" ] || [ ! -d "$EFFECTIVE_IMAGE_DIR" ]; then
+    echo "[error] c7 saliency requires flat image dir. use --export_curated_images 1 or provide --curated_image_dir."
+    exit 1
+  fi
+  c7_input_jsonl="$DOWNSTREAM_FEATS"
+  c7_output_jsonl="$MERGED_FEATS_C7"
+  if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
+    c7_output_jsonl="$MERGED_FEATS_ROUTED_C7"
+  fi
+  if [ ! -f "$c7_input_jsonl" ]; then
+    echo "[error] c7 saliency requires input jsonl: $c7_input_jsonl"
+    exit 1
+  fi
+  if ! should_skip_file "$c7_output_jsonl"; then
+    c7_args=(
+      --input_jsonl "$c7_input_jsonl"
+      --output_jsonl "$c7_output_jsonl"
+      --image_dir "$EFFECTIVE_IMAGE_DIR"
+      --priority "$C7_SALIENCY_PRIORITY"
+      --device "$C7_SALIENCY_DEVICE"
+      --summary_json "$C7_SALIENCY_SUMMARY_JSON"
+      --overwrite 0
+      --max_images "$MAX_IMAGES"
+      --progress 1
+    )
+    if [ -n "$C7_SALIENCY_WEIGHTS_DIR" ]; then
+      c7_args+=(--weights_dir "$C7_SALIENCY_WEIGHTS_DIR")
+    fi
+    run_with_log "07aa_augment_c7_saliency" \
+      python3 src/scripts/augment_saliency_subject_features.py \
+        "${c7_args[@]}"
+  fi
+  if [ -f "$c7_output_jsonl" ]; then
+    DOWNSTREAM_FEATS="$c7_output_jsonl"
+  else
+    echo "[error] c7 saliency output missing: $c7_output_jsonl"
+    exit 1
   fi
 fi
 
@@ -1749,8 +1820,8 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
   if [ -z "$RUN_TAG" ]; then
     echo "[warn] run_detailed_report=1 but run_tag is empty. skipping detailed report package."
   else
-    if [ ! -f "$MERGED_FEATS_ROUTED" ]; then
-      echo "[error] detailed report requires routed feats jsonl: $MERGED_FEATS_ROUTED"
+    if [ ! -f "$DOWNSTREAM_FEATS" ]; then
+      echo "[error] detailed report requires downstream feats jsonl: $DOWNSTREAM_FEATS"
       exit 1
     fi
     if [ ! -f "$TEACHER_JSONL" ] || [ ! -f "$TEACHER_QA_JSON" ] || [ ! -f "$TEACHER_OVERVIEW_JSON" ]; then
@@ -1761,7 +1832,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
     run_with_log "12a_build_report_assets" \
       python3 src/scripts/build_sstk_report_assets.py \
         --run_tag "$RUN_TAG" \
-        --routed_feats_jsonl "$MERGED_FEATS_ROUTED" \
+        --routed_feats_jsonl "$DOWNSTREAM_FEATS" \
         --teacher_scores_jsonl "$TEACHER_JSONL" \
         --teacher_qa_json "$TEACHER_QA_JSON" \
         --components_viz_dir "$COMPONENT_VIZ_OUT_DIR" \
@@ -1779,7 +1850,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
       run_with_log "12c_render_report_teacher_viz" \
         python3 src/visualize_teacher_scores.py \
           --teacher_scores_jsonl "$TEACHER_JSONL" \
-          --features_jsonl "$MERGED_FEATS_ROUTED" \
+          --features_jsonl "$DOWNSTREAM_FEATS" \
           --parquet "$FILTERED_PARQUET" \
           --tar_dir "$TAR_DIR" \
           "${image_dir_args[@]}" \
@@ -1859,6 +1930,10 @@ echo " feats c2/c3e/c4/c5/c6: $FEATS_C2 | $FEATS_C3_ENRICHED | $FEATS_C4 | $FEAT
 echo " merged feats     : $MERGED_FEATS"
 if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
   echo " routed feats     : $MERGED_FEATS_ROUTED"
+fi
+if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
+  echo " c7 saliency json : $DOWNSTREAM_FEATS"
+  echo " c7 sal summary   : $C7_SALIENCY_SUMMARY_JSON"
 fi
 echo " downstream feats : $DOWNSTREAM_FEATS"
 if [ "$ENABLE_PUBLIC_TEACHER_PROPOSALS" -eq 1 ]; then

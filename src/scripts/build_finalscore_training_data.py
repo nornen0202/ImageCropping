@@ -3059,6 +3059,8 @@ def build_markdown_report(
         "",
         "- GAIC-like 변환본은 `train_conditional_detr_batch.jsonl`에서 `matching_targets`와 `candidate_pool`을 함께 COCO/GAIC 스타일 annotation으로 펼친 뷰입니다.",
         "- `matching_targets`는 `gt_flag=1`, `candidate_pool`은 `gt_flag=0`으로 저장되며, `score`는 positive/negative 모두 SSTK local score를 사용합니다.",
+        "- GAIC wrapper가 official split reference를 함께 넘기면 `coco/instances_conditional_detr_batch_gaic_like_train.json`, `..._test.json`, `..._unassigned.json`도 같이 생성됩니다.",
+        "- `unassigned`는 현재 local GAIC subset에 존재하지만 public `instances_train/test.json` 어디에도 image_id가 없는 샘플을 뜻합니다.",
         "- 동일 report 예시 샘플 아래에도 각 샘플의 변환 결과 일부를 같이 붙여 두었습니다.",
         "",
         json_block(gaic_like_summary),

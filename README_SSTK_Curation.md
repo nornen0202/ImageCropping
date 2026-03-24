@@ -3,7 +3,7 @@
 이 문서는 `SSTK_Cropping_DataFactory_QwenLabeler_Reorganized_KO_v1_9.md` 기준으로, 현재 코드베이스에서 **Phase A(Filter) → Phase B(Perception/Candidate) → 9) Teacher Scorer → 10) VLM/MLLM Teacher Labeler**까지를 처음부터 재현하는 실전 운영 가이드입니다.
 
 범위:
-- 포함: `3) Phase A`, `5) Phase B(C1~C6, C4 OCR 포함)`, `9) Teacher Scorer`, `10) VLM/MLLM Teacher`
+- 포함: `3) Phase A`, `5) Phase B(C1~C6 + optional C7 saliency, C4 OCR 포함)`, `9) Teacher Scorer`, `10) VLM/MLLM Teacher`
 - 제외: `v1.7 PICD`, `11) UNIC View Adjustment`
 
 ---
@@ -24,6 +24,10 @@
   - C1/C2/C3/C4/C5/C6를 1-pass로 추출 가능 (`run_c1=1`일 때 C1 포함)
   - `enrich_c3_pose_jsonl.py`로 face/gaze proxy 보강 후 최종 병합 피처 직접 생성
   - 분리 실행 대비 I/O/재로딩 오버헤드 감소
+- Optional C7 saliency augment 추가
+  - `augment_saliency_subject_features.py`로 merged/routed feats에 `c7_saliency`를 후주입 가능
+  - candidate generator/teacher scorer가 saliency-guided subject anchor와 `saliency_jitter` 후보를 사용할 수 있음
+  - flat curated image dir가 필요하므로 `--export_curated_images 1` 또는 기존 `--curated_image_dir`가 준비되어 있어야 함
 - C4 OCR 품질우선 경로 추가
   - `quality_first`에서 PP-OCRv5 server detector(`PP-OCRv5_server_det`)를 1순위로 사용
   - 추출 결과에 `ocr_text_boxes`/`text_overlay_likely` 신호를 동시 기록해 subject routing(`text_document`)과 직접 연동
@@ -254,6 +258,28 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 주의:
 - `filter` 단계 캐시(`tag_cat_probs_cache_*.pkl`, `df_mapped_cache_*.parquet`)가 남아 있으면 태그 임베딩 단계가 skip될 수 있습니다.
 - 실제 재임베딩을 강제하려면 `data/SSTK/<DATANAME>/cache/filter/`의 관련 캐시를 정리한 뒤 실행하세요.
+
+### 3.3a C7 saliency(subject-region 보강)까지 함께 돌리기
+
+flat curated image dir가 있을 때 `c7_saliency`를 merged/routed feats에 추가할 수 있습니다. 이 경우 downstream candidate/teacher는 saliency-guided anchor와 `saliency_jitter` 후보를 함께 사용합니다.
+
+```bash
+DATANAME=10K
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/${DATANAME} \
+  --run_filter 0 \
+  --precompute_mode unified \
+  --export_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --prefer_curated_images 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --skip_existing 1 \
+  --run_tag rerun1_c7
+```
+
+실행이 끝나면 downstream feature는 `.../artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl` 로 남습니다.
 
 `5.5 공개 Teacher 추론/변환(설치 포함)`까지 같은 실행에서 자동 적용하려면:
 ```bash

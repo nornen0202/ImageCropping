@@ -7,6 +7,8 @@
 - GAIC는 `curated pool` 선별 단계가 없습니다. `data/Publics/GAIC/images` 아래의 모든 이미지를 curated pool로 간주합니다.
 - GAIC는 태그/캡션 메타데이터가 없으므로 메타데이터 의존적인 `C1 + real-expensive teacher` 경로를 기본 비활성화합니다.
 - 기존 파이프라인이 flat `image_dir`를 기대하므로, GAIC 이미지를 심볼릭 링크 기반의 평탄화된 `images/` 디렉토리로 준비한 뒤 기존 e2e 스크립트를 그대로 호출합니다.
+- saliency 기반 subject-region 보강은 기본 off 이지만, wrapper에서 `--run_c7_saliency 1` 로 바로 활성화할 수 있습니다.
+- GAIC GT가 있는 경우 wrapper에서 `--run_gaic_benchmark_eval 1` 또는 `--run_gaic_subject_region_ab 1` 로 benchmark / saliency A-B까지 연속 실행할 수 있습니다.
 
 ## 1. 추가된 파일
 
@@ -14,6 +16,9 @@
 - GAIC 준비 스크립트: [src/scripts/prepare_gaic_curated_dataset.py](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/prepare_gaic_curated_dataset.py)
 - GAIC synthetic caption 스크립트: [src/scripts/generate_gaic_captions.py](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/generate_gaic_captions.py)
 - 산출물 검증 스크립트: [src/scripts/validate_gaic_e2e_outputs.py](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/validate_gaic_e2e_outputs.py)
+- C7 saliency augment 스크립트: [src/scripts/augment_saliency_subject_features.py](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/augment_saliency_subject_features.py)
+- 공개 benchmark 평가 스크립트: [src/scripts/run_gaic_benchmark_eval.py](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_gaic_benchmark_eval.py)
+- saliency/effective-subject-region A/B 스크립트: [src/scripts/run_gaic_subject_region_ab.py](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_gaic_subject_region_ab.py)
 
 ## 2. GAIC 전용 설계
 
@@ -36,6 +41,7 @@ GAIC는 이미지 외 메타데이터가 없으므로 기본값은 다음과 같
 - `--use_real_expensive 0`
 - `tags=""`, `caption=""`, `super_cat=""` 로 parquet 작성
 - subject routing은 태그 대신 `C2/C3/C4/C5` 신호를 우선 사용
+- 선택적으로 `C7 saliency`를 merged/routed feature에 주입해 subject anchor 보강과 `saliency_jitter` candidate 생성을 함께 켤 수 있음
 - Stage-10 라벨러는 기본적으로 `heuristic` backend를 사용
 - `run_c1=0` 또는 `use_real_expensive=0` 인 경우 scorer는 더 이상 `proxy expensive`를 쓰지 않습니다. 이때 `expensive=0`, `expensive_source=disabled`, `A_macro=na` 로 기록되며 최종 `score_rank` 에서 A 축은 제외됩니다.
 
@@ -84,7 +90,7 @@ source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 GPU_IDS=0,1,2
 N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 
-RUN_TAG=gaic_260323_r0
+RUN_TAG=gaic_260324_r0
 DATANAME=All
 
 bash src/scripts/run_gaic_to_teacher_e2e.sh \
@@ -98,6 +104,8 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --gaic_caption_preset server_quality \
   --run_c4 0 \
   --run_c6 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
   --run_vlm_teacher 0 \
   --run_training_labels 1 \
   --run_detailed_report 1 \
@@ -109,6 +117,11 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --num_workers ${N_WORKERS} \
   --teacher_gpu_ids ${GPU_IDS} \
   --teacher_num_workers ${N_WORKERS} \
+  --run_gaic_benchmark_eval 1 \
+  --gaic_benchmark_sample_count 8 \
+  --run_gaic_subject_region_ab 1 \
+  --gaic_subject_ab_run_tag gaic_eval_${RUN_TAG} \
+  --gaic_subject_ab_sample_count 8 \
   | tee src/scripts/logs/run_gaic_to_teacher_e2e_${DATANAME}_${RUN_TAG}.log
 ```
 
@@ -116,15 +129,19 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 
 - GAIC 전체 이미지를 curated pool로 준비
 - `run_phaseA_to_teacher_e2e.sh` 를 `run_filter=0` 으로 호출
-- 품질우선(`quality_first`) precompute로 `C2/C3/C5/C6` 수행
-- `C1`, `C4`, `VLM teacher` 는 수행하지 않음
+- 품질우선(`quality_first`) precompute로 `C1/C2/C3/C5/C6` 수행
+- 필요 시 `--run_c7_saliency 1 --c7_saliency_priority quality_first` 로 BiRefNet 우선 saliency까지 추가 가능
+- `C4`, `VLM teacher` 는 수행하지 않음
+- public teacher proposal injection을 켠 상태로 `candidates -> teacher` 를 수행
 - training label export 및 GAIC-like export 생성
+- wrapper가 `*_leftover_keepneg`, `*_leftover_ignore`, `*_leftover_softpos` variant를 자동 생성
+- GAIC-like export는 main json 외에 `..._train.json`, `..._test.json`, `..._unassigned.json` 도 함께 생성
 - 마지막에 자동 검증 실행
 
 중요:
 
-- 이 기본 템플릿에서는 `A_macro` 가 caption/proxy 없이 계산되지 않습니다.
-- 즉 report에는 `expensive_source=disabled`, `A=na` 가 보이고 rank fusion은 `S/C/T` 축만 사용합니다.
+- 이 4.1 템플릿은 `run_c1=1`, `use_real_expensive=1` 이므로 wrapper가 synthetic caption을 먼저 만들고, teacher scorer는 real expensive path를 사용합니다.
+- 즉 report에는 `expensive_source=real` 이 기록되고, `A_macro` 가 실제 expensive signal을 반영합니다.
 
 ### 4.1a Public Teacher만 기존 결과에 재반영
 
@@ -271,6 +288,58 @@ VLM backend 관련 용어:
   primary backend 실패 시 대체 backend를 쓰지 않겠다는 의미입니다.
 - 따라서 `--vlm_backend heuristic --vlm_fallback_backend none` 조합은
   "Qwen 같은 VLM 없이 heuristic 로직만으로 Stage-10 결과를 생성"한다는 뜻입니다.
+
+### 4.1d C7 saliency까지 포함한 teacher/training-label 실행
+
+`C7 saliency`는 flat image dir가 있을 때만 켤 수 있습니다. GAIC wrapper는 준비 단계에서 flat image dir를 만들기 때문에 아래처럼 바로 연결 가능합니다.
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --data_dir data/GAIC/All \
+  --image_root data/Publics/GAIC/images \
+  --run_tag gaic_260324_c7 \
+  --skip_existing 1 \
+  --run_c1 0 \
+  --use_real_expensive 0 \
+  --run_c4 0 \
+  --run_c6 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --run_vlm_teacher 0 \
+  --run_training_labels 1 \
+  --run_detailed_report 1
+```
+
+이 경우 `run_phaseA_to_teacher_e2e.sh` 내부에서 `augment_saliency_subject_features.py` 가 추가 실행되고, downstream feature jsonl은 `..._routed_c7_saliency.jsonl` 로 전환됩니다.
+
+### 4.1e E2E 직후 benchmark / saliency A-B까지 연속 실행
+
+GAIC GT가 있는 경우 wrapper에서 benchmark와 subject-region A-B까지 바로 이어서 실행할 수 있습니다.
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --data_dir data/GAIC/All \
+  --image_root data/Publics/GAIC/images \
+  --run_tag gaic_260324_eval \
+  --skip_existing 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --run_training_labels 1 \
+  --run_gaic_benchmark_eval 1 \
+  --gaic_benchmark_sample_count 8 \
+  --run_gaic_subject_region_ab 1 \
+  --gaic_subject_ab_run_tag gaic_260324_eval_saliency_v1 \
+  --gaic_subject_ab_sample_count 8
+```
+
+주의:
+
+- `--run_gaic_benchmark_eval 1` 은 현재 run의 `candidates / teacher / training_labels`를 이용해 `run_gaic_benchmark_eval.py` 를 실행합니다.
+- `--run_gaic_subject_region_ab 1` 은 baseline 후보/benchmark summary가 필요합니다. 기본값은 `data/GAIC/All/artifacts/...gaic_260320_r0...` 를 보지만, 다르면 `--gaic_subject_ab_baseline_candidates_jsonl`, `--gaic_subject_ab_baseline_benchmark_summary` 로 직접 넘겨야 합니다.
 
 ### 4.2 준비 단계만 먼저 실행
 
@@ -436,6 +505,22 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 
 ## 5.2 Training Label Variant 재생성
 
+기본 wrapper 실행에서 `--run_training_labels 1` 이면 아래 variant들이 자동 생성됩니다.
+
+- `${RUN_TAG}`: 사용자가 지정한 기본 policy output
+- `${RUN_TAG}_leftover_keepneg`
+- `${RUN_TAG}_leftover_ignore`
+- `${RUN_TAG}_leftover_softpos`
+
+또한 각 training label dir의 `coco/` 아래에는 다음 split export가 함께 생성됩니다.
+
+- `instances_conditional_detr_batch_gaic_like.json`
+- `instances_conditional_detr_batch_gaic_like_train.json`
+- `instances_conditional_detr_batch_gaic_like_test.json`
+- `instances_conditional_detr_batch_gaic_like_unassigned.json`
+
+`unassigned` 는 현재 local GAIC subset에 존재하지만 public `instances_train/test.json` 어디에도 image_id가 없는 샘플입니다.
+
 safe high-score leftover는
 
 - 최종 chosen보다 점수는 높지만
@@ -450,7 +535,7 @@ safe high-score leftover는
 - `ignore`: 이 후보를 `ignored_candidates`로 분리하고 negative annotation에서 제외
 - `promote_soft_positive`: 이 후보를 `soft_positive`로 승격하고 `matching_targets`에 포함
 
-기존 `teacher_scores`를 재사용해 training label만 다시 뽑는 명령 템플릿:
+기존 `teacher_scores`를 재사용해 training label만 다시 뽑고 split export까지 갱신하는 명령 템플릿:
 
 ```bash
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
@@ -484,7 +569,12 @@ for POLICY in ignore promote_soft_positive; do
   python src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
     --batch_jsonl "${OUT_DIR}/train_conditional_detr_batch.jsonl" \
     --gaic_reference_json "${GAIC_REF}" \
+    --gaic_train_reference_json data/Publics/GAIC/annotations_json/instances_train.json \
+    --gaic_test_reference_json data/Publics/GAIC/annotations_json/instances_test.json \
     --out_json "${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like.json" \
+    --out_train_json "${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_train.json" \
+    --out_test_json "${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_test.json" \
+    --out_unassigned_json "${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_unassigned.json" \
     --out_summary_json "${OUT_DIR}/coco/gaic_like_conversion_summary.json" \
     --out_guide_md "${OUT_DIR}/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
 done
@@ -534,6 +624,9 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 - teacher: `data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_full.jsonl`
 - vlm labels: `data/GAIC/All/artifacts/vlm_teacher/labels/crop_label_v1_gaic_full.jsonl`
 - training validation: `data/GAIC/All/artifacts/training_labels/gaic_full/validation_summary.json`
+- GAIC-like train split: `data/GAIC/All/artifacts/training_labels/gaic_full/coco/instances_conditional_detr_batch_gaic_like_train.json`
+- GAIC-like test split: `data/GAIC/All/artifacts/training_labels/gaic_full/coco/instances_conditional_detr_batch_gaic_like_test.json`
+- GAIC-like unassigned split: `data/GAIC/All/artifacts/training_labels/gaic_full/coco/instances_conditional_detr_batch_gaic_like_unassigned.json`
 - wrapper validation: `data/GAIC/All/artifacts/validation/gaic_e2e_validation_gaic_full.json`
 
 ## 7. 검증 정책

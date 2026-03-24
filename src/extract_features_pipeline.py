@@ -57,7 +57,7 @@ def parse_args():
     parser.add_argument(
         "--component",
         nargs="+",
-        choices=["c1", "c2", "c3", "c4", "c5", "c6", "all"],
+        choices=["c1", "c2", "c3", "c4", "c5", "c6", "c7", "all"],
         default=["all"],
         help="Which components to run. e.g. --component c2 c3 c5  or  --component all",
     )
@@ -86,6 +86,7 @@ def main():
     run_c4  = run_all or "c4" in comps
     run_c5  = run_all or "c5" in comps
     run_c6  = run_all or "c6" in comps
+    run_c7  = run_all or "c7" in comps
 
     weights_dir = resolve_weights_dir(args.weights_dir, __file__)
 
@@ -107,6 +108,7 @@ def main():
             run_c4=run_c4,
             run_c5=run_c5,
             run_c6=run_c6,
+            run_c7=run_c7,
             weights_dir=weights_dir,
             c4_lang=args.c4_lang,
             priority=args.priority,

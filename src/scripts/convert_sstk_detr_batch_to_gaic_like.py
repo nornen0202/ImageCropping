@@ -49,6 +49,37 @@ def write_json(path: Path, payload: Dict[str, Any]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def default_split_output_path(out_json: Path, split_name: str) -> Path:
+    stem = out_json.stem
+    suffix = out_json.suffix or ".json"
+    return out_json.with_name(f"{stem}_{split_name}{suffix}")
+
+
+def load_split_image_ids(path: Optional[Path]) -> set[str]:
+    if path is None or not path.exists():
+        return set()
+    payload = load_json(path)
+    return {str(safe_dict(row).get("id", "")) for row in safe_list(payload.get("images")) if str(safe_dict(row).get("id", ""))}
+
+
+def build_split_lookup(
+    train_reference_path: Optional[Path],
+    test_reference_path: Optional[Path],
+) -> Dict[str, str]:
+    lookup: Dict[str, str] = {}
+    for image_id in load_split_image_ids(train_reference_path):
+        lookup[image_id] = "train"
+    for image_id in load_split_image_ids(test_reference_path):
+        lookup[image_id] = "test"
+    return lookup
+
+
+def split_name_for_image(image_id: str, split_lookup: Optional[Dict[str, str]]) -> str:
+    if not split_lookup:
+        return "unknown"
+    return str(split_lookup.get(str(image_id), "unassigned"))
+
+
 def norm_xyxy_to_coco_bbox(bbox_norm_xyxy: Sequence[Any], width: int, height: int) -> List[float]:
     x1 = safe_float(bbox_norm_xyxy[0]) * width
     y1 = safe_float(bbox_norm_xyxy[1]) * height
@@ -79,12 +110,18 @@ def load_image_size(image_path: str, size_cache: Dict[str, Tuple[int, int]]) -> 
     return size
 
 
-def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def build_gaic_like_instances(
+    batch_records: Sequence[Dict[str, Any]],
+    *,
+    split_lookup: Optional[Dict[str, str]] = None,
+) -> Dict[str, Any]:
     images: List[Dict[str, Any]] = []
     annotations: List[Dict[str, Any]] = []
     size_cache: Dict[str, Tuple[int, int]] = {}
     ann_id = 1
     safe_leftover_policies: set[str] = set()
+    split_image_counts: Counter[str] = Counter()
+    split_annotation_counts: Counter[str] = Counter()
     for image_entry_id, record in enumerate(batch_records, start=1):
         image_path = str(record.get("image_path") or "")
         width, height = load_image_size(image_path, size_cache)
@@ -92,14 +129,18 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
         decision_target = safe_dict(record.get("decision_target"))
         label_generation = safe_dict(record.get("label_generation"))
         safe_leftover_policies.add(str(label_generation.get("safe_leftover_policy", "keep_negative")))
+        image_id = str(record.get("image_id", ""))
+        split_name = split_name_for_image(image_id, split_lookup)
+        split_image_counts[split_name] += 1
         images.append(
             {
                 "file_name": basename_only(image_path),
                 "height": height,
                 "width": width,
                 "id": image_entry_id,
-                "sstk_image_id": record.get("image_id"),
+                "sstk_image_id": image_id,
                 "target_ar": record.get("target_ar"),
+                "split": split_name,
                 "label_generation": label_generation,
                 "ignored_candidate_count": len(safe_list(record.get("ignored_candidates"))),
             }
@@ -130,6 +171,7 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
                 }
             )
             ann_id += 1
+            split_annotation_counts[split_name] += 1
         for candidate in safe_list(record.get("candidate_pool")):
             bbox = norm_xyxy_to_coco_bbox(candidate.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]), width, height)
             annotations.append(
@@ -154,6 +196,7 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
                 }
             )
             ann_id += 1
+            split_annotation_counts[split_name] += 1
     return {
         "images": images,
         "type": "instances",
@@ -161,6 +204,37 @@ def build_gaic_like_instances(batch_records: Sequence[Dict[str, Any]]) -> Dict[s
         "categories": [{"supercategory": "none", "id": 0, "name": "crop"}],
         "sstk_meta": {
             "safe_leftover_policies": sorted(safe_leftover_policies),
+            "split_image_counts": dict(sorted(split_image_counts.items())),
+            "split_annotation_counts": dict(sorted(split_annotation_counts.items())),
+        },
+    }
+
+
+def filter_payload_by_split(payload: Dict[str, Any], split_name: str) -> Dict[str, Any]:
+    images = []
+    annotations = []
+    allowed_image_ids: set[int] = set()
+    for image in safe_list(payload.get("images")):
+        row = safe_dict(image)
+        if str(row.get("split", "unknown")) != split_name:
+            continue
+        images.append(row)
+        allowed_image_ids.add(safe_int(row.get("id"), -1))
+    for annotation in safe_list(payload.get("annotations")):
+        row = safe_dict(annotation)
+        if safe_int(row.get("image_id"), -1) in allowed_image_ids:
+            annotations.append(row)
+    base_meta = safe_dict(payload.get("sstk_meta"))
+    return {
+        "images": images,
+        "type": payload.get("type", "instances"),
+        "annotations": annotations,
+        "categories": safe_list(payload.get("categories")),
+        "sstk_meta": {
+            **base_meta,
+            "split_name": split_name,
+            "split_image_counts": {split_name: len(images)},
+            "split_annotation_counts": {split_name: len(annotations)},
         },
     }
 
@@ -268,6 +342,7 @@ def build_format_guide(
     converted_payload: Dict[str, Any],
     validation_summary: Dict[str, Any],
     out_json_path: Path,
+    split_exports: Optional[Dict[str, Any]] = None,
 ) -> str:
     gaic_images = safe_list(gaic_reference.get("images"))
     gaic_annotations = safe_list(gaic_reference.get("annotations"))
@@ -308,6 +383,7 @@ def build_format_guide(
     )
     gaic_gt_count = sum(1 for ann in gaic_annotations if safe_int(safe_dict(ann).get("gt_flag"), -1) == 1)
     gaic_negative_count = sum(1 for ann in gaic_annotations if safe_int(safe_dict(ann).get("gt_flag"), -1) == 0)
+    split_exports = safe_dict(split_exports)
     lines = [
         "# GAIC instances_train Format Guide",
         "",
@@ -390,6 +466,33 @@ def build_format_guide(
         f"- label_type counts: `{json.dumps(validation_summary.get('label_type_counts', {}), ensure_ascii=False)}`",
         f"- safe_leftover_policies: `{json.dumps(converted_meta.get('safe_leftover_policies', []), ensure_ascii=False)}`",
         "",
+        "### 3.1 Official split export",
+        "",
+    ]
+    if split_exports:
+        outputs = safe_dict(split_exports.get("outputs"))
+        image_counts = safe_dict(split_exports.get("image_counts"))
+        annotation_counts = safe_dict(split_exports.get("annotation_counts"))
+        lines.extend(
+            [
+                f"- train json: `{outputs.get('train', 'n/a')}`",
+                f"- test json: `{outputs.get('test', 'n/a')}`",
+                f"- unassigned json: `{outputs.get('unassigned', 'n/a')}`",
+                f"- image counts by split: `{json.dumps(image_counts, ensure_ascii=False)}`",
+                f"- annotation counts by split: `{json.dumps(annotation_counts, ensure_ascii=False)}`",
+                "- `unassigned`는 현재 local GAIC subset에 존재하지만 public `instances_train/test.json` 어느 쪽에도 image_id가 없는 샘플입니다.",
+                "",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "- official train/test split reference가 주어지지 않아 split export는 생략됐습니다.",
+                "",
+            ]
+        )
+    lines.extend(
+        [
         "- SSTK 변환본은 GAIC와 같은 top-level skeleton을 유지하되, `matching_targets`는 `gt_flag=1`, `candidate_pool`은 `gt_flag=0`으로 함께 담았습니다.",
         "- `ignored_candidates`가 있는 variant에서는 해당 후보를 GAIC-like annotation에서 제외하고, 대신 `images[].ignored_candidate_count`와 `label_generation` metadata에만 남깁니다.",
         "- `safe_leftover_policy=promote_soft_positive` variant에서는 원래 candidate_pool에 있던 safe high-score leftover가 `matching_targets`로 승격되어 positive annotation 수가 증가할 수 있습니다.",
@@ -458,7 +561,8 @@ def build_format_guide(
         "- `score`는 positive/negative 모두 [0,1] 계열 SSTK local score를 사용하므로, GAIC 원본의 1~5대 점수 스케일과 직접 같지는 않습니다.",
         "- 이 변환본은 `GAIC-like`이지 완전한 GAIC 복제는 아닙니다. 동일한 outer format에 SSTK 전용 필드를 덧붙인 학습용 export입니다.",
         "",
-    ]
+        ]
+    )
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -471,6 +575,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out_json", required=True)
     parser.add_argument("--out_summary_json", required=True)
     parser.add_argument("--out_guide_md", required=True)
+    parser.add_argument("--gaic_train_reference_json", default="")
+    parser.add_argument("--gaic_test_reference_json", default="")
+    parser.add_argument("--out_train_json", default="")
+    parser.add_argument("--out_test_json", default="")
+    parser.add_argument("--out_unassigned_json", default="")
     return parser.parse_args()
 
 
@@ -481,12 +590,21 @@ def main() -> None:
     out_json = Path(args.out_json)
     out_summary_json = Path(args.out_summary_json)
     out_guide_md = Path(args.out_guide_md)
+    gaic_train_reference_json = Path(args.gaic_train_reference_json) if str(args.gaic_train_reference_json).strip() else None
+    gaic_test_reference_json = Path(args.gaic_test_reference_json) if str(args.gaic_test_reference_json).strip() else None
+    out_train_json = Path(args.out_train_json) if str(args.out_train_json).strip() else default_split_output_path(out_json, "train")
+    out_test_json = Path(args.out_test_json) if str(args.out_test_json).strip() else default_split_output_path(out_json, "test")
+    out_unassigned_json = Path(args.out_unassigned_json) if str(args.out_unassigned_json).strip() else default_split_output_path(out_json, "unassigned")
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_summary_json.parent.mkdir(parents=True, exist_ok=True)
     out_guide_md.parent.mkdir(parents=True, exist_ok=True)
+    out_train_json.parent.mkdir(parents=True, exist_ok=True)
+    out_test_json.parent.mkdir(parents=True, exist_ok=True)
+    out_unassigned_json.parent.mkdir(parents=True, exist_ok=True)
 
     batch_records = load_jsonl(batch_jsonl)
-    payload = build_gaic_like_instances(batch_records)
+    split_lookup = build_split_lookup(gaic_train_reference_json, gaic_test_reference_json)
+    payload = build_gaic_like_instances(batch_records, split_lookup=split_lookup or None)
     expected_annotation_count = sum(
         len(safe_list(record.get("matching_targets"))) + len(safe_list(record.get("candidate_pool")))
         for record in batch_records
@@ -498,6 +616,41 @@ def main() -> None:
     )
     reference = load_json(gaic_reference_json)
     write_json(out_json, payload)
+    split_exports: Dict[str, Any] = {}
+    if split_lookup:
+        split_payloads = {
+            "train": filter_payload_by_split(payload, "train"),
+            "test": filter_payload_by_split(payload, "test"),
+            "unassigned": filter_payload_by_split(payload, "unassigned"),
+        }
+        split_output_paths = {
+            "train": out_train_json,
+            "test": out_test_json,
+            "unassigned": out_unassigned_json,
+        }
+        split_validation: Dict[str, Any] = {}
+        split_image_counts: Dict[str, int] = {}
+        split_annotation_counts: Dict[str, int] = {}
+        for split_name, split_payload in split_payloads.items():
+            write_json(split_output_paths[split_name], split_payload)
+            split_image_counts[split_name] = len(safe_list(split_payload.get("images")))
+            split_annotation_counts[split_name] = len(safe_list(split_payload.get("annotations")))
+            split_validation[split_name] = validate_gaic_like_instances(
+                split_payload,
+                expected_image_count=split_image_counts[split_name],
+                expected_annotation_count=split_annotation_counts[split_name],
+            )
+        split_exports = {
+            "enabled": True,
+            "outputs": {name: str(path) for name, path in split_output_paths.items()},
+            "image_counts": split_image_counts,
+            "annotation_counts": split_annotation_counts,
+            "validation": split_validation,
+            "reference_paths": {
+                "train": str(gaic_train_reference_json) if gaic_train_reference_json else "",
+                "test": str(gaic_test_reference_json) if gaic_test_reference_json else "",
+            },
+        }
     write_json(
         out_summary_json,
         {
@@ -506,10 +659,11 @@ def main() -> None:
             "gaic_reference_json": str(gaic_reference_json),
             "sstk_meta": safe_dict(payload.get("sstk_meta")),
             "validation": validation_summary,
+            "split_exports": split_exports,
         },
     )
     out_guide_md.write_text(
-        build_format_guide(reference, payload, validation_summary, out_json),
+        build_format_guide(reference, payload, validation_summary, out_json, split_exports=split_exports),
         encoding="utf-8",
     )
     print(
@@ -519,6 +673,7 @@ def main() -> None:
                 "out_summary_json": str(out_summary_json),
                 "out_guide_md": str(out_guide_md),
                 "validation": validation_summary,
+                "split_exports": split_exports,
             },
             ensure_ascii=False,
             indent=2,

@@ -3,6 +3,8 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from subject_region import resolve_effective_subject_region, summarize_saliency_signal
+
 
 SUBJECT_MODE_TO_POLICY: Dict[str, str] = {
     "portrait_single": "portrait_single_v1",
@@ -748,6 +750,7 @@ def route_subject_mode(
     c2_primary_idx: int,
     width: int,
     height: int,
+    c7_saliency: Optional[Dict[str, Any]] = None,
     ocr_text_boxes_count: Optional[int] = None,
     text_overlay_likely: Optional[bool] = None,
     copy_space_flag: Optional[bool] = None,
@@ -813,6 +816,12 @@ def route_subject_mode(
     )
     largest_obj_area_ratio = _max_foreground_area_ratio(c2_instances)
     foreground_mass_ratio = _foreground_mass_ratio(union_box_seed, width, height)
+    saliency_signal = summarize_saliency_signal(c7_saliency, width=width, height=height)
+    saliency_fg_ratio = float(saliency_signal.get("foreground_area_ratio", 0.0))
+    saliency_blank_ratio = float(saliency_signal.get("blank_ratio_est", 1.0))
+    if saliency_fg_ratio > 0.0:
+        foreground_mass_ratio = max(foreground_mass_ratio, saliency_fg_ratio)
+        blank_ratio = min(blank_ratio, saliency_blank_ratio)
     scene_signal = bool(sc in SCENE_SUPER_CATS or has_scene_hint)
     object_signal = bool(sc in OBJECT_SUPER_CATS or has_object_hint)
     horizon_exists_prob = _clamp(_safe_float(horizon_conf, 0.0), 0.0, 1.0)
@@ -926,6 +935,17 @@ def route_subject_mode(
         mode = "scene_general"
         conf = max(0.55, min(0.85, 0.45 + 0.50 * float(scene_score)))
         router_rule_id = f"{router_rule_id}|guard_tiny_human_contextual_scene"
+
+    if (
+        mode == "other_ambiguous"
+        and bool(saliency_signal.get("scene_like_signal", False))
+        and c2_primary_area_ratio_seed < 0.04
+        and largest_obj_area_ratio < 0.04
+    ):
+        mode = "scene_general"
+        conf = max(float(conf), 0.52)
+        reasons.append("saliency_distributed_scene")
+        router_rule_id = f"{router_rule_id}|saliency_distributed_scene"
 
     if mode == "scene_general":
         scene_subtype, scene_conf, dominant_vertical_strength = _infer_scene_subtype(
@@ -1073,6 +1093,14 @@ def route_subject_mode(
         "largest_obj_area_ratio": round(float(largest_obj_area_ratio), 6),
         "foreground_mass_ratio": round(float(foreground_mass_ratio), 6),
         "dominant_vertical_strength": round(float(dominant_vertical_strength), 6),
+        "saliency_available": bool(saliency_signal.get("available", False)),
+        "saliency_foreground_area_ratio": round(float(saliency_signal.get("foreground_area_ratio", 0.0)), 6),
+        "saliency_blank_ratio_est": round(float(saliency_signal.get("blank_ratio_est", 1.0)), 6),
+        "saliency_dominance_score": round(float(saliency_signal.get("dominance_score", 0.0)), 6),
+        "saliency_top2_mass_ratio": round(float(saliency_signal.get("top2_mass_ratio", 0.0)), 6),
+        "saliency_component_count": int(saliency_signal.get("component_count", 0)),
+        "saliency_dispersion_score": round(float(saliency_signal.get("dispersion_score", 1.0)), 6),
+        "saliency_entropy_norm": round(float(saliency_signal.get("entropy_norm", 1.0)), 6),
     }
     copyspace = {
         "tag_signal": bool(has_copyspace_tag),
@@ -1091,6 +1119,35 @@ def route_subject_mode(
         ),
     }
 
+    primary_subject_exists = bool(
+        num_person > 0
+        or primary_idx >= 0
+        or (
+            union_box is not None
+            and mode not in {"scene_general", "background_texture_copyspace", "text_document"}
+        )
+    )
+    num_effective_subjects = int(
+        num_person if num_person > 0 else (2 if multi_subject else (1 if primary_subject_exists else 0))
+    )
+    raw_anchor_box = union_box
+    if raw_anchor_box is None and 0 <= primary_idx < len(c2_instances):
+        raw_anchor_box = c2_instances[primary_idx].get("box")
+    if raw_anchor_box is None:
+        raw_anchor_box = person_union_box
+    effective_subject_region = resolve_effective_subject_region(
+        width=width,
+        height=height,
+        subject_mode=mode,
+        subject_set={
+            "primary_idx": int(primary_idx),
+            "union_box_xyxy": union_box,
+            "num_person": int(num_person),
+        },
+        raw_anchor_box=raw_anchor_box,
+        c7_saliency=c7_saliency,
+    )
+
     return {
         "subject_mode": mode,
         "subject_mode_conf": round(float(conf), 6),
@@ -1106,10 +1163,8 @@ def route_subject_mode(
             "num_person": int(num_person),
             "num_c2_instances": int(len(c2_instances)),
             "num_subject_inst": int(len(c2_instances)),
-            "num_effective_subjects": int(
-                num_person if num_person > 0 else (2 if multi_subject else (1 if (primary_idx >= 0 or union_box is not None) else 0))
-            ),
-            "primary_subject_exists": bool(num_person > 0 or primary_idx >= 0 or union_box is not None),
+            "num_effective_subjects": int(num_effective_subjects),
+            "primary_subject_exists": bool(primary_subject_exists),
             "union_box_xyxy": union_box,
             "primary_idx": int(primary_idx),
             "c2_primary_area_ratio": round(float(c2_primary_area_ratio), 6),
@@ -1121,4 +1176,5 @@ def route_subject_mode(
         "router_rule_id": str(router_rule_id),
         "router_signals": router_signals,
         "copyspace": copyspace,
+        "effective_subject_region": effective_subject_region,
     }

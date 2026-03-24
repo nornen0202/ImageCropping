@@ -66,6 +66,7 @@ class FeatureWorker:
         run_c4: bool = True,
         run_c5: bool = True,
         run_c6: bool = False,
+        run_c7: bool = False,
         weights_dir: str = "",   # C2(SAM2.1 ckpt) + C3(SCRFD/ViTPose ckpt) 가중치 디렉토리
         c4_lang: str = "en",
         priority: str = "high_efficiency",
@@ -77,6 +78,7 @@ class FeatureWorker:
         self.run_c4 = run_c4
         self.run_c5 = run_c5
         self.run_c6 = run_c6
+        self.run_c7 = run_c7
         self.priority = priority
 
         print(f"[FeatureWorker] Initializing models with priority='{priority}' ...")
@@ -140,6 +142,14 @@ class FeatureWorker:
             self.c6 = GazeFeatureExtractor(priority=priority, device=device)
         else:
             self.c6 = None
+
+        # ---- C7 Saliency / Subjectness ------------------------------------------
+        if run_c7:
+            from c7_saliency import SaliencyFeatureExtractor
+
+            self.c7 = SaliencyFeatureExtractor(priority=priority, weights_dir=weights_dir, device=device)
+        else:
+            self.c7 = None
 
     # ------------------------------------------------------------------
     def process_batch(
@@ -252,6 +262,9 @@ class FeatureWorker:
                                 "source": str(p.get("source", "c6_gaze")),
                             }
                             c3_pose_items[idx]["headpose_gaze"] = merged
+
+            if self.c7:
+                res["c7_saliency"] = self.c7.process_image(img)
 
             if self.c4:
                 c4_out = self.c4.process_image(img, tags=tags)

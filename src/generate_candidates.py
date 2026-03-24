@@ -37,6 +37,13 @@ import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 
+from subject_region import box_area as subject_box_area
+from subject_region import box_center as subject_box_center
+from subject_region import box_wh as subject_box_wh
+from subject_region import clip_box01 as subject_clip_box01
+from subject_region import resolve_effective_subject_region
+from subject_region import summarize_saliency_signal
+
 
 DEFAULT_AR_LIST = ("FREE", "1:1", "9:16", "16:9", "3:4", "4:3")
 DEFAULT_SCALE_SET = (0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95)
@@ -71,6 +78,7 @@ _WORKER_C2_SEG_MAP: Optional[Dict[str, Any]] = None
 _WORKER_C2_DET_MAP: Optional[Dict[str, Any]] = None
 _WORKER_C3_MAP: Optional[Dict[str, Any]] = None
 _WORKER_ROUTING_MAP: Optional[Dict[str, Any]] = None
+_WORKER_C7_SALIENCY_MAP: Optional[Dict[str, Any]] = None
 _WORKER_C2_PRIMARY_IDX_MAP: Optional[Dict[str, Any]] = None
 _WORKER_C2_UNION_BOX_MAP: Optional[Dict[str, Any]] = None
 _WORKER_CFG: Optional["CandidateGenConfig"] = None
@@ -126,6 +134,7 @@ def _init_build_worker(
     c2_det_map: Dict[str, Any],
     c3_map: Dict[str, Any],
     routing_map: Dict[str, Any],
+    c7_saliency_map: Dict[str, Any],
     c2_primary_idx_map: Dict[str, Any],
     c2_union_box_map: Dict[str, Any],
     cfg: CandidateGenConfig,
@@ -138,6 +147,7 @@ def _init_build_worker(
     global _WORKER_C2_DET_MAP
     global _WORKER_C3_MAP
     global _WORKER_ROUTING_MAP
+    global _WORKER_C7_SALIENCY_MAP
     global _WORKER_C2_PRIMARY_IDX_MAP
     global _WORKER_C2_UNION_BOX_MAP
     global _WORKER_CFG
@@ -150,6 +160,7 @@ def _init_build_worker(
     _WORKER_C2_DET_MAP = c2_det_map
     _WORKER_C3_MAP = c3_map
     _WORKER_ROUTING_MAP = routing_map
+    _WORKER_C7_SALIENCY_MAP = c7_saliency_map
     _WORKER_C2_PRIMARY_IDX_MAP = c2_primary_idx_map
     _WORKER_C2_UNION_BOX_MAP = c2_union_box_map
     _WORKER_CFG = cfg
@@ -165,6 +176,7 @@ def _build_output_record_worker(row: Dict[str, Any]) -> Dict[str, Any]:
         or _WORKER_C2_DET_MAP is None
         or _WORKER_C3_MAP is None
         or _WORKER_ROUTING_MAP is None
+        or _WORKER_C7_SALIENCY_MAP is None
         or _WORKER_C2_PRIMARY_IDX_MAP is None
         or _WORKER_C2_UNION_BOX_MAP is None
         or _WORKER_CFG is None
@@ -176,6 +188,7 @@ def _build_output_record_worker(row: Dict[str, Any]) -> Dict[str, Any]:
         c2_det_map=_WORKER_C2_DET_MAP,
         c3_map=_WORKER_C3_MAP,
         routing_map=_WORKER_ROUTING_MAP,
+        c7_saliency_map=_WORKER_C7_SALIENCY_MAP,
         c2_primary_idx_map=_WORKER_C2_PRIMARY_IDX_MAP,
         c2_union_box_map=_WORKER_C2_UNION_BOX_MAP,
         cfg=_WORKER_CFG,
@@ -226,6 +239,7 @@ def iter_build_output_records(
     c2_det_map: Dict[str, Any],
     c3_map: Dict[str, Any],
     routing_map: Dict[str, Any],
+    c7_saliency_map: Dict[str, Any],
     c2_primary_idx_map: Dict[str, Any],
     c2_union_box_map: Dict[str, Any],
     cfg: CandidateGenConfig,
@@ -242,6 +256,7 @@ def iter_build_output_records(
                 c2_det_map=c2_det_map,
                 c3_map=c3_map,
                 routing_map=routing_map,
+                c7_saliency_map=c7_saliency_map,
                 c2_primary_idx_map=c2_primary_idx_map,
                 c2_union_box_map=c2_union_box_map,
                 cfg=cfg,
@@ -263,6 +278,7 @@ def iter_build_output_records(
             c2_det_map,
             c3_map,
             routing_map,
+            c7_saliency_map,
             c2_primary_idx_map,
             c2_union_box_map,
             cfg,
@@ -1120,6 +1136,7 @@ def resolve_subject_prior(
     c3_pose: Optional[List[Dict[str, Any]]],
     cfg: CandidateGenConfig,
     routing: Optional[Dict[str, Any]] = None,
+    c7_saliency: Optional[Dict[str, Any]] = None,
     c2_primary_idx: Optional[int] = None,
     c2_union_box_xyxy: Optional[List[float]] = None,
 ) -> Dict[str, Any]:
@@ -1225,28 +1242,77 @@ def resolve_subject_prior(
     else:
         subj_box = union_boxes(boxes)
 
+    raw_subj_box = subj_box
+    effective_subject_region = (
+        routing.get("effective_subject_region", {})
+        if isinstance(routing, dict) and isinstance(routing.get("effective_subject_region"), dict)
+        else {}
+    )
+    if not effective_subject_region:
+        effective_subject_region = resolve_effective_subject_region(
+            width=width,
+            height=height,
+            subject_mode=mode,
+            subject_set=subject_set,
+            raw_anchor_box=raw_subj_box,
+            c7_saliency=c7_saliency,
+        )
+
+    effective_box = effective_subject_region.get("effective_bbox_norm_xyxy")
+    candidate_anchor_box = effective_subject_region.get("candidate_anchor_bbox_norm_xyxy")
+    subject_reliability = safe_float(effective_subject_region.get("subject_reliability", 1.0), 1.0)
+    subject_repr_type = str(effective_subject_region.get("subject_repr_type", "") or "")
+    placeholder_flag = bool(effective_subject_region.get("placeholder_flag", False))
+    saliency_summary = effective_subject_region.get("saliency_summary", {}) if isinstance(
+        effective_subject_region.get("saliency_summary"), dict
+    ) else summarize_saliency_signal(c7_saliency, width=width, height=height)
+
+    if isinstance(effective_box, (list, tuple)) and len(effective_box) == 4:
+        subj_box = subject_clip_box01(effective_box)
+    if isinstance(candidate_anchor_box, (list, tuple)) and len(candidate_anchor_box) == 4:
+        anchor_box = subject_clip_box01(candidate_anchor_box)
+    else:
+        anchor_box = subj_box
+
     if subj_box is None or box_area(subj_box) <= 0:
         subj_box = [0.25, 0.25, 0.75, 0.75]
+        anchor_box = subj_box
         source = "fallback_center"
     else:
         source = "_".join(source_parts) if source_parts else "unknown"
 
-    cx, cy = box_center(subj_box)
-    ws, hs = box_wh(subj_box)
+    cx, cy = subject_box_center(anchor_box)
+    ws, hs = subject_box_wh(anchor_box)
     ws = max(ws, cfg.min_subject_size)
     hs = max(hs, cfg.min_subject_size)
+    saliency_centroid = saliency_summary.get("weighted_centroid_xy_norm", [cx, cy])
+    saliency_box = saliency_summary.get("top_component_bbox_norm_xyxy") or saliency_summary.get("top2_union_bbox_norm_xyxy")
+    saliency_size = None
+    if isinstance(saliency_box, (list, tuple)) and len(saliency_box) == 4:
+        sb = subject_clip_box01(saliency_box)
+        sw, sh = subject_box_wh(sb)
+        saliency_size = [round(max(sw, cfg.min_subject_size), 6), round(max(sh, cfg.min_subject_size), 6)]
 
     return {
         "source": source,
         "bbox_norm_xyxy": [round(v, 6) for v in subj_box],
+        "anchor_bbox_norm_xyxy": ([round(v, 6) for v in raw_subj_box] if raw_subj_box is not None else None),
+        "effective_bbox_norm_xyxy": [round(v, 6) for v in subj_box],
+        "candidate_anchor_bbox_norm_xyxy": [round(v, 6) for v in anchor_box],
         "centroid": [round(cx, 6), round(cy, 6)],
         "size": [round(ws, 6), round(hs, 6)],
+        "subject_reliability": round(float(max(0.0, min(1.0, subject_reliability))), 6),
+        "subject_repr_type": subject_repr_type,
+        "placeholder_flag": bool(placeholder_flag),
+        "saliency_centroid": [round(safe_float(saliency_centroid[0], cx), 6), round(safe_float(saliency_centroid[1], cy), 6)],
+        "saliency_size": saliency_size,
         "has_people": num_people > 0,
         "num_people": int(num_people),
         "subject_mode": mode,
         "policy_id": policy_id,
         "union_used": bool(union_used),
         "multi_subject": bool(subject_set.get("multi_subject", False)),
+        "effective_subject_region": effective_subject_region,
     }
 
 
@@ -1916,13 +1982,22 @@ def generate_freeform_candidates(
     image_ar: float,
     subject_centroid: Tuple[float, float],
     subject_size: Tuple[float, float],
+    saliency_centroid: Optional[Tuple[float, float]],
+    saliency_size: Optional[Tuple[float, float]],
     has_copy_hint: bool,
     cfg: CandidateGenConfig,
+    subject_reliability: float = 1.0,
+    subject_repr_type: str = "",
     teacher_proposals: Optional[Dict[str, Dict[str, Any]]] = None,
     teacher_meta_out: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     cx_subj, cy_subj = subject_centroid
     ws, hs = subject_size
+    subj_rel = max(0.0, min(1.0, safe_float(subject_reliability, 1.0)))
+    subj_repr = str(subject_repr_type or "")
+    allow_subject_templates = subj_rel >= 0.40 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
+    allow_subject_jitter = subj_rel >= 0.35 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
+    allow_saliency_jitter = subj_rel >= 0.45 or subj_repr == "saliency_box"
     all_cands: List[Dict[str, Any]] = []
 
     # (A) FREE baselines: full-frame keep anchor + max-area family over sampled ARs.
@@ -1978,22 +2053,23 @@ def generate_freeform_candidates(
 
     # (C) Subject templates + local jitter with AR sampling.
     subj_area = max(cfg.a_min, min(cfg.a_max, ws * hs))
-    for ar_idx, ar_t in enumerate(ar_samples):
-        for i, m in enumerate(cfg.object_template_scales):
-            area_t = max(cfg.a_min, min(cfg.a_max, subj_area * (float(m) ** 2)))
-            add_center_area_box(
-                out=all_cands,
-                cx=cx_subj,
-                cy=cy_subj,
-                area_t=area_t,
-                image_ar=image_ar,
-                target_ar=float(ar_t),
-                cfg=cfg,
-                source="object_template",
-                scale_idx=f"fobj{ar_idx}_{i}",
-                must_keep=False,
-                priority=6.0,
-            )
+    if allow_subject_templates:
+        for ar_idx, ar_t in enumerate(ar_samples):
+            for i, m in enumerate(cfg.object_template_scales):
+                area_t = max(cfg.a_min, min(cfg.a_max, subj_area * (float(m) ** 2)))
+                add_center_area_box(
+                    out=all_cands,
+                    cx=cx_subj,
+                    cy=cy_subj,
+                    area_t=area_t,
+                    image_ar=image_ar,
+                    target_ar=float(ar_t),
+                    cfg=cfg,
+                    source="object_template",
+                    scale_idx=f"fobj{ar_idx}_{i}",
+                    must_keep=False,
+                    priority=6.0,
+                )
 
     dxs = [0.0]
     dys = [0.0]
@@ -2005,27 +2081,79 @@ def generate_freeform_candidates(
     dxs = sorted(set(round(v, 6) for v in dxs))
     dys = sorted(set(round(v, 6) for v in dys))
 
-    for ar_idx, ar_t in enumerate(ar_samples):
-        for j_idx, area_t in enumerate(cfg.free_jitter_scales):
-            if not (cfg.a_min <= float(area_t) <= cfg.a_max):
-                continue
-            for dx in dxs:
-                for dy in dys:
-                    add_center_area_box(
-                        out=all_cands,
-                        cx=cx_subj + dx,
-                        cy=cy_subj + dy,
-                        area_t=float(area_t),
-                        image_ar=image_ar,
-                        target_ar=float(ar_t),
-                        cfg=cfg,
-                        source="jitter",
-                        scale_idx=f"fjit{ar_idx}_{j_idx}",
-                        must_keep=False,
-                        priority=5.0,
-                    )
+    if allow_subject_jitter:
+        for ar_idx, ar_t in enumerate(ar_samples):
+            for j_idx, area_t in enumerate(cfg.free_jitter_scales):
+                if not (cfg.a_min <= float(area_t) <= cfg.a_max):
+                    continue
+                for dx in dxs:
+                    for dy in dys:
+                        add_center_area_box(
+                            out=all_cands,
+                            cx=cx_subj + dx,
+                            cy=cy_subj + dy,
+                            area_t=float(area_t),
+                            image_ar=image_ar,
+                            target_ar=float(ar_t),
+                            cfg=cfg,
+                            source="jitter",
+                            scale_idx=f"fjit{ar_idx}_{j_idx}",
+                            must_keep=False,
+                            priority=5.0,
+                        )
 
-    # (D) Composition anchors (thirds/phi).
+    # (D) Saliency-guided local jitter around the effective saliency anchor.
+    sal_cx = cx_subj
+    sal_cy = cy_subj
+    sal_ws = ws
+    sal_hs = hs
+    saliency_available = False
+    if isinstance(saliency_centroid, (list, tuple)) and len(saliency_centroid) == 2:
+        sal_cx = safe_float(saliency_centroid[0], cx_subj)
+        sal_cy = safe_float(saliency_centroid[1], cy_subj)
+        saliency_available = True
+    if isinstance(saliency_size, (list, tuple)) and len(saliency_size) == 2:
+        sal_ws = max(cfg.min_subject_size, safe_float(saliency_size[0], ws))
+        sal_hs = max(cfg.min_subject_size, safe_float(saliency_size[1], hs))
+        saliency_available = True
+    saliency_shift = abs(sal_cx - cx_subj) + abs(sal_cy - cy_subj)
+    if allow_saliency_jitter and saliency_available and (saliency_shift >= 0.02 or abs((sal_ws * sal_hs) - (ws * hs)) >= 0.01):
+        sal_dxs = [0.0]
+        sal_dys = [0.0]
+        for frac in cfg.free_jitter_fracs:
+            if float(frac) <= 0:
+                continue
+            sal_dxs.extend([-float(frac) * sal_ws, float(frac) * sal_ws])
+            sal_dys.extend([-float(frac) * sal_hs, float(frac) * sal_hs])
+        sal_dxs = sorted(set(round(v, 6) for v in sal_dxs))
+        sal_dys = sorted(set(round(v, 6) for v in sal_dys))
+        saliency_area_seed = max(cfg.a_min, min(cfg.a_max, sal_ws * sal_hs))
+        saliency_area_set = sorted(
+            {
+                round(saliency_area_seed, 6),
+                round(max(cfg.a_min, min(cfg.a_max, saliency_area_seed * 1.15)), 6),
+                round(max(cfg.a_min, min(cfg.a_max, saliency_area_seed * 1.35)), 6),
+            }
+        )
+        for ar_idx, ar_t in enumerate(ar_samples):
+            for j_idx, area_t in enumerate(saliency_area_set):
+                for dx in sal_dxs:
+                    for dy in sal_dys:
+                        add_center_area_box(
+                            out=all_cands,
+                            cx=sal_cx + dx,
+                            cy=sal_cy + dy,
+                            area_t=float(area_t),
+                            image_ar=image_ar,
+                            target_ar=float(ar_t),
+                            cfg=cfg,
+                            source="saliency_jitter",
+                            scale_idx=f"fsal{ar_idx}_{j_idx}",
+                            must_keep=False,
+                            priority=5.4,
+                        )
+
+    # (E) Composition anchors (thirds/phi).
     if cfg.use_phi_thirds:
         third = [1 / 3, 2 / 3]
         phi = [0.382, 0.618]
@@ -2047,7 +2175,7 @@ def generate_freeform_candidates(
                         priority=4.0,
                     )
 
-    # (E) FREE teacher seed injection (native AR + local/ar jitter).
+    # (F) FREE teacher seed injection (native AR + local/ar jitter).
     inject_teacher_proposals_freeform(
         out=all_cands,
         target_ar_text=target_ar_text,
@@ -2057,7 +2185,7 @@ def generate_freeform_candidates(
         teacher_meta_out=teacher_meta_out,
     )
 
-    # (F) Dedupe/NMS and FREE-specific diversity (position + AR buckets).
+    # (G) Dedupe/NMS and FREE-specific diversity (position + AR buckets).
     all_cands = dedupe_by_rounded_box(all_cands, ndigits=6)
     must_keep = [c for c in all_cands if c.get("must_keep", False)]
     non_keep = [c for c in all_cands if not c.get("must_keep", False)]
@@ -2118,8 +2246,12 @@ def generate_candidates_for_ar(
     image_ar: float,
     subject_centroid: Tuple[float, float],
     subject_size: Tuple[float, float],
+    saliency_centroid: Optional[Tuple[float, float]],
+    saliency_size: Optional[Tuple[float, float]],
     has_copy_hint: bool,
     cfg: CandidateGenConfig,
+    subject_reliability: float = 1.0,
+    subject_repr_type: str = "",
     teacher_proposals: Optional[Dict[str, Dict[str, Any]]] = None,
     teacher_meta_out: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
@@ -2128,6 +2260,11 @@ def generate_candidates_for_ar(
     # -> dedupe/NMS -> must-keep preservation -> diversity sampling -> stable candidate IDs.
     cx_subj, cy_subj = subject_centroid
     ws, hs = subject_size
+    subj_rel = max(0.0, min(1.0, safe_float(subject_reliability, 1.0)))
+    subj_repr = str(subject_repr_type or "")
+    allow_subject_templates = subj_rel >= 0.40 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
+    allow_subject_jitter = subj_rel >= 0.35 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
+    allow_saliency_jitter = subj_rel >= 0.45 or subj_repr == "saliency_box"
     all_cands: List[Dict[str, Any]] = []
 
     all_cands.extend(
@@ -2164,21 +2301,22 @@ def generate_candidates_for_ar(
 
     # (B) Object-centered template crops around the estimated main subject.
     subj_area = max(cfg.a_min, min(cfg.a_max, ws * hs))
-    for i, m in enumerate(cfg.object_template_scales):
-        area_t = max(cfg.a_min, min(cfg.a_max, subj_area * (m ** 2)))
-        add_center_area_box(
-            out=all_cands,
-            cx=cx_subj,
-            cy=cy_subj,
-            area_t=area_t,
-            image_ar=image_ar,
-            target_ar=target_ar,
-            cfg=cfg,
-            source="object_template",
-            scale_idx=f"obj{i}",
-            must_keep=False,
-            priority=6.0,
-        )
+    if allow_subject_templates:
+        for i, m in enumerate(cfg.object_template_scales):
+            area_t = max(cfg.a_min, min(cfg.a_max, subj_area * (m ** 2)))
+            add_center_area_box(
+                out=all_cands,
+                cx=cx_subj,
+                cy=cy_subj,
+                area_t=area_t,
+                image_ar=image_ar,
+                target_ar=target_ar,
+                cfg=cfg,
+                source="object_template",
+                scale_idx=f"obj{i}",
+                must_keep=False,
+                priority=6.0,
+            )
 
     # (C) Saliency-guided jitter around subject centroid to fill grid gaps.
     dxs = [0.0]
@@ -2191,26 +2329,77 @@ def generate_candidates_for_ar(
     dxs = sorted(set(round(v, 6) for v in dxs))
     dys = sorted(set(round(v, 6) for v in dys))
 
-    for j_idx, area_t in enumerate(cfg.jitter_scales):
-        if not (cfg.a_min <= area_t <= cfg.a_max):
-            continue
-        for dx in dxs:
-            for dy in dys:
-                add_center_area_box(
-                    out=all_cands,
-                    cx=cx_subj + dx,
-                    cy=cy_subj + dy,
-                    area_t=float(area_t),
-                    image_ar=image_ar,
-                    target_ar=target_ar,
-                    cfg=cfg,
-                    source="jitter",
-                    scale_idx=f"jit{j_idx}",
-                    must_keep=False,
-                    priority=5.0,
-                )
+    if allow_subject_jitter:
+        for j_idx, area_t in enumerate(cfg.jitter_scales):
+            if not (cfg.a_min <= area_t <= cfg.a_max):
+                continue
+            for dx in dxs:
+                for dy in dys:
+                    add_center_area_box(
+                        out=all_cands,
+                        cx=cx_subj + dx,
+                        cy=cy_subj + dy,
+                        area_t=float(area_t),
+                        image_ar=image_ar,
+                        target_ar=target_ar,
+                        cfg=cfg,
+                        source="jitter",
+                        scale_idx=f"jit{j_idx}",
+                        must_keep=False,
+                        priority=5.0,
+                    )
 
-    # (D) Optional thirds/phi priors as sparse composition anchors.
+    # (D) Saliency-guided local jitter around the effective saliency anchor.
+    sal_cx = cx_subj
+    sal_cy = cy_subj
+    sal_ws = ws
+    sal_hs = hs
+    saliency_available = False
+    if isinstance(saliency_centroid, (list, tuple)) and len(saliency_centroid) == 2:
+        sal_cx = safe_float(saliency_centroid[0], cx_subj)
+        sal_cy = safe_float(saliency_centroid[1], cy_subj)
+        saliency_available = True
+    if isinstance(saliency_size, (list, tuple)) and len(saliency_size) == 2:
+        sal_ws = max(cfg.min_subject_size, safe_float(saliency_size[0], ws))
+        sal_hs = max(cfg.min_subject_size, safe_float(saliency_size[1], hs))
+        saliency_available = True
+    saliency_shift = abs(sal_cx - cx_subj) + abs(sal_cy - cy_subj)
+    if allow_saliency_jitter and saliency_available and (saliency_shift >= 0.02 or abs((sal_ws * sal_hs) - (ws * hs)) >= 0.01):
+        sal_dxs = [0.0]
+        sal_dys = [0.0]
+        for frac in cfg.jitter_fracs:
+            if frac <= 0:
+                continue
+            sal_dxs.extend([-frac * sal_ws, frac * sal_ws])
+            sal_dys.extend([-frac * sal_hs, frac * sal_hs])
+        sal_dxs = sorted(set(round(v, 6) for v in sal_dxs))
+        sal_dys = sorted(set(round(v, 6) for v in sal_dys))
+        saliency_area_seed = max(cfg.a_min, min(cfg.a_max, sal_ws * sal_hs))
+        saliency_area_set = sorted(
+            {
+                round(saliency_area_seed, 6),
+                round(max(cfg.a_min, min(cfg.a_max, saliency_area_seed * 1.15)), 6),
+                round(max(cfg.a_min, min(cfg.a_max, saliency_area_seed * 1.35)), 6),
+            }
+        )
+        for j_idx, area_t in enumerate(saliency_area_set):
+            for dx in sal_dxs:
+                for dy in sal_dys:
+                    add_center_area_box(
+                        out=all_cands,
+                        cx=sal_cx + dx,
+                        cy=sal_cy + dy,
+                        area_t=float(area_t),
+                        image_ar=image_ar,
+                        target_ar=target_ar,
+                        cfg=cfg,
+                        source="saliency_jitter",
+                        scale_idx=f"sal{j_idx}",
+                        must_keep=False,
+                        priority=5.4,
+                    )
+
+    # (E) Optional thirds/phi priors as sparse composition anchors.
     if cfg.use_phi_thirds:
         third = [1 / 3, 2 / 3]
         phi = [0.382, 0.618]
@@ -2231,7 +2420,7 @@ def generate_candidates_for_ar(
                     priority=4.0,
                 )
 
-    # (E) v1.9: optional teacher proposal injection (free-form seed -> AR projection
+    # (F) v1.9: optional teacher proposal injection (free-form seed -> AR projection
     # + local jitter neighborhood). This complements grid/rule blind spots.
     inject_teacher_proposals(
         out=all_cands,
@@ -2243,7 +2432,7 @@ def generate_candidates_for_ar(
         teacher_meta_out=teacher_meta_out,
     )
 
-    # (F) Deduplicate and apply staged NMS:
+    # (G) Deduplicate and apply staged NMS:
     # keep critical baselines first, then suppress non-keep candidates against them.
     all_cands = dedupe_by_rounded_box(all_cands, ndigits=6)
     must_keep = [c for c in all_cands if c.get("must_keep", False)]
@@ -2272,7 +2461,7 @@ def generate_candidates_for_ar(
     other_non_keep = nms_candidates(other_non_keep, iou_thr=cfg.nms_iou, existing=must_keep)
     non_keep = teacher_non_keep + other_non_keep
 
-    # (G) Respect candidate cap while preserving baselines:
+    # (H) Respect candidate cap while preserving baselines:
     # must-keep are never dropped by diversity sampling.
     if len(must_keep) >= cfg.max_candidates_per_ar:
         final_cands = sorted(
@@ -2285,7 +2474,7 @@ def generate_candidates_for_ar(
         sampled_non_keep = diversity_sample(non_keep, k=rem)
         final_cands = must_keep + sampled_non_keep
 
-    # (H) Final deterministic ordering + AR-specific candidate ID assignment.
+    # (I) Final deterministic ordering + AR-specific candidate ID assignment.
     final_cands = sorted(
         final_cands,
         key=lambda c: (
@@ -2321,7 +2510,7 @@ def load_jsonl_map(path: Path, value_key: str) -> Dict[str, Any]:
 
 def config_hash(cfg: CandidateGenConfig) -> str:
     payload = asdict(cfg)
-    payload["impl_version"] = "candidate_gen_v1_11_teacher_provenance"
+    payload["impl_version"] = "candidate_gen_v1_12_saliency_subject_region"
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha1(blob).hexdigest()[:16]
 
@@ -2332,6 +2521,7 @@ def build_output_record(
     c2_det_map: Dict[str, Any],
     c3_map: Dict[str, Any],
     routing_map: Dict[str, Any],
+    c7_saliency_map: Dict[str, Any],
     c2_primary_idx_map: Dict[str, Any],
     c2_union_box_map: Dict[str, Any],
     cfg: CandidateGenConfig,
@@ -2360,6 +2550,7 @@ def build_output_record(
     c2_det = c2_det_map.get(img_id, [])
     c3_pose = c3_map.get(img_id, [])
     routing = routing_map.get(img_id, {}) if isinstance(routing_map.get(img_id, {}), dict) else {}
+    c7_saliency = c7_saliency_map.get(img_id, {}) if isinstance(c7_saliency_map.get(img_id, {}), dict) else {}
     c2_primary_idx = c2_primary_idx_map.get(img_id, None)
     c2_union_box_xyxy = c2_union_box_map.get(img_id, None)
     subj = resolve_subject_prior(
@@ -2369,6 +2560,7 @@ def build_output_record(
         c2_det=c2_det,
         c3_pose=c3_pose,
         routing=routing,
+        c7_saliency=c7_saliency,
         c2_primary_idx=c2_primary_idx,
         c2_union_box_xyxy=c2_union_box_xyxy,
         cfg=cfg,
@@ -2394,6 +2586,10 @@ def build_output_record(
                 image_ar=image_ar,
                 subject_centroid=(cx, cy),
                 subject_size=(ws, hs),
+                saliency_centroid=tuple(subj["saliency_centroid"]) if isinstance(subj.get("saliency_centroid"), list) else None,
+                saliency_size=tuple(subj["saliency_size"]) if isinstance(subj.get("saliency_size"), list) else None,
+                subject_reliability=safe_float(subj.get("subject_reliability", 1.0), 1.0),
+                subject_repr_type=str(subj.get("subject_repr_type", "") or ""),
                 has_copy_hint=copy_hint,
                 cfg=cfg,
                 teacher_proposals=teacher_payload,
@@ -2408,6 +2604,10 @@ def build_output_record(
                 image_ar=image_ar,
                 subject_centroid=(cx, cy),
                 subject_size=(ws, hs),
+                saliency_centroid=tuple(subj["saliency_centroid"]) if isinstance(subj.get("saliency_centroid"), list) else None,
+                saliency_size=tuple(subj["saliency_size"]) if isinstance(subj.get("saliency_size"), list) else None,
+                subject_reliability=safe_float(subj.get("subject_reliability", 1.0), 1.0),
+                subject_repr_type=str(subj.get("subject_repr_type", "") or ""),
                 has_copy_hint=copy_hint,
                 cfg=cfg,
                 teacher_proposals=teacher_payload,
@@ -2961,6 +3161,7 @@ def main() -> None:
     c2_det_map = load_jsonl_map(c2_path, value_key="c2_det")
     c3_map = load_jsonl_map(c3_path, value_key="c3_pose")
     routing_map = load_jsonl_map(c2_path, value_key="routing")
+    c7_saliency_map = load_jsonl_map(c2_path, value_key="c7_saliency")
     c2_primary_idx_map = load_jsonl_map(c2_path, value_key="c2_primary_idx")
     c2_union_box_map = load_jsonl_map(c2_path, value_key="c2_union_box_xyxy")
     teacher_proposal_paths = [Path(x) for x in args.teacher_proposals_jsonl if str(x).strip()]
@@ -2975,6 +3176,7 @@ def main() -> None:
         f"c2_det={len(c2_det_map)}(nonempty={c2_det_nonempty}) "
         f"c3={len(c3_map)}(nonempty={c3_nonempty}) "
         f"routing={len(routing_map)} "
+        f"c7_saliency={len(c7_saliency_map)} "
         f"teacher_proposals={len(teacher_proposals_map)} cfg_hash={cfg_hash}"
     )
 
@@ -3046,6 +3248,7 @@ def main() -> None:
             c2_det_map=c2_det_map,
             c3_map=c3_map,
             routing_map=routing_map,
+            c7_saliency_map=c7_saliency_map,
             c2_primary_idx_map=c2_primary_idx_map,
             c2_union_box_map=c2_union_box_map,
             cfg=cfg,

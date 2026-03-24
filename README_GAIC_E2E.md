@@ -90,7 +90,7 @@ source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 GPU_IDS=0,1,2
 N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 
-RUN_TAG=gaic_260324_r0
+RUN_TAG=gaic_260324_r1
 DATANAME=All
 
 bash src/scripts/run_gaic_to_teacher_e2e.sh \
@@ -98,14 +98,22 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --data_dir data/GAIC/${DATANAME} \
   --image_root data/Publics/GAIC/images \
   --run_tag ${RUN_TAG} \
-  --skip_existing 1 \
-  --run_c1 1 \
+  --skip_existing 0 \
   --use_real_expensive 1 \
   --gaic_caption_preset server_quality \
+  --gaic_generate_captions 0 \
+  --run_filter 0 \
+  --run_c1 0 \
+  --run_c2 0 \
+  --run_c3 0 \
+  --run_c3_enrich 0 \
   --run_c4 0 \
-  --run_c6 1 \
+  --run_c5 0 \
+  --run_c6 0 \
   --run_c7_saliency 1 \
   --c7_saliency_priority quality_first \
+  --run_merge 0 \
+  --run_subject_routing 1 \
   --run_vlm_teacher 0 \
   --run_training_labels 1 \
   --run_detailed_report 1 \
@@ -312,7 +320,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_detailed_report 1
 ```
 
-이 경우 `run_phaseA_to_teacher_e2e.sh` 내부에서 `augment_saliency_subject_features.py` 가 추가 실행되고, downstream feature jsonl은 `..._routed_c7_saliency.jsonl` 로 전환됩니다.
+이 경우 `run_phaseA_to_teacher_e2e.sh` 내부에서 `augment_saliency_subject_features.py` 가 추가 실행되고, 4차 보강 기준으로는 `c7 saliency augment -> subject reroute` 순서가 적용됩니다. 즉 중간 산출물은 `..._enriched_c7_saliency.jsonl`, 최종 downstream feature jsonl은 `..._routed_c7_saliency.jsonl` 입니다.
 
 ### 4.1e E2E 직후 benchmark / saliency A-B까지 연속 실행
 
@@ -340,6 +348,188 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 
 - `--run_gaic_benchmark_eval 1` 은 현재 run의 `candidates / teacher / training_labels`를 이용해 `run_gaic_benchmark_eval.py` 를 실행합니다.
 - `--run_gaic_subject_region_ab 1` 은 baseline 후보/benchmark summary가 필요합니다. 기본값은 `data/GAIC/All/artifacts/...gaic_260320_r0...` 를 보지만, 다르면 `--gaic_subject_ab_baseline_candidates_jsonl`, `--gaic_subject_ab_baseline_benchmark_summary` 로 직접 넘겨야 합니다.
+
+### 4.1f 기존 Public Teacher 산출물 재사용 + Phase-4 saliency rerun
+
+서버에서 public teacher proposal까지만 정상 생성됐고, 로컬에서 최신 saliency / support-map / reroute / benchmark 코드로 다시 내리고 싶다면 전체 4.1을 처음부터 다시 할 필요는 없습니다. 아래 템플릿은 기존 `filtered parquet`, `feats_c1`, `merged precompute`, `public teacher proposals`를 재사용하고 `subject routing -> c7 -> reroute -> candidates -> teacher -> training labels -> benchmark`만 다시 수행합니다.
+
+전제:
+
+- `data/GAIC/All/artifacts/precompute/feats_c1.jsonl`
+- `data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl`
+- `data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_<run>.jsonl`
+- `data/GAIC/All/filtered_gaic_all.parquet`
+- `data/GAIC/All/images`
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --data_dir data/GAIC/All \
+  --image_root data/Publics/GAIC/images \
+  --run_tag gaic_260324_r0_saliency_v4tp \
+  --skip_existing 0 \
+  --gaic_generate_captions 0 \
+  --run_filter 0 \
+  --run_c1 0 \
+  --run_c2 0 \
+  --run_c3 0 \
+  --run_c3_enrich 0 \
+  --run_c4 0 \
+  --run_c5 0 \
+  --run_c6 0 \
+  --run_merge 0 \
+  --run_subject_routing 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r0.jsonl \
+  --use_real_expensive 1 \
+  --run_vlm_teacher 0 \
+  --run_detailed_report 0 \
+  --run_training_labels 1 \
+  --safe_leftover_policy ignore \
+  --auto_leftover_variants 1 \
+  --run_gaic_benchmark_eval 1 \
+  --run_gaic_subject_region_ab 0 \
+  --run_viz 0
+```
+
+참고:
+
+- `--run_c1 0`을 명시하면, 이제 wrapper가 기존 `feats_c1.jsonl`을 재사용합니다.
+- 이 템플릿은 current phase-4 기준으로 `c7 augment 후 reroute`를 다시 수행하므로, 이전 `routed_c7` 산출물이 있어도 `skip_existing=0`으로 재생성하는 편이 안전합니다.
+
+### 4.1g `JSONDecodeError`로 training-label build가 실패할 때
+
+대표 로그:
+
+```text
+json.decoder.JSONDecodeError: Expecting value ...
+```
+
+이 에러가 `build_finalscore_training_data.py`에서 발생하면, 원인은 거의 항상 `teacher_scores_ar_<run>.jsonl`이 중간에서 잘렸거나 부분 복사된 경우입니다. 실제로는 row 수만 대충 맞아 보여도, 파일 중간 한 줄이 끊기면 builder가 실패합니다.
+
+현재 코드는 다음처럼 동작합니다.
+
+- `build_finalscore_training_data.py`는 깨진 줄의 `line / col / char`와 함께 즉시 실패합니다.
+- `repair_teacher_outputs.py`는 이제 parse error가 있는 final/shard를 정상으로 간주하지 않습니다.
+
+권장 순서:
+
+1. `teacher_scores_ar_<run>.jsonl`과 `*.shards.*`가 완전한지 확인
+2. 필요하면 `src/scripts/repair_teacher_outputs.py`를 먼저 실행
+3. shard도 함께 손상됐다면, teacher stage부터 다시 내려야 함
+
+예:
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+python src/scripts/repair_teacher_outputs.py \
+  --teacher_scores_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260324_r0.jsonl \
+  --overview_json data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260324_r0.json \
+  --overview_csv data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_gaic_260324_r0.csv \
+  --qa_json data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_gaic_260324_r0.json \
+  --qa_csv data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_gaic_260324_r0.csv \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260324_r0.jsonl \
+  --max_images 0 \
+  --prefer_real_expensive 1 \
+  --strict_expected_match 1
+```
+
+만약 이 repair 단계가 `parse_error_rows` 때문에 실패하면, 복사된 `teacher_scores` 또는 shard 자체가 손상된 것이므로 로컬에서 teacher stage를 재실행하는 것이 맞습니다.
+
+### 4.1h 로컬 PC에서 current phase-4 + teacher proposal만 다시 반영할 때
+
+`benchmark / training-label / report` 갱신 목적이라면, 로컬에서는 아래 proxy-expensive lane이 현실적인 기본값이다.
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --data_dir data/GAIC/All \
+  --image_root data/Publics/GAIC/images \
+  --run_tag gaic_260324_r0_saliency_v4tp_proxy \
+  --skip_existing 1 \
+  --gaic_generate_captions 0 \
+  --run_filter 0 \
+  --run_c1 0 \
+  --run_c2 0 \
+  --run_c3 0 \
+  --run_c3_enrich 0 \
+  --run_c4 0 \
+  --run_c5 0 \
+  --run_c6 0 \
+  --run_merge 0 \
+  --run_subject_routing 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r0.jsonl \
+  --use_real_expensive 0 \
+  --run_vlm_teacher 0 \
+  --run_detailed_report 0 \
+  --run_training_labels 1 \
+  --safe_leftover_policy ignore \
+  --auto_leftover_variants 1 \
+  --run_gaic_benchmark_eval 1 \
+  --run_gaic_subject_region_ab 0 \
+  --run_viz 0
+```
+
+설명:
+
+- 이 lane은 `feats_c1.jsonl`, `routed_c7` feature, public teacher proposals를 재사용한다.
+- 현재 benchmark evaluator는 `use_real_expensive=0` proxy lane을 기준으로 동작한다.
+- `gaic_260324_r0_saliency_v4tp_proxy` 로컬 재실행으로 teacher proposal 주입이 반영된 training-label / benchmark report 갱신을 확인했다.
+
+### 4.1i full expensive lane은 언제 서버에서 다시 돌려야 하는가
+
+아래 조건이면 로컬보다 서버 재실행이 맞다.
+
+- `README 4.1`의 `use_real_expensive=1` 전체 재현이 필요
+- synthetic caption + real expensive scorer까지 포함한 최종 artifact가 필요
+- local GPU에서 OpenCLIP align model이 OOM나고 CPU fallback 속도가 비현실적일 때
+
+권장 서버 명령:
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --data_dir data/GAIC/All \
+  --image_root data/Publics/GAIC/images \
+  --run_tag gaic_260324_r0_saliency_v4tp_full \
+  --skip_existing 1 \
+  --gaic_generate_captions 1 \
+  --run_filter 0 \
+  --run_c1 1 \
+  --run_c2 0 \
+  --run_c3 0 \
+  --run_c3_enrich 0 \
+  --run_c4 0 \
+  --run_c5 0 \
+  --run_c6 0 \
+  --run_merge 0 \
+  --run_subject_routing 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r0.jsonl \
+  --use_real_expensive 1 \
+  --run_vlm_teacher 0 \
+  --run_detailed_report 0 \
+  --run_training_labels 1 \
+  --safe_leftover_policy ignore \
+  --auto_leftover_variants 1 \
+  --run_gaic_benchmark_eval 0 \
+  --run_gaic_subject_region_ab 0 \
+  --run_viz 0
+```
+
+서버 재실행 전에 확인할 것:
+
+- local에서 복사해온 `teacher_scores_ar_<run>.jsonl`은 중간 truncate가 없는지 먼저 검증
+- public teacher proposal JSONL이 `1236`행 완전본인지 확인
+- server run 뒤에는 `repair_teacher_outputs.py`를 한 번 더 돌려 parse error가 `0`인지 확인
 
 ### 4.2 준비 단계만 먼저 실행
 

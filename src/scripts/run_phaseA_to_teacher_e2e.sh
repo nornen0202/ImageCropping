@@ -1386,7 +1386,8 @@ if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
   c7_input_jsonl="$DOWNSTREAM_FEATS"
   c7_output_jsonl="$MERGED_FEATS_C7"
   if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
-    c7_output_jsonl="$MERGED_FEATS_ROUTED_C7"
+    # Phase-4 subject-region logic must see saliency before routing/effective-region resolution.
+    c7_input_jsonl="$MERGED_FEATS"
   fi
   if [ ! -f "$c7_input_jsonl" ]; then
     echo "[error] c7 saliency requires input jsonl: $c7_input_jsonl"
@@ -1413,6 +1414,23 @@ if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
   fi
   if [ -f "$c7_output_jsonl" ]; then
     DOWNSTREAM_FEATS="$c7_output_jsonl"
+    if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
+      if ! should_skip_file "$MERGED_FEATS_ROUTED_C7"; then
+        run_with_log "07ab_reroute_subject_mode_after_c7" \
+          python3 src/scripts/enrich_subject_mode_jsonl.py \
+            --input_feats_jsonl "$c7_output_jsonl" \
+            --input_filtered_parquet "$FILTERED_PARQUET" \
+            --output_jsonl "$MERGED_FEATS_ROUTED_C7" \
+            --c2_top_n "$SUBJECT_ROUTING_TOP_N" \
+            --c2_union_top_m "$SUBJECT_ROUTING_UNION_TOP_M" \
+            --allow_det_proxy "$SUBJECT_ROUTING_ALLOW_DET_PROXY"
+      fi
+      if [ ! -f "$MERGED_FEATS_ROUTED_C7" ]; then
+        echo "[error] rerouted c7 saliency output missing: $MERGED_FEATS_ROUTED_C7"
+        exit 1
+      fi
+      DOWNSTREAM_FEATS="$MERGED_FEATS_ROUTED_C7"
+    fi
   else
     echo "[error] c7 saliency output missing: $c7_output_jsonl"
     exit 1

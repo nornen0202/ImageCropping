@@ -500,6 +500,7 @@ def build_format_guide(
         "- GAIC 유사성을 위해 `file_name`은 경로를 제거하고 `파일명.확장자`만 저장했습니다.",
         "- SSTK 조건부 학습에 필요한 `subject_mode_id`, `decision_id`, `candidate_id`, `target_ar`는 annotation custom field로 추가했습니다.",
         "- `score_prob`는 별도 중복 필드로 두지 않고 GAIC 원본에 맞춰 `score` 하나로만 저장했습니다. positive는 `matching_target.score_prob`, negative는 `candidate_pool.score_prob`를 사용합니다.",
+        "- 현재 `score_prob` 기본값은 `score_policy_sigmoid_z_local` 기반 policy pseudo probability 입니다. 값이 없을 때만 `score_sigmoid_z_local` 또는 `sigmoid(score_z_local)`로 fallback 합니다.",
         "- `macro_targets`는 safe positive annotation에만 유지합니다. candidate_pool negative에는 일반적으로 존재하지 않습니다.",
         "",
         "sample converted `images[0]`:",

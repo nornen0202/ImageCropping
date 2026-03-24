@@ -44,6 +44,7 @@ RUN_DETAILED_REPORT=0
 RUN_C6=0
 USE_REAL_EXPENSIVE=0
 RUN_C1=0
+RUN_C1_EXPLICIT=0
 PRECOMPUTE_MODE="unified"
 RUN_C7_SALIENCY=0
 C7_SALIENCY_PRIORITY="quality_first"
@@ -106,7 +107,7 @@ while [ "$#" -gt 0 ]; do
     --run_detailed_report) RUN_DETAILED_REPORT="$2"; shift 2 ;;
     --run_c6) RUN_C6="$2"; shift 2 ;;
     --use_real_expensive) USE_REAL_EXPENSIVE="$2"; shift 2 ;;
-    --run_c1) RUN_C1="$2"; shift 2 ;;
+    --run_c1) RUN_C1="$2"; RUN_C1_EXPLICIT=1; shift 2 ;;
     --precompute_mode) PRECOMPUTE_MODE="$2"; shift 2 ;;
     --run_c7_saliency) RUN_C7_SALIENCY="$2"; shift 2 ;;
     --c7_saliency_priority) C7_SALIENCY_PRIORITY="$2"; shift 2 ;;
@@ -163,7 +164,7 @@ fi
 if [ -z "$GAIC_REFERENCE_JSON" ]; then
   GAIC_REFERENCE_JSON="${DATA_DIR}/gaic_reference_available.json"
 fi
-if [ "$USE_REAL_EXPENSIVE" -eq 1 ] && [ "$RUN_C1" -ne 1 ]; then
+if [ "$USE_REAL_EXPENSIVE" -eq 1 ] && [ "$RUN_C1_EXPLICIT" -eq 0 ] && [ "$RUN_C1" -ne 1 ]; then
   RUN_C1=1
 fi
 if [ "$GAIC_GENERATE_CAPTIONS" -lt 0 ]; then
@@ -290,6 +291,14 @@ leftover_policy_suffix() {
   esac
 }
 
+current_routed_jsonl() {
+  local routed="$ROUTED_JSONL"
+  if [ "$RUN_C7_SALIENCY" -eq 1 ] && [ -f "$ROUTED_C7_JSONL" ]; then
+    routed="$ROUTED_C7_JSONL"
+  fi
+  printf "%s" "$routed"
+}
+
 build_gaic_like_export() {
   local training_dir="$1"
   local batch_jsonl="${training_dir}/train_conditional_detr_batch.jsonl"
@@ -326,7 +335,7 @@ validate_training_outputs() {
     --manifest_parquet "$FILTERED_PARQUET"
     --prepare_summary_json "$PREP_SUMMARY_JSON"
     --precompute_jsonl "$FEATS_RAW_JSONL"
-    --routed_jsonl "$ROUTED_JSONL"
+    --routed_jsonl "$(current_routed_jsonl)"
     --candidates_jsonl "$CANDIDATES_JSONL"
     --teacher_jsonl "$TEACHER_JSONL"
     --training_validation_json "${training_dir}/validation_summary.json"
@@ -491,7 +500,7 @@ VALIDATE_ARGS=(
   --manifest_parquet "$FILTERED_PARQUET"
   --prepare_summary_json "$PREP_SUMMARY_JSON"
   --precompute_jsonl "$FEATS_RAW_JSONL"
-  --routed_jsonl "$ROUTED_JSONL"
+  --routed_jsonl "$(current_routed_jsonl)"
   --candidates_jsonl "$CANDIDATES_JSONL"
   --teacher_jsonl "$TEACHER_JSONL"
   --summary_json "$VALIDATION_SUMMARY_JSON"

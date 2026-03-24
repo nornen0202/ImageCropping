@@ -154,6 +154,15 @@ def sigmoid(value: float) -> float:
 
 
 def score_prob_from_annotated_candidate(candidate: Dict[str, Any]) -> float:
+    score_targets = safe_dict(candidate.get("score_targets"))
+    if "score_prob" in score_targets:
+        return safe_float(score_targets.get("score_prob", 0.0))
+    if candidate.get("score_policy_sigmoid_z_local") is not None:
+        return safe_float(candidate.get("score_policy_sigmoid_z_local", 0.0))
+    if candidate.get("score_policy_z_local") is not None:
+        return sigmoid(safe_float(candidate.get("score_policy_z_local", 0.0)))
+    if candidate.get("score_sigmoid_z_local") is not None:
+        return safe_float(candidate.get("score_sigmoid_z_local", 0.0))
     return sigmoid(safe_float(candidate.get("score_z_local", 0.0)))
 
 
@@ -254,8 +263,22 @@ def write_jsonl(path: Path, rows: Iterable[Dict[str, Any]]) -> int:
 
 
 def load_teacher_records(path: Path) -> List[Dict[str, Any]]:
+    records: List[Dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle]
+        for line_idx, line in enumerate(handle, 1):
+            if not line.strip():
+                continue
+            try:
+                records.append(json.loads(line))
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(
+                    "teacher_scores_jsonl is malformed: "
+                    f"path={path} line={line_idx} col={exc.colno} char={exc.pos}. "
+                    "The file is likely truncated or partially copied. "
+                    "Repair teacher outputs first with "
+                    "`src/scripts/repair_teacher_outputs.py`, or rerun the teacher stage."
+                ) from exc
+    return records
 
 
 def round_opt(value: Optional[float], digits: int = 6) -> Optional[float]:
@@ -948,7 +971,7 @@ def build_candidate_canonical_record(candidate: Dict[str, Any], routing: Dict[st
         "bbox_cxcywh": bbox_xyxy_to_cxcywh(bbox),
         "area_ratio": round(safe_float(candidate.get("area_ratio", 0.0)), 6),
         "score_targets": {
-            "score_prob": round(sigmoid(safe_float(candidate.get("score_z_local", 0.0))), 6),
+            "score_prob": round(score_prob_from_annotated_candidate(candidate), 6),
             "rank_pct": round(safe_float(candidate.get("score_rank_pct", 0.0)), 6),
             "z_local": round(safe_float(candidate.get("score_z_local", 0.0)), 6),
             "softmax_local": round(safe_float(candidate.get("score_softmax_local", 0.0)), 6),
@@ -2801,7 +2824,7 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
     ]
 
     score_rows = [
-        ("score_prob", "`score_targets`", "sigmoid(z_local)로 만든 pseudo probability", "(0,1)", format_range(score_values.get("score_prob", []))),
+        ("score_prob", "`score_targets`", "기본값은 `score_policy_sigmoid_z_local`인 policy pseudo probability", "(0,1)", format_range(score_values.get("score_prob", []))),
         ("rank_pct", "`score_targets`", "그룹 내 내림차순 percentile", "[0,1]", format_range(score_values.get("rank_pct", []))),
         ("z_local", "`score_targets`", "그룹 내 robust z-score", "[-6,6] clip", format_range(score_values.get("z_local", []))),
         ("softmax_local", "`score_targets`", "그룹 내 local softmax, per-group 합=1", "[0,1]", format_range(score_values.get("softmax_local", []))),

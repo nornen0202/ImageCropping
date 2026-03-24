@@ -13,6 +13,7 @@ Notes
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import io
 import json
@@ -2610,6 +2611,135 @@ def subject_coverage(subject_box: Sequence[float], crop: Sequence[float]) -> Tup
     return clamp(cov, 0.0, 1.0), clamp(subj_area_ratio, 0.0, 1.0)
 
 
+def _decode_subject_support_map(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return None
+    grid_size = int(safe_float(payload.get("support_grid_size", 0), 0.0))
+    mass_b64 = payload.get("support_mass_grid_f16_b64")
+    occ_b64 = payload.get("support_occ_grid_u8_b64")
+    if grid_size <= 0 or not isinstance(mass_b64, str) or not mass_b64 or not isinstance(occ_b64, str) or not occ_b64:
+        return None
+    try:
+        mass_grid = np.frombuffer(base64.b64decode(mass_b64.encode("ascii")), dtype=np.float16).astype(np.float32)
+        occ_grid = np.frombuffer(base64.b64decode(occ_b64.encode("ascii")), dtype=np.uint8).astype(np.float32)
+    except Exception:
+        return None
+    if mass_grid.size != grid_size * grid_size or occ_grid.size != grid_size * grid_size:
+        return None
+    mass_grid = mass_grid.reshape((grid_size, grid_size))
+    occ_grid = occ_grid.reshape((grid_size, grid_size))
+    mass_sum = float(mass_grid.sum())
+    if mass_sum <= 1e-8:
+        return None
+    mass_grid /= mass_sum
+    occ_grid = (occ_grid > 0.0).astype(np.float32)
+    centroid = payload.get("weighted_centroid_xy_norm")
+    if isinstance(centroid, (list, tuple)) and len(centroid) == 2:
+        cx = clamp(safe_float(centroid[0], 0.5), 0.0, 1.0)
+        cy = clamp(safe_float(centroid[1], 0.5), 0.0, 1.0)
+    else:
+        ys, xs = np.mgrid[0:grid_size, 0:grid_size]
+        cx = float((mass_grid * (xs + 0.5)).sum() / max(1e-8, float(mass_grid.sum()))) / float(grid_size)
+        cy = float((mass_grid * (ys + 0.5)).sum() / max(1e-8, float(mass_grid.sum()))) / float(grid_size)
+    return {
+        "mode": "support_map",
+        "grid_size": int(grid_size),
+        "mass_grid": mass_grid,
+        "occ_grid": occ_grid,
+        "centroid_xy_norm": (float(cx), float(cy)),
+        "foreground_area_ratio": clamp(safe_float(payload.get("foreground_area_ratio", 0.0), 0.0), 0.0, 1.0),
+    }
+
+
+def build_subject_support_context(
+    subject_box: Sequence[float],
+    feat_rec: Dict[str, Any],
+    route: Dict[str, Any],
+) -> Dict[str, Any]:
+    effective_subject_region = (
+        route.get("effective_subject_region", {})
+        if isinstance(route.get("effective_subject_region"), dict)
+        else {}
+    )
+    score_mode = str(effective_subject_region.get("score_mode", route.get("flags", {}).get("subject_score_mode", "")) or "")
+    support_map_enabled = bool(effective_subject_region.get("support_map_enabled", False)) or score_mode == "support_map"
+    payloads: List[Dict[str, Any]] = []
+    saliency_summary = effective_subject_region.get("saliency_summary")
+    if isinstance(saliency_summary, dict):
+        payloads.append(saliency_summary)
+    c7_saliency = feat_rec.get("c7_saliency")
+    if isinstance(c7_saliency, dict):
+        payloads.append(c7_saliency)
+    if support_map_enabled:
+        for payload in payloads:
+            decoded = _decode_subject_support_map(payload)
+            if decoded is not None:
+                decoded["bbox_norm_xyxy"] = clip_box01(subject_box)
+                decoded["support_map_enabled"] = True
+                return decoded
+    return {
+        "mode": "bbox",
+        "bbox_norm_xyxy": clip_box01(subject_box),
+        "centroid_xy_norm": box_center(subject_box),
+        "support_map_enabled": False,
+    }
+
+
+def _crop_grid_slices(grid_size: int, crop: Sequence[float]) -> Tuple[int, int, int, int]:
+    x1, y1, x2, y2 = [safe_float(v, 0.0) for v in crop]
+    gx1 = max(0, min(grid_size, int(math.floor(x1 * grid_size))))
+    gy1 = max(0, min(grid_size, int(math.floor(y1 * grid_size))))
+    gx2 = max(gx1 + 1, min(grid_size, int(math.ceil(x2 * grid_size))))
+    gy2 = max(gy1 + 1, min(grid_size, int(math.ceil(y2 * grid_size))))
+    return gx1, gy1, gx2, gy2
+
+
+def subject_coverage_soft(subject_support: Dict[str, Any], crop: Sequence[float]) -> Tuple[float, float]:
+    mass_grid = subject_support.get("mass_grid")
+    occ_grid = subject_support.get("occ_grid")
+    if not isinstance(mass_grid, np.ndarray) or mass_grid.ndim != 2:
+        bbox = subject_support.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])
+        return subject_coverage(bbox, crop)
+    grid_size = int(mass_grid.shape[0])
+    gx1, gy1, gx2, gy2 = _crop_grid_slices(grid_size, crop)
+    mass_recall = float(mass_grid[gy1:gy2, gx1:gx2].sum())
+    crop_area = max(1e-8, box_area(crop))
+    if isinstance(occ_grid, np.ndarray) and occ_grid.shape == mass_grid.shape:
+        occ_area_ratio = float(occ_grid[gy1:gy2, gx1:gx2].sum()) / float(occ_grid.size)
+        subj_area_ratio = occ_area_ratio / crop_area
+    else:
+        subj_area_ratio = mass_recall / crop_area
+    return clamp(mass_recall, 0.0, 1.0), clamp(subj_area_ratio, 0.0, 1.0)
+
+
+def subject_border_touch_soft(subject_support: Dict[str, Any], crop: Sequence[float], margin_alpha: float = 0.03) -> bool:
+    mass_grid = subject_support.get("mass_grid")
+    occ_grid = subject_support.get("occ_grid")
+    if not isinstance(mass_grid, np.ndarray) or mass_grid.ndim != 2:
+        bbox = subject_support.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])
+        return subject_border_touch(bbox, crop, margin_alpha=margin_alpha)
+    grid_size = int(mass_grid.shape[0])
+    gx1, gy1, gx2, gy2 = _crop_grid_slices(grid_size, crop)
+    inside_mass = float(mass_grid[gy1:gy2, gx1:gx2].sum())
+    if inside_mass <= 1e-6:
+        return False
+    crop_w = max(1, gx2 - gx1)
+    crop_h = max(1, gy2 - gy1)
+    margin = max(1, int(math.ceil(margin_alpha * min(crop_w, crop_h))))
+    edge_mask = np.zeros((crop_h, crop_w), dtype=bool)
+    edge_mask[:margin, :] = True
+    edge_mask[-margin:, :] = True
+    edge_mask[:, :margin] = True
+    edge_mask[:, -margin:] = True
+    edge_mass_grid = mass_grid[gy1:gy2, gx1:gx2]
+    edge_mass = float(edge_mass_grid[edge_mask].sum())
+    if isinstance(occ_grid, np.ndarray) and occ_grid.shape == mass_grid.shape:
+        edge_occ = float(occ_grid[gy1:gy2, gx1:gx2][edge_mask].sum()) / float(max(1, occ_grid.size))
+    else:
+        edge_occ = 0.0
+    return bool(edge_mass >= 0.05 or edge_occ >= 0.01)
+
+
 def compute_headroom_term(
     crop: Sequence[float],
     head_y_norm_values: Sequence[float],
@@ -3493,6 +3623,7 @@ def apply_subject_policy_overrides(
     out["flags"]["subject_reliability"] = float(subject_reliability)
     out["flags"]["subject_placeholder_flag"] = bool(subject_placeholder_flag)
     out["flags"]["subject_terms_neutralized"] = bool(subject_terms_neutralized)
+    out["flags"]["subject_support_map_enabled"] = bool(effective_subject_region.get("support_map_enabled", False))
     return out
 
 
@@ -3914,6 +4045,7 @@ def compute_candidate_scores(
     route: Dict[str, Any],
     teacher_ctx: Optional[Dict[str, Any]],
     cfg: TeacherScorerConfig,
+    subject_support: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     crop = clip_box01(candidate.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]))
     area = box_area(crop)
@@ -3961,8 +4093,14 @@ def compute_candidate_scores(
 
     # Cheap terms
     subject_terms_neutralized = bool(route.get("flags", {}).get("subject_terms_neutralized", False))
-    cov, subj_area_ratio = subject_coverage(subject_box, crop)
-    subj_touch_raw = subject_border_touch(subject_box, crop)
+    subject_support = subject_support if isinstance(subject_support, dict) else {"mode": "bbox", "bbox_norm_xyxy": clip_box01(subject_box)}
+    subject_cov_mode = str(subject_support.get("mode", "bbox"))
+    if subject_cov_mode == "support_map":
+        cov, subj_area_ratio = subject_coverage_soft(subject_support, crop)
+        subj_touch_raw = subject_border_touch_soft(subject_support, crop)
+    else:
+        cov, subj_area_ratio = subject_coverage(subject_box, crop)
+        subj_touch_raw = subject_border_touch(subject_box, crop)
     subj_touch = False if subject_terms_neutralized else subj_touch_raw
 
     p_cut = (
@@ -4460,6 +4598,7 @@ def compute_candidate_scores(
                 "p_cut": float(p_cut),
                 "p_text": float(p_text),
                 "subject_terms_neutralized": bool(subject_terms_neutralized),
+                "subject_cov_mode": subject_cov_mode,
                 "subject_cov_raw": float(cov),
                 "subject_area_raw": float(subj_area_ratio),
                 "r_comp": float(r_comp),
@@ -5176,7 +5315,8 @@ def process_one_image(
     }
 
     subject_box = build_subject_bbox(cand_rec, feat_rec, width=width, height=height)
-    subject_centroid = box_center(subject_box)
+    subject_support = build_subject_support_context(subject_box, feat_rec, route)
+    subject_centroid = tuple(float(v) for v in subject_support.get("centroid_xy_norm", box_center(subject_box)))
 
     cand_stats = cand_rec.get("stats", {}) if isinstance(cand_rec.get("stats"), dict) else {}
     proposal_injected = bool(cand_rec.get("proposal_injected", False))
@@ -5216,6 +5356,7 @@ def process_one_image(
                     target_ar=target_ar,
                     image_ar=image_ar,
                     subject_box=subject_box,
+                    subject_support=subject_support,
                     subject_centroid=subject_centroid,
                     c3_info=c3_info,
                     c5_info=c5_info,
@@ -5252,6 +5393,7 @@ def process_one_image(
                     target_ar=target_ar,
                     image_ar=image_ar,
                     subject_box=subject_box,
+                    subject_support=subject_support,
                     subject_centroid=subject_centroid,
                     c3_info=c3_info,
                     c5_info=c5_info,

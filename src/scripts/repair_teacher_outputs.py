@@ -29,6 +29,7 @@ class JsonlStats:
     path: Path
     rows: int
     expensive_real_rows: int
+    parse_error_rows: int
     mtime: float
 
 
@@ -38,6 +39,7 @@ class ShardDirStats:
     shard_files: List[Path]
     total_rows: int
     expensive_real_rows: int
+    parse_error_rows: int
     mtime: float
 
 
@@ -78,23 +80,31 @@ def count_lines(path: Path) -> int:
 def analyze_jsonl(path: Path) -> JsonlStats:
     rows = 0
     exp_rows = 0
+    parse_error_rows = 0
     if path.exists():
         with path.open("r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
                     continue
-                rows += 1
                 try:
                     d = json.loads(line)
                 except Exception:
+                    parse_error_rows += 1
                     continue
+                rows += 1
                 if bool(d.get("teacher_scorer", {}).get("expensive_real_applied", False)):
                     exp_rows += 1
         mtime = path.stat().st_mtime
     else:
         mtime = 0.0
-    return JsonlStats(path=path, rows=rows, expensive_real_rows=exp_rows, mtime=mtime)
+    return JsonlStats(
+        path=path,
+        rows=rows,
+        expensive_real_rows=exp_rows,
+        parse_error_rows=parse_error_rows,
+        mtime=mtime,
+    )
 
 
 def shard_index_from_name(name: str) -> int:
@@ -113,17 +123,20 @@ def analyze_shard_dir(shard_dir: Path) -> Optional[ShardDirStats]:
         return None
     total_rows = 0
     total_exp = 0
+    total_parse_errors = 0
     latest_mtime = 0.0
     for fp in files:
         st = analyze_jsonl(fp)
         total_rows += st.rows
         total_exp += st.expensive_real_rows
+        total_parse_errors += st.parse_error_rows
         latest_mtime = max(latest_mtime, st.mtime)
     return ShardDirStats(
         shard_dir=shard_dir,
         shard_files=files,
         total_rows=total_rows,
         expensive_real_rows=total_exp,
+        parse_error_rows=total_parse_errors,
         mtime=latest_mtime,
     )
 
@@ -141,18 +154,20 @@ def score_candidate(
     *,
     rows: int,
     exp_rows: int,
+    parse_error_rows: int,
     mtime: float,
     expected_rows: Optional[int],
     prefer_real: bool,
-) -> Tuple[int, int, int, int, float]:
+) -> Tuple[int, int, int, int, int, float]:
     if expected_rows is None:
         expected_match = 0
         dist_score = rows
     else:
         expected_match = 1 if rows == expected_rows else 0
         dist_score = -abs(rows - expected_rows)
+    parse_clean = 1 if parse_error_rows == 0 else 0
     real_score = 1 if (prefer_real and exp_rows > 0) else 0
-    return (expected_match, dist_score, real_score, rows, mtime)
+    return (parse_clean, expected_match, dist_score, real_score, rows, mtime)
 
 
 def choose_best_shard(
@@ -180,6 +195,7 @@ def choose_best_shard(
         key=lambda s: score_candidate(
             rows=s.total_rows,
             exp_rows=s.expensive_real_rows,
+            parse_error_rows=s.parse_error_rows,
             mtime=s.mtime,
             expected_rows=expected_rows,
             prefer_real=prefer_real,
@@ -198,6 +214,12 @@ def should_promote(
     # If final does not exist/empty, promote.
     if final_stats.rows <= 0:
         return best_shard.total_rows > 0
+
+    # Prefer parse-clean outputs over corrupted ones.
+    if final_stats.parse_error_rows > 0 and best_shard.parse_error_rows == 0:
+        return True
+    if final_stats.parse_error_rows == 0 and best_shard.parse_error_rows > 0:
+        return False
 
     # Prefer expected-row exact match when available.
     if expected_rows is not None:
@@ -230,6 +252,22 @@ def merge_shards_to_output(shard_files: Sequence[Path], out_jsonl: Path) -> None
                 for line in fin:
                     if line.strip():
                         fout.write(line if line.endswith("\n") else line + "\n")
+
+
+def ensure_integrity(
+    *,
+    stats: JsonlStats,
+    expected_rows: Optional[int],
+    context: str,
+) -> None:
+    problems: List[str] = []
+    if stats.parse_error_rows > 0:
+        problems.append(f"parse_error_rows={stats.parse_error_rows}")
+    if expected_rows is not None and stats.rows != expected_rows:
+        problems.append(f"rows={stats.rows} expected_rows={expected_rows}")
+    if problems:
+        joined = ", ".join(problems)
+        raise SystemExit(f"[repair] integrity check failed for {context}: {joined}")
 
 
 def run_py(script: Path, args: Sequence[str]) -> None:
@@ -267,9 +305,10 @@ def main() -> None:
             shard_stats.append(st)
 
     info(
-        "[repair] final rows={} expensive_real_rows={} expected_rows={} shard_dirs={}".format(
+        "[repair] final rows={} expensive_real_rows={} parse_error_rows={} expected_rows={} shard_dirs={}".format(
             final_stats.rows,
             final_stats.expensive_real_rows,
+            final_stats.parse_error_rows,
             expected_rows if expected_rows is not None else "<unknown>",
             len(shard_stats),
         ),
@@ -314,10 +353,11 @@ def main() -> None:
         return
 
     info(
-        "[repair] best shard dir={} rows={} expensive_real_rows={}".format(
+        "[repair] best shard dir={} rows={} expensive_real_rows={} parse_error_rows={}".format(
             best_shard.shard_dir,
             best_shard.total_rows,
             best_shard.expensive_real_rows,
+            best_shard.parse_error_rows,
         ),
         verbose=verbose,
     )
@@ -386,14 +426,15 @@ def main() -> None:
 
     final_after = analyze_jsonl(out_jsonl)
     info(
-        "[repair] final(after) rows={} expensive_real_rows={}".format(
+        "[repair] final(after) rows={} expensive_real_rows={} parse_error_rows={}".format(
             final_after.rows,
             final_after.expensive_real_rows,
+            final_after.parse_error_rows,
         ),
         verbose=verbose,
     )
+    ensure_integrity(stats=final_after, expected_rows=expected_rows, context=str(out_jsonl))
 
 
 if __name__ == "__main__":
     main()
-

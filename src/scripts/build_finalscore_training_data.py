@@ -154,13 +154,13 @@ def sigmoid(value: float) -> float:
 
 
 def score_prob_from_annotated_candidate(candidate: Dict[str, Any]) -> float:
-    score_targets = safe_dict(candidate.get("score_targets"))
-    if "score_prob" in score_targets:
-        return safe_float(score_targets.get("score_prob", 0.0))
     if candidate.get("score_policy_sigmoid_z_local") is not None:
         return safe_float(candidate.get("score_policy_sigmoid_z_local", 0.0))
     if candidate.get("score_policy_z_local") is not None:
         return sigmoid(safe_float(candidate.get("score_policy_z_local", 0.0)))
+    score_targets = safe_dict(candidate.get("score_targets"))
+    if "score_prob" in score_targets:
+        return safe_float(score_targets.get("score_prob", 0.0))
     if candidate.get("score_sigmoid_z_local") is not None:
         return safe_float(candidate.get("score_sigmoid_z_local", 0.0))
     return sigmoid(safe_float(candidate.get("score_z_local", 0.0)))
@@ -618,10 +618,14 @@ def annotate_group_candidates(
     decision_type = str(safe_dict(ar_res.get("decision")).get("decision_type", ""))
 
     raw_scores = [safe_float(safe_dict(c.get("scores")).get("rank", safe_dict(c.get("scores")).get("final", 0.0))) for c in candidates]
+    policy_scores = [safe_float(safe_dict(c.get("scores")).get("policy", safe_dict(c.get("scores")).get("final", 0.0))) for c in candidates]
     rank_pcts = rank_pct_desc(raw_scores)
     z_scores = robust_z_scores(raw_scores)
     softmax_scores = softmax_local(raw_scores, tau=softmax_tau)
     pseudo_mos = [1.0 + 4.0 * sigmoid(z) for z in z_scores]
+    policy_rank_pcts = rank_pct_desc(policy_scores)
+    policy_z_scores = robust_z_scores(policy_scores)
+    policy_softmax_scores = softmax_local(policy_scores, tau=softmax_tau)
     top1_score = max(raw_scores) if raw_scores else 0.0
 
     annotated: List[Dict[str, Any]] = []
@@ -632,8 +636,13 @@ def annotate_group_candidates(
         out["target_ar"] = target_ar
         out["score_rank_pct"] = float(rank_pcts[idx])
         out["score_z_local"] = float(z_scores[idx])
+        out["score_sigmoid_z_local"] = float(sigmoid(z_scores[idx]))
         out["score_softmax_local"] = float(softmax_scores[idx])
         out["pseudo_mos_1to5"] = float(pseudo_mos[idx])
+        out["score_policy_rank_pct"] = float(policy_rank_pcts[idx])
+        out["score_policy_z_local"] = float(policy_z_scores[idx])
+        out["score_policy_sigmoid_z_local"] = float(sigmoid(policy_z_scores[idx]))
+        out["score_policy_softmax_local"] = float(policy_softmax_scores[idx])
         out["is_top1"] = str(out.get("candidate_id", "")) == top1_id
         out["is_selected_topk"] = str(out.get("candidate_id", "")) in selected_id_set
         out["is_best_candidate"] = str(out.get("candidate_id", "")) == best_id

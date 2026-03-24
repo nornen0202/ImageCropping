@@ -362,12 +362,16 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 - `data/GAIC/All/images`
 
 ```bash
-source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+GPU_IDS=0,1,2
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+
+RUN_TAG=gaic_260324_r2
+DATANAME=All
 
 bash src/scripts/run_gaic_to_teacher_e2e.sh \
-  --data_dir data/GAIC/All \
+  --data_dir data/GAIC/${DATANAME} \
   --image_root data/Publics/GAIC/images \
-  --run_tag gaic_260324_r0_saliency_v4tp \
+  --run_tag ${RUN_TAG} \
   --skip_existing 0 \
   --gaic_generate_captions 0 \
   --run_filter 0 \
@@ -382,16 +386,17 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_subject_routing 1 \
   --run_c7_saliency 1 \
   --c7_saliency_priority quality_first \
-  --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r0.jsonl \
+  --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r1.jsonl \
   --use_real_expensive 1 \
   --run_vlm_teacher 0 \
-  --run_detailed_report 0 \
+  --run_detailed_report 1 \
   --run_training_labels 1 \
   --safe_leftover_policy ignore \
   --auto_leftover_variants 1 \
   --run_gaic_benchmark_eval 1 \
-  --run_gaic_subject_region_ab 0 \
-  --run_viz 0
+  --run_gaic_subject_region_ab 1 \
+  --run_viz 1 \
+  | tee src/scripts/logs/run_gaic_to_teacher_e2e_${DATANAME}_${RUN_TAG}.log
 ```
 
 참고:

@@ -149,6 +149,7 @@ Core options
 --c7_saliency_priority NAME     quality_first|high_efficiency (default: quality_first)
 --c7_saliency_weights_dir PATH  c7 saliency weights/cache 경로
 --c7_saliency_device STR        auto|cuda|cuda:0|cpu (default: auto)
+                               multi-gpu 실행은 별도 c7 전용 옵션 없이 extract_gpu_ids/num_workers 설정을 재사용
 --extract_multi_gpu -1|0|1      precompute multi-gpu on/off (-1=auto, 0=single, 1=multi; ray는 별도 --extract_mode ray)
 --extract_gpu_ids CSV           precompute에서 사용할 GPU 목록 (예: 0,1,2,3)
 --num_workers INT               precompute shard worker 수 (multi 모드에서 권장: gpu 개수)
@@ -1065,6 +1066,7 @@ echo " run_c1/c2/c3/c4/c5/c6 : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C4/$RUN_C5/$RUN_C6"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
 echo " subject routing     : run=$RUN_SUBJECT_ROUTING top_n=$SUBJECT_ROUTING_TOP_N union_top_m=$SUBJECT_ROUTING_UNION_TOP_M det_proxy=$SUBJECT_ROUTING_ALLOW_DET_PROXY"
 echo " c7 saliency         : run=$RUN_C7_SALIENCY priority=$C7_SALIENCY_PRIORITY device=$C7_SALIENCY_DEVICE"
+echo " c7 saliency multi   : reuse extract gpu_ids=${EXTRACT_GPU_IDS:-auto} workers=${NUM_WORKERS:-auto} mode=${EXTRACT_MODE}"
 echo " run_component_viz   : $RUN_COMPONENT_VIZ (out=$COMPONENT_VIZ_OUT_DIR, num_samples=$COMPONENT_VIZ_NUM_SAMPLES)"
 echo " public proposals    : enable=$ENABLE_PUBLIC_TEACHER_PROPOSALS setup=$PUBLIC_TEACHER_SETUP teachers=$PUBLIC_TEACHERS max_images=$PUBLIC_TEACHER_MAX_IMAGES"
 echo " public raw/proposal : $PUBLIC_TEACHER_RAW_JSONL | $PUBLIC_TEACHER_PROPOSALS_JSONL"
@@ -1405,6 +1407,20 @@ if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
       --max_images "$MAX_IMAGES"
       --progress 1
     )
+    c7_enable_multi=0
+    if [ "$C7_SALIENCY_DEVICE" != "cpu" ]; then
+      if [ "$EXTRACT_MODE" = "multi" ]; then
+        c7_enable_multi=1
+      elif [ "$EXTRACT_MULTI_GPU" -eq 1 ]; then
+        c7_enable_multi=1
+      fi
+    fi
+    if [ "$c7_enable_multi" -eq 1 ] && [ -n "$EXTRACT_GPU_IDS" ]; then
+      c7_args+=(--multi_gpu 1 --gpu_ids "$EXTRACT_GPU_IDS")
+      if [ -n "$NUM_WORKERS" ]; then
+        c7_args+=(--num_workers "$NUM_WORKERS")
+      fi
+    fi
     if [ -n "$C7_SALIENCY_WEIGHTS_DIR" ]; then
       c7_args+=(--weights_dir "$C7_SALIENCY_WEIGHTS_DIR")
     fi

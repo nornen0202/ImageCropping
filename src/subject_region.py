@@ -15,6 +15,18 @@ SCENE_LIKE_MODES = {
 }
 
 
+def _dedupe_keep_order(values: Sequence[str]) -> List[str]:
+    out: List[str] = []
+    seen = set()
+    for value in values:
+        key = str(value or "").strip()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
 def clamp(value: float, lo: float, hi: float) -> float:
     return max(lo, min(hi, value))
 
@@ -303,6 +315,210 @@ def summarize_saliency_signal(c7_saliency: Optional[Dict[str, Any]], width: int,
             if out["top_component_bbox_norm_xyxy"] is not None
             else ("top2_union" if out["top2_union_bbox_norm_xyxy"] is not None else "foreground_bbox")
         )
+    return out
+
+
+def _layout_modes_for_subject_mode(
+    subject_mode: str,
+    attention_layout: str,
+    routing: Optional[Dict[str, Any]] = None,
+) -> List[str]:
+    mode = str(subject_mode or "").strip().lower()
+    layout = str(attention_layout or "").strip().lower()
+    routing = routing if isinstance(routing, dict) else {}
+    copyspace = routing.get("copyspace", {}) if isinstance(routing.get("copyspace"), dict) else {}
+    modes: List[str] = ["center", "thirds", "phi"]
+    if mode in SCENE_LIKE_MODES or layout in {"distributed", "none"}:
+        modes.append("horizon")
+    copyspace_side = str(copyspace.get("side", "")).strip().lower()
+    if copyspace_side in {"left", "right", "top", "bottom"}:
+        modes.append(f"copyspace_{copyspace_side}")
+    elif mode in {"background_texture_copyspace", "text_document"}:
+        modes.extend(["copyspace_left", "copyspace_right"])
+    return _dedupe_keep_order(modes)
+
+
+def _build_layout_spec(
+    *,
+    subject_mode: str,
+    attention_layout: str,
+    support_centroid: Tuple[float, float],
+    routing: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    routing = routing if isinstance(routing, dict) else {}
+    copyspace = routing.get("copyspace", {}) if isinstance(routing.get("copyspace"), dict) else {}
+    router_signals = routing.get("router_signals", {}) if isinstance(routing.get("router_signals"), dict) else {}
+    horizon_y = routing.get("horizon_y_norm", None)
+    if horizon_y is None:
+        horizon_y = router_signals.get("horizon_y_norm", None)
+    symmetry_axis = None
+    if safe_float(router_signals.get("symmetry_score", 0.0), 0.0) >= 0.70:
+        symmetry_axis = [0.5, 0.0, 0.5, 1.0]
+    target_lines: List[Dict[str, Any]] = []
+    if horizon_y is not None:
+        try:
+            horizon_y = clamp(float(horizon_y), 0.0, 1.0)
+            target_lines.append({"kind": "horizon", "line_norm_xyxy": [0.0, horizon_y, 1.0, horizon_y]})
+        except Exception:
+            horizon_y = None
+    target_points = [{"kind": "support_centroid", "xy_norm": [round(float(support_centroid[0]), 6), round(float(support_centroid[1]), 6)]}]
+    return {
+        "composition_mode_candidates": _layout_modes_for_subject_mode(subject_mode, attention_layout, routing=routing),
+        "target_points": target_points,
+        "target_lines": target_lines,
+        "horizon_y_norm": None if horizon_y is None else round(float(horizon_y), 6),
+        "symmetry_axis": symmetry_axis,
+        "headroom_target_range": routing.get("headroom_range"),
+        "lookroom_target_range": routing.get("lookroom_range"),
+        "gaze_direction_xy": routing.get("gaze_direction_xy"),
+        "copyspace_preference": str(copyspace.get("side", "none") or "none"),
+    }
+
+
+def build_crop_guidance_spec(
+    effective_subject_region: Optional[Dict[str, Any]],
+    *,
+    subject_mode: str = "",
+    routing: Optional[Dict[str, Any]] = None,
+    c7_saliency: Optional[Dict[str, Any]] = None,
+    safety_spec: Optional[Dict[str, Any]] = None,
+    subject_box: Optional[Sequence[float]] = None,
+) -> Dict[str, Any]:
+    region = effective_subject_region if isinstance(effective_subject_region, dict) else {}
+    routing = routing if isinstance(routing, dict) else {}
+    saliency_summary = region.get("saliency_summary") if isinstance(region.get("saliency_summary"), dict) else None
+    if saliency_summary is None and isinstance(c7_saliency, dict):
+        width = int(safe_float(c7_saliency.get("image_size", [0, 0])[0] if isinstance(c7_saliency.get("image_size"), (list, tuple)) else 0, 0.0))
+        height = int(safe_float(c7_saliency.get("image_size", [0, 0])[1] if isinstance(c7_saliency.get("image_size"), (list, tuple)) else 0, 0.0))
+        if width > 0 and height > 0:
+            saliency_summary = summarize_saliency_signal(c7_saliency, width=width, height=height)
+    if saliency_summary is None:
+        saliency_summary = {}
+
+    support_box = region.get("support_bbox_norm_xyxy") or region.get("effective_bbox_norm_xyxy") or subject_box
+    if isinstance(support_box, (list, tuple)) and len(support_box) == 4:
+        support_box = clip_box01(support_box)
+    else:
+        support_box = [0.2, 0.2, 0.8, 0.8]
+    support_centroid_xy = saliency_summary.get("weighted_centroid_xy_norm")
+    if isinstance(support_centroid_xy, (list, tuple)) and len(support_centroid_xy) == 2:
+        support_centroid = (
+            clamp(safe_float(support_centroid_xy[0], 0.5), 0.0, 1.0),
+            clamp(safe_float(support_centroid_xy[1], 0.5), 0.0, 1.0),
+        )
+    else:
+        support_centroid = box_center(support_box)
+
+    support_mode = "support_map" if bool(region.get("support_map_enabled", False)) or str(region.get("score_mode", "")) == "support_map" else "bbox_fallback"
+    grid_size = int(safe_float(saliency_summary.get("support_grid_size", 0), 0.0))
+    mass_b64 = saliency_summary.get("support_mass_grid_f16_b64")
+    occ_b64 = saliency_summary.get("support_occ_grid_u8_b64")
+    components_topk = saliency_summary.get("components_topk_norm_xyxy", []) if isinstance(saliency_summary.get("components_topk_norm_xyxy"), list) else []
+
+    support_spec = {
+        "mode": support_mode,
+        "grid_size": int(grid_size),
+        "support_grid_size": int(grid_size),
+        "mass_grid_f16_b64": mass_b64,
+        "support_mass_grid_f16_b64": mass_b64,
+        "occ_grid_u8_b64": occ_b64,
+        "support_occ_grid_u8_b64": occ_b64,
+        "grid_encoding": str(saliency_summary.get("support_grid_encoding", "f16_base64") or "f16_base64"),
+        "support_grid_encoding": str(saliency_summary.get("support_grid_encoding", "f16_base64") or "f16_base64"),
+        "envelope_norm_xyxy": support_box,
+        "centroid_xy_norm": [round(float(support_centroid[0]), 6), round(float(support_centroid[1]), 6)],
+        "components_topk": components_topk,
+        "foreground_area_ratio": round(float(clamp(safe_float(saliency_summary.get("foreground_area_ratio", 0.0), 0.0), 0.0, 1.0)), 6),
+        "dominance_score": round(float(clamp(safe_float(saliency_summary.get("dominance_score", 0.0), 0.0), 0.0, 1.0)), 6),
+        "dispersion_score": round(float(clamp(safe_float(saliency_summary.get("dispersion_score", 0.0), 0.0), 0.0, 1.0)), 6),
+        "attention_layout": str(region.get("attention_layout", "none") or "none"),
+        "subject_source": str(region.get("subject_source", "proxy") or "proxy"),
+        "subject_reliability": round(float(clamp(safe_float(region.get("subject_reliability", 0.0), 0.0), 0.0, 1.0)), 6),
+    }
+    safety_payload = safety_spec if isinstance(safety_spec, dict) else {}
+    safety_spec_out = {
+        "face_boxes": list(safety_payload.get("face_boxes", [])) if isinstance(safety_payload.get("face_boxes"), list) else [],
+        "person_boxes": list(safety_payload.get("person_boxes", [])) if isinstance(safety_payload.get("person_boxes"), list) else [],
+        "ocr_boxes": list(safety_payload.get("ocr_boxes", [])) if isinstance(safety_payload.get("ocr_boxes"), list) else [],
+        "logo_boxes": list(safety_payload.get("logo_boxes", [])) if isinstance(safety_payload.get("logo_boxes"), list) else [],
+        "joint_points": list(safety_payload.get("joint_points", [])) if isinstance(safety_payload.get("joint_points"), list) else [],
+    }
+    debug_spec = {
+        "raw_anchor_bbox_norm_xyxy": region.get("raw_anchor_bbox_norm_xyxy"),
+        "candidate_anchor_bbox_norm_xyxy": region.get("candidate_anchor_bbox_norm_xyxy"),
+        "effective_bbox_norm_xyxy": region.get("effective_bbox_norm_xyxy"),
+        "detector_saliency_iou": round(float(clamp(safe_float(region.get("subject_agreement_iou", 0.0), 0.0), 0.0, 1.0)), 6),
+        "detector_saliency_center_distance": round(float(max(0.0, safe_float(region.get("subject_center_distance", 0.0), 0.0))), 6),
+        "fallback_reason": str(region.get("support_fallback_reason", "") or ""),
+    }
+    return {
+        "schema_version": "crop_guidance_spec.v1",
+        "support_spec": support_spec,
+        "safety_spec": safety_spec_out,
+        "layout_spec": _build_layout_spec(
+            subject_mode=subject_mode,
+            attention_layout=str(support_spec.get("attention_layout", "none") or "none"),
+            support_centroid=support_centroid,
+            routing=routing,
+        ),
+        "debug_spec": debug_spec,
+    }
+
+
+def ensure_crop_guidance_spec(
+    effective_subject_region: Optional[Dict[str, Any]],
+    *,
+    subject_mode: str = "",
+    routing: Optional[Dict[str, Any]] = None,
+    c7_saliency: Optional[Dict[str, Any]] = None,
+    safety_spec: Optional[Dict[str, Any]] = None,
+    subject_box: Optional[Sequence[float]] = None,
+) -> Dict[str, Any]:
+    region = effective_subject_region if isinstance(effective_subject_region, dict) else {}
+    current = region.get("crop_guidance_spec") if isinstance(region.get("crop_guidance_spec"), dict) else None
+    if current is None:
+        return build_crop_guidance_spec(
+            region,
+            subject_mode=subject_mode,
+            routing=routing,
+            c7_saliency=c7_saliency,
+            safety_spec=safety_spec,
+            subject_box=subject_box,
+        )
+    out = {
+        "schema_version": str(current.get("schema_version", "crop_guidance_spec.v1") or "crop_guidance_spec.v1"),
+        "support_spec": dict(current.get("support_spec", {})) if isinstance(current.get("support_spec"), dict) else {},
+        "safety_spec": dict(current.get("safety_spec", {})) if isinstance(current.get("safety_spec"), dict) else {},
+        "layout_spec": dict(current.get("layout_spec", {})) if isinstance(current.get("layout_spec"), dict) else {},
+        "debug_spec": dict(current.get("debug_spec", {})) if isinstance(current.get("debug_spec"), dict) else {},
+    }
+    if not out["support_spec"]:
+        out = build_crop_guidance_spec(
+            region,
+            subject_mode=subject_mode,
+            routing=routing,
+            c7_saliency=c7_saliency,
+            safety_spec=safety_spec,
+            subject_box=subject_box,
+        )
+    else:
+        if safety_spec and isinstance(safety_spec, dict):
+            for key, default in {
+                "face_boxes": [],
+                "person_boxes": [],
+                "ocr_boxes": [],
+                "logo_boxes": [],
+                "joint_points": [],
+            }.items():
+                if key not in out["safety_spec"] or not isinstance(out["safety_spec"].get(key), list):
+                    out["safety_spec"][key] = list(safety_spec.get(key, default)) if isinstance(safety_spec.get(key), list) else list(default)
+        if not out["layout_spec"]:
+            out["layout_spec"] = _build_layout_spec(
+                subject_mode=subject_mode,
+                attention_layout=str(out["support_spec"].get("attention_layout", "none") or "none"),
+                support_centroid=tuple(out["support_spec"].get("centroid_xy_norm", box_center(subject_box or [0.2, 0.2, 0.8, 0.8]))),
+                routing=routing,
+            )
     return out
 
 
@@ -681,7 +897,7 @@ def resolve_effective_subject_region(
     effective_box = clip_box01(effective_box)
     anchor_cx, anchor_cy = box_center(candidate_anchor_box)
     anchor_w, anchor_h = box_wh(candidate_anchor_box)
-    return {
+    region_out = {
         "available": True,
         "state": state,
         "score_mode": score_mode,
@@ -711,3 +927,12 @@ def resolve_effective_subject_region(
         "support_fallback_reason": support_fallback_reason,
         "saliency_summary": saliency,
     }
+    region_out["crop_guidance_spec"] = build_crop_guidance_spec(
+        region_out,
+        subject_mode=mode,
+        routing=None,
+        c7_saliency=c7_saliency,
+        safety_spec=None,
+        subject_box=effective_box,
+    )
+    return region_out

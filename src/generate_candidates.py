@@ -41,8 +41,10 @@ from subject_region import box_area as subject_box_area
 from subject_region import box_center as subject_box_center
 from subject_region import box_wh as subject_box_wh
 from subject_region import clip_box01 as subject_clip_box01
+from subject_region import ensure_crop_guidance_spec
 from subject_region import resolve_effective_subject_region
 from subject_region import summarize_saliency_signal
+from support_seed import seed_family_windows
 
 
 DEFAULT_AR_LIST = ("FREE", "1:1", "9:16", "16:9", "3:4", "4:3")
@@ -114,6 +116,9 @@ class CandidateGenConfig:
     teacher_jitter_scales: Tuple[float, ...] = DEFAULT_TEACHER_JITTER_SCALES
     teacher_seed_priority: float = 6.5
     teacher_jitter_priority: float = 6.2
+    guidance_nms_iou: float = 0.92
+    guidance_keep_per_ar: int = 2
+    guidance_keep_per_free: int = 3
     # FREE-form generation (AR-unconditioned)
     free_ar_values: Tuple[float, ...] = DEFAULT_FREE_AR_VALUES
     free_ar_log_jitter: Tuple[float, ...] = DEFAULT_FREE_AR_LOG_JITTER
@@ -1293,6 +1298,16 @@ def resolve_subject_prior(
         sw, sh = subject_box_wh(sb)
         saliency_size = [round(max(sw, cfg.min_subject_size), 6), round(max(sh, cfg.min_subject_size), 6)]
 
+    crop_guidance_spec = ensure_crop_guidance_spec(
+        effective_subject_region,
+        subject_mode=mode,
+        routing=routing,
+        c7_saliency=c7_saliency,
+        safety_spec=None,
+        subject_box=subj_box,
+    )
+    effective_subject_region["crop_guidance_spec"] = crop_guidance_spec
+
     return {
         "source": source,
         "bbox_norm_xyxy": [round(v, 6) for v in subj_box],
@@ -1313,6 +1328,7 @@ def resolve_subject_prior(
         "union_used": bool(union_used),
         "multi_subject": bool(subject_set.get("multi_subject", False)),
         "effective_subject_region": effective_subject_region,
+        "crop_guidance_spec": crop_guidance_spec,
     }
 
 
@@ -1394,6 +1410,49 @@ def add_center_area_box(
         must_keep=must_keep,
         priority=priority,
     )
+
+
+def add_guidance_seed_candidates(
+    out: List[Dict[str, Any]],
+    *,
+    crop_guidance_spec: Optional[Dict[str, Any]],
+    image_ar: float,
+    target_ar: float,
+    cfg: CandidateGenConfig,
+    scale_prefix: str,
+    priority_bias: float = 6.2,
+    max_per_family: int = 1,
+) -> int:
+    if not isinstance(crop_guidance_spec, dict):
+        return 0
+    seed_rows = seed_family_windows(
+        crop_guidance_spec,
+        target_ar=float(target_ar),
+        image_ar=float(image_ar),
+        max_per_family=max(1, int(max_per_family)),
+    )
+    added = 0
+    for idx, seed in enumerate(seed_rows):
+        box = seed.get("bbox_norm_xyxy")
+        if not (isinstance(box, (list, tuple)) and len(box) == 4):
+            continue
+        family = str(seed.get("family", "guidance_seed") or "guidance_seed")
+        score = safe_float(seed.get("score", 0.0), 0.0)
+        add_candidate(
+            out=out,
+            box=box,
+            image_ar=image_ar,
+            target_ar=target_ar,
+            ar_tol=cfg.ar_tol,
+            a_min=cfg.a_min,
+            a_max=cfg.a_max,
+            source=f"guidance_{family}",
+            scale_idx=f"{scale_prefix}{idx}",
+            must_keep=False,
+            priority=priority_bias + 0.05 * min(5.0, score),
+        )
+        added += 1
+    return added
 
 
 def generate_baseline_candidates(
@@ -1988,6 +2047,7 @@ def generate_freeform_candidates(
     cfg: CandidateGenConfig,
     subject_reliability: float = 1.0,
     subject_repr_type: str = "",
+    crop_guidance_spec: Optional[Dict[str, Any]] = None,
     teacher_proposals: Optional[Dict[str, Dict[str, Any]]] = None,
     teacher_meta_out: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
@@ -1995,9 +2055,20 @@ def generate_freeform_candidates(
     ws, hs = subject_size
     subj_rel = max(0.0, min(1.0, safe_float(subject_reliability, 1.0)))
     subj_repr = str(subject_repr_type or "")
+    guidance_support = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
+    guidance_layout = str(guidance_support.get("attention_layout", "") or "").strip().lower()
+    use_guidance_layout_seeds = bool(
+        isinstance(crop_guidance_spec, dict)
+        and guidance_layout in {"distributed", "none", "multi_subject"}
+        and str(guidance_support.get("mode", "")) == "support_map"
+        and not subj_repr.startswith("detected_box")
+    )
     allow_subject_templates = subj_rel >= 0.40 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
     allow_subject_jitter = subj_rel >= 0.35 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
     allow_saliency_jitter = subj_rel >= 0.45 or subj_repr == "saliency_box"
+    if use_guidance_layout_seeds:
+        allow_subject_templates = False
+        allow_subject_jitter = False
     all_cands: List[Dict[str, Any]] = []
 
     # (A) FREE baselines: full-frame keep anchor + max-area family over sampled ARs.
@@ -2027,6 +2098,16 @@ def generate_freeform_candidates(
         for c in bs:
             c["scale_idx"] = f"freeb{i}_{c.get('scale_idx', 'x')}"
             all_cands.append(c)
+        add_guidance_seed_candidates(
+            out=all_cands,
+            crop_guidance_spec=crop_guidance_spec,
+            image_ar=image_ar,
+            target_ar=float(ar_t),
+            cfg=cfg,
+            scale_prefix=f"fguide{i}_",
+            priority_bias=6.25,
+            max_per_family=2 if guidance_layout == "multi_subject" else 1,
+        )
 
     # (B) Grid + multi-scale over sampled ARs.
     xs = [i / cfg.free_grid_m for i in range(cfg.free_grid_m + 1)]
@@ -2195,12 +2276,20 @@ def generate_freeform_candidates(
         if str(c.get("source", "")).startswith("teacher:")
         or "teacher:jitter" in set(c.get("source_types", []))
     ]
+    guidance_non_keep = [
+        c
+        for c in non_keep
+        if str(c.get("source", "")).startswith("guidance_")
+        or any(str(x).startswith("guidance_") for x in c.get("source_lineage", []))
+    ]
     other_non_keep = [
         c
         for c in non_keep
         if not (
             str(c.get("source", "")).startswith("teacher:")
             or "teacher:jitter" in set(c.get("source_types", []))
+            or str(c.get("source", "")).startswith("guidance_")
+            or any(str(x).startswith("guidance_") for x in c.get("source_lineage", []))
         )
     ]
 
@@ -2210,8 +2299,13 @@ def generate_freeform_candidates(
         iou_thr=cfg.teacher_nms_iou,
         existing=must_keep,
     )
+    guidance_non_keep = nms_candidates(
+        guidance_non_keep,
+        iou_thr=cfg.guidance_nms_iou,
+        existing=must_keep,
+    )
     other_non_keep = nms_candidates(other_non_keep, iou_thr=cfg.free_nms_iou, existing=must_keep)
-    non_keep = teacher_non_keep + other_non_keep
+    non_keep = teacher_non_keep + guidance_non_keep + other_non_keep
 
     if len(must_keep) >= cfg.max_candidates_per_ar:
         final_cands = sorted(
@@ -2221,8 +2315,26 @@ def generate_freeform_candidates(
         )[: cfg.max_candidates_per_ar]
     else:
         rem = cfg.max_candidates_per_ar - len(must_keep)
-        sampled_non_keep = diversity_sample_free(non_keep, k=rem, cfg=cfg)
-        final_cands = must_keep + sampled_non_keep
+        preserved_guidance = sorted(
+            guidance_non_keep,
+            key=lambda c: (
+                safe_float(c.get("priority", 0.0), 0.0),
+                safe_float(c.get("area_ratio", 0.0), 0.0),
+            ),
+            reverse=True,
+        )[: max(0, min(int(cfg.guidance_keep_per_free), rem))]
+        preserved_keys = {
+            tuple(round(float(v), 6) for v in c.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]))
+            for c in preserved_guidance
+        }
+        rem_after_guidance = max(0, rem - len(preserved_guidance))
+        remaining_non_keep = [
+            c
+            for c in non_keep
+            if tuple(round(float(v), 6) for v in c.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])) not in preserved_keys
+        ]
+        sampled_non_keep = diversity_sample_free(remaining_non_keep, k=rem_after_guidance, cfg=cfg)
+        final_cands = must_keep + preserved_guidance + sampled_non_keep
 
     final_cands = sorted(
         final_cands,
@@ -2252,6 +2364,7 @@ def generate_candidates_for_ar(
     cfg: CandidateGenConfig,
     subject_reliability: float = 1.0,
     subject_repr_type: str = "",
+    crop_guidance_spec: Optional[Dict[str, Any]] = None,
     teacher_proposals: Optional[Dict[str, Dict[str, Any]]] = None,
     teacher_meta_out: Optional[List[Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
@@ -2262,9 +2375,20 @@ def generate_candidates_for_ar(
     ws, hs = subject_size
     subj_rel = max(0.0, min(1.0, safe_float(subject_reliability, 1.0)))
     subj_repr = str(subject_repr_type or "")
+    guidance_support = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
+    guidance_layout = str(guidance_support.get("attention_layout", "") or "").strip().lower()
+    use_guidance_layout_seeds = bool(
+        isinstance(crop_guidance_spec, dict)
+        and guidance_layout in {"distributed", "none", "multi_subject"}
+        and str(guidance_support.get("mode", "")) == "support_map"
+        and not subj_repr.startswith("detected_box")
+    )
     allow_subject_templates = subj_rel >= 0.40 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
     allow_subject_jitter = subj_rel >= 0.35 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
     allow_saliency_jitter = subj_rel >= 0.45 or subj_repr == "saliency_box"
+    if use_guidance_layout_seeds:
+        allow_subject_templates = False
+        allow_subject_jitter = False
     all_cands: List[Dict[str, Any]] = []
 
     all_cands.extend(
@@ -2275,6 +2399,16 @@ def generate_candidates_for_ar(
             has_copy_hint=has_copy_hint,
             cfg=cfg,
         )
+    )
+    add_guidance_seed_candidates(
+        out=all_cands,
+        crop_guidance_spec=crop_guidance_spec,
+        image_ar=image_ar,
+        target_ar=target_ar,
+        cfg=cfg,
+        scale_prefix="guide",
+        priority_bias=6.25,
+        max_per_family=2 if guidance_layout == "multi_subject" else 1,
     )
 
     xs = [i / cfg.grid_m for i in range(cfg.grid_m + 1)]
@@ -2443,12 +2577,20 @@ def generate_candidates_for_ar(
         if str(c.get("source", "")).startswith("teacher:")
         or "teacher:jitter" in set(c.get("source_types", []))
     ]
+    guidance_non_keep = [
+        c
+        for c in non_keep
+        if str(c.get("source", "")).startswith("guidance_")
+        or any(str(x).startswith("guidance_") for x in c.get("source_lineage", []))
+    ]
     other_non_keep = [
         c
         for c in non_keep
         if not (
             str(c.get("source", "")).startswith("teacher:")
             or "teacher:jitter" in set(c.get("source_types", []))
+            or str(c.get("source", "")).startswith("guidance_")
+            or any(str(x).startswith("guidance_") for x in c.get("source_lineage", []))
         )
     ]
 
@@ -2458,8 +2600,13 @@ def generate_candidates_for_ar(
         iou_thr=cfg.teacher_nms_iou,
         existing=must_keep,
     )
+    guidance_non_keep = nms_candidates(
+        guidance_non_keep,
+        iou_thr=cfg.guidance_nms_iou,
+        existing=must_keep,
+    )
     other_non_keep = nms_candidates(other_non_keep, iou_thr=cfg.nms_iou, existing=must_keep)
-    non_keep = teacher_non_keep + other_non_keep
+    non_keep = teacher_non_keep + guidance_non_keep + other_non_keep
 
     # (H) Respect candidate cap while preserving baselines:
     # must-keep are never dropped by diversity sampling.
@@ -2471,8 +2618,26 @@ def generate_candidates_for_ar(
         )[: cfg.max_candidates_per_ar]
     else:
         rem = cfg.max_candidates_per_ar - len(must_keep)
-        sampled_non_keep = diversity_sample(non_keep, k=rem)
-        final_cands = must_keep + sampled_non_keep
+        preserved_guidance = sorted(
+            guidance_non_keep,
+            key=lambda c: (
+                c.get("priority", 0.0),
+                c.get("area_ratio", 0.0),
+            ),
+            reverse=True,
+        )[: max(0, min(int(cfg.guidance_keep_per_ar), rem))]
+        preserved_keys = {
+            tuple(round(float(v), 6) for v in c.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]))
+            for c in preserved_guidance
+        }
+        rem_after_guidance = max(0, rem - len(preserved_guidance))
+        remaining_non_keep = [
+            c
+            for c in non_keep
+            if tuple(round(float(v), 6) for v in c.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])) not in preserved_keys
+        ]
+        sampled_non_keep = diversity_sample(remaining_non_keep, k=rem_after_guidance)
+        final_cands = must_keep + preserved_guidance + sampled_non_keep
 
     # (I) Final deterministic ordering + AR-specific candidate ID assignment.
     final_cands = sorted(
@@ -2590,6 +2755,7 @@ def build_output_record(
                 saliency_size=tuple(subj["saliency_size"]) if isinstance(subj.get("saliency_size"), list) else None,
                 subject_reliability=safe_float(subj.get("subject_reliability", 1.0), 1.0),
                 subject_repr_type=str(subj.get("subject_repr_type", "") or ""),
+                crop_guidance_spec=subj.get("crop_guidance_spec") if isinstance(subj.get("crop_guidance_spec"), dict) else None,
                 has_copy_hint=copy_hint,
                 cfg=cfg,
                 teacher_proposals=teacher_payload,
@@ -2608,6 +2774,7 @@ def build_output_record(
                 saliency_size=tuple(subj["saliency_size"]) if isinstance(subj.get("saliency_size"), list) else None,
                 subject_reliability=safe_float(subj.get("subject_reliability", 1.0), 1.0),
                 subject_repr_type=str(subj.get("subject_repr_type", "") or ""),
+                crop_guidance_spec=subj.get("crop_guidance_spec") if isinstance(subj.get("crop_guidance_spec"), dict) else None,
                 has_copy_hint=copy_hint,
                 cfg=cfg,
                 teacher_proposals=teacher_payload,

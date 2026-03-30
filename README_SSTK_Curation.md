@@ -27,6 +27,7 @@
 - Optional C7 saliency augment 추가
   - `augment_saliency_subject_features.py`로 merged/routed feats에 `c7_saliency`를 후주입 가능
   - candidate generator/teacher scorer가 saliency-guided subject anchor와 `saliency_jitter` 후보를 사용할 수 있음
+  - 멀티 GPU는 별도 C7 전용 옵션 없이 `--extract_gpu_ids`, `--num_workers`, `--extract_mode` 설정을 재사용
   - flat curated image dir가 필요하므로 `--export_curated_images 1` 또는 기존 `--curated_image_dir`가 준비되어 있어야 함
 - C4 OCR 품질우선 경로 추가
   - `quality_first`에서 PP-OCRv5 server detector(`PP-OCRv5_server_det`)를 1순위로 사용
@@ -156,6 +157,15 @@ pip install -U "paddleocr>=3.0.0"
 
 권장: `run_phaseA_to_teacher_e2e.sh` 하나로 실행
 
+서버 실행 템플릿은 아래 공통 변수를 먼저 두고 쓰는 형식으로 통일하는 것을 권장합니다.
+
+```bash
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+DATANAME=10K
+RUN_TAG=v17_server
+```
+
 ### 3.1 로컬(가상환경 자동 활성화) 기본 실행
 ```bash
 DATANAME=10K_local
@@ -263,8 +273,14 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 flat curated image dir가 있을 때 `c7_saliency`를 merged/routed feats에 추가할 수 있습니다. 이 경우 downstream candidate/teacher는 saliency-guided anchor와 `saliency_jitter` 후보를 함께 사용합니다.
 
+참고:
+- C7 saliency도 이제 다른 precompute와 동일하게 shard 기반 멀티 GPU가 가능합니다.
+- 별도 `c7_gpu_ids` 같은 옵션은 없고, `--extract_gpu_ids ${GPU_IDS}` / `--num_workers ${N_WORKERS}` / `--extract_mode auto|multi`를 그대로 재사용합니다.
+
 ```bash
 DATANAME=10K
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --server_mode 1 \
   --data_dir data/SSTK/${DATANAME} \
@@ -275,6 +291,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --prefer_curated_images 1 \
   --run_c7_saliency 1 \
   --c7_saliency_priority quality_first \
+  --extract_gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS} \
   --skip_existing 1 \
   --run_tag rerun1_c7
 ```
@@ -1841,6 +1859,9 @@ Subject-Mode enrich(신규):
   - `-1` = `--extract_mode` 설정값 사용(기본)
 - `--extract_gpu_ids`: precompute에 사용할 GPU 목록 CSV
 - `--num_workers`: precompute shard worker 수 (`multi`에서 보통 GPU 개수와 동일)
+- `--run_c7_saliency 0|1`, `--c7_saliency_priority`, `--c7_saliency_device`:
+  - merged/routed feats에 `c7_saliency`를 후주입
+  - C7 멀티 GPU는 별도 옵션 없이 `--extract_gpu_ids`, `--num_workers`, `--extract_mode`를 그대로 재사용
 - `--run_c1 --run_c2 --run_c3 --run_c4 --run_c5 --run_c6 --run_c3_enrich --run_merge`
 - `--run_subject_routing 0|1`: merged precompute에 subject_mode + c2 topN 주입(기본 1)
 - `--subject_routing_top_n`: c2 top-N instance 수(기본 5)

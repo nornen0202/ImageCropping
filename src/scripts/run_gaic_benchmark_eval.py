@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import copy
 import csv
 import hashlib
@@ -67,9 +68,13 @@ from score_teacher import (
     tags_to_tokens,
     tau_improve_for_route,
 )
+from subject_region import ensure_crop_guidance_spec
+from support_seed import seed_family_windows, support_mass_in_box
 from scripts.build_finalscore_training_data import rank_pct_desc, robust_z_scores, sigmoid, softmax_local
 from scripts.build_single_image_crop_report import (
+    best_teacher_refs,
     build_panel as build_detailed_panel,
+    compute_teacher_agreement,
     denorm_box as report_denorm_box,
     extract_score_details as extract_detailed_score_rows,
     summarize_provenance,
@@ -102,6 +107,14 @@ PROBABILITY_VARIANTS = (
     ("policy_std", "score_policy_z_local_std", "policy standard-z"),
 )
 SAMPLE_PRIORITY_IDS = ("253929", "302853", "303099", "210333", "343339", "441946", "349220")
+
+
+def infer_run_tag_from_teacher_jsonl(teacher_jsonl: Path) -> str:
+    stem = teacher_jsonl.stem
+    prefix = "teacher_scores_ar_"
+    if stem.startswith(prefix):
+        return stem[len(prefix) :]
+    return stem
 
 
 def parse_args() -> argparse.Namespace:
@@ -1452,6 +1465,19 @@ def summarize_failure_cohorts(
             ),
         ),
         ("support_fallback", lambda rec: bool(str(rec.get("support_fallback_reason", "")).strip())),
+        (
+            "support_seed_mismatch",
+            lambda rec: (
+                safe_float(rec.get("seed_top1_support_mass", 0.0), 0.0) > 0.0
+                and (safe_float(rec.get("effective_support_mass", 0.0), 0.0) - safe_float(rec.get("seed_top1_support_mass", 0.0), 0.0)) >= 0.25
+            ),
+        ),
+        (
+            "distributed_support_map",
+            lambda rec: str(rec.get("score_mode", "")) == "support_map"
+            and str(rec.get("attention_layout", "")) == "distributed",
+        ),
+        ("low_support_density", lambda rec: safe_float(rec.get("support_density", 1.0), 1.0) < 0.20),
         ("scene_general", lambda rec: str(rec.get("subject_mode", "")) == "scene_general"),
         ("other_ambiguous", lambda rec: str(rec.get("subject_mode", "")) == "other_ambiguous"),
         ("blank_ratio_gt_0_95", lambda rec: safe_float(rec.get("blank_ratio_est", 0.0), 0.0) > 0.95),
@@ -1555,6 +1581,16 @@ def collect_subject_visuals(
     saliency = feat_rec.get("c7_saliency", {}) if isinstance(feat_rec.get("c7_saliency"), dict) else {}
     if not saliency and isinstance(effective_subject_region.get("saliency_summary"), dict):
         saliency = effective_subject_region.get("saliency_summary", {})
+    crop_guidance_spec = ensure_crop_guidance_spec(
+        effective_subject_region,
+        subject_mode=str(route.get("subject_mode", "") or ""),
+        routing=route,
+        c7_saliency=saliency,
+        safety_spec=None,
+        subject_box=subject_prior.get("bbox_norm_xyxy"),
+    )
+    support_spec = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
+    layout_spec = crop_guidance_spec.get("layout_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
     raw_anchor = optional_norm_box(
         subject_prior.get("anchor_bbox_norm_xyxy")
         or effective_subject_region.get("raw_anchor_bbox_norm_xyxy")
@@ -1574,11 +1610,51 @@ def collect_subject_visuals(
         effective_subject_region.get("support_bbox_norm_xyxy")
         or scoring_region
     )
+    image_ar = safe_float(cand_rec.get("image_ar", cand_rec.get("meta_norm", {}).get("image_ar_norm_ref", 1.0)), 1.0)
+    seed_preview = seed_family_windows(
+        crop_guidance_spec,
+        target_ar=max(0.2, min(5.0, image_ar)),
+        image_ar=max(0.2, min(5.0, image_ar)),
+        max_per_family=2 if str(support_spec.get("attention_layout", "") or "") == "multi_subject" else 1,
+    )
+    active_guidance_sources: set[str] = set()
+    candidates_by_ar = cand_rec.get("candidates_by_ar", {}) if isinstance(cand_rec.get("candidates_by_ar"), dict) else {}
+    for cand_list in candidates_by_ar.values():
+        if not isinstance(cand_list, list):
+            continue
+        for cand in cand_list:
+            source = str(cand.get("source", "") or "")
+            if source.startswith("guidance_"):
+                active_guidance_sources.add(source)
+    seed_top1 = optional_norm_box(seed_preview[0].get("bbox_norm_xyxy")) if len(seed_preview) >= 1 else None
+    seed_top1_family = str(seed_preview[0].get("family", "") or "") if len(seed_preview) >= 1 else ""
+    seed_top2_family = str(seed_preview[1].get("family", "") or "") if len(seed_preview) >= 2 else ""
+    seed_top1_active = bool(seed_top1_family and f"guidance_{seed_top1_family}" in active_guidance_sources)
+    seed_top2_active = bool(seed_top2_family and f"guidance_{seed_top2_family}" in active_guidance_sources)
+    seed_top2 = optional_norm_box(seed_preview[1].get("bbox_norm_xyxy")) if len(seed_preview) >= 2 and seed_top2_active else None
     return {
         "raw_anchor_norm_xyxy": raw_anchor,
         "candidate_anchor_norm_xyxy": candidate_anchor,
         "scoring_region_norm_xyxy": scoring_region,
         "support_region_norm_xyxy": support_region,
+        "seed_top1_norm_xyxy": seed_top1,
+        "seed_top2_norm_xyxy": seed_top2,
+        "seed_top1_family": seed_top1_family,
+        "seed_top2_family": seed_top2_family,
+        "seed_top1_active": seed_top1_active,
+        "seed_top2_active": seed_top2_active,
+        "seed_top1_score": round(safe_float(seed_preview[0].get("score", 0.0), 0.0), 6) if len(seed_preview) >= 1 else None,
+        "seed_top2_score": round(safe_float(seed_preview[1].get("score", 0.0), 0.0), 6) if len(seed_preview) >= 2 and seed_top2_active else None,
+        "seed_top1_support_mass": (
+            round(safe_float(support_mass_in_box(crop_guidance_spec, seed_top1), 0.0), 6)
+            if seed_top1 is not None
+            else None
+        ),
+        "seed_top2_support_mass": (
+            round(safe_float(support_mass_in_box(crop_guidance_spec, seed_top2), 0.0), 6)
+            if seed_top2 is not None
+            else None
+        ),
         "subject_repr_type": str(effective_subject_region.get("subject_repr_type", subject_prior.get("subject_repr_type", "")) or ""),
         "subject_reliability": round(safe_float(effective_subject_region.get("subject_reliability", subject_prior.get("subject_reliability", 0.0)), 0.0), 6),
         "subject_placeholder_flag": bool(effective_subject_region.get("placeholder_flag", subject_prior.get("placeholder_flag", False))),
@@ -1610,15 +1686,118 @@ def collect_subject_visuals(
         "saliency_blank_ratio_est": round(safe_float(saliency.get("blank_ratio_est", 0.0), 0.0), 6),
         "saliency_dominance_score": round(safe_float(saliency.get("dominance_score", 0.0), 0.0), 6),
         "saliency_component_count": safe_int(saliency.get("component_count", 0)),
+        "crop_guidance_support_mode": str(support_spec.get("mode", "") or ""),
+        "support_grid_size": safe_int(support_spec.get("support_grid_size", support_spec.get("grid_size", 0))),
+        "support_mass_grid_f16_b64": str(support_spec.get("support_mass_grid_f16_b64", support_spec.get("mass_grid_f16_b64", "")) or ""),
+        "crop_guidance_composition_modes": list(layout_spec.get("composition_mode_candidates", [])) if isinstance(layout_spec.get("composition_mode_candidates"), list) else [],
+        "crop_guidance_copyspace_preference": str(layout_spec.get("copyspace_preference", "none") or "none"),
+        "crop_guidance_horizon_y_norm": (
+            round(safe_float(layout_spec.get("horizon_y_norm", 0.0), 0.0), 6)
+            if isinstance(layout_spec, dict) and layout_spec.get("horizon_y_norm") is not None
+            else None
+        ),
     }
 
 
-def draw_box(draw: ImageDraw.ImageDraw, bbox: Sequence[float], width: int, height: int, color: Tuple[int, int, int], label: str, y_offset: int = 0) -> None:
-    x1 = int(round(float(bbox[0]) * width))
-    y1 = int(round(float(bbox[1]) * height))
-    x2 = int(round(float(bbox[2]) * width))
-    y2 = int(round(float(bbox[3]) * height))
-    draw.rectangle([x1, y1, x2, y2], outline=color, width=4)
+def bbox_to_pixels(
+    bbox: Sequence[float],
+    width: int,
+    height: int,
+    *,
+    expand_px: int = 0,
+) -> Tuple[int, int, int, int]:
+    x1 = int(round(float(bbox[0]) * width)) - expand_px
+    y1 = int(round(float(bbox[1]) * height)) - expand_px
+    x2 = int(round(float(bbox[2]) * width)) + expand_px
+    y2 = int(round(float(bbox[3]) * height)) + expand_px
+    x1 = max(0, min(width - 1, x1))
+    y1 = max(0, min(height - 1, y1))
+    x2 = max(0, min(width - 1, x2))
+    y2 = max(0, min(height - 1, y2))
+    return x1, y1, x2, y2
+
+
+def draw_styled_segment(
+    draw: ImageDraw.ImageDraw,
+    start_xy: Tuple[int, int],
+    end_xy: Tuple[int, int],
+    *,
+    color: Tuple[int, int, int],
+    width: int,
+    style: str,
+) -> None:
+    if style == "solid":
+        draw.line([start_xy, end_xy], fill=color, width=width)
+        return
+    if style == "dotted":
+        dash_len = 2
+        gap_len = 8
+    else:
+        dash_len = 12
+        gap_len = 8
+    x1, y1 = start_xy
+    x2, y2 = end_xy
+    horizontal = y1 == y2
+    if horizontal:
+        step = 1 if x2 >= x1 else -1
+        cur = x1
+        target = x2
+        while (cur <= target if step > 0 else cur >= target):
+            seg_end = cur + step * min(abs(target - cur), dash_len)
+            draw.line([(cur, y1), (seg_end, y1)], fill=color, width=width)
+            cur = seg_end + step * gap_len
+    else:
+        step = 1 if y2 >= y1 else -1
+        cur = y1
+        target = y2
+        while (cur <= target if step > 0 else cur >= target):
+            seg_end = cur + step * min(abs(target - cur), dash_len)
+            draw.line([(x1, cur), (x1, seg_end)], fill=color, width=width)
+            cur = seg_end + step * gap_len
+
+
+def draw_styled_rectangle(
+    draw: ImageDraw.ImageDraw,
+    rect_xyxy: Tuple[int, int, int, int],
+    *,
+    color: Tuple[int, int, int],
+    width: int,
+    style: str,
+) -> None:
+    x1, y1, x2, y2 = rect_xyxy
+    if style == "double":
+        draw_styled_rectangle(draw, rect_xyxy, color=color, width=width, style="solid")
+        inner_expand = max(2, width + 1)
+        if x2 - x1 > 2 * inner_expand and y2 - y1 > 2 * inner_expand:
+            draw_styled_rectangle(
+                draw,
+                (x1 + inner_expand, y1 + inner_expand, x2 - inner_expand, y2 - inner_expand),
+                color=color,
+                width=max(1, width - 1),
+                style="solid",
+            )
+        return
+    draw_styled_segment(draw, (x1, y1), (x2, y1), color=color, width=width, style=style)
+    draw_styled_segment(draw, (x2, y1), (x2, y2), color=color, width=width, style=style)
+    draw_styled_segment(draw, (x2, y2), (x1, y2), color=color, width=width, style=style)
+    draw_styled_segment(draw, (x1, y2), (x1, y1), color=color, width=width, style=style)
+
+
+def draw_box(
+    draw: ImageDraw.ImageDraw,
+    bbox: Sequence[float],
+    width: int,
+    height: int,
+    color: Tuple[int, int, int],
+    label: str,
+    y_offset: int = 0,
+    *,
+    box_width: int = 4,
+    style: str = "solid",
+    expand_px: int = 0,
+) -> None:
+    x1, y1, x2, y2 = bbox_to_pixels(bbox, width, height, expand_px=expand_px)
+    draw_styled_rectangle(draw, (x1, y1, x2, y2), color=color, width=box_width, style=style)
     label_lines = [line for line in str(label).split("\n") if line] or [""]
     label_w = max(110, 8 * max(len(line) for line in label_lines))
     label_h = 20 * len(label_lines) + 4
@@ -1671,6 +1850,9 @@ def render_sample_overlay(
 ) -> None:
     with Image.open(image_path) as img:
         canvas = img.convert("RGB")
+    subject_visuals = image_record.get("subject_visuals", {}) if isinstance(image_record.get("subject_visuals"), dict) else {}
+    support_heatmap = decode_support_heatmap(subject_visuals)
+    canvas = overlay_support_heatmap(canvas, support_heatmap, (79, 70, 229), max_alpha=0.18)
     canvas = overlay_mask(canvas, saliency_mask, (241, 196, 15), alpha=0.22)
     width, height = canvas.size
     draw = ImageDraw.Draw(canvas)
@@ -1678,22 +1860,39 @@ def render_sample_overlay(
     ge_best = image_record["Ge"]["best_gt_row"]
     ge_prod = image_record["Ge"]["production_best"]
     gt_best = image_record["gt_best_row"]
-    subject_visuals = image_record.get("subject_visuals", {}) if isinstance(image_record.get("subject_visuals"), dict) else {}
 
     raw_anchor = subject_visuals.get("raw_anchor_norm_xyxy")
     candidate_anchor = subject_visuals.get("candidate_anchor_norm_xyxy")
+    seed_top1 = subject_visuals.get("seed_top1_norm_xyxy")
+    seed_top2 = subject_visuals.get("seed_top2_norm_xyxy")
     scoring_region = subject_visuals.get("scoring_region_norm_xyxy")
-    if raw_anchor is not None:
-        draw_box(draw, raw_anchor, width, height, (0, 188, 212), "raw anchor", 0)
-    if candidate_anchor is not None and not same_box(candidate_anchor, raw_anchor):
-        draw_box(draw, candidate_anchor, width, height, (214, 48, 128), "candidate anchor", 24)
-    if scoring_region is not None and not same_box(scoring_region, raw_anchor) and not same_box(scoring_region, candidate_anchor):
-        draw_box(draw, scoring_region, width, height, (102, 52, 156), "scoring region", 48)
+    scoring_expand = 6 if any_same_box(scoring_region, [candidate_anchor, seed_top1, seed_top2, gt_best["bbox_norm_xyxy"], gc_best["bbox_norm_xyxy"], ge_best["bbox_norm_xyxy"], ge_prod["bbox_norm_xyxy"]]) else 0
+    if seed_top1 is not None:
+        seed_label = f"seed top1\n{subject_visuals.get('seed_top1_family', 'guidance')}"
+        draw_box(draw, seed_top1, width, height, (214, 48, 128), seed_label, 24, box_width=4, style="solid")
+    elif candidate_anchor is not None:
+        draw_box(draw, candidate_anchor, width, height, (214, 48, 128), "candidate seed", 24, box_width=4, style="solid")
+    if seed_top2 is not None and not same_box(seed_top2, seed_top1):
+        seed2_label = f"seed top2\n{subject_visuals.get('seed_top2_family', 'guidance')}"
+        draw_box(draw, seed_top2, width, height, (255, 105, 180), seed2_label, 48, box_width=3, style="dotted")
+    if scoring_region is not None:
+        draw_box(
+            draw,
+            scoring_region,
+            width,
+            height,
+            (102, 52, 156),
+            scoring_region_label(subject_visuals),
+            72,
+            box_width=3,
+            style="dashed",
+            expand_px=scoring_expand,
+        )
 
-    draw_box(draw, gt_best["bbox_norm_xyxy"], width, height, (46, 204, 113), crop_overlay_label("GT MOS best", gt_best), 72)
-    draw_box(draw, gc_best["bbox_norm_xyxy"], width, height, (52, 152, 219), crop_overlay_label("Gc best", gc_best), 126)
-    draw_box(draw, ge_best["bbox_norm_xyxy"], width, height, (243, 156, 18), crop_overlay_label("Ge GT best", ge_best), 180)
-    draw_box(draw, ge_prod["bbox_norm_xyxy"], width, height, (231, 76, 60), crop_overlay_label("Ge prod best", ge_prod), 234)
+    draw_box(draw, gt_best["bbox_norm_xyxy"], width, height, (46, 204, 113), crop_overlay_label("GT MOS best", gt_best), 72, box_width=4, style="double")
+    draw_box(draw, gc_best["bbox_norm_xyxy"], width, height, (52, 152, 219), crop_overlay_label("Gc best", gc_best), 126, box_width=4, style="solid")
+    draw_box(draw, ge_best["bbox_norm_xyxy"], width, height, (243, 156, 18), crop_overlay_label("Ge GT best", ge_best), 180, box_width=3, style="dashed")
+    draw_box(draw, ge_prod["bbox_norm_xyxy"], width, height, (231, 76, 60), crop_overlay_label("Ge prod best", ge_prod), 234, box_width=5, style="solid")
 
     panel_height = 148
     panel = Image.new("RGB", (width, panel_height), (18, 23, 29))
@@ -1705,7 +1904,7 @@ def render_sample_overlay(
         f"GT best MOS={gt_best['mos']:.2f}  Gc best MOS={gc_best['mos']:.2f}  Ge GT best MOS={ge_best['mos']:.2f}",
         (
             f"repr={subject_visuals.get('subject_repr_type', 'na')}  reliability={safe_float(subject_visuals.get('subject_reliability', 0.0), 0.0):.2f}  "
-            f"score_mode={subject_visuals.get('score_mode', 'na')}  support_map={bool(subject_visuals.get('support_map_enabled', False))}  saliency_mask={subject_visuals.get('saliency_backend', 'none')}"
+            f"score_mode={subject_visuals.get('score_mode', 'na')}  scorer_ref={scorer_reference_text(subject_visuals)}  saliency_mask={subject_visuals.get('saliency_backend', 'none')}"
         ),
     ]
     for idx, line in enumerate(lines):
@@ -1738,12 +1937,11 @@ def color_box_with_label(
     *,
     y_offset: int = 0,
     box_width: int = 4,
+    style: str = "solid",
+    expand_px: int = 0,
 ) -> None:
-    x1 = int(round(float(bbox[0]) * width))
-    y1 = int(round(float(bbox[1]) * height))
-    x2 = int(round(float(bbox[2]) * width))
-    y2 = int(round(float(bbox[3]) * height))
-    draw.rectangle([x1, y1, x2, y2], outline=color, width=box_width)
+    x1, y1, x2, y2 = bbox_to_pixels(bbox, width, height, expand_px=expand_px)
+    draw_styled_rectangle(draw, (x1, y1, x2, y2), color=color, width=box_width, style=style)
     label_lines = [line for line in str(label).split("\n") if line] or [""]
     label_w = max(110, 8 * max(len(line) for line in label_lines))
     label_h = 20 * len(label_lines) + 4
@@ -1751,6 +1949,36 @@ def color_box_with_label(
     label_bottom = max(0, y1 + y_offset)
     draw.rectangle([x1, label_top, min(width, x1 + label_w), label_bottom], fill=color)
     draw.multiline_text((x1 + 4, label_top + 2), "\n".join(label_lines), fill=(255, 255, 255), spacing=2)
+
+
+def any_same_box(bbox: Optional[Sequence[float]], others: Sequence[Optional[Sequence[float]]]) -> bool:
+    if bbox is None:
+        return False
+    return any(same_box(bbox, other) for other in others if other is not None)
+
+
+def scoring_region_label(subject_visuals: Dict[str, Any]) -> str:
+    score_mode = str(subject_visuals.get("score_mode", "na") or "na")
+    support_map_enabled = bool(subject_visuals.get("support_map_enabled", False))
+    if score_mode == "support_map" or support_map_enabled:
+        return "scorer ref\nsoft-map env"
+    if score_mode == "subject_preservation":
+        return "scorer ref\nbbox mode"
+    if score_mode == "neutralized":
+        return "scorer ref\nneutralized"
+    return f"scorer ref\n{score_mode}"
+
+
+def scorer_reference_text(subject_visuals: Dict[str, Any]) -> str:
+    score_mode = str(subject_visuals.get("score_mode", "na") or "na")
+    support_map_enabled = bool(subject_visuals.get("support_map_enabled", False))
+    if score_mode == "support_map" or support_map_enabled:
+        return "soft support map"
+    if score_mode == "subject_preservation":
+        return "bbox subject region"
+    if score_mode == "neutralized":
+        return "neutralized subject terms"
+    return score_mode
 
 
 def saliency_priority_for_visual(subject_visuals: Dict[str, Any]) -> str:
@@ -1790,6 +2018,63 @@ class SampleSaliencyMaskResolver:
         except BaseException:
             self._cache[cache_key] = None
         return self._cache[cache_key]
+
+
+def decode_support_heatmap(subject_visuals: Dict[str, Any]) -> Optional[np.ndarray]:
+    if not bool(subject_visuals.get("support_map_enabled", False)):
+        return None
+    grid_size = safe_int(subject_visuals.get("support_grid_size", 0))
+    mass_b64 = str(subject_visuals.get("support_mass_grid_f16_b64", "") or "")
+    if grid_size <= 0 or not mass_b64:
+        return None
+    try:
+        grid = np.frombuffer(base64.b64decode(mass_b64.encode("ascii")), dtype=np.float16).astype(np.float32)
+    except Exception:
+        return None
+    if grid.size != grid_size * grid_size:
+        return None
+    grid = grid.reshape((grid_size, grid_size))
+    max_val = float(np.max(grid))
+    if max_val <= 1e-8:
+        return None
+    return grid / max_val
+
+
+def overlay_support_heatmap(
+    canvas: Image.Image,
+    heatmap: Optional[np.ndarray],
+    color: Tuple[int, int, int],
+    *,
+    max_alpha: float = 0.24,
+) -> Image.Image:
+    if heatmap is None:
+        return canvas
+    heatmap_arr = np.asarray(heatmap, dtype=np.float32)
+    if heatmap_arr.ndim != 2 or heatmap_arr.size <= 0 or float(np.max(heatmap_arr)) <= 1e-8:
+        return canvas
+    width, height = canvas.size
+    upsampled = cv2.resize(heatmap_arr, (width, height), interpolation=cv2.INTER_CUBIC)
+    upsampled = np.clip(upsampled, 0.0, 1.0)
+    rgba = canvas.convert("RGBA")
+    overlay = np.zeros((height, width, 4), dtype=np.uint8)
+    alpha = np.power(upsampled, 0.85) * float(max_alpha)
+    overlay[..., 0] = int(color[0])
+    overlay[..., 1] = int(color[1])
+    overlay[..., 2] = int(color[2])
+    overlay[..., 3] = np.clip(alpha * 255.0, 0.0, 255.0).astype(np.uint8)
+    blended = Image.alpha_composite(rgba, Image.fromarray(overlay, mode="RGBA"))
+    contour_draw = ImageDraw.Draw(blended)
+    for thr, line_width, line_color in (
+        (0.35, 1, color + (220,)),
+        (0.65, 2, (255, 255, 255, 240)),
+    ):
+        mask = (upsampled >= thr).astype(np.uint8)
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        for contour in contours:
+            pts = [(int(p[0][0]), int(p[0][1])) for p in contour]
+            if len(pts) >= 2:
+                contour_draw.line(pts + [pts[0]], fill=line_color, width=line_width)
+    return blended.convert("RGB")
 
 
 def overlay_mask(canvas: Image.Image, mask: Optional[np.ndarray], color: Tuple[int, int, int], alpha: float = 0.24) -> Image.Image:
@@ -1844,45 +2129,66 @@ def render_sample_diagnostic_overlay(
 ) -> None:
     with Image.open(image_path) as img:
         canvas = img.convert("RGB")
+    support_heatmap = decode_support_heatmap(subject_visuals)
+    canvas = overlay_support_heatmap(canvas, support_heatmap, (79, 70, 229), max_alpha=0.18)
     canvas = overlay_mask(canvas, saliency_mask, (255, 193, 7), alpha=0.22)
     width, height = canvas.size
     draw = ImageDraw.Draw(canvas)
 
     raw_anchor = subject_visuals.get("raw_anchor_norm_xyxy")
     candidate_anchor = subject_visuals.get("candidate_anchor_norm_xyxy")
+    seed_top1 = subject_visuals.get("seed_top1_norm_xyxy")
+    seed_top2 = subject_visuals.get("seed_top2_norm_xyxy")
     scoring_region = subject_visuals.get("scoring_region_norm_xyxy")
-    if raw_anchor is not None:
+    scoring_expand = 6 if any_same_box(scoring_region, [candidate_anchor, seed_top1, seed_top2, gt_mos_best["bbox_norm_xyxy"], ge_gt_best["bbox_norm_xyxy"], ge_prod_best["bbox_norm_xyxy"]]) else 0
+    if seed_top1 is not None:
         color_box_with_label(
             draw,
-            raw_anchor,
+            seed_top1,
             width,
             height,
-            (0, 188, 212),
-            "raw anchor",
-            y_offset=0,
+            (214, 48, 128),
+            f"seed top1\n{subject_visuals.get('seed_top1_family', 'guidance')}",
+            y_offset=18,
             box_width=2,
+            style="solid",
         )
-    if candidate_anchor is not None and not same_box(candidate_anchor, raw_anchor):
+    elif candidate_anchor is not None:
         color_box_with_label(
             draw,
             candidate_anchor,
             width,
             height,
             (214, 48, 128),
-            "candidate anchor",
+            "candidate seed",
             y_offset=18,
             box_width=2,
+            style="solid",
         )
-    if scoring_region is not None and not same_box(scoring_region, candidate_anchor) and not same_box(scoring_region, raw_anchor):
+    if seed_top2 is not None and not same_box(seed_top2, seed_top1):
+        color_box_with_label(
+            draw,
+            seed_top2,
+            width,
+            height,
+            (255, 105, 180),
+            f"seed top2\n{subject_visuals.get('seed_top2_family', 'guidance')}",
+            y_offset=36,
+            box_width=2,
+            style="dotted",
+        )
+    if scoring_region is not None:
         color_box_with_label(
             draw,
             scoring_region,
             width,
             height,
             (102, 52, 156),
-            "scoring region",
-            y_offset=36,
+            scoring_region_label(subject_visuals),
+            y_offset=54,
             box_width=2,
+            style="dashed",
+            expand_px=scoring_expand,
         )
     if face_center_norm is not None:
         fx = int(round(float(face_center_norm[0]) * width))
@@ -1897,6 +2203,8 @@ def render_sample_diagnostic_overlay(
         (46, 204, 113),
         crop_overlay_label("GT MOS best", gt_mos_best),
         y_offset=54,
+        box_width=3,
+        style="double",
     )
     color_box_with_label(
         draw,
@@ -1906,6 +2214,8 @@ def render_sample_diagnostic_overlay(
         (243, 156, 18),
         crop_overlay_label("Ge GT best", ge_gt_best),
         y_offset=126,
+        box_width=2,
+        style="dashed",
     )
     color_box_with_label(
         draw,
@@ -1915,6 +2225,8 @@ def render_sample_diagnostic_overlay(
         (231, 76, 60),
         crop_overlay_label("Ge prod best", ge_prod_best),
         y_offset=198,
+        box_width=4,
+        style="solid",
     )
 
     panel_height = 220
@@ -1943,7 +2255,7 @@ def render_sample_diagnostic_overlay(
             f"saliency backend={subject_visuals.get('saliency_backend', 'none')}  fg={safe_float(subject_visuals.get('saliency_foreground_area_ratio', 0.0), 0.0):.3f}  "
             f"blank={safe_float(subject_visuals.get('saliency_blank_ratio_est', 0.0), 0.0):.3f}  dom={safe_float(subject_visuals.get('saliency_dominance_score', 0.0), 0.0):.3f}"
         ),
-        "cyan=raw anchor  pink=candidate anchor  purple=scoring region  yellow mask=c7 saliency  green/blue/orange/red=GT/Gc/Ge 결과",
+        "pink solid=seed top1  hotpink dotted=seed top2(active only)  purple dashed=scorer reference  indigo heatmap=support mass  yellow mask=c7 saliency  green double=GT MOS best  blue solid=Gc best  orange dashed=Ge GT best  red thick=Ge prod best",
     ]
     for idx, line in enumerate(lines):
         panel_draw.text((12, 12 + idx * 28), line, fill=(245, 247, 250))
@@ -2058,7 +2370,7 @@ def sample_analysis_bullets(
     )
     if raw_anchor_area is not None or scoring_region_area is not None:
         bullets.append(
-            f"raw anchor 면적은 `{compact_float(raw_anchor_area, 4)}`, scorer가 실제로 쓰는 scoring region 면적은 `{compact_float(scoring_region_area, 4)}` 입니다."
+            f"raw anchor 면적은 `{compact_float(raw_anchor_area, 4)}`, canonical seed top1 support mass는 `{compact_float(subject_visuals.get('seed_top1_support_mass'), 4)}`, scorer가 실제로 쓰는 support envelope 면적은 `{compact_float(scoring_region_area, 4)}` 입니다."
         )
     bullets.append(
         f"subject 표현 타입은 `{subject_visuals.get('subject_repr_type', 'unknown')}`, source=`{subject_visuals.get('subject_source', 'unknown')}`, attention_layout=`{subject_visuals.get('attention_layout', 'unknown')}`, reliability=`{safe_float(subject_visuals.get('subject_reliability', 0.0), 0.0):.2f}`, score_mode=`{subject_visuals.get('score_mode', 'unknown')}` 입니다."
@@ -2085,7 +2397,7 @@ def sample_analysis_bullets(
         + f"support=`{safe_float(support_diag.get('mass_recall', 0.0), 0.0):.3f}` 입니다."
     )
     if safe_float(support_diag.get("mass_recall", 0.0), 0.0) > safe_float(candidate_diag.get("mass_recall", 0.0), 0.0) + 0.1:
-        bullets.append("support region이 candidate anchor보다 latent GT support를 더 많이 포함합니다. scene-like 이미지에서는 bbox IoU보다 이 값이 더 직접적인 품질 신호입니다.")
+        bullets.append("support envelope이 legacy candidate anchor보다 latent GT support를 더 많이 포함합니다. scene-like 이미지에서는 bbox IoU보다 이 값이 더 직접적인 품질 신호입니다.")
     if safe_float(support_diag.get("iou_to_gt_best", 0.0), 0.0) < 0.2 and safe_float(support_diag.get("mass_recall", 0.0), 0.0) >= 0.6:
         bullets.append("support bbox IoU는 낮지만 latent support mass recall은 높습니다. 분산 foreground를 넓게 담는 장면에서는 '작은 정답 box와의 IoU'만으로는 quality를 설명하기 어렵습니다.")
     if str(subject_visuals.get("subject_source", "")) == "fusion":
@@ -2166,6 +2478,8 @@ def build_sample_analysis(
     cfg: TeacherScorerConfig,
     image_path: Path,
     output_dir: Path,
+    data_root: Path,
+    run_tag: str,
     softmax_tau: float,
     saliency_mask_resolver: Optional[SampleSaliencyMaskResolver] = None,
 ) -> Dict[str, Any]:
@@ -2207,7 +2521,7 @@ def build_sample_analysis(
     latent_support = build_latent_support(anns, width=width, height=height)
     subject_support_metrics = compute_subject_box_diagnostics(
         raw_anchor=subject_visuals.get("raw_anchor_norm_xyxy"),
-        candidate_anchor=subject_visuals.get("candidate_anchor_norm_xyxy"),
+        candidate_anchor=subject_visuals.get("seed_top1_norm_xyxy") or subject_visuals.get("candidate_anchor_norm_xyxy"),
         support_region=subject_visuals.get("support_region_norm_xyxy") or scoring_region_norm,
         gt_best_box=gt_mos_row["bbox_norm_xyxy"],
         anns=anns,
@@ -2257,6 +2571,14 @@ def build_sample_analysis(
     overlay_path = output_dir / "samples" / "details" / f"{image_id}_diagnostic_overlay.png"
     panel_path = output_dir / "samples" / "details" / f"{image_id}_diagnostic_panel.jpg"
     analysis_json_path = output_dir / "samples" / "details" / f"{image_id}_analysis.json"
+    teacher_refs = best_teacher_refs(
+        cand_rec,
+        "FREE",
+        data_root=data_root,
+        run_tag=run_tag,
+        image_id=image_id,
+        image_ar=safe_float(image_meta.get("image_ar", width / max(height, 1)), width / max(height, 1)),
+    )
 
     render_sample_diagnostic_overlay(
         image_path=image_path,
@@ -2300,7 +2622,7 @@ def build_sample_analysis(
                     "components": row_obj.get("scores", {}).get("components", {}),
                     "macro_scores": row_obj.get("macro_scores", {}),
                     "score_details": extract_detailed_score_rows(row_obj, ge_route, asdict(cfg)),
-                    "teacher_agreement": [],
+                    "teacher_agreement": compute_teacher_agreement(row_obj["bbox_norm_xyxy"], teacher_refs),
                     "subject_box_norm": scoring_region_norm,
                     "face_center_norm": face_center_norm,
                     "provenance_text": summarize_provenance(row_obj),
@@ -2331,6 +2653,10 @@ def build_sample_analysis(
         "raw_anchor_area": round(box_area(subject_visuals["raw_anchor_norm_xyxy"]), 6) if subject_visuals.get("raw_anchor_norm_xyxy") else None,
         "candidate_anchor_norm_xyxy": subject_visuals.get("candidate_anchor_norm_xyxy"),
         "candidate_anchor_area": round(box_area(subject_visuals["candidate_anchor_norm_xyxy"]), 6) if subject_visuals.get("candidate_anchor_norm_xyxy") else None,
+        "seed_top1_norm_xyxy": subject_visuals.get("seed_top1_norm_xyxy"),
+        "seed_top1_area": round(box_area(subject_visuals["seed_top1_norm_xyxy"]), 6) if subject_visuals.get("seed_top1_norm_xyxy") else None,
+        "seed_top2_norm_xyxy": subject_visuals.get("seed_top2_norm_xyxy"),
+        "seed_top2_area": round(box_area(subject_visuals["seed_top2_norm_xyxy"]), 6) if subject_visuals.get("seed_top2_norm_xyxy") else None,
         "scoring_region_norm_xyxy": scoring_region_norm,
         "scoring_region_area": round(box_area(scoring_region_norm), 6),
         "saliency_top1_norm_xyxy": subject_visuals.get("saliency_top1_norm_xyxy"),
@@ -2480,7 +2806,7 @@ def append_sample_analysis_markdown(
         f"- split=`{sample_analysis['official_split']}`, subject_mode=`{sample_analysis['subject_mode']}`, policy_id=`{sample_analysis['policy_id']}`, router_rule_id=`{sample_analysis['router_rule_id']}`"
     )
     lines.append(
-        f"- subject_mode_conf=`{sample_analysis['subject_mode_conf']:.3f}`, raw anchor=`{format_bbox_text(sample_analysis['raw_anchor_norm_xyxy']) if sample_analysis.get('raw_anchor_norm_xyxy') else 'na'}`, scoring region=`{format_bbox_text(sample_analysis['scoring_region_norm_xyxy'])}`, scoring_region_area=`{sample_analysis['scoring_region_area']:.4f}`"
+        f"- subject_mode_conf=`{sample_analysis['subject_mode_conf']:.3f}`, seed top1=`{format_bbox_text(subject_visuals['seed_top1_norm_xyxy']) if subject_visuals.get('seed_top1_norm_xyxy') else 'na'}`, seed top2=`{format_bbox_text(subject_visuals['seed_top2_norm_xyxy']) if subject_visuals.get('seed_top2_norm_xyxy') else 'na'}`, support envelope=`{format_bbox_text(sample_analysis['scoring_region_norm_xyxy'])}`, support_envelope_area=`{sample_analysis['scoring_region_area']:.4f}`, scorer_ref=`{scorer_reference_text(subject_visuals)}`"
     )
     lines.append(
         f"- subject_mode_reasons=`{', '.join(sample_analysis.get('subject_mode_reasons', [])) or '없음'}`, tags=`{', '.join(sample_analysis.get('tags', [])) or '없음'}`"
@@ -2554,8 +2880,8 @@ def append_sample_analysis_markdown(
                     compact_float(subject_support_metrics.get("raw_anchor", {}).get("latent_bbox_iou"), 3),
                 ],
                 [
-                    "candidate anchor",
-                    format_bbox_text(sample_analysis["candidate_anchor_norm_xyxy"]) if sample_analysis.get("candidate_anchor_norm_xyxy") else "na",
+                    "seed top1",
+                    format_bbox_text(subject_visuals["seed_top1_norm_xyxy"]) if subject_visuals.get("seed_top1_norm_xyxy") else "na",
                     compact_float(subject_support_metrics.get("candidate_anchor", {}).get("iou_to_gt_best"), 3),
                     compact_float(subject_support_metrics.get("candidate_anchor", {}).get("mass_recall"), 3),
                     compact_float(subject_support_metrics.get("candidate_anchor", {}).get("centroid_inside"), 3),
@@ -2563,7 +2889,7 @@ def append_sample_analysis_markdown(
                     compact_float(subject_support_metrics.get("candidate_anchor", {}).get("latent_bbox_iou"), 3),
                 ],
                 [
-                    "scoring region",
+                    "support envelope",
                     format_bbox_text(sample_analysis["scoring_region_norm_xyxy"]) if sample_analysis.get("scoring_region_norm_xyxy") else "na",
                     compact_float(subject_support_metrics.get("support_region", {}).get("iou_to_gt_best"), 3),
                     compact_float(subject_support_metrics.get("support_region", {}).get("mass_recall"), 3),
@@ -2909,7 +3235,7 @@ def build_markdown_report(
     lines.append("### Subject Support Diagnostics (`bbox IoU` vs `latent support mass`)")
     lines.append("")
     lines.append("- `latent GT support`는 이미지별 상위 MOS GT crop들을 64x64 grid 위에 누적한 inclusion heatmap 입니다.")
-    lines.append("- `support mass recall`은 raw anchor / candidate anchor / scoring region이 그 soft support를 얼마나 많이 담는지 봅니다.")
+    lines.append("- `support mass recall`은 raw anchor / seed top1 / support envelope이 그 soft support를 얼마나 많이 담는지 봅니다.")
     lines.append("- distributed foreground 장면에서는 `support_iou_mean`이 낮아도 `support_mass_recall_mean`이 높을 수 있습니다. 이 경우 bbox IoU보다 mass 계열 지표가 더 직접적인 진단 값입니다.")
     lines.append("")
     support_diag = summary.get("subject_support_diagnostics", {})
@@ -2993,18 +3319,20 @@ def build_markdown_report(
     lines.append("")
     lines.append("샘플 overlay 읽는 법:")
     lines.append("")
-    lines.append("- 하늘색 bbox `raw anchor`: detector/union 기반의 원시 subject anchor 입니다. 후보 생성의 출발점이며, 잘못 잡히면 subject-driven family가 오염될 수 있습니다.")
-    lines.append("- 분홍 bbox `candidate anchor`: 실제 후보 생성 seed 중심입니다. raw anchor와 다르면 2차 튜닝 로직이 보수적으로 보정한 상태입니다.")
-    lines.append("- 보라색 bbox `scoring region`: scorer가 실제 `subject preservation` 항에서 참고하는 region 입니다. distributed scene이면 saliency foreground support, raw-saliency disagreement면 union grouping 결과가 들어갈 수 있습니다.")
-    lines.append("- `score_mode=support_map` 이면 실제 `cov` 계산은 bbox가 아니라 c7 saliency에서 내려온 low-res soft support map으로 수행됩니다. 이 경우 보라색 bbox는 시각화용 support envelope일 뿐, 점수는 map 기준으로 계산됩니다.")
+    lines.append("- 분홍 실선 bbox `seed top1`: canonical guidance(`support_spec + layout_spec`)에서 직접 파생한 주 candidate-generation seed 창입니다. 최종 후보 생성은 이 seed family를 중심으로 이루어집니다.")
+    lines.append("- 진분홍 점선 bbox `seed top2`: multi-subject / distributed scene에서 보조 seed 창입니다. top1이 한쪽 foreground에 치우칠 때 대안 창을 유지하기 위한 용도이며, 실제 guidance candidate family가 생성된 샘플에서만 표시합니다.")
+    lines.append("- 보라 파선 bbox `scorer reference`: scorer가 참조하는 영역입니다. `score_mode=support_map`이면 soft support map의 envelope, `subject_preservation`이면 bbox subject region, `neutralized`이면 neutralized reference를 뜻합니다.")
+    lines.append("- `score_mode=support_map` 이면 실제 `cov` 계산은 bbox가 아니라 c7 saliency에서 내려온 low-res soft support map으로 수행됩니다. 이 경우 보라색 bbox는 시각화용 envelope이며, 필요하면 겹치는 박스와 구분되도록 약간의 시각화 오프셋이 적용될 수 있습니다.")
+    lines.append("- 남보라 반투명 heatmap `support mass`: low-res support map mass를 업샘플링한 시각화입니다. `score_mode=support_map`인 샘플에서만 보이며, scorer macro가 더 직접적으로 참조하는 support 분포를 보여줍니다.")
+    lines.append("- 인물 사진도 동일하게 보라색 bbox가 표시됩니다. portrait에서 이 박스는 대개 scorer가 참조하는 bbox subject region이며, yellow saliency mask는 보조 evidence입니다.")
     lines.append("- 노랑 반투명 mask `c7 saliency`: BiRefNet/IS-Net/OpenCV fallback으로 샘플 이미지에 대해 다시 추론한 saliency foreground 영역입니다. bbox가 아니라 mask 자체를 오버레이합니다.")
     lines.append("- 각 bbox 라벨에는 `sigz`와 `rank`를 같이 적습니다. 여기서 `sigz`는 기본적으로 `score_policy_sigmoid_z_local`인 policy pseudo probability 입니다. 해당 값이 없을 때만 `score_sigmoid_z_local = sigmoid(score_z_local)` 계열 fallback을 사용합니다. training label의 `score_prob`도 같은 기본값을 사용하며, calibrated probability가 아니라 pseudo-probability로 해석해야 합니다.")
     lines.append("- GT 후보인 경우 라벨은 `MOS`, `sigz`, `rank`를 모두 적습니다. 즉 사람 평점과 teacher의 local-normalized 점수를 동시에 볼 수 있습니다.")
     lines.append("- 비GT 후보인 경우 라벨은 `sigz`, `rank`만 적습니다. MOS가 없기 때문입니다.")
-    lines.append("- 초록 bbox `GT MOS best`: 해당 이미지의 GAIC GT 중 사람 MOS가 가장 높은 정답 크롭입니다.")
-    lines.append("- 파랑 bbox `Gc best`: `Gc` 프로토콜에서 GT 크롭들만 놓고 점수화했을 때 `score_rank`가 가장 높은 GT 크롭입니다.")
-    lines.append("- 주황 bbox `Ge GT best`: `Ge` 프로토콜에서 GT 크롭을 프로덕션 후보 풀에 주입한 뒤, GT 크롭들만 다시 비교했을 때 `score_rank`가 가장 높은 GT 크롭입니다.")
-    lines.append("- 빨강 bbox `Ge prod best`: `Ge` 프로토콜에서 프로덕션 자유형 후보와 주입된 GT를 모두 합친 전체 후보 중 최종 winner입니다.")
+    lines.append("- 초록 이중선 bbox `GT MOS best`: 해당 이미지의 GAIC GT 중 사람 MOS가 가장 높은 정답 크롭입니다.")
+    lines.append("- 파랑 실선 bbox `Gc best`: `Gc` 프로토콜에서 GT 크롭들만 놓고 점수화했을 때 `score_rank`가 가장 높은 GT 크롭입니다.")
+    lines.append("- 주황 파선 bbox `Ge GT best`: `Ge` 프로토콜에서 GT 크롭을 프로덕션 후보 풀에 주입한 뒤, GT 크롭들만 다시 비교했을 때 `score_rank`가 가장 높은 GT 크롭입니다.")
+    lines.append("- 빨강 굵은 실선 bbox `Ge prod best`: `Ge` 프로토콜에서 프로덕션 자유형 후보와 주입된 GT를 모두 합친 전체 후보 중 최종 winner입니다.")
     lines.append("- `score_rank`와 `sigz`는 MOS나 IoU가 아니라 모델의 후보 내부 순위화 계열 점수입니다. 절대값보다 같은 이미지 안에서의 상대 순서를 봐야 합니다.")
     lines.append("- overlay 상단 패널의 `Gc/Ge spearman`은 해당 이미지에서 예측 순위와 GT MOS 순위의 일치도이고, `coverage top1_iou`는 `Ge prod best` 박스가 GT 최고 MOS 박스와 얼마나 겹치는지의 IoU입니다.")
     lines.append("- 샘플별 상세 표의 `latent mass recall`은 GT 상위 crop latent support 기준입니다. distributed scene에서는 이 값이 bbox IoU보다 더 중요한 진단 근거가 됩니다.")
@@ -3014,7 +3342,7 @@ def build_markdown_report(
         lines.append("")
     lines.append("### 샘플별 상세 진단")
     lines.append("")
-    lines.append("아래 섹션은 각 샘플에 대해 `GT MOS best`, `Ge GT best`, `Ge prod best`를 다시 점수화해, 왜 전체 production 후보 1위가 GT 최고 후보와 달라졌는지 추적할 수 있도록 만든 진단 결과입니다. raw anchor, candidate anchor, scoring region, c7 saliency를 함께 표시합니다.")
+    lines.append("아래 섹션은 각 샘플에 대해 `GT MOS best`, `Ge GT best`, `Ge prod best`를 다시 점수화해, 왜 전체 production 후보 1위가 GT 최고 후보와 달라졌는지 추적할 수 있도록 만든 진단 결과입니다. seed top1/top2, scorer reference, c7 saliency를 함께 표시합니다.")
     lines.append("")
     for sample_analysis in sample_analyses:
         append_sample_analysis_markdown(lines, output_dir=output_dir, sample_analysis=sample_analysis)
@@ -3049,6 +3377,8 @@ def main() -> None:
     image_dir = Path(args.image_dir).resolve()
     output_dir = Path(args.output_dir).resolve()
     ensure_dir(output_dir)
+    data_root = candidates_jsonl.parents[2]
+    run_tag = infer_run_tag_from_teacher_jsonl(teacher_jsonl)
 
     cfg = load_scorer_config(teacher_jsonl)
 
@@ -3154,7 +3484,7 @@ def main() -> None:
         )
         subject_support_metrics = compute_subject_box_diagnostics(
             raw_anchor=subject_visuals.get("raw_anchor_norm_xyxy"),
-            candidate_anchor=subject_visuals.get("candidate_anchor_norm_xyxy"),
+            candidate_anchor=subject_visuals.get("seed_top1_norm_xyxy") or subject_visuals.get("candidate_anchor_norm_xyxy"),
             support_region=subject_visuals.get("support_region_norm_xyxy") or subject_visuals.get("scoring_region_norm_xyxy"),
             gt_best_box=gt_best_row["bbox_norm_xyxy"],
             anns=anns,
@@ -3268,6 +3598,7 @@ def main() -> None:
                     "subject_reliability": round(safe_float(subject_visuals.get("subject_reliability", 0.0), 0.0), 6),
                     "subject_repr_type": str(subject_visuals.get("subject_repr_type", "")),
                     "score_mode": str(subject_visuals.get("score_mode", "")),
+                    "attention_layout": str(subject_visuals.get("attention_layout", "")),
                     "subject_terms_neutralized": bool(subject_visuals.get("score_mode", "") == "neutralized"),
                     "subject_agreement_iou": round(safe_float(subject_visuals.get("subject_agreement_iou", 0.0), 0.0), 6),
                     "subject_center_distance": round(safe_float(subject_visuals.get("subject_center_distance", 0.0), 0.0), 6),
@@ -3275,8 +3606,10 @@ def main() -> None:
                     "raw_anchor_support_mass": round(safe_float(subject_visuals.get("raw_anchor_support_mass", 0.0), 0.0), 6),
                     "candidate_anchor_mass_recall": round(safe_float(subject_support_metrics["candidate_anchor"]["mass_recall"], 0.0), 6),
                     "candidate_anchor_support_mass": round(safe_float(subject_visuals.get("candidate_anchor_support_mass", 0.0), 0.0), 6),
+                    "seed_top1_support_mass": round(safe_float(subject_visuals.get("seed_top1_support_mass", 0.0), 0.0), 6),
                     "support_mass_recall": round(safe_float(subject_support_metrics["support_region"]["mass_recall"], 0.0), 6),
                     "effective_support_mass": round(safe_float(subject_visuals.get("effective_support_mass", 0.0), 0.0), 6),
+                    "support_density": round(safe_float(ge_best_row["checklist"].get("support_density", {}).get("value", 1.0) if isinstance(ge_best_row.get("checklist"), dict) else 1.0, 1.0), 6),
                     "support_fallback_reason": str(subject_visuals.get("support_fallback_reason", "")),
                     "support_centroid_inside": round(safe_float(subject_support_metrics["support_region"]["centroid_inside"], 0.0), 6),
                     "support_centroid_distance": round(safe_float(subject_support_metrics["support_region"]["centroid_distance"], 0.0), 6),
@@ -3315,13 +3648,16 @@ def main() -> None:
                 "subject_reliability": round(safe_float(subject_visuals.get("subject_reliability", 0.0), 0.0), 6),
                 "subject_repr_type": str(subject_visuals.get("subject_repr_type", "")),
                 "score_mode": str(subject_visuals.get("score_mode", "")),
+                "attention_layout": str(subject_visuals.get("attention_layout", "")),
                 "subject_terms_neutralized": bool(subject_visuals.get("score_mode", "") == "neutralized"),
                 "subject_agreement_iou": round(safe_float(subject_visuals.get("subject_agreement_iou", 0.0), 0.0), 6),
                 "subject_center_distance": round(safe_float(subject_visuals.get("subject_center_distance", 0.0), 0.0), 6),
                 "subject_disagreement_severe": bool(subject_visuals.get("subject_disagreement_severe", False)),
                 "raw_anchor_support_mass": round(safe_float(subject_visuals.get("raw_anchor_support_mass", 0.0), 0.0), 6),
                 "candidate_anchor_support_mass": round(safe_float(subject_visuals.get("candidate_anchor_support_mass", 0.0), 0.0), 6),
+                "seed_top1_support_mass": round(safe_float(subject_visuals.get("seed_top1_support_mass", 0.0), 0.0), 6),
                 "effective_support_mass": round(safe_float(subject_visuals.get("effective_support_mass", 0.0), 0.0), 6),
+                "support_density": round(safe_float(ge_best_row["checklist"].get("support_density", {}).get("value", 1.0) if isinstance(ge_best_row.get("checklist"), dict) else 1.0, 1.0), 6),
                 "support_fallback_reason": str(subject_visuals.get("support_fallback_reason", "")),
                 "blank_ratio_est": round(safe_float(subject_visuals.get("saliency_blank_ratio_est", ge_route.get("router_signals", {}).get("blank_ratio_est", 0.0)), 0.0), 6),
                 "ge_winner_source_family": prod_source_family,
@@ -3613,6 +3949,8 @@ def main() -> None:
                     cfg=cfg,
                     image_path=img_path,
                     output_dir=output_dir,
+                    data_root=data_root,
+                    run_tag=run_tag,
                     softmax_tau=float(args.softmax_tau),
                     saliency_mask_resolver=saliency_mask_resolver,
                 )

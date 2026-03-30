@@ -32,6 +32,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from subject_region import ensure_crop_guidance_spec
 
 
 SHOT_TYPE_GROUP_WORDS = {
@@ -2614,9 +2615,9 @@ def subject_coverage(subject_box: Sequence[float], crop: Sequence[float]) -> Tup
 def _decode_subject_support_map(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not isinstance(payload, dict):
         return None
-    grid_size = int(safe_float(payload.get("support_grid_size", 0), 0.0))
-    mass_b64 = payload.get("support_mass_grid_f16_b64")
-    occ_b64 = payload.get("support_occ_grid_u8_b64")
+    grid_size = int(safe_float(payload.get("support_grid_size", payload.get("grid_size", 0)), 0.0))
+    mass_b64 = payload.get("support_mass_grid_f16_b64", payload.get("mass_grid_f16_b64"))
+    occ_b64 = payload.get("support_occ_grid_u8_b64", payload.get("occ_grid_u8_b64"))
     if grid_size <= 0 or not isinstance(mass_b64, str) or not mass_b64 or not isinstance(occ_b64, str) or not occ_b64:
         return None
     try:
@@ -2633,7 +2634,7 @@ def _decode_subject_support_map(payload: Dict[str, Any]) -> Optional[Dict[str, A
         return None
     mass_grid /= mass_sum
     occ_grid = (occ_grid > 0.0).astype(np.float32)
-    centroid = payload.get("weighted_centroid_xy_norm")
+    centroid = payload.get("weighted_centroid_xy_norm", payload.get("centroid_xy_norm"))
     if isinstance(centroid, (list, tuple)) and len(centroid) == 2:
         cx = clamp(safe_float(centroid[0], 0.5), 0.0, 1.0)
         cy = clamp(safe_float(centroid[1], 0.5), 0.0, 1.0)
@@ -2663,7 +2664,18 @@ def build_subject_support_context(
     )
     score_mode = str(effective_subject_region.get("score_mode", route.get("flags", {}).get("subject_score_mode", "")) or "")
     support_map_enabled = bool(effective_subject_region.get("support_map_enabled", False)) or score_mode == "support_map"
+    crop_guidance_spec = ensure_crop_guidance_spec(
+        effective_subject_region,
+        subject_mode=str(route.get("subject_mode", "") or ""),
+        routing=route,
+        c7_saliency=feat_rec.get("c7_saliency") if isinstance(feat_rec.get("c7_saliency"), dict) else None,
+        safety_spec=None,
+        subject_box=subject_box,
+    )
+    support_spec = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
     payloads: List[Dict[str, Any]] = []
+    if isinstance(support_spec, dict) and support_spec:
+        payloads.append(support_spec)
     saliency_summary = effective_subject_region.get("saliency_summary")
     if isinstance(saliency_summary, dict):
         payloads.append(saliency_summary)
@@ -2676,12 +2688,14 @@ def build_subject_support_context(
             if decoded is not None:
                 decoded["bbox_norm_xyxy"] = clip_box01(subject_box)
                 decoded["support_map_enabled"] = True
+                decoded["crop_guidance_spec"] = crop_guidance_spec
                 return decoded
     return {
         "mode": "bbox",
         "bbox_norm_xyxy": clip_box01(subject_box),
         "centroid_xy_norm": box_center(subject_box),
         "support_map_enabled": False,
+        "crop_guidance_spec": crop_guidance_spec,
     }
 
 
@@ -2710,6 +2724,119 @@ def subject_coverage_soft(subject_support: Dict[str, Any], crop: Sequence[float]
     else:
         subj_area_ratio = mass_recall / crop_area
     return clamp(mass_recall, 0.0, 1.0), clamp(subj_area_ratio, 0.0, 1.0)
+
+
+def _support_mass_for_box(subject_support: Dict[str, Any], box: Sequence[float]) -> float:
+    mass_grid = subject_support.get("mass_grid")
+    if not isinstance(mass_grid, np.ndarray) or mass_grid.ndim != 2:
+        bbox = subject_support.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])
+        denom = max(1e-8, box_area(bbox))
+        return clamp(inter_area(bbox, box) / denom, 0.0, 1.0)
+    gx1, gy1, gx2, gy2 = _crop_grid_slices(int(mass_grid.shape[0]), box)
+    return clamp(float(mass_grid[gy1:gy2, gx1:gx2].sum()), 0.0, 1.0)
+
+
+def compute_support_component_metrics(subject_support: Dict[str, Any], crop: Sequence[float]) -> Dict[str, Any]:
+    mass_grid = subject_support.get("mass_grid")
+    crop_area = max(1e-8, box_area(crop))
+    mass_recall = _support_mass_for_box(subject_support, crop)
+    density = clamp(mass_recall / crop_area, 0.0, 1.0)
+    crop_guidance_spec = (
+        subject_support.get("crop_guidance_spec", {})
+        if isinstance(subject_support.get("crop_guidance_spec"), dict)
+        else {}
+    )
+    support_spec = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
+    components = support_spec.get("components_topk", []) if isinstance(support_spec, dict) else []
+    if not isinstance(components, list):
+        components = []
+    component_rows: List[Dict[str, float]] = []
+    for comp in components[:3]:
+        if not isinstance(comp, (list, tuple)) or len(comp) != 4:
+            continue
+        comp_box = clip_box01(comp)
+        comp_mass = _support_mass_for_box(subject_support, comp_box)
+        if comp_mass <= 1e-6:
+            continue
+        intersect_box = [
+            max(float(comp_box[0]), float(crop[0])),
+            max(float(comp_box[1]), float(crop[1])),
+            min(float(comp_box[2]), float(crop[2])),
+            min(float(comp_box[3]), float(crop[3])),
+        ]
+        inside = _support_mass_for_box(subject_support, intersect_box) if box_area(intersect_box) > 1e-8 else 0.0
+        component_rows.append(
+            {
+                "mass": comp_mass,
+                "recall": clamp(inside / max(1e-8, comp_mass), 0.0, 1.0),
+            }
+        )
+    if not component_rows:
+        return {
+            "component_count_used": 0,
+            "component_recall": float(mass_recall),
+            "component_balance": 1.0,
+            "support_density": float(density),
+            "mass_recall": float(mass_recall),
+        }
+    weights = np.asarray([row["mass"] for row in component_rows], dtype=np.float32)
+    recalls = np.asarray([row["recall"] for row in component_rows], dtype=np.float32)
+    weight_sum = float(weights.sum())
+    if weight_sum <= 1e-8:
+        comp_recall = float(np.mean(recalls))
+        balance = 1.0
+    else:
+        weights /= weight_sum
+        comp_recall = float(np.sum(weights * recalls))
+        mean_val = comp_recall
+        variance = float(np.sum(weights * np.square(recalls - mean_val)))
+        balance = clamp(1.0 - math.sqrt(max(0.0, variance)), 0.0, 1.0)
+    return {
+        "component_count_used": int(len(component_rows)),
+        "component_recall": clamp(comp_recall, 0.0, 1.0),
+        "component_balance": balance,
+        "support_density": float(density),
+        "mass_recall": float(mass_recall),
+    }
+
+
+def subject_support_centroid_xy(
+    subject_support: Dict[str, Any],
+    fallback_xy: Sequence[float],
+) -> Tuple[float, float]:
+    centroid = subject_support.get("centroid_xy_norm")
+    if isinstance(centroid, (list, tuple)) and len(centroid) == 2:
+        return (
+            clamp(safe_float(centroid[0], fallback_xy[0]), 0.0, 1.0),
+            clamp(safe_float(centroid[1], fallback_xy[1]), 0.0, 1.0),
+        )
+    return (
+        clamp(safe_float(fallback_xy[0], 0.5), 0.0, 1.0),
+        clamp(safe_float(fallback_xy[1], 0.5), 0.0, 1.0),
+    )
+
+
+def subject_support_full_area_ratio(
+    subject_support: Dict[str, Any],
+    fallback: float,
+) -> float:
+    occ_grid = subject_support.get("occ_grid")
+    if isinstance(occ_grid, np.ndarray) and occ_grid.ndim == 2 and occ_grid.size > 0:
+        occ_ratio = float(np.sum(occ_grid > 0.0)) / float(occ_grid.size)
+        return clamp(occ_ratio, 0.0, 1.0)
+    foreground_area_ratio = safe_optional_float(subject_support.get("foreground_area_ratio"))
+    if foreground_area_ratio is not None:
+        return clamp(float(foreground_area_ratio), 0.0, 1.0)
+    bbox = subject_support.get("bbox_norm_xyxy")
+    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+        return clamp(box_area(bbox), 0.0, 1.0)
+    return clamp(safe_float(fallback, 0.0), 0.0, 1.0)
+
+
+def support_structure_score(guidance_support_metrics: Dict[str, Any]) -> float:
+    component_recall = clamp(safe_float(guidance_support_metrics.get("component_recall", 0.0), 0.0), 0.0, 1.0)
+    component_balance = clamp(safe_float(guidance_support_metrics.get("component_balance", 0.0), 0.0), 0.0, 1.0)
+    return clamp(0.70 * component_recall + 0.30 * component_balance, 0.0, 1.0)
 
 
 def subject_border_touch_soft(subject_support: Dict[str, Any], crop: Sequence[float], margin_alpha: float = 0.03) -> bool:
@@ -3806,6 +3933,7 @@ def compute_macro_score_bundle(
     expensive_source = str(comps.get("expensive_source", "")).strip().lower()
     expensive_active = expensive_source == "real"
     subject_terms_neutralized = bool(flags.get("subject_terms_neutralized", False))
+    support_map_enabled = bool(flags.get("subject_support_map_enabled", False))
 
     align_value = clamp(0.5 * (safe_float(comps.get("cosine_img_text", 0.0), 0.0) + 1.0), 0.0, 1.0) if expensive_active else 0.0
     a_components = {
@@ -3829,17 +3957,45 @@ def compute_macro_score_bundle(
         scale_score = _score_from_centered_band(scale_value, scale_target_range[0], scale_target_range[1])
     else:
         scale_score = None
+    support_structure_meta = checklist.get("support_structure", {}) if isinstance(checklist.get("support_structure"), dict) else {}
+    support_structure_value = safe_optional_float(support_structure_meta.get("value"))
     s_components = {
         "S_cov": clamp(safe_float(comps.get("cov", 0.0), 0.0), 0.0, 1.0),
         "S_scale": scale_score,
+        "S_support_structure": support_structure_value,
         "S_border": 0.0 if bool(flags.get("subject_touch_border", False)) else 1.0,
         "S_softcut_quality": _score_from_penalty(safe_optional_float(comps.get("p_cut"))),
     }
     if subject_terms_neutralized:
         s_components["S_cov"] = None
         s_components["S_scale"] = None
+        s_components["S_support_structure"] = None
         s_components["S_border"] = None
-    if subject_mode.startswith("scene_"):
+    if support_map_enabled and subject_mode.startswith("scene_"):
+        s_weights = {
+            "S_cov": 0.34,
+            "S_support_structure": 0.26,
+            "S_scale": 0.12,
+            "S_border": 0.10,
+            "S_softcut_quality": 0.18,
+        }
+    elif support_map_enabled and subject_mode.startswith("portrait"):
+        s_weights = {
+            "S_cov": 0.34,
+            "S_support_structure": 0.16,
+            "S_scale": 0.20,
+            "S_border": 0.18,
+            "S_softcut_quality": 0.12,
+        }
+    elif support_map_enabled:
+        s_weights = {
+            "S_cov": 0.32,
+            "S_support_structure": 0.22,
+            "S_scale": 0.18,
+            "S_border": 0.13,
+            "S_softcut_quality": 0.15,
+        }
+    elif subject_mode.startswith("scene_"):
         s_weights = {
             "S_cov": 0.45,
             "S_scale": 0.20,
@@ -4095,8 +4251,36 @@ def compute_candidate_scores(
     subject_terms_neutralized = bool(route.get("flags", {}).get("subject_terms_neutralized", False))
     subject_support = subject_support if isinstance(subject_support, dict) else {"mode": "bbox", "bbox_norm_xyxy": clip_box01(subject_box)}
     subject_cov_mode = str(subject_support.get("mode", "bbox"))
+    guidance_support_metrics = {
+        "component_count_used": 0,
+        "component_recall": 0.0,
+        "component_balance": 1.0,
+        "support_density": 0.0,
+        "mass_recall": 0.0,
+    }
+    support_centroid_xy = (
+        clamp(safe_float(subject_centroid[0], 0.5), 0.0, 1.0),
+        clamp(safe_float(subject_centroid[1], 0.5), 0.0, 1.0),
+    )
     if subject_cov_mode == "support_map":
         cov, subj_area_ratio = subject_coverage_soft(subject_support, crop)
+        guidance_support_metrics = compute_support_component_metrics(subject_support, crop)
+        support_centroid_xy = subject_support_centroid_xy(subject_support, support_centroid_xy)
+        attention_layout = str(
+            subject_support.get("crop_guidance_spec", {}).get("support_spec", {}).get("attention_layout", "none")
+            if isinstance(subject_support.get("crop_guidance_spec"), dict)
+            else "none"
+        )
+        if not subject_terms_neutralized:
+            if guidance_support_metrics["component_count_used"] > 1:
+                blend_w = 0.25 if attention_layout == "multi_subject" else 0.20
+            else:
+                blend_w = 0.10
+            guidance_cov = (
+                0.70 * float(guidance_support_metrics["component_recall"])
+                + 0.30 * float(guidance_support_metrics["component_balance"])
+            )
+            cov = clamp((1.0 - blend_w) * cov + blend_w * guidance_cov, 0.0, 1.0)
         subj_touch_raw = subject_border_touch_soft(subject_support, crop)
     else:
         cov, subj_area_ratio = subject_coverage(subject_box, crop)
@@ -4117,7 +4301,7 @@ def compute_candidate_scores(
     )
     p_text = safe_float(text_eval.get("p_text", 0.0), 0.0)
 
-    c_local = local_coords(crop, subject_centroid[0], subject_centroid[1])
+    c_local = local_coords(crop, support_centroid_xy[0], support_centroid_xy[1])
     d_third = distance_to_thirds(c_local)
     d_phi = distance_to_phi(c_local)
     d_center = distance_to_center(c_local)
@@ -4168,6 +4352,16 @@ def compute_candidate_scores(
         gamma_l=cfg.gamma_l,
     )
     subject_box_area_full = box_area(subject_box)
+    subject_extent_area_full = (
+        subject_support_full_area_ratio(subject_support, subject_box_area_full)
+        if subject_cov_mode == "support_map"
+        else subject_box_area_full
+    )
+    support_structure = (
+        support_structure_score(guidance_support_metrics)
+        if subject_cov_mode == "support_map"
+        else None
+    )
     route_subject_set = route.get("subject_set", {}) if isinstance(route.get("subject_set"), dict) else {}
     route_primary_area_ratio = safe_float(route_subject_set.get("c2_primary_area_ratio", subject_box_area_full))
     route_conf = safe_float(route.get("subject_mode_conf", 0.0))
@@ -4201,7 +4395,7 @@ def compute_candidate_scores(
     context_value = compute_context_preserved(
         crop_area=area,
         subject_area_in_crop_ratio=subj_area_ratio,
-        subject_box_area_full=subject_box_area_full,
+        subject_box_area_full=subject_extent_area_full,
         scene_bonus=0.5 * clamp(safe_float(horizon.get("visible_ratio", 0.0), 0.0), 0.0, 1.0) + 0.5 * sym,
         text_bonus=text_keep_ratio,
         negative_space_bonus=copyspace_ratio,
@@ -4308,6 +4502,67 @@ def compute_candidate_scores(
             "label": subject_scale_label,
             "target_range": [round(float(scale_lo), 4), round(float(scale_hi), 4)],
             "target_region": str(route.get("subject_scale_target_region", "primary_subject")),
+        },
+        "support_component_recall": {
+            "value": (
+                None
+                if subject_cov_mode != "support_map" or subject_terms_neutralized
+                else float(guidance_support_metrics["component_recall"])
+            ),
+            "label": (
+                "support_component_na"
+                if subject_cov_mode != "support_map" or subject_terms_neutralized
+                else ("support_components_preserved" if guidance_support_metrics["component_recall"] >= 0.75 else "support_components_partial")
+            ),
+            "component_count_used": int(guidance_support_metrics["component_count_used"]),
+        },
+        "support_component_balance": {
+            "value": (
+                None
+                if subject_cov_mode != "support_map" or subject_terms_neutralized
+                else float(guidance_support_metrics["component_balance"])
+            ),
+            "label": (
+                "support_balance_na"
+                if subject_cov_mode != "support_map" or subject_terms_neutralized
+                else ("support_balance_good" if guidance_support_metrics["component_balance"] >= 0.70 else "support_balance_skewed")
+            ),
+        },
+        "support_density": {
+            "value": (
+                None
+                if subject_cov_mode != "support_map"
+                else float(guidance_support_metrics["support_density"])
+            ),
+            "label": (
+                "support_density_na"
+                if subject_cov_mode != "support_map"
+                else ("support_density_high" if guidance_support_metrics["support_density"] >= 0.35 else "support_density_low")
+            ),
+        },
+        "support_structure": {
+            "value": (
+                None
+                if subject_cov_mode != "support_map" or subject_terms_neutralized
+                else float(support_structure if support_structure is not None else 0.0)
+            ),
+            "label": (
+                "support_structure_na"
+                if subject_cov_mode != "support_map" or subject_terms_neutralized
+                else ("support_structure_good" if safe_float(support_structure, 0.0) >= 0.72 else "support_structure_skewed")
+            ),
+        },
+        "support_extent_area": {
+            "value": (
+                None
+                if subject_cov_mode != "support_map"
+                else float(subject_extent_area_full)
+            ),
+            "label": (
+                "support_extent_na"
+                if subject_cov_mode != "support_map"
+                else ("support_extent_compact" if subject_extent_area_full <= 0.20 else "support_extent_wide")
+            ),
         },
         "face_cut": {"value": int(bool(f_cut)), "label": face_cut_label},
         "joint_cut": {
@@ -4601,6 +4856,10 @@ def compute_candidate_scores(
                 "subject_cov_mode": subject_cov_mode,
                 "subject_cov_raw": float(cov),
                 "subject_area_raw": float(subj_area_ratio),
+                "subject_extent_area_full": float(subject_extent_area_full),
+                "support_structure_score": (None if support_structure is None else float(support_structure)),
+                "support_centroid_x": float(support_centroid_xy[0]),
+                "support_centroid_y": float(support_centroid_xy[1]),
                 "r_comp": float(r_comp),
                 "r_horizon": float(horizon["reward"]),
                 "r_headroom": float(hr["score"]),
@@ -4642,6 +4901,7 @@ def compute_candidate_scores(
             "subject_effective_state": str(route.get("flags", {}).get("subject_effective_state", "")),
             "subject_coverage": float(cov),
             "subject_area": float(subj_area_ratio),
+            "subject_extent_area_full": float(subject_extent_area_full),
             "ar_error": ar_error,
             "ar_free_prior_penalty": float(p_ar_free),
         },

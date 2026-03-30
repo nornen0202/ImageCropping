@@ -80,6 +80,15 @@ source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
 ## 4. 권장 실행
 
+서버 실행 템플릿은 아래 공통 변수를 먼저 두고 쓰는 형식으로 통일하는 것을 권장합니다.
+
+```bash
+GPU_IDS=0,1,2
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+DATANAME=All
+RUN_TAG=gaic_260324_r1
+```
+
 ### 4.1 전체 실행
 
 ```bash
@@ -389,6 +398,10 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r1.jsonl \
   --use_real_expensive 1 \
   --run_vlm_teacher 0 \
+  --extract_gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS} \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
   --run_detailed_report 1 \
   --run_training_labels 1 \
   --safe_leftover_policy ignore \
@@ -451,10 +464,13 @@ python src/scripts/repair_teacher_outputs.py \
 ```bash
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
+DATANAME=All
+RUN_TAG=gaic_260324_r0_saliency_v4tp_proxy
+
 bash src/scripts/run_gaic_to_teacher_e2e.sh \
-  --data_dir data/GAIC/All \
+  --data_dir data/GAIC/${DATANAME} \
   --image_root data/Publics/GAIC/images \
-  --run_tag gaic_260324_r0_saliency_v4tp_proxy \
+  --run_tag ${RUN_TAG} \
   --skip_existing 1 \
   --gaic_generate_captions 0 \
   --run_filter 0 \
@@ -469,7 +485,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_subject_routing 1 \
   --run_c7_saliency 1 \
   --c7_saliency_priority quality_first \
-  --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r0.jsonl \
+  --teacher_proposals_jsonl data/GAIC/${DATANAME}/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r0.jsonl \
   --use_real_expensive 0 \
   --run_vlm_teacher 0 \
   --run_detailed_report 0 \
@@ -500,10 +516,15 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 ```bash
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
+GPU_IDS=0,1,2
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+DATANAME=All
+RUN_TAG=gaic_260324_r0_saliency_v4tp_full
+
 bash src/scripts/run_gaic_to_teacher_e2e.sh \
-  --data_dir data/GAIC/All \
+  --data_dir data/GAIC/${DATANAME} \
   --image_root data/Publics/GAIC/images \
-  --run_tag gaic_260324_r0_saliency_v4tp_full \
+  --run_tag ${RUN_TAG} \
   --skip_existing 1 \
   --gaic_generate_captions 1 \
   --run_filter 0 \
@@ -518,7 +539,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_subject_routing 1 \
   --run_c7_saliency 1 \
   --c7_saliency_priority quality_first \
-  --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r0.jsonl \
+  --teacher_proposals_jsonl data/GAIC/${DATANAME}/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r0.jsonl \
   --use_real_expensive 1 \
   --run_vlm_teacher 0 \
   --run_detailed_report 0 \
@@ -527,7 +548,11 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --auto_leftover_variants 1 \
   --run_gaic_benchmark_eval 0 \
   --run_gaic_subject_region_ab 0 \
-  --run_viz 0
+  --run_viz 0 \
+  --extract_gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS} \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS}
 ```
 
 서버 재실행 전에 확인할 것:
@@ -535,6 +560,175 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 - local에서 복사해온 `teacher_scores_ar_<run>.jsonl`은 중간 truncate가 없는지 먼저 검증
 - public teacher proposal JSONL이 `1236`행 완전본인지 확인
 - server run 뒤에는 `repair_teacher_outputs.py`를 한 번 더 돌려 parse error가 `0`인지 확인
+
+### 4.1j 기존 `gaic_260324_r2` real-expensive 산출물 재사용 + full benchmark/report만 다시 생성
+
+`gaic_260324_r2` 처럼 이미 아래 산출물이 완성돼 있다면:
+
+- `data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl`
+- `data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260324_r2.jsonl`
+- `data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260324_r2.jsonl`
+- `data/GAIC/All/artifacts/training_labels/gaic_260324_r2`
+
+전체 e2e를 다시 돌릴 필요는 없습니다. 용도에 따라 아래 두 경로 중 하나를 쓰면 됩니다.
+
+1. teacher score는 그대로 두고 benchmark/report만 다시 생성
+2. 최신 `score_teacher.py` 변경까지 반영하려고 teacher -> training labels -> benchmark만 다시 수행
+3. 최신 `subject_region.py + generate_candidates.py + score_teacher.py + benchmark renderer` 누적 변경을 전부 반영하려고 `subject reroute -> c7 -> candidates -> teacher -> labels -> benchmark`를 다시 수행
+
+#### A. benchmark / sample panel만 다시 생성
+
+이 경로는 가장 가볍습니다. 기존 `teacher_scores`와 `training_labels`를 그대로 사용하므로, scorer 재계산 없이 최신 `run_gaic_benchmark_eval.py` 렌더러와 분석 로직만 반영합니다.
+
+```bash
+# source /your/server/venv/bin/activate
+
+DATANAME=All
+RUN_TAG=gaic_260324_r2
+
+python src/scripts/run_gaic_benchmark_eval.py \
+  --candidates_jsonl data/GAIC/${DATANAME}/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
+  --features_jsonl data/GAIC/${DATANAME}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl \
+  --teacher_jsonl data/GAIC/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
+  --training_label_dir data/GAIC/${DATANAME}/artifacts/training_labels/${RUN_TAG} \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --image_dir data/GAIC/${DATANAME}/images \
+  --output_dir data/GAIC/${DATANAME}/artifacts/reports/gaic_benchmark_eval_${RUN_TAG} \
+  --sample_count 8 \
+  --max_images 0
+```
+
+이 명령은 `use_real_expensive=1` teacher run도 지원합니다. evaluator는 `teacher_scores` 안의 config를 읽어 `A_macro` 활성 여부를 그대로 반영합니다.
+
+#### B. 최신 scorer 변경까지 반영해 teacher -> labels -> benchmark만 다시 생성
+
+`score_teacher.py`가 바뀌었고 `A/S/C/T` 계산 자체를 다시 하고 싶다면, 기존 feature / candidate / public teacher proposal을 재사용하고 teacher 이후 단계만 다시 내려도 됩니다.
+
+```bash
+# source /your/server/venv/bin/activate
+
+GPU_IDS=0,1,2
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+DATANAME=All
+RUN_TAG=gaic_260324_r2
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/GAIC/${DATANAME} \
+  --image_root data/Publics/GAIC/images \
+  --run_tag ${RUN_TAG} \
+  --skip_existing 0 \
+  --gaic_generate_captions 0 \
+  --run_filter 0 \
+  --run_c1 0 \
+  --run_c2 0 \
+  --run_c3 0 \
+  --run_c3_enrich 0 \
+  --run_c4 0 \
+  --run_c5 0 \
+  --run_c6 0 \
+  --run_merge 0 \
+  --run_subject_routing 0 \
+  --run_c7_saliency 0 \
+  --run_candidates 0 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --run_training_labels 1 \
+  --run_detailed_report 1 \
+  --run_vlm_teacher 0 \
+  --extract_gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS} \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
+  --run_gaic_benchmark_eval 1 \
+  --gaic_benchmark_sample_count 8 \
+  --run_gaic_subject_region_ab 0 \
+  --run_viz 0
+```
+
+주의:
+
+- 이 경로는 `gaic_260324_r2`의 기존 `candidates`와 `routed_c7` feature를 입력으로 그대로 씁니다.
+- 즉 extraction / saliency / reroute / candidate generation은 건드리지 않고, 최신 scorer 및 benchmark 코드만 덮어씁니다.
+- 기존 `teacher_scores_ar_gaic_260324_r2.jsonl`을 덮어쓸 것이므로, 보존이 필요하면 먼저 별도 백업 run tag로 복사하는 편이 안전합니다.
+
+#### C. 지금까지 누적된 canonical guidance / support seed / candidate-generation 보완까지 전부 반영
+
+이 경로가 “현재 코드 기준 최신 산출물”을 만드는 표준 템플릿입니다. 즉 아래 변경들이 모두 반영됩니다.
+
+- `subject_region.py`의 reroute / support-map / reliability / fallback 보강
+- `generate_candidates.py`의 guidance seed / support-derived candidate family 변경
+- `score_teacher.py`의 support-map native macro scoring 변경
+- `run_gaic_benchmark_eval.py`의 최신 sample overlay / panel / 진단 로직
+
+중요:
+
+- 이 경우에는 **candidate generation을 반드시 다시 수행해야 합니다.**
+- 이유는 최신 보완안이 scorer만 바꾼 것이 아니라 `candidate seed`와 `candidate family` 자체를 바꾸기 때문입니다.
+- 따라서 `B` 경로로는 “최신 scorer on old pool”은 만들 수 있어도, “최신 candidate pool + 최신 scorer”는 만들 수 없습니다.
+
+가장 현실적인 재사용 경로는 `base precompute`는 유지하고, `subject routing -> c7 saliency augment -> reroute -> candidates -> teacher -> training labels -> benchmark`만 다시 수행하는 것입니다.
+
+```bash
+# source /your/server/venv/bin/activate
+
+GPU_IDS=0,1,2
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+
+RUN_TAG=gaic_260330_r0
+DATANAME=All
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/GAIC/${DATANAME} \
+  --image_root data/Publics/GAIC/images \
+  --run_tag ${RUN_TAG} \
+  --skip_existing 0 \
+  --gaic_generate_captions 0 \
+  --run_filter 0 \
+  --run_c1 0 \
+  --run_c2 0 \
+  --run_c3 0 \
+  --run_c3_enrich 0 \
+  --run_c4 0 \
+  --run_c5 0 \
+  --run_c6 0 \
+  --run_merge 0 \
+  --run_subject_routing 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --teacher_proposals_jsonl data/GAIC/${DATANAME}/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r1.jsonl \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --run_training_labels 1 \
+  --run_detailed_report 1 \
+  --run_vlm_teacher 0 \
+  --extract_gpu_ids ${GPU_IDS} \
+  --num_workers ${N_WORKERS} \
+  --teacher_gpu_ids ${GPU_IDS} \
+  --teacher_num_workers ${N_WORKERS} \
+  --run_gaic_benchmark_eval 1 \
+  --gaic_benchmark_sample_count 8 \
+  --run_gaic_subject_region_ab 1 \
+  --run_viz 1 \
+  | tee src/scripts/logs/run_gaic_to_teacher_e2e_${DATANAME}_${RUN_TAG}.log
+```
+
+설명:
+
+- `run_c1~run_c6=0`, `run_merge=0` 이므로 무거운 base extraction은 재사용합니다.
+- `run_subject_routing=1` 은 최신 `subject_region.py` 기준으로 routed feature를 다시 만듭니다.
+- `run_c7_saliency=1` 은 최신 saliency augment 결과를 다시 반영합니다.
+- `teacher_proposals_jsonl` 은 기존 public teacher proposal 산출물을 그대로 재사용합니다.
+- `run_candidates=1` 이 핵심입니다. support seed / guidance candidate family가 여기서 다시 생성됩니다.
+- 이후 `run_teacher=1 -> run_training_labels=1 -> run_gaic_benchmark_eval=1` 로 최신 scorer/label/report까지 한 번에 갱신됩니다.
+
+보존이 필요하면:
+
+- 기존 `gaic_260324_r2`를 유지하고 새 run tag를 쓰는 편이 더 안전합니다. 예: `gaic_260324_r2_refresh1`
+- 반대로 동일 경로 산출물을 업데이트하려면 위처럼 같은 `run_tag`와 `skip_existing=0`을 사용하면 됩니다.
 
 ### 4.2 준비 단계만 먼저 실행
 

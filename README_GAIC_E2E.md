@@ -484,7 +484,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 설명:
 
 - 이 lane은 `feats_c1.jsonl`, `routed_c7` feature, public teacher proposals를 재사용한다.
-- 현재 benchmark evaluator는 `use_real_expensive=0` proxy lane을 기준으로 동작한다.
+- 현재 benchmark evaluator는 `use_real_expensive=0/1` 둘 다 지원한다. real-expensive run에서는 기존 teacher score/training label 산출물을 그대로 읽어 후처리만 다시 수행하면 된다.
 - `gaic_260324_r0_saliency_v4tp_proxy` 로컬 재실행으로 teacher proposal 주입이 반영된 training-label / benchmark report 갱신을 확인했다.
 
 ### 4.1i full expensive lane은 언제 서버에서 다시 돌려야 하는가

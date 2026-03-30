@@ -3051,8 +3051,6 @@ def main() -> None:
     ensure_dir(output_dir)
 
     cfg = load_scorer_config(teacher_jsonl)
-    if bool(cfg.use_real_expensive):
-        raise RuntimeError("This evaluator currently supports proxy-expensive runs only (`use_real_expensive=0`).")
 
     candidate_map = load_map_by_image_id(candidates_jsonl)
     feature_map = load_map_by_image_id(features_jsonl)

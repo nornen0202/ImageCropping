@@ -101,6 +101,7 @@ def build_batch_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, 
         image_row["matching_target_count"] = len(safe_list(record.get("matching_targets")))
         image_row["candidate_pool_count"] = len(safe_list(record.get("candidate_pool")))
         image_row["ignored_candidate_count"] = len(safe_list(record.get("ignored_candidates")))
+        image_row["overflow_candidate_count"] = len(safe_list(record.get("overflow_candidates")))
         images.append(image_row)
         for target in safe_list(record.get("matching_targets")):
             bbox = norm_xyxy_to_coco_bbox(target.get("bbox_norm_xyxy", [0, 0, 1, 1]), width, height)
@@ -135,7 +136,7 @@ def build_batch_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, 
         "annotations": annotations,
         "categories": [{"supercategory": "none", "id": 0, "name": "crop"}],
         "sstk_meta": {
-            "source_schema": "sstk_conditional_detr_batch_v2",
+            "source_schema": "sstk_conditional_detr_batch_v3",
             "image_unit": "(image_id, target_ar)",
             "note": "Each COCO image row corresponds to one conditioned crop sample, not one raw image across all aspect ratios.",
             "safe_leftover_policies": sorted(

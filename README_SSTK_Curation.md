@@ -632,6 +632,8 @@ Filter 태그 임베딩 멀티 GPU 옵션 설명:
 - `--run_component_viz 1`을 켜면 precompute 시각화가 자동 생성되며, 출력은 기본적으로 `data/SSTK/<DATANAME>/artifacts/precompute/visualizations/components_<run_tag>/`에 저장됩니다.
 - 학습 데이터 생성 단계만 끄고 싶으면 `--run_training_labels 0`을 명시하세요.
 - training labels 단계는 legacy `pairwise/listwise/decision/checklist/regression`과 함께 Conditional-DETR용 `canonical/batch` JSONL, `validation_summary.json`, 예시 이미지가 포함된 `TRAINING_DATA_REPORT_KO.md`, COCO 확장 변환본, GAIC-like 변환본과 설명 문서를 동시에 생성합니다.
+- 기본 training labels 출력 경로는 `<run_tag>_leftover_ignore_monotonic` 입니다.
+- 추가 leftover variant는 기본 비활성화이며, 필요할 때만 상위 wrapper에서 `--auto_leftover_variants 1`로 opt-in 합니다.
 - precompute 시각화 산출물은 `original/`, `c2_seg/`, `c3_pose/`, `c4_ocr/`, `c5_geom/`, `c6_gaze/`, `combined_all/` 및 `viz_overview.json`입니다.
 - 기본 candidate AR 세트는 `FREE`를 포함합니다. (`--cand_ar_list`로 조정 가능)
 - `teacher_scores_jsonl`의 `results_by_ar`에 `FREE` 키가 함께 생성되며, `--vlm_target_ar all`이면 Stage10도 `FREE`를 포함해 라벨을 생성합니다.
@@ -1875,8 +1877,14 @@ Subject-Mode enrich(신규):
   - `1` = teacher score 이후 legacy `pairwise/listwise/decision/checklist/regression` + Conditional-DETR용 `train_conditional_detr_canonical.jsonl` / `train_conditional_detr_batch.jsonl` + `validation_summary.json` + 예시 이미지 리포트 생성기 + COCO 변환 + GAIC-like 변환 실행
   - `0` = training labels 단계 skip
   - `-1` = auto (`run_tag`가 있으면 on)
-- `--training_labels_dir`: training labels 출력 경로 (기본 `artifacts/training_labels/<run_tag>`)
+- `--training_labels_dir`: training labels 출력 경로 (기본 `artifacts/training_labels/<run_tag>_leftover_ignore_monotonic`)
+- `--run_training_label_debug_viz 0|1`: training labels 이후 GAIC GT 대비 debug viz 생성. 기본 `0`
+- `--training_label_debug_viz_sample_size`: debug viz 균등 샘플 수. 기본 `50`
+- `--training_label_debug_viz_seed`: debug viz 샘플링 seed. 기본 `42`
+- `--training_label_debug_viz_out_dir`: debug viz 출력 경로. 기본 `<training_labels_dir>/debug_visualizations_balanced50_bottomneg`
 - `--gaic_reference_json`: GAIC-like 변환 기준 JSON 경로 (기본 `data/Publics/GAIC/annotations_json/instances_train.json`)
+- `--gaic_train_reference_json`, `--gaic_test_reference_json`: debug viz / split export용 official GAIC train/test reference
+- SSTK처럼 official GAIC GT와 image_id 교집합이 없는 데이터셋에서 `--run_training_label_debug_viz 1`을 켜면, 스크립트는 실패하지 않고 GT 없이 pos./neg. 크롭 박스와 score distribution만 생성합니다.
 - `--component_viz_image_ids_file`: precompute 시각화 대상 image_id 파일(한 줄 1개)
 - `--run_candidates --run_teacher`
 - `--cand_ar_list`: candidate target AR CSV (기본: `FREE,1:1,9:16,16:9,3:4,4:3`)

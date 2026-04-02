@@ -2,10 +2,11 @@
 
 이 문서는 [README_SSTK_Curation.md](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/README_SSTK_Curation.md) 와 [run_phaseA_to_teacher_e2e.sh](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_phaseA_to_teacher_e2e.sh) 기반 파이프라인을 `GAIC` 이미지셋에 맞게 재사용하는 운영 가이드입니다.
 
-핵심 차이점은 세 가지입니다.
+핵심 차이점은 아래와 같습니다.
 
 - GAIC는 `curated pool` 선별 단계가 없습니다. `data/Publics/GAIC/images` 아래의 모든 이미지를 curated pool로 간주합니다.
-- GAIC는 태그/캡션 메타데이터가 없으므로 메타데이터 의존적인 `C1 + real-expensive teacher` 경로를 기본 비활성화합니다.
+- GAIC는 기본 parquet에 `tags/caption/super_cat`가 비어 있으므로 메타데이터 의존적인 `C1 + real-expensive teacher` 경로를 기본 비활성화합니다.
+- 대신 최신 routing은 `generated caption + public teacher geometry + C2/C3/C5/C7 perception`을 함께 사용해 `object_*`, `text_document`, `background_texture_copyspace`까지 다시 열 수 있습니다.
 - 기존 파이프라인이 flat `image_dir`를 기대하므로, GAIC 이미지를 심볼릭 링크 기반의 평탄화된 `images/` 디렉토리로 준비한 뒤 기존 e2e 스크립트를 그대로 호출합니다.
 - saliency 기반 subject-region 보강은 기본 off 이지만, wrapper에서 `--run_c7_saliency 1` 로 바로 활성화할 수 있습니다.
 - GAIC GT가 있는 경우 wrapper에서 `--run_gaic_benchmark_eval 1` 또는 `--run_gaic_subject_region_ab 1` 로 benchmark / saliency A-B까지 연속 실행할 수 있습니다.
@@ -47,6 +48,19 @@ GAIC는 이미지 외 메타데이터가 없으므로 기본값은 다음과 같
 
 필요 시 Qwen 기반 VLM으로 바꿀 수는 있지만, 그 경우 별도 런타임/가중치 준비가 되어 있어야 합니다.
 
+### 2.2.1 Caption + Public Teacher + Perception 재라우팅
+
+2026-04-01 기준 최신 구현은 GAIC/TestImages처럼 `tags/super_cat`가 없는 데이터셋에서도 아래 보강 경로를 사용합니다.
+
+- 1차 routing은 기존처럼 merged precompute(`C2/C3/C5`, 선택 시 `C7`)만으로 수행합니다.
+- public teacher proposal 생성이 끝나면 `run_phaseA_to_teacher_e2e.sh`가 `08d_reroute_subject_mode_with_public_teacher` 단계를 추가 실행합니다.
+- 이 2차 routing은 [src/scripts/enrich_subject_mode_jsonl.py](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/enrich_subject_mode_jsonl.py) 에 `--caption_jsonl`, `--teacher_proposals_jsonl` 을 넘겨 다시 계산합니다.
+- public teacher는 semantic category를 직접 주지 않으므로, router는 top proposal box들의 `median_area_ratio`, `consensus_iou`, `best_margin_side`, `best_margin_ratio`를 요약해 `copyspace`, `object_focus`, `scene_fullframe` geometry hint를 추론합니다.
+- 단, `teacher geometry-only copyspace`는 과발화를 막기 위해 보수적으로 사용합니다. blank ratio가 충분히 크고(`>= 0.40`), caption/object/scene/text와 충돌하지 않을 때만 copyspace gate를 통과시킵니다.
+- 최종 downstream feature는 `feats_c2c3c5_v2_strict_enriched_routed_final.jsonl` 이며, 이후 candidate/teacher/training label은 이 rerouted 파일을 사용합니다.
+
+이 경로 덕분에 GAIC/TestImages는 4개 mode에 갇히지 않고 `object_single`, `object_multi`, `text_document`, `background_texture_copyspace`까지 열 수 있습니다. SSTK도 같은 reroute 로직을 사용하되, 기존 `tags/super_cat` 위에 public teacher/perception을 추가 evidence로 얹어 copyspace 과발화와 `other_ambiguous` 비중을 줄이는 방향으로 동작합니다.
+
 ### 2.3 GAIC Synthetic Caption 경로
 
 GAIC에서 `run_c1=1`, `use_real_expensive=1` 을 실제로 쓰려면 텍스트 메타데이터가 필요하므로 wrapper가 synthetic caption을 먼저 생성한 뒤 parquet의 `caption` 컬럼에 병합합니다.
@@ -77,6 +91,38 @@ source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
 - 이미지 루트: `data/Publics/GAIC/images`
 - 기본 출력 루트: `data/GAIC/All`
+
+### 3.1 로컬 Subject-Routing 검증 명령
+
+GAIC subject routing 보강만 빠르게 재검증하려면 아래 명령을 사용합니다.
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+python src/scripts/enrich_subject_mode_jsonl.py \
+  --input_feats_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl \
+  --input_filtered_parquet data/GAIC/All/filtered_gaic_all.parquet \
+  --caption_jsonl data/GAIC/All_olds/artifacts/metadata/gaic_captions_gaic_260324_r0.jsonl \
+  --teacher_proposals_jsonl data/GAIC/All_olds/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r1.jsonl \
+  --output_jsonl tmp/gaic_routed_caption_teacher_v3.jsonl \
+  --progress 0
+```
+
+동일한 로직은 TestImages에도 그대로 적용됩니다.
+
+```bash
+python src/scripts/enrich_subject_mode_jsonl.py \
+  --input_feats_jsonl data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl \
+  --input_filtered_parquet data/TestImages/All/filtered_test_images_all.parquet \
+  --output_jsonl tmp/test_images_routed_caption_v3.jsonl \
+  --progress 0
+```
+
+2026-04-01 로컬 검증 결과:
+
+- GAIC baseline은 `other_ambiguous 657 / portrait_group 240 / portrait_single 204 / scene_general 135` 였고, reroute 후 `scene_general 416 / portrait_group 266 / portrait_single 245 / object_single 232 / object_multi 48 / background_texture_copyspace 23 / text_document 6` 으로 바뀌었습니다.
+- TestImages baseline은 4 mode(`other_ambiguous/portrait_group/portrait_single/scene_general`)만 관측됐고, reroute 후 `object_single 4`, `object_multi 2`가 추가로 열렸습니다.
+- 대표적인 변경 예시는 `plate of fruit and a key sitting on a table -> object_multi`, `man sitting on a bus reading a newspaper -> text_document`, `bench in the snow by the water -> scene_general` 입니다.
 
 ## 4. 권장 실행
 
@@ -150,10 +196,33 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 - 필요 시 `--run_c7_saliency 1 --c7_saliency_priority quality_first` 로 BiRefNet 우선 saliency까지 추가 가능
 - `C4`, `VLM teacher` 는 수행하지 않음
 - public teacher proposal injection을 켠 상태로 `candidates -> teacher` 를 수행
+- public teacher proposal 생성 뒤 `08d_reroute_subject_mode_with_public_teacher`가 자동 실행되며, caption/public teacher/perception 신호를 반영한 `..._routed_final.jsonl`이 downstream input으로 승격됩니다.
 - training label export 및 GAIC-like export 생성
-- wrapper가 `*_leftover_keepneg`, `*_leftover_ignore`, `*_leftover_softpos` variant를 자동 생성
+- 기본 training label output은 `${RUN_TAG}_leftover_ignore_monotonic` 하나만 생성
+- `--auto_leftover_variants 1`일 때만 `*_leftover_keepneg_monotonic`, `*_leftover_softpos_monotonic` variant를 추가 생성
+- `--run_training_label_debug_viz 1`일 때 마지막 단계에서 `debug_visualizations_balanced50_bottomneg/`를 자동 생성
+- training label dir에 `gaic_gt_score_cache_free.jsonl` 이 있으면 debug viz의 GT bbox 라벨에 `MOS + FREE-context training score_prob`를 함께 표기
 - GAIC-like export는 main json 외에 `..._train.json`, `..._test.json`, `..._unassigned.json` 도 함께 생성
 - 마지막에 자동 검증 실행
+
+위 `leftover_*` variant는 모두 같은 `teacher_scores`에서 다시 training label만 재구성한 실험용 분기다. 차이는 `safe high-score leftover`를 어떻게 처리하느냐에 있다.
+
+- safe high-score leftover:
+  - severe reject는 아니어서 unsafe negative는 아니지만
+  - 최종 chosen/matching target보다 `score_prob`는 더 높고
+  - diverse positive set(`selected_topk`)에는 들지 못한 후보
+- `${RUN_TAG}_leftover_keepneg_monotonic`:
+  - 이 후보를 기존처럼 `candidate_pool`의 `negative/near_negative`로 유지
+  - 과거 동작 재현이나 보수적 호환 비교에 적합
+  - conditional-DETR 관점에서는 "safe한데 positive보다 score가 높은 negative"가 남을 수 있어 가장 공격적인 negative mining variant다
+- `${RUN_TAG}_leftover_ignore_monotonic`:
+  - 이 후보를 `ignored_candidates`로 분리하고 negative annotation에서 제외
+  - 현재 기본/권장 정책
+  - positive set과 충돌할 수 있는 safe leftover를 제거하므로, detector 학습에서 contradictory negative를 줄이는 목적에 맞다
+- `${RUN_TAG}_leftover_softpos_monotonic`:
+  - 이 후보를 `soft_positive`로 승격해 `matching_targets`에 포함
+  - positive recall을 넓히는 실험용 variant
+  - 대신 positive set이 느슨해지므로 ranking/policy 일관성보다 recall을 우선할 때 적합
 
 중요:
 
@@ -661,6 +730,9 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 - `generate_candidates.py`의 guidance seed / support-derived candidate family 변경
 - `score_teacher.py`의 support-map native macro scoring 변경
 - `run_gaic_benchmark_eval.py`의 최신 sample overlay / panel / 진단 로직
+- `run_gaic_benchmark_eval.py`는 sample 상세 패널용 real-expensive 값을 `samples/sample_expensive_cache.jsonl`에 캐시한다.
+- 처음 한 번은 sample 대상 후보(`GT MOS best / Ge GT best / Ge prod best`)에 대해 OpenCLIP/NIMA를 다시 계산할 수 있지만, 같은 `output_dir`로 재실행하면 이후에는 이 cache를 재사용하므로 OpenCLIP/NIMA를 다시 올리지 않는다.
+- cache를 명시적으로 다시 만들고 싶으면 `.../samples/sample_expensive_cache.jsonl`만 지운 뒤 같은 benchmark 명령을 다시 실행하면 된다.
 
 중요:
 
@@ -777,6 +849,11 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 - `--gaic_caption_model_id MODEL_ID`: caption model override
 - `--gaic_caption_prompt STR`: BLIP conditional prompt 또는 Florence task prompt override
 - `--safe_leftover_policy keep_negative|ignore|promote_soft_positive`: safe high-score leftover를 기본 negative로 둘지, ignore로 분리할지, soft positive로 승격할지 선택
+- `--auto_leftover_variants 0|1`: 기본 monotonic output 외 추가 variant 자동 생성 여부. 기본 `0`
+- `--leftover_variant_policies CSV`: opt-in variant 정책 목록. 기본 `keep_negative,promote_soft_positive`
+- `--run_training_label_debug_viz 0|1`: training label 생성 뒤 GAIC GT 대비 debug visualization 자동 생성 여부. 기본 `0`
+- `--training_label_debug_viz_sample_size N`: debug viz 균등 샘플 수. 기본 `50`
+- `--training_label_debug_viz_out_dir PATH`: debug viz 출력 경로. 기본 `<training_labels_dir>/debug_visualizations_balanced50_bottomneg`
 - `--vlm_backend qwen25_vl`: Qwen 기반 Stage-10 사용 시
 - `--vlm_backend heuristic`: teacher score 기반 heuristic Stage-10 사용 시
 - `--vlm_fallback_backend none`: backend 실패 시 fallback 없이 바로 종료/skip 하려는 경우
@@ -894,12 +971,79 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 
 ## 5.2 Training Label Variant 재생성
 
-기본 wrapper 실행에서 `--run_training_labels 1` 이면 아래 variant들이 자동 생성됩니다.
+기본 wrapper 실행에서 `--run_training_labels 1` 이면 아래 main output만 생성됩니다.
 
-- `${RUN_TAG}`: 사용자가 지정한 기본 policy output
-- `${RUN_TAG}_leftover_keepneg`
-- `${RUN_TAG}_leftover_ignore`
-- `${RUN_TAG}_leftover_softpos`
+- `${RUN_TAG}_leftover_ignore_monotonic`
+
+즉 현재 wrapper 기본 정책은
+
+- `safe_leftover_policy=ignore`
+- monotonic score / monotonic split 사용
+- 추가 variant 자동 생성 비활성화
+
+입니다.
+
+추가 variant는 `--auto_leftover_variants 1` 일 때만 opt-in으로 생성됩니다.
+
+- `${RUN_TAG}_leftover_keepneg_monotonic`
+- `${RUN_TAG}_leftover_softpos_monotonic`
+
+## 5.3 GT Score Cache for Debug Visualization
+
+`debug_visualizations_*` 에서 GT bbox 라벨에 `MOS` 뿐 아니라 `training score_prob` 도 같이 보려면, official GAIC GT crop을 현재 teacher/training-label scoring 문맥에 다시 태운 cache가 필요합니다.
+
+- cache 파일명 기본값: `<training_labels_dir>/gaic_gt_score_cache_free.jsonl`
+- 현재 구현은 official GAIC GT crop이 free-form 이라는 점을 맞춰 `FREE` 문맥 score만 계산합니다.
+- by-AR debug viz에서도 GT bbox는 official free-form bbox를 그대로 reference overlay로 쓰므로, 표시되는 GT `Score` 역시 `FREE-context training score_prob` 입니다.
+- score 정의는 raw full candidate pool이 아니라 **training label builder가 실제로 쓰는 deduped teacher subset(`cheap_top_m + selected_topk + hard_negatives + also_considered_rejected + best + baseline`) 기준 local normalization** 입니다. 즉 debug viz의 GT `Score`는 현행 training-label `score_prob`와 같은 축으로 해석하면 됩니다.
+
+로컬에서 현재 선택된 debug-viz subset만 빠르게 계산:
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+python src/scripts/build_gaic_gt_score_cache.py \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260330_r0.jsonl \
+  --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl \
+  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260330_r0_monotonic.jsonl \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --image_ids_csv data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg/summary/selected_images.csv \
+  --out_jsonl data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/gaic_gt_score_cache_free.jsonl
+
+python src/scripts/build_gaic_training_label_debug_viz.py \
+  --coco_json data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json \
+  --batch_jsonl data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl \
+  --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_gt_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --gt_score_cache_jsonl data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/gaic_gt_score_cache_free.jsonl \
+  --image_root data/GAIC/All/images \
+  --subject_mode_vocab data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/subject_mode_vocab.json \
+  --sample_size 50 \
+  --seed 42 \
+  --out_dir data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg
+```
+
+전체 GAIC GT cache는 서버에서 한 번 생성하고, 로컬에서는 cache만 복사해서 debug viz를 다시 그리는 방식을 권장합니다.
+
+```bash
+# server
+source /your/server/venv/bin/activate
+
+python src/scripts/build_gaic_gt_score_cache.py \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_<RUN_TAG>.jsonl \
+  --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl \
+  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_<RUN_TAG>_monotonic.jsonl \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --out_jsonl data/GAIC/All/artifacts/training_labels/<RUN_TAG>_leftover_ignore_monotonic/gaic_gt_score_cache_free.jsonl
+```
+
+그 다음 로컬에서는 위 cache 파일을 그대로 사용해 `build_gaic_training_label_debug_viz.py` 만 다시 실행하면 됩니다.
+
+참고:
+
+- `teacher_scores_ar_<RUN_TAG>.jsonl` 원본이 부분 손상되었거나 truncated 된 경우가 있으면, 현재 스크립트는 같은 디렉토리의 `teacher_scores_ar_<RUN_TAG>_monotonic.jsonl` 이 존재할 때 자동 fallback 합니다.
 
 또한 각 training label dir의 `coco/` 아래에는 다음 split export가 함께 생성됩니다.
 
@@ -918,11 +1062,25 @@ safe high-score leftover는
 
 후보를 뜻합니다.
 
-기본 `ignore` 정책에서는 이 후보들이 `ignored_candidates`로 분리되고, negative annotation에서 제외됩니다. `keep_negative`는 이전 동작을 재현할 때만 명시적으로 사용하는 보수적 호환 옵션입니다. 분석/학습 실험을 위해 아래 variant를 만들 수 있습니다.
+기본 `ignore + monotonic` 정책에서는 이 후보들이 `ignored_candidates`로 분리되고, weak soft-positive tail도 pruning되며, high-score unsafe/hard는 `overflow_candidates`로 빠집니다. 즉 main `candidate_pool` 기준으로는 `positive > negative`가 강제됩니다.
+
+opt-in variant 실험을 위해 아래 분기를 만들 수 있습니다.
 
 - `keep_negative`: 이 후보를 기존처럼 `candidate_pool`의 `negative/near_negative`로 유지
 - `ignore`: 이 후보를 `ignored_candidates`로 분리하고 negative annotation에서 제외
 - `promote_soft_positive`: 이 후보를 `soft_positive`로 승격하고 `matching_targets`에 포함
+
+학습 관점에서 해석하면 다음과 같습니다.
+
+- `keep_negative`:
+  - hardest negative를 가장 많이 남긴다.
+  - 다만 safe leftover가 chosen/matching target보다 점수가 높은 경우도 negative로 들어가므로, conditional-DETR 분류/랭킹 관점에서 supervision 충돌이 가장 크다.
+- `ignore`:
+  - safe leftover를 아예 negative pool 밖으로 빼서 contradiction을 줄인다.
+  - 현재 운영 기본값인 이유도 이 정책이 positive set과 negative pool 사이의 경계를 가장 안정적으로 만들기 때문이다.
+- `promote_soft_positive`:
+  - safe leftover를 positive recall 확장용으로 흡수한다.
+  - 다만 positive set의 다양성과 허용 범위가 넓어지므로, strict한 top-choice 학습보다 multi-positive tolerance를 주는 실험에 가깝다.
 
 기존 `teacher_scores`를 재사용해 training label만 다시 뽑고 split export까지 갱신하는 명령 템플릿:
 
@@ -937,9 +1095,9 @@ GAIC_REF=data/GAIC/All/gaic_reference_available.json
 
 for POLICY in ignore promote_soft_positive; do
   if [ "${POLICY}" = "ignore" ]; then
-    OUT_DIR=${BASE}/${RUN_TAG}_leftover_ignore
+    OUT_DIR=${BASE}/${RUN_TAG}_leftover_ignore_monotonic
   else
-    OUT_DIR=${BASE}/${RUN_TAG}_leftover_softpos
+    OUT_DIR=${BASE}/${RUN_TAG}_leftover_softpos_monotonic
   fi
 
   python src/scripts/build_finalscore_training_data.py \
@@ -969,7 +1127,9 @@ for POLICY in ignore promote_soft_positive; do
 done
 ```
 
-전체 e2e wrapper를 재사용하고 싶으면 `--safe_leftover_policy`와 `--training_labels_dir`를 같이 넘기면 됩니다. 예:
+전체 e2e wrapper를 재사용하고 싶으면 기본 main output만 그대로 쓰거나, opt-in variant를 켜면 됩니다.
+
+기본 monotonic main output 예:
 
 ```bash
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
@@ -985,16 +1145,53 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_vlm_teacher 0 \
   --run_detailed_report 0 \
   --run_training_labels 1 \
-  --safe_leftover_policy ignore \
-  --training_labels_dir data/GAIC/All/artifacts/training_labels/gaic_260320_r0_leftover_ignore
+  --safe_leftover_policy ignore
 ```
 
-2026-03-20 기준 실제 생성/검증 완료된 경로:
+추가 variant가 필요하면 아래처럼 명시적으로 켭니다.
 
-- 기본값(`ignore`): [data/GAIC/All/artifacts/training_labels/gaic_260320_r0](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/data/GAIC/All/artifacts/training_labels/gaic_260320_r0)
-- keep-negative variant: [data/GAIC/All/artifacts/training_labels/gaic_260320_r0_leftover_keepneg](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/data/GAIC/All/artifacts/training_labels/gaic_260320_r0_leftover_keepneg)
-- ignore variant: [data/GAIC/All/artifacts/training_labels/gaic_260320_r0_leftover_ignore](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/data/GAIC/All/artifacts/training_labels/gaic_260320_r0_leftover_ignore)
-- soft-positive variant: [data/GAIC/All/artifacts/training_labels/gaic_260320_r0_leftover_softpos](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/data/GAIC/All/artifacts/training_labels/gaic_260320_r0_leftover_softpos)
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/GAIC/All \
+  --image_root data/Publics/GAIC/images \
+  --run_tag gaic_260330_r0 \
+  --skip_existing 1 \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --run_vlm_teacher 0 \
+  --run_detailed_report 0 \
+  --run_training_labels 1 \
+  --auto_leftover_variants 1 \
+  --leftover_variant_policies keep_negative,promote_soft_positive
+```
+
+debug visualization까지 마지막 단계에서 자동으로 만들고 싶으면:
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/GAIC/All \
+  --image_root data/Publics/GAIC/images \
+  --run_tag gaic_260330_r0 \
+  --skip_existing 1 \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --run_vlm_teacher 0 \
+  --run_detailed_report 0 \
+  --run_training_labels 1 \
+  --run_training_label_debug_viz 1 \
+  --training_label_debug_viz_sample_size 50
+```
+
+2026-04-01 기준 실제 생성/검증 완료된 경로:
+
+- 기본 monotonic output: [data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic)
+- monotonic debug viz: [data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg)
 
 실제 차이 요약:
 

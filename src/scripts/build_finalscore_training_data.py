@@ -4,9 +4,16 @@ import argparse
 import copy
 import json
 import math
+import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
+
+PROJECT_SRC = Path(__file__).resolve().parents[1]
+if str(PROJECT_SRC) not in sys.path:
+    sys.path.insert(0, str(PROJECT_SRC))
+
+from scripts.safety_score_utils import SafetyPenaltyConfig, compute_safety_penalty_bundle, parse_target_ar_value
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -112,6 +119,17 @@ ORDINAL_LABEL_MAPS: Dict[str, Dict[str, int]] = {
         "context_preserved": 2,
     },
 }
+DEFAULT_SAFETY_PENALTY_CFG = SafetyPenaltyConfig()
+REFRESH_TEACHER_CFG: Any = None
+COMPUTE_MACRO_SCORE_BUNDLE = None
+FUSE_MACRO_SCORES = None
+NORMALIZE_FINAL_SCORES = None
+PICK_BASELINE_CANDIDATES = None
+DECIDE_KEEP_VS_CROP = None
+SELECT_TOPK_DIVERSE = None
+PROTECTED_SECONDARY_IOU_MIN = 0.20
+PROTECTED_SECONDARY_IOU_MAX = 0.92
+PROTECTED_SECONDARY_SCORE_DELTA_MAX = 0.10
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
@@ -153,6 +171,102 @@ def sigmoid(value: float) -> float:
     return z / (1.0 + z)
 
 
+def bbox_iou_xyxy(box_a: Sequence[Any], box_b: Sequence[Any]) -> float:
+    if len(box_a) < 4 or len(box_b) < 4:
+        return 0.0
+    ax1, ay1, ax2, ay2 = [safe_float(v, 0.0) for v in list(box_a)[:4]]
+    bx1, by1, bx2, by2 = [safe_float(v, 0.0) for v in list(box_b)[:4]]
+    inter_x1 = max(ax1, bx1)
+    inter_y1 = max(ay1, by1)
+    inter_x2 = min(ax2, bx2)
+    inter_y2 = min(ay2, by2)
+    inter_w = max(0.0, inter_x2 - inter_x1)
+    inter_h = max(0.0, inter_y2 - inter_y1)
+    inter = inter_w * inter_h
+    area_a = max(0.0, ax2 - ax1) * max(0.0, ay2 - ay1)
+    area_b = max(0.0, bx2 - bx1) * max(0.0, by2 - by1)
+    union = max(1e-9, area_a + area_b - inter)
+    return inter / union
+
+
+def build_route_snapshot(routing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    route = safe_dict(routing)
+    return {
+        "shot_type": str(route.get("shot_type", "unknown")),
+        "portrait_category": str(route.get("portrait_category", "generic")),
+        "flags": copy.deepcopy(safe_dict(route.get("flags"))),
+        "subject_mode": str(route.get("subject_mode", "")),
+    }
+
+
+def ensure_refresh_teacher_runtime() -> None:
+    global REFRESH_TEACHER_CFG
+    global COMPUTE_MACRO_SCORE_BUNDLE
+    global FUSE_MACRO_SCORES
+    global NORMALIZE_FINAL_SCORES
+    global PICK_BASELINE_CANDIDATES
+    global DECIDE_KEEP_VS_CROP
+    global SELECT_TOPK_DIVERSE
+    if REFRESH_TEACHER_CFG is not None:
+        return
+    from score_teacher import (  # local import to keep `python -S build_finalscore_training_data.py --help` working
+        TeacherScorerConfig,
+        compute_macro_score_bundle,
+        decide_keep_vs_crop,
+        fuse_macro_scores,
+        normalize_final_scores,
+        pick_baseline_candidates,
+        select_topk_diverse,
+    )
+
+    REFRESH_TEACHER_CFG = TeacherScorerConfig()
+    COMPUTE_MACRO_SCORE_BUNDLE = compute_macro_score_bundle
+    FUSE_MACRO_SCORES = fuse_macro_scores
+    NORMALIZE_FINAL_SCORES = normalize_final_scores
+    PICK_BASELINE_CANDIDATES = pick_baseline_candidates
+    DECIDE_KEEP_VS_CROP = decide_keep_vs_crop
+    SELECT_TOPK_DIVERSE = select_topk_diverse
+
+
+def build_refresh_safety_penalty_cfg() -> SafetyPenaltyConfig:
+    ensure_refresh_teacher_runtime()
+    cfg = REFRESH_TEACHER_CFG
+    return SafetyPenaltyConfig(
+        area_min=float(cfg.area_min),
+        area_max=float(cfg.area_max),
+        ar_hard_eps=float(cfg.ar_hard_eps),
+        head_top_min_margin=float(cfg.head_top_min_margin),
+        lambda_area=float(cfg.safety_lambda_area),
+        lambda_ar=float(cfg.safety_lambda_ar),
+        lambda_face=float(cfg.safety_lambda_face),
+        lambda_head_top=float(cfg.safety_lambda_head_top),
+        lambda_joint=float(cfg.safety_lambda_joint),
+        lambda_lookroom=float(cfg.safety_lambda_lookroom),
+        lambda_text=float(cfg.safety_lambda_text),
+        lambda_subject_border=float(cfg.safety_lambda_subject_border),
+        bonus_area_hard=float(cfg.safety_bonus_area_hard),
+        bonus_ar_hard=float(cfg.safety_bonus_ar_hard),
+        bonus_face_hard=float(cfg.safety_bonus_face_hard),
+        bonus_head_top_hard=float(cfg.safety_bonus_head_top_hard),
+        bonus_joint_hard=float(cfg.safety_bonus_joint_hard),
+        bonus_lookroom_hard=float(cfg.safety_bonus_lookroom_hard),
+        bonus_text_hard=float(cfg.safety_bonus_text_hard),
+        ar_violation_scale=float(cfg.safety_ar_violation_scale),
+        lookroom_scale_floor=float(cfg.safety_lookroom_scale_floor),
+        text_soft_cap=float(cfg.safety_text_soft_cap),
+        severity_cap=float(cfg.safety_severity_cap),
+        joint_relax_lambda_scale=float(cfg.safety_joint_relax_lambda_scale),
+        joint_relax_bonus_scale=float(cfg.safety_joint_relax_bonus_scale),
+        head_top_relax_lambda_scale=float(cfg.safety_head_top_relax_lambda_scale),
+        head_top_relax_bonus_scale=float(cfg.safety_head_top_relax_bonus_scale),
+        subject_border_relax_lambda_scale=float(cfg.safety_subject_border_relax_lambda_scale),
+        relax_joint_head_top_min_coverage=float(cfg.safety_relax_joint_head_top_min_coverage),
+        relax_subject_border_min_coverage=float(cfg.safety_relax_subject_border_min_coverage),
+        relax_joint_max_severe_count=int(cfg.safety_relax_joint_max_severe_count),
+        relax_subject_border_max_joint_score=float(cfg.safety_relax_subject_border_max_joint_score),
+    )
+
+
 def score_prob_from_annotated_candidate(candidate: Dict[str, Any]) -> float:
     if candidate.get("score_policy_sigmoid_z_local") is not None:
         return safe_float(candidate.get("score_policy_sigmoid_z_local", 0.0))
@@ -164,6 +278,254 @@ def score_prob_from_annotated_candidate(candidate: Dict[str, Any]) -> float:
     if candidate.get("score_sigmoid_z_local") is not None:
         return safe_float(candidate.get("score_sigmoid_z_local", 0.0))
     return sigmoid(safe_float(candidate.get("score_z_local", 0.0)))
+
+
+def safe_policy_raw_score(candidate: Dict[str, Any], *, target_ar: str) -> float:
+    scores = safe_dict(candidate.get("scores"))
+    if "policy_safe" in scores:
+        return safe_float(scores.get("policy_safe", 0.0))
+    if "policy_base" in scores and "safety_penalty_total" in scores:
+        return safe_float(scores.get("policy_base", 0.0)) - safe_float(scores.get("safety_penalty_total", 0.0))
+    policy_base = safe_float(scores.get("policy", scores.get("final", 0.0)), 0.0)
+    safety_bundle = compute_safety_penalty_bundle(
+        candidate=candidate,
+        target_ar_value=parse_target_ar_value(target_ar),
+        cfg=build_refresh_safety_penalty_cfg(),
+    )
+    return policy_base - safe_float(safety_bundle.get("total", 0.0), 0.0)
+
+
+def apply_training_safe_policy_score(
+    candidate: Dict[str, Any],
+    *,
+    target_ar: str,
+    routing: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    ensure_refresh_teacher_runtime()
+    out = copy.deepcopy(candidate)
+    route_snapshot = build_route_snapshot(routing)
+    if route_snapshot:
+        out["route_snapshot"] = route_snapshot
+        if not str(out.get("subject_mode", "")).strip():
+            out["subject_mode"] = route_snapshot.get("subject_mode", "")
+    scores = safe_dict(out.get("scores"))
+    has_refresh_detail = bool(safe_dict(scores.get("components")))
+    if has_refresh_detail:
+        macro_scores, macro_components, macro_masks = COMPUTE_MACRO_SCORE_BUNDLE(
+            candidate=out,
+            cfg=REFRESH_TEACHER_CFG,
+        )
+        score_rank = FUSE_MACRO_SCORES(
+            macro_scores=macro_scores,
+            macro_masks=macro_masks,
+            cfg=REFRESH_TEACHER_CFG,
+        )
+        existing_area_log_prior = scores.get("area_log_prior")
+        if existing_area_log_prior is None and scores.get("policy_base") is not None and scores.get("rank_macro") is not None:
+            existing_area_log_prior = safe_float(scores.get("policy_base", 0.0), 0.0) - safe_float(scores.get("rank_macro", 0.0), 0.0)
+        area_log_prior = safe_float(existing_area_log_prior, 0.0)
+        policy_base = float(score_rank) + float(area_log_prior)
+    else:
+        macro_scores = copy.deepcopy(safe_dict(out.get("macro_scores")))
+        macro_components = copy.deepcopy(safe_dict(out.get("macro_components")))
+        macro_masks = copy.deepcopy(safe_dict(out.get("macro_masks")))
+        score_rank = safe_float(scores.get("rank_macro", scores.get("rank", scores.get("final", 0.0))), 0.0)
+        area_log_prior = safe_float(scores.get("area_log_prior", 0.0), 0.0)
+        policy_base = safe_float(scores.get("policy_base", scores.get("policy", scores.get("final", 0.0))), 0.0)
+    safety_bundle = compute_safety_penalty_bundle(
+        candidate=out,
+        target_ar_value=parse_target_ar_value(target_ar),
+        cfg=build_refresh_safety_penalty_cfg(),
+    )
+    policy_safe = float(policy_base - safe_float(safety_bundle.get("total", 0.0), 0.0))
+    scores["rank_macro"] = float(score_rank)
+    scores["policy_base"] = float(policy_base)
+    scores["policy_safe"] = float(policy_safe)
+    scores["safety_penalty_total"] = safe_float(safety_bundle.get("total", 0.0), 0.0)
+    scores["safety_penalty_soft"] = safe_float(safety_bundle.get("soft_total", 0.0), 0.0)
+    scores["safety_penalty_hard"] = safe_float(safety_bundle.get("hard_total", 0.0), 0.0)
+    scores["safety_penalty_components"] = copy.deepcopy(safety_bundle)
+    scores["area_log_prior"] = float(area_log_prior)
+    scores["rank"] = float(policy_safe)
+    scores["policy"] = float(policy_safe)
+    scores["final"] = float(policy_safe)
+    out["scores"] = scores
+    out["macro_scores"] = copy.deepcopy(macro_scores)
+    out["macro_components"] = copy.deepcopy(macro_components)
+    out["macro_masks"] = copy.deepcopy(macro_masks)
+    policy_meta = safe_dict(out.get("policy"))
+    policy_meta["area_log_prior"] = float(area_log_prior)
+    policy_meta["policy_base"] = float(policy_base)
+    policy_meta["policy_safe"] = float(policy_safe)
+    policy_meta["safety_penalty_total"] = safe_float(safety_bundle.get("total", 0.0), 0.0)
+    out["policy"] = policy_meta
+    return out
+
+
+def mark_candidate_as_ignore(row: Dict[str, Any], *, state: str) -> None:
+    row["is_ignore_candidate"] = True
+    row["is_positive_candidate"] = False
+    row["is_soft_positive"] = False
+    row["is_hard_negative"] = False
+    row["is_near_negative"] = False
+    row["label_type"] = "ignore"
+    row["monotonic_label_state"] = str(state)
+
+
+def mark_candidate_as_overflow(row: Dict[str, Any], *, reason: str) -> None:
+    row["is_overflow_candidate"] = True
+    row["overflow_bucket_reason"] = str(reason)
+    row["training_bucket"] = "overflow"
+    row["monotonic_label_state"] = str(row.get("monotonic_label_state", "none"))
+
+
+def enforce_monotonic_label_split(
+    candidates: Sequence[Dict[str, Any]],
+    *,
+    chosen_candidate_id: str,
+    decision_type: str,
+) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
+    updated = [copy.deepcopy(candidate) for candidate in candidates]
+    by_id = {str(candidate.get("candidate_id", "")): candidate for candidate in updated}
+    stats = {
+        "overflow_candidate_total": 0,
+        "overflow_unsafe_candidate_total": 0,
+        "weak_positive_pruned_count": 0,
+        "monotonic_safe_ignored_count": 0,
+        "fallback_positive_promotions": 0,
+        "protected_secondary_positive_count": 0,
+    }
+
+    for row in updated:
+        row["is_overflow_candidate"] = False
+        row["overflow_bucket_reason"] = "none"
+        row["monotonic_label_state"] = "none"
+        row["positive_anchor_reason"] = "none"
+        row["training_bucket"] = "ignored" if bool(row.get("is_ignore_candidate", False)) else "main"
+        if bool(row.get("is_unsafe_negative", False)) or bool(row.get("is_hard_negative", False)):
+            mark_candidate_as_overflow(row, reason="unsafe_or_hard_negative")
+            stats["overflow_candidate_total"] += 1
+            stats["overflow_unsafe_candidate_total"] += 1
+
+    def score(row: Dict[str, Any]) -> float:
+        return score_prob_from_annotated_candidate(row)
+
+    def safe_active_rows() -> List[Dict[str, Any]]:
+        return [
+            row
+            for row in updated
+            if (not bool(row.get("is_ignore_candidate", False))) and (not bool(row.get("is_overflow_candidate", False)))
+        ]
+
+    protected_ids: set[str] = set()
+
+    def protect(candidate_id: str, reason: str) -> None:
+        candidate = by_id.get(candidate_id)
+        if candidate is None or bool(candidate.get("is_ignore_candidate", False)) or bool(candidate.get("is_overflow_candidate", False)):
+            return
+        protected_ids.add(candidate_id)
+        candidate["positive_anchor_reason"] = reason
+
+    for row in updated:
+        candidate_id = str(row.get("candidate_id", ""))
+        if not candidate_id or bool(row.get("is_overflow_candidate", False)):
+            continue
+        if bool(row.get("is_top1", False)):
+            protect(candidate_id, "top1")
+        if candidate_id == chosen_candidate_id:
+            protect(candidate_id, "chosen")
+        if decision_type in {"keep_full", "minimal_crop"} and bool(row.get("is_baseline_candidate", False)):
+            protect(candidate_id, "baseline")
+        if bool(row.get("is_positive_candidate", False)) and (not bool(row.get("is_soft_positive", False))):
+            protect(candidate_id, "non_soft_positive")
+
+    positives = [row for row in safe_active_rows() if bool(row.get("is_positive_candidate", False))]
+    if not positives:
+        safe_rows = sorted(safe_active_rows(), key=score, reverse=True)
+        if safe_rows:
+            fallback = safe_rows[0]
+            fallback["is_positive_candidate"] = True
+            fallback["is_soft_positive"] = False
+            fallback["label_type"] = "top1"
+            fallback["positive_anchor_reason"] = "fallback_positive"
+            protected_ids.add(str(fallback.get("candidate_id", "")))
+            stats["fallback_positive_promotions"] += 1
+
+    safe_rows = safe_active_rows()
+    positives = [row for row in safe_rows if bool(row.get("is_positive_candidate", False))]
+    non_soft_positive_count = sum(1 for row in positives if not bool(row.get("is_soft_positive", False)))
+    anchor_positive = max(positives, key=score, default=None)
+    if anchor_positive is not None and non_soft_positive_count < 2:
+        anchor_bbox = anchor_positive.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])
+        anchor_score = score(anchor_positive)
+        eligible_secondary: List[Dict[str, Any]] = []
+        for row in safe_rows:
+            candidate_id = str(row.get("candidate_id", ""))
+            if not candidate_id or bool(row.get("is_positive_candidate", False)):
+                continue
+            if has_soft_issue(row):
+                continue
+            if bool(row.get("is_ignore_candidate", False)) or bool(row.get("is_overflow_candidate", False)):
+                continue
+            if anchor_score - score(row) > float(PROTECTED_SECONDARY_SCORE_DELTA_MAX):
+                continue
+            iou_val = bbox_iou_xyxy(anchor_bbox, row.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]))
+            if iou_val < float(PROTECTED_SECONDARY_IOU_MIN) or iou_val > float(PROTECTED_SECONDARY_IOU_MAX):
+                continue
+            labels = safe_dict(row.get("checklist_labels"))
+            if str(labels.get("subject_coverage", "")).strip().lower() not in {"excellent", "good"}:
+                continue
+            if str(labels.get("face_cut", "")).strip().lower() != "no_face_cut":
+                continue
+            if str(labels.get("joint_cut", "")).strip().lower() != "no_joint_cut":
+                continue
+            eligible_secondary.append(row)
+        if eligible_secondary:
+            secondary = max(eligible_secondary, key=score)
+            secondary["is_positive_candidate"] = True
+            secondary["is_soft_positive"] = False
+            secondary["label_type"] = "protected_secondary_positive"
+            secondary["positive_anchor_reason"] = "protected_secondary_positive"
+            protected_ids.add(str(secondary.get("candidate_id", "")))
+            stats["protected_secondary_positive_count"] += 1
+
+    while True:
+        safe_rows = safe_active_rows()
+        positives = [row for row in safe_rows if bool(row.get("is_positive_candidate", False))]
+        negatives = [row for row in safe_rows if not bool(row.get("is_positive_candidate", False))]
+        if not positives:
+            break
+        weakest_positive = min(positives, key=score)
+        weakest_score = score(weakest_positive)
+        blocking_negatives = [row for row in negatives if score(row) >= weakest_score - 1e-9]
+        if not blocking_negatives:
+            break
+        weakest_id = str(weakest_positive.get("candidate_id", ""))
+        if weakest_id not in protected_ids:
+            mark_candidate_as_ignore(weakest_positive, state="weak_positive_pruned")
+            weakest_positive["training_bucket"] = "ignored"
+            stats["weak_positive_pruned_count"] += 1
+            continue
+        for row in blocking_negatives:
+            if bool(row.get("is_ignore_candidate", False)):
+                continue
+            mark_candidate_as_ignore(row, state="monotonic_safe_overflow_ignored")
+            row["training_bucket"] = "ignored"
+            stats["monotonic_safe_ignored_count"] += 1
+        break
+
+    positives = [row for row in safe_active_rows() if bool(row.get("is_positive_candidate", False))]
+    if positives:
+        weakest_score = min(score(row) for row in positives)
+        for row in safe_active_rows():
+            if bool(row.get("is_positive_candidate", False)):
+                continue
+            if score(row) >= weakest_score - 1e-9:
+                mark_candidate_as_ignore(row, state="monotonic_safe_overflow_ignored")
+                row["training_bucket"] = "ignored"
+                stats["monotonic_safe_ignored_count"] += 1
+
+    return updated, stats
 
 
 def softmax_local(scores: Sequence[float], tau: float) -> List[float]:
@@ -437,6 +799,86 @@ def candidate_rank_score(candidate: Dict[str, Any]) -> float:
     return safe_float(scores.get("rank", scores.get("final", -1e9)), -1e9)
 
 
+def refresh_ar_result_from_current_scores(
+    ar_res: Dict[str, Any],
+    *,
+    target_ar: str,
+    candidates: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    refreshed = copy.deepcopy(ar_res)
+    rescored = [copy.deepcopy(candidate) for candidate in candidates]
+    if not rescored:
+        refreshed["current_score_refresh"] = {"applied": False, "reason": "no_candidates"}
+        return refreshed
+    if not any(bool(safe_dict(safe_dict(candidate.get("scores")).get("components"))) for candidate in rescored):
+        refreshed["current_score_refresh"] = {"applied": False, "reason": "missing_score_components"}
+        return refreshed
+
+    ensure_refresh_teacher_runtime()
+    NORMALIZE_FINAL_SCORES(rescored)
+    exp_sorted = sorted(rescored, key=candidate_rank_score, reverse=True)
+    non_hard_sorted = [candidate for candidate in exp_sorted if not is_unsafe_candidate(candidate)]
+    rank_pool = non_hard_sorted if non_hard_sorted else exp_sorted
+    best = rank_pool[0] if rank_pool else exp_sorted[0]
+
+    baseline_id = str(safe_dict(ar_res.get("baseline_candidate")).get("candidate_id", ""))
+    baseline = find_candidate(exp_sorted, baseline_id)
+    if baseline is None:
+        baseline, _ = PICK_BASELINE_CANDIDATES(exp_sorted)
+    baseline_effective = baseline
+    if baseline_effective is None or is_unsafe_candidate(baseline_effective):
+        baseline_effective = non_hard_sorted[0] if non_hard_sorted else best
+    if baseline_effective is None:
+        baseline_effective = best
+
+    keep_policy = safe_dict(ar_res.get("keep_policy"))
+    decision_prev = safe_dict(ar_res.get("decision"))
+    tau_improve = safe_float(
+        first_nonempty(keep_policy.get("tau_improve"), decision_prev.get("tau_improve"), 0.03),
+        0.03,
+    )
+    decision = DECIDE_KEEP_VS_CROP(best=best, baseline=baseline_effective, tau_improve=tau_improve)
+
+    target_len = max(1, len(safe_list(ar_res.get("selected_topk"))) or int(REFRESH_TEACHER_CFG.top_k))
+    force_ids = [decision.get("chosen_candidate_id"), baseline_effective.get("candidate_id")]
+    selected_topk = SELECT_TOPK_DIVERSE(
+        sorted_cands=rank_pool,
+        k=target_len,
+        tau_div=float(REFRESH_TEACHER_CFG.tau_div),
+        force_ids=force_ids,
+        ar_log_gap_thr=(float(REFRESH_TEACHER_CFG.free_topk_ar_log_gap) if str(target_ar).strip().upper() == "FREE" else None),
+    )
+    if len(selected_topk) < target_len and rank_pool is not exp_sorted:
+        already = {str(candidate.get("candidate_id", "")) for candidate in selected_topk}
+        tail = [candidate for candidate in exp_sorted if str(candidate.get("candidate_id", "")) not in already]
+        if tail:
+            fill = SELECT_TOPK_DIVERSE(
+                sorted_cands=tail,
+                k=target_len - len(selected_topk),
+                tau_div=float(REFRESH_TEACHER_CFG.tau_div),
+                force_ids=None,
+                ar_log_gap_thr=(float(REFRESH_TEACHER_CFG.free_topk_ar_log_gap) if str(target_ar).strip().upper() == "FREE" else None),
+            )
+            selected_topk.extend(fill)
+    selected_topk = selected_topk[:target_len]
+    if selected_topk:
+        NORMALIZE_FINAL_SCORES(selected_topk)
+
+    refreshed["best_candidate"] = copy.deepcopy(best)
+    refreshed["baseline_candidate"] = copy.deepcopy(baseline_effective)
+    refreshed["selected_topk"] = [copy.deepcopy(candidate) for candidate in selected_topk]
+    refreshed["decision"] = copy.deepcopy(decision)
+    refreshed["current_score_refresh"] = {
+        "applied": True,
+        "best_candidate_id": str(best.get("candidate_id", "")),
+        "baseline_candidate_id": str(baseline_effective.get("candidate_id", "")),
+        "selected_topk_ids": [str(candidate.get("candidate_id", "")) for candidate in selected_topk],
+        "selected_topk_k": int(target_len),
+        "tau_improve": float(tau_improve),
+    }
+    return refreshed
+
+
 def maybe_repair_training_decision(
     image_id: str,
     target_ar: str,
@@ -606,19 +1048,28 @@ def annotate_group_candidates(
     hard_negative_rank_pct_max: float,
     near_margin_max: float,
 ) -> List[Dict[str, Any]]:
-    candidates = dedupe_candidates(ar_res)
+    routing = safe_dict(ar_res.get("routing"))
+    candidates = [
+        apply_training_safe_policy_score(candidate, target_ar=target_ar, routing=routing)
+        for candidate in dedupe_candidates(ar_res)
+    ]
     if not candidates:
         return []
-    selected_ids = [str(safe_dict(c).get("candidate_id", "")) for c in safe_list(ar_res.get("selected_topk"))]
+    refreshed_ar_res = refresh_ar_result_from_current_scores(
+        ar_res,
+        target_ar=target_ar,
+        candidates=candidates,
+    )
+    selected_ids = [str(safe_dict(c).get("candidate_id", "")) for c in safe_list(refreshed_ar_res.get("selected_topk"))]
     selected_id_set = {cid for cid in selected_ids if cid}
-    top1_id = selected_ids[0] if selected_ids else str(safe_dict(ar_res.get("best_candidate")).get("candidate_id", ""))
-    best_id = str(safe_dict(ar_res.get("best_candidate")).get("candidate_id", ""))
-    baseline_id = str(safe_dict(ar_res.get("baseline_candidate")).get("candidate_id", ""))
-    chosen_id = str(safe_dict(ar_res.get("decision")).get("chosen_candidate_id", ""))
-    decision_type = str(safe_dict(ar_res.get("decision")).get("decision_type", ""))
+    top1_id = selected_ids[0] if selected_ids else str(safe_dict(refreshed_ar_res.get("best_candidate")).get("candidate_id", ""))
+    best_id = str(safe_dict(refreshed_ar_res.get("best_candidate")).get("candidate_id", ""))
+    baseline_id = str(safe_dict(refreshed_ar_res.get("baseline_candidate")).get("candidate_id", ""))
+    chosen_id = str(safe_dict(refreshed_ar_res.get("decision")).get("chosen_candidate_id", ""))
+    decision_type = str(safe_dict(refreshed_ar_res.get("decision")).get("decision_type", ""))
 
-    raw_scores = [safe_float(safe_dict(c.get("scores")).get("rank", safe_dict(c.get("scores")).get("final", 0.0))) for c in candidates]
-    policy_scores = [safe_float(safe_dict(c.get("scores")).get("policy", safe_dict(c.get("scores")).get("final", 0.0))) for c in candidates]
+    raw_scores = [safe_policy_raw_score(c, target_ar=target_ar) for c in candidates]
+    policy_scores = list(raw_scores)
     rank_pcts = rank_pct_desc(raw_scores)
     z_scores = robust_z_scores(raw_scores)
     softmax_scores = softmax_local(raw_scores, tau=softmax_tau)
@@ -649,8 +1100,14 @@ def annotate_group_candidates(
         out["is_baseline_candidate"] = str(out.get("candidate_id", "")) == baseline_id
         out["is_chosen_candidate"] = str(out.get("candidate_id", "")) == chosen_id
         out["decision_type"] = decision_type
-        out["mode"] = str(safe_dict(ar_res.get("routing")).get("subject_mode", ""))
-        out["policy_id"] = str(safe_dict(ar_res.get("routing")).get("policy_id", ""))
+        out["mode"] = str(safe_dict(refreshed_ar_res.get("routing")).get("subject_mode", ""))
+        out["policy_id"] = str(safe_dict(refreshed_ar_res.get("routing")).get("policy_id", ""))
+        out["is_ignore_candidate"] = bool(out.get("is_ignore_candidate", False))
+        out["is_overflow_candidate"] = False
+        out["overflow_bucket_reason"] = "none"
+        out["monotonic_label_state"] = "none"
+        out["positive_anchor_reason"] = "none"
+        out["training_bucket"] = "main"
         out["is_unsafe_negative"] = is_unsafe_candidate(out)
         out["is_soft_positive"] = bool(out["is_selected_topk"] and has_soft_issue(out) and not out["is_unsafe_negative"])
         out["is_positive_candidate"] = bool(
@@ -938,8 +1395,14 @@ def build_routing_record(
     }
 
 
-def build_baseline_record(ar_res: Dict[str, Any]) -> Dict[str, Any]:
+def build_baseline_record(ar_res: Dict[str, Any], *, target_ar: Optional[str] = None) -> Dict[str, Any]:
     baseline = safe_dict(ar_res.get("baseline_candidate"))
+    if target_ar is not None and baseline:
+        baseline = apply_training_safe_policy_score(
+            baseline,
+            target_ar=str(target_ar),
+            routing=safe_dict(ar_res.get("routing")),
+        )
     return {
         "candidate_id": str(baseline.get("candidate_id", "baseline_full")),
         "bbox_norm_xyxy": normalize_bbox_xyxy(baseline.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])),
@@ -973,21 +1436,30 @@ def build_candidate_canonical_record(candidate: Dict[str, Any], routing: Dict[st
         "is_hard_negative": bool(candidate.get("is_hard_negative", False)),
         "is_unsafe_negative": bool(candidate.get("is_unsafe_negative", False)),
         "is_ignore_candidate": bool(candidate.get("is_ignore_candidate", False)),
+        "is_overflow_candidate": bool(candidate.get("is_overflow_candidate", False)),
         "is_safe_high_score_leftover": bool(candidate.get("is_safe_high_score_leftover", False)),
         "safe_leftover_policy_state": str(candidate.get("safe_leftover_policy_state", "none")),
         "safe_leftover_policy": str(candidate.get("safe_leftover_policy", "keep_negative")),
+        "overflow_bucket_reason": str(candidate.get("overflow_bucket_reason", "none")),
+        "monotonic_label_state": str(candidate.get("monotonic_label_state", "none")),
+        "positive_anchor_reason": str(candidate.get("positive_anchor_reason", "none")),
+        "training_bucket": str(candidate.get("training_bucket", "main")),
         "bbox_norm_xyxy": bbox,
         "bbox_cxcywh": bbox_xyxy_to_cxcywh(bbox),
         "area_ratio": round(safe_float(candidate.get("area_ratio", 0.0)), 6),
         "score_targets": {
-            "score_prob": round(score_prob_from_annotated_candidate(candidate), 6),
-            "rank_pct": round(safe_float(candidate.get("score_rank_pct", 0.0)), 6),
-            "z_local": round(safe_float(candidate.get("score_z_local", 0.0)), 6),
-            "softmax_local": round(safe_float(candidate.get("score_softmax_local", 0.0)), 6),
-            "pseudo_mos_1to5": round(safe_float(candidate.get("pseudo_mos_1to5", 1.0)), 6),
-            "score_raw_rank": round(safe_float(raw_scores.get("rank", raw_scores.get("final", 0.0))), 6),
-            "score_raw_policy": round(safe_float(raw_scores.get("policy", raw_scores.get("final", 0.0))), 6),
-            "score_margin_to_top1": round(safe_float(candidate.get("score_margin_to_top1", 0.0)), 6),
+            "score_prob": round(score_prob_from_annotated_candidate(candidate), 9),
+            "rank_pct": round(safe_float(candidate.get("score_rank_pct", 0.0)), 9),
+            "z_local": round(safe_float(candidate.get("score_z_local", 0.0)), 9),
+            "softmax_local": round(safe_float(candidate.get("score_softmax_local", 0.0)), 9),
+            "pseudo_mos_1to5": round(safe_float(candidate.get("pseudo_mos_1to5", 1.0)), 9),
+            "score_raw_rank": round(safe_float(raw_scores.get("rank", raw_scores.get("final", 0.0))), 9),
+            "score_raw_policy": round(safe_float(raw_scores.get("policy", raw_scores.get("final", 0.0))), 9),
+            "score_raw_policy_base": round(safe_float(raw_scores.get("policy_base", raw_scores.get("policy", raw_scores.get("final", 0.0)))), 9),
+            "score_raw_policy_safe": round(safe_float(raw_scores.get("policy_safe", raw_scores.get("policy", raw_scores.get("final", 0.0)))), 9),
+            "score_raw_rank_macro": round(safe_float(raw_scores.get("rank_macro", raw_scores.get("rank", raw_scores.get("final", 0.0)))), 9),
+            "score_raw_safety_penalty_total": round(safe_float(raw_scores.get("safety_penalty_total", 0.0)), 9),
+            "score_margin_to_top1": round(safe_float(candidate.get("score_margin_to_top1", 0.0)), 9),
         },
         "macro_targets": {
             "A_macro": round(safe_float(macro_scores.get("A_macro", 0.0)), 6),
@@ -1024,6 +1496,16 @@ def build_label_generation_record(
         "safe_leftover_policy": str(safe_leftover_policy),
         "safe_high_score_leftover_count": int(sum(state_counts.values())),
         "safe_high_score_leftover_state_counts": dict(state_counts),
+        "overflow_candidate_count": int(sum(1 for candidate in candidates if bool(candidate.get("is_overflow_candidate", False)))),
+        "weak_positive_pruned_count": int(
+            sum(1 for candidate in candidates if str(candidate.get("monotonic_label_state", "none")) == "weak_positive_pruned")
+        ),
+        "monotonic_safe_ignored_count": int(
+            sum(1 for candidate in candidates if str(candidate.get("monotonic_label_state", "none")) == "monotonic_safe_overflow_ignored")
+        ),
+        "protected_secondary_positive_count": int(
+            sum(1 for candidate in candidates if str(candidate.get("positive_anchor_reason", "none")) == "protected_secondary_positive")
+        ),
     }
 
 
@@ -1034,8 +1516,17 @@ def build_decision_record(
     candidates: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
     decision = safe_dict(ar_res.get("decision"))
-    baseline = safe_dict(ar_res.get("baseline_candidate"))
-    best = safe_dict(ar_res.get("best_candidate"))
+    routing = safe_dict(ar_res.get("routing"))
+    baseline = apply_training_safe_policy_score(
+        safe_dict(ar_res.get("baseline_candidate")),
+        target_ar=target_ar,
+        routing=routing,
+    )
+    best = apply_training_safe_policy_score(
+        safe_dict(ar_res.get("best_candidate")),
+        target_ar=target_ar,
+        routing=routing,
+    )
     chosen_id = str(decision.get("chosen_candidate_id", ""))
     chosen = find_candidate(candidates, chosen_id)
     if chosen is None and chosen_id == str(baseline.get("candidate_id", "")):
@@ -1062,8 +1553,20 @@ def build_decision_record(
         "best_score_policy": round(safe_float(safe_dict(best.get("scores")).get("policy", 0.0)), 6),
         "base_score_rank": round(safe_float(safe_dict(baseline.get("scores")).get("rank", 0.0)), 6),
         "base_score_policy": round(safe_float(safe_dict(baseline.get("scores")).get("policy", 0.0)), 6),
-        "chosen_score_rank": round(safe_float(decision.get("chosen_score_rank", 0.0)), 6),
-        "chosen_score_policy": round(safe_float(decision.get("chosen_score_policy", 0.0)), 6),
+        "chosen_score_rank": round(
+            safe_float(
+                safe_dict(safe_dict(chosen).get("scores")).get("rank", decision.get("chosen_score_rank", 0.0)),
+                0.0,
+            ),
+            6,
+        ),
+        "chosen_score_policy": round(
+            safe_float(
+                safe_dict(safe_dict(chosen).get("scores")).get("policy", decision.get("chosen_score_policy", 0.0)),
+                0.0,
+            ),
+            6,
+        ),
     }
     training_repair = safe_dict(decision.get("training_repair") or ar_res.get("training_repair"))
     if training_repair:
@@ -1162,9 +1665,14 @@ def build_candidate_pool_entry(candidate_record: Dict[str, Any]) -> Dict[str, An
         "is_hard_negative": candidate_record["is_hard_negative"],
         "is_unsafe_negative": candidate_record["is_unsafe_negative"],
         "is_ignore_candidate": bool(candidate_record.get("is_ignore_candidate", False)),
+        "is_overflow_candidate": bool(candidate_record.get("is_overflow_candidate", False)),
         "is_safe_high_score_leftover": bool(candidate_record.get("is_safe_high_score_leftover", False)),
         "safe_leftover_policy_state": str(candidate_record.get("safe_leftover_policy_state", "none")),
         "safe_leftover_policy": str(candidate_record.get("safe_leftover_policy", "keep_negative")),
+        "overflow_bucket_reason": str(candidate_record.get("overflow_bucket_reason", "none")),
+        "monotonic_label_state": str(candidate_record.get("monotonic_label_state", "none")),
+        "positive_anchor_reason": str(candidate_record.get("positive_anchor_reason", "none")),
+        "training_bucket": str(candidate_record.get("training_bucket", "main")),
         "why_tags": candidate_record["why_tags"],
         "reject_tags": candidate_record["reject_tags"],
     }
@@ -1195,9 +1703,14 @@ def candidate_training_view(candidate: Dict[str, Any], routing: Optional[Dict[st
         "is_hard_negative": canonical["is_hard_negative"],
         "is_unsafe_negative": canonical["is_unsafe_negative"],
         "is_ignore_candidate": bool(canonical.get("is_ignore_candidate", False)),
+        "is_overflow_candidate": bool(canonical.get("is_overflow_candidate", False)),
         "is_safe_high_score_leftover": bool(canonical.get("is_safe_high_score_leftover", False)),
         "safe_leftover_policy_state": str(canonical.get("safe_leftover_policy_state", "none")),
         "safe_leftover_policy": str(canonical.get("safe_leftover_policy", "keep_negative")),
+        "overflow_bucket_reason": str(canonical.get("overflow_bucket_reason", "none")),
+        "monotonic_label_state": str(canonical.get("monotonic_label_state", "none")),
+        "positive_anchor_reason": str(canonical.get("positive_anchor_reason", "none")),
+        "training_bucket": str(canonical.get("training_bucket", "main")),
         "macro_scores": canonical["macro_targets"],
         "checklist_labels": canonical["checklist_labels"],
         "checklist_scores": canonical["checklist_scores"],
@@ -1404,7 +1917,7 @@ def build_conditional_detr_records(
     safe_leftover_policy: str,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     routing = build_routing_record(teacher_record, ar_res, subject_mode_to_id)
-    baseline = build_baseline_record(ar_res)
+    baseline = build_baseline_record(ar_res, target_ar=target_ar)
     decision_row = build_decision_record(image_id, target_ar, ar_res, candidates)
     decision = build_structured_decision(decision_row)
     image_path = resolve_image_path(image_root, image_id)
@@ -1414,6 +1927,7 @@ def build_conditional_detr_records(
     matching_targets: List[Dict[str, Any]] = []
     candidate_pool: List[Dict[str, Any]] = []
     ignored_candidates: List[Dict[str, Any]] = []
+    overflow_candidates: List[Dict[str, Any]] = []
 
     for candidate in candidates:
         candidate_record = build_candidate_canonical_record(candidate, routing)
@@ -1421,6 +1935,8 @@ def build_conditional_detr_records(
         canonical_candidates.append(candidate_record)
         if candidate_record["is_ignore_candidate"]:
             ignored_candidates.append(build_candidate_pool_entry(candidate_record))
+        elif bool(candidate_record.get("is_overflow_candidate", False)):
+            overflow_candidates.append(build_candidate_pool_entry(candidate_record))
         elif candidate_record["is_positive_candidate"] and not candidate_record["is_unsafe_negative"]:
             matching_targets.append(build_matching_target(candidate_record, len(matching_targets)))
         else:
@@ -1432,7 +1948,12 @@ def build_conditional_detr_records(
             (
                 candidate_record
                 for candidate_record in canonical_candidates
-                if candidate_record["candidate_id"] == fallback_id and not candidate_record["is_unsafe_negative"]
+                if (
+                    candidate_record["candidate_id"] == fallback_id
+                    and not candidate_record["is_unsafe_negative"]
+                    and not bool(candidate_record.get("is_ignore_candidate", False))
+                    and not bool(candidate_record.get("is_overflow_candidate", False))
+                )
             ),
             None,
         )
@@ -1445,7 +1966,7 @@ def build_conditional_detr_records(
         candidate_record.pop("_source_candidate", None)
 
     canonical_record = {
-        "schema_version": "sstk_detr_train_v2",
+        "schema_version": "sstk_detr_train_v3",
         "image_id": image_id,
         "image_path": str(image_path) if image_path is not None else None,
         "target_ar": target_ar,
@@ -1458,7 +1979,7 @@ def build_conditional_detr_records(
         "checklist_schema_version": "sstk_check_v2",
     }
     batch_record = {
-        "schema_version": "sstk_conditional_detr_batch_v2",
+        "schema_version": "sstk_conditional_detr_batch_v3",
         "image_id": image_id,
         "image_path": str(image_path) if image_path is not None else None,
         "target_ar": target_ar,
@@ -1469,6 +1990,7 @@ def build_conditional_detr_records(
         "matching_targets": matching_targets,
         "candidate_pool": candidate_pool,
         "ignored_candidates": ignored_candidates,
+        "overflow_candidates": overflow_candidates,
         "teacher_meta": teacher_meta,
         "checklist_schema_version": "sstk_check_v2",
     }
@@ -1504,6 +2026,20 @@ def build_training_datasets(
         results_by_ar = safe_dict(safe_dict(rec.get("teacher_scorer")).get("results_by_ar"))
         for target_ar, ar_res in results_by_ar.items():
             ar_res_dict = safe_dict(ar_res)
+            rescored_for_refresh = [
+                apply_training_safe_policy_score(
+                    candidate,
+                    target_ar=str(target_ar),
+                    routing=safe_dict(ar_res_dict.get("routing")),
+                )
+                for candidate in dedupe_candidates(ar_res_dict)
+            ]
+            if rescored_for_refresh:
+                ar_res_dict = refresh_ar_result_from_current_scores(
+                    ar_res_dict,
+                    target_ar=str(target_ar),
+                    candidates=rescored_for_refresh,
+                )
             candidates = annotate_group_candidates(
                 image_id=image_id,
                 target_ar=str(target_ar),
@@ -1527,6 +2063,11 @@ def build_training_datasets(
                 candidates,
                 chosen_candidate_id=str(safe_dict(ar_res_dict.get("decision")).get("chosen_candidate_id", "")),
                 safe_leftover_policy=safe_leftover_policy,
+            )
+            candidates, _monotonic_stats = enforce_monotonic_label_split(
+                candidates,
+                chosen_candidate_id=str(safe_dict(ar_res_dict.get("decision")).get("chosen_candidate_id", "")),
+                decision_type=str(safe_dict(ar_res_dict.get("decision")).get("decision_type", "")),
             )
             pairwise_rows.extend(
                 build_pairwise_records(
@@ -1658,6 +2199,7 @@ def build_qa_summary(
     matching_target_counts = [len(row.get("matching_targets", [])) for row in batch_rows]
     candidate_pool_counts = [len(row.get("candidate_pool", [])) for row in batch_rows]
     ignored_candidate_counts = [len(row.get("ignored_candidates", [])) for row in batch_rows]
+    overflow_candidate_counts = [len(row.get("overflow_candidates", [])) for row in batch_rows]
     route_conf_values = [safe_float(safe_dict(row.get("routing")).get("route_conf", 0.0)) for row in canonical_rows]
     reliability_values = [safe_float(safe_dict(row.get("teacher_meta")).get("target_reliability", 0.0)) for row in canonical_rows]
     applicable_num = Counter()
@@ -1684,6 +2226,13 @@ def build_qa_summary(
         "rows_with_higher_scored_unsafe_pool_candidates": 0,
         "higher_scored_safe_pool_candidate_count": 0,
         "higher_scored_unsafe_pool_candidate_count": 0,
+        "rows_with_higher_scored_overflow_candidates": 0,
+        "higher_scored_overflow_candidate_count": 0,
+        "overflow_candidate_total": 0,
+        "overflow_bucket_reason_counts": Counter(),
+        "weak_positive_pruned_total": 0,
+        "monotonic_safe_ignored_total": 0,
+        "rows_with_main_pool_monotonicity_violation": 0,
     }
     for row in batch_rows:
         for target in row.get("matching_targets", []):
@@ -1706,6 +2255,13 @@ def build_qa_summary(
             if bool(ignored.get("is_ignore_candidate", False)) and bool(ignored.get("is_positive_candidate", False)):
                 internal_errors = consistency_audit.setdefault("internal_errors", [])
                 internal_errors.append(f"{row.get('image_id')}::{row.get('target_ar')} ignored candidate marked positive")
+            if str(ignored.get("monotonic_label_state", "none")) == "weak_positive_pruned":
+                consistency_audit["weak_positive_pruned_total"] += 1
+            elif str(ignored.get("monotonic_label_state", "none")) == "monotonic_safe_overflow_ignored":
+                consistency_audit["monotonic_safe_ignored_total"] += 1
+        for overflow in row.get("overflow_candidates", []):
+            consistency_audit["overflow_candidate_total"] += 1
+            consistency_audit["overflow_bucket_reason_counts"][str(overflow.get("overflow_bucket_reason", "unknown"))] += 1
 
     for row in canonical_rows:
         key = (str(row.get("image_id", "")), str(row.get("target_ar", "")))
@@ -1739,6 +2295,7 @@ def build_qa_summary(
         chosen_score = safe_float(safe_dict(chosen_candidate.get("score_targets")).get("score_prob", 0.0))
         has_safe_higher = False
         has_unsafe_higher = False
+        has_overflow_higher = False
         for pool_row in safe_list(batch_row.get("candidate_pool")):
             pool_score = safe_float(pool_row.get("score_prob", pool_row.get("score_rank_pct", 0.0)))
             if pool_score <= chosen_score:
@@ -1749,13 +2306,34 @@ def build_qa_summary(
             else:
                 has_safe_higher = True
                 consistency_audit["higher_scored_safe_pool_candidate_count"] += 1
+        weakest_positive_score = min(
+            (
+                safe_float(safe_dict(target.get("score_targets")).get("score_prob", 0.0))
+                for target in safe_list(batch_row.get("matching_targets"))
+            ),
+            default=0.0,
+        )
+        strongest_negative_score = max(
+            (safe_float(candidate.get("score_prob", 0.0)) for candidate in safe_list(batch_row.get("candidate_pool"))),
+            default=-1e9,
+        )
+        if strongest_negative_score >= weakest_positive_score - 1e-9:
+            consistency_audit["rows_with_main_pool_monotonicity_violation"] += 1
+        for overflow_row in safe_list(batch_row.get("overflow_candidates")):
+            overflow_score = safe_float(overflow_row.get("score_prob", overflow_row.get("score_rank_pct", 0.0)))
+            if overflow_score > chosen_score:
+                has_overflow_higher = True
+                consistency_audit["higher_scored_overflow_candidate_count"] += 1
         if has_safe_higher:
             consistency_audit["rows_with_higher_scored_safe_pool_candidates"] += 1
         if has_unsafe_higher:
             consistency_audit["rows_with_higher_scored_unsafe_pool_candidates"] += 1
+        if has_overflow_higher:
+            consistency_audit["rows_with_higher_scored_overflow_candidates"] += 1
 
     consistency_audit["training_repair_by_reason"] = dict(consistency_audit["training_repair_by_reason"])
     consistency_audit["safe_high_score_leftover_state_counts"] = dict(consistency_audit["safe_high_score_leftover_state_counts"])
+    consistency_audit["overflow_bucket_reason_counts"] = dict(consistency_audit["overflow_bucket_reason_counts"])
 
     return {
         "generation_policy": {
@@ -1806,6 +2384,7 @@ def build_qa_summary(
             "matching_target_count_distribution": summarize_numeric(matching_target_counts),
             "candidate_pool_count_distribution": summarize_numeric(candidate_pool_counts),
             "ignored_candidate_count_distribution": summarize_numeric(ignored_candidate_counts),
+            "overflow_candidate_count_distribution": summarize_numeric(overflow_candidate_counts),
             "route_conf_distribution": summarize_numeric(route_conf_values),
             "target_reliability_distribution": summarize_numeric(reliability_values),
             "skipped_count": len(skipped_rows),
@@ -1864,6 +2443,7 @@ def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, An
         targets = row.get("matching_targets", [])
         pool = row.get("candidate_pool", [])
         ignored = row.get("ignored_candidates", [])
+        overflow = row.get("overflow_candidates", [])
         decision_target = safe_dict(row.get("decision_target"))
         if not targets:
             errors.append(f"{prefix} has no matching_targets")
@@ -1907,9 +2487,35 @@ def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, An
                 errors.append(f"{prefix} invalid ignored_candidate bbox for {candidate_id}")
             if not bool(ignored_candidate.get("is_ignore_candidate", False)):
                 errors.append(f"{prefix} ignored_candidate {candidate_id} missing is_ignore_candidate flag")
+        overflow_candidate_ids: set[str] = set()
+        for overflow_candidate in overflow:
+            candidate_id = str(overflow_candidate.get("candidate_id", ""))
+            if candidate_id in matched_candidate_ids:
+                errors.append(f"{prefix} candidate_id={candidate_id} appears in both matching_targets and overflow_candidates")
+            if candidate_id in overflow_candidate_ids:
+                errors.append(f"{prefix} duplicate overflow candidate_id={candidate_id}")
+            overflow_candidate_ids.add(candidate_id)
+            if candidate_id in pool_candidate_ids:
+                errors.append(f"{prefix} candidate_id={candidate_id} appears in both candidate_pool and overflow_candidates")
+            if candidate_id in ignored_candidate_ids:
+                errors.append(f"{prefix} candidate_id={candidate_id} appears in both ignored_candidates and overflow_candidates")
+            if not bbox_is_valid(overflow_candidate.get("bbox_norm_xyxy")):
+                errors.append(f"{prefix} invalid overflow_candidate bbox for {candidate_id}")
+            if not bool(overflow_candidate.get("is_overflow_candidate", False)):
+                errors.append(f"{prefix} overflow_candidate {candidate_id} missing is_overflow_candidate flag")
         chosen_id = str(decision_target.get("winner_post_gate_candidate_id", ""))
         if chosen_id and chosen_id not in matched_candidate_ids:
             errors.append(f"{prefix} decision winner {chosen_id} missing from matching_targets")
+        if targets and pool:
+            weakest_positive = min(
+                safe_float(safe_dict(target.get("score_targets")).get("score_prob", 0.0))
+                for target in targets
+            )
+            strongest_negative = max(safe_float(candidate.get("score_prob", 0.0)) for candidate in pool)
+            if strongest_negative >= weakest_positive - 1e-9:
+                errors.append(
+                    f"{prefix} monotonicity violation strongest_negative={strongest_negative:.6f} >= weakest_positive={weakest_positive:.6f}"
+                )
         if row.get("image_path") is None:
             warnings.append(f"{prefix} image_path unresolved")
 
@@ -2290,6 +2896,7 @@ def build_report_examples(
         )
         candidate_pool = safe_list(batch_record.get("candidate_pool"))
         ignored_candidates = safe_list(batch_record.get("ignored_candidates"))
+        overflow_candidates = safe_list(batch_record.get("overflow_candidates"))
         candidate_pool_sorted = sorted(
             candidate_pool,
             key=lambda pool: (
@@ -2359,6 +2966,7 @@ def build_report_examples(
             "matching_target_count": len(matching_targets),
             "candidate_pool_count": len(candidate_pool),
             "ignored_candidate_count": len(ignored_candidates),
+            "overflow_candidate_count": len(overflow_candidates),
             "chosen_matching_target": {
                 "candidate_id": positive_candidate.get("candidate_id"),
                 "score_prob": safe_dict(positive_candidate.get("score_targets")).get("score_prob"),
@@ -2398,8 +3006,19 @@ def build_report_examples(
                     "label_type": ignored_row.get("label_type"),
                     "score_prob": ignored_row.get("score_prob"),
                     "safe_leftover_policy_state": ignored_row.get("safe_leftover_policy_state"),
+                    "monotonic_label_state": ignored_row.get("monotonic_label_state"),
                 }
                 for ignored_row in ignored_candidates[:3]
+            ],
+            "overflow_candidates_head": [
+                {
+                    "candidate_id": overflow_row.get("candidate_id"),
+                    "label_type": overflow_row.get("label_type"),
+                    "score_prob": overflow_row.get("score_prob"),
+                    "overflow_bucket_reason": overflow_row.get("overflow_bucket_reason"),
+                    "reject_tags": overflow_row.get("reject_tags"),
+                }
+                for overflow_row in overflow_candidates[:3]
             ],
         }
         decision_target = safe_dict(batch_record.get("decision_target"))
@@ -2658,6 +3277,7 @@ def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict
     positive_count = 0
     negative_count = 0
     ignored_count = 0
+    overflow_count = 0
     score_values: List[float] = []
     raw_image_ids: set[str] = set()
     safe_leftover_policies: Counter[str] = Counter()
@@ -2675,6 +3295,9 @@ def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict
         for candidate in safe_list(row.get("ignored_candidates")):
             ignored_count += 1
             omitted_label_type_counts[str(candidate.get("label_type", "ignore"))] += 1
+        for candidate in safe_list(row.get("overflow_candidates")):
+            overflow_count += 1
+            omitted_label_type_counts[str(candidate.get("label_type", "overflow"))] += 1
     return {
         "image_rows": len(batch_rows),
         "unique_raw_images": len(raw_image_ids),
@@ -2682,6 +3305,7 @@ def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict
         "gt_flag_1_rows": positive_count,
         "gt_flag_0_rows": negative_count,
         "ignored_rows_omitted_from_annotations": ignored_count,
+        "overflow_rows_omitted_from_annotations": overflow_count,
         "safe_leftover_policy_counts": dict(safe_leftover_policies),
         "label_type_counts": dict(label_type_counts),
         "omitted_label_type_counts": dict(omitted_label_type_counts),

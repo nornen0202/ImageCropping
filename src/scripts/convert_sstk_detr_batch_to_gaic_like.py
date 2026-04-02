@@ -143,6 +143,7 @@ def build_gaic_like_instances(
                 "split": split_name,
                 "label_generation": label_generation,
                 "ignored_candidate_count": len(safe_list(record.get("ignored_candidates"))),
+                "overflow_candidate_count": len(safe_list(record.get("overflow_candidates"))),
             }
         )
         for target in safe_list(record.get("matching_targets")):

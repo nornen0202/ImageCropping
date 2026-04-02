@@ -23,6 +23,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--input_feats_jsonl", required=True)
     p.add_argument("--input_filtered_parquet", required=True)
     p.add_argument("--output_jsonl", required=True)
+    p.add_argument("--caption_jsonl", default="")
+    p.add_argument("--teacher_proposals_jsonl", default="")
     p.add_argument("--c2_top_n", type=int, default=5)
     p.add_argument("--c2_union_top_m", type=int, default=3)
     p.add_argument("--allow_det_proxy", type=int, default=1)
@@ -44,8 +46,42 @@ def _load_meta_map(parquet_path: Path) -> Dict[str, Dict[str, Any]]:
             "width": int(getattr(row, "width")),
             "height": int(getattr(row, "height")),
             "tags": getattr(row, "tags", None),
+            "caption": getattr(row, "caption", ""),
             "super_cat": str(getattr(row, "super_cat", "")),
         }
+    return out
+
+
+def _load_caption_map(caption_jsonl: Path) -> Dict[str, Dict[str, Any]]:
+    if not caption_jsonl.exists():
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    with caption_jsonl.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            image_id = str(rec.get("image_id", "")).strip()
+            if image_id:
+                out[image_id] = rec
+    return out
+
+
+def _load_teacher_proposals_map(teacher_jsonl: Path) -> Dict[str, Dict[str, Any]]:
+    if not teacher_jsonl.exists():
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    with teacher_jsonl.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            image_id = str(rec.get("image_id", "")).strip()
+            if image_id:
+                block = rec.get("teacher_proposals", {})
+                out[image_id] = block if isinstance(block, dict) else {}
     return out
 
 
@@ -111,6 +147,10 @@ def main() -> None:
     input_jsonl = Path(args.input_feats_jsonl)
     input_parquet = Path(args.input_filtered_parquet)
     output_jsonl = Path(args.output_jsonl)
+    caption_jsonl = Path(args.caption_jsonl).resolve() if str(args.caption_jsonl).strip() else None
+    teacher_proposals_jsonl = (
+        Path(args.teacher_proposals_jsonl).resolve() if str(args.teacher_proposals_jsonl).strip() else None
+    )
 
     if not input_jsonl.exists():
         raise FileNotFoundError(f"input_feats_jsonl not found: {input_jsonl}")
@@ -118,6 +158,8 @@ def main() -> None:
         raise FileNotFoundError(f"input_filtered_parquet not found: {input_parquet}")
 
     meta_map = _load_meta_map(input_parquet)
+    caption_map = _load_caption_map(caption_jsonl) if caption_jsonl is not None else {}
+    teacher_map = _load_teacher_proposals_map(teacher_proposals_jsonl) if teacher_proposals_jsonl is not None else {}
     output_jsonl.parent.mkdir(parents=True, exist_ok=True)
 
     total = 0
@@ -146,12 +188,17 @@ def main() -> None:
                 width = int(rec.get("width", 1) or 1)
                 height = int(rec.get("height", 1) or 1)
                 tags = rec.get("tags", [])
+                caption = str(rec.get("caption", "") or "")
                 super_cat = ""
             else:
                 width = int(meta["width"])
                 height = int(meta["height"])
                 tags = meta.get("tags", [])
+                caption = str(meta.get("caption", "") or "")
                 super_cat = str(meta.get("super_cat", ""))
+            caption_rec = caption_map.get(image_id, {})
+            if str(caption_rec.get("caption", "") or "").strip():
+                caption = str(caption_rec.get("caption", "") or "")
 
             c2_payload = enrich_c2_topn(
                 c2_seg=rec.get("c2_seg", []),
@@ -221,6 +268,8 @@ def main() -> None:
                 horizon_conf=horizon_conf,
                 symmetry_score=symmetry_score,
                 ocr_backend_method=c4_meta.get("method"),
+                caption_text=caption,
+                public_teacher_proposals=teacher_map.get(image_id, {}),
             )
             rec["routing"] = routing
 

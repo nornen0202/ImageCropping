@@ -34,6 +34,7 @@ from sklearn.metrics import average_precision_score, roc_auc_score
 from extract_features.c7_saliency import SaliencyFeatureExtractor
 from gaic_support_metrics import build_latent_support, compute_box_mass_metrics as compute_latent_box_mass_metrics, compute_subject_box_diagnostics
 from score_teacher import (
+    ExpensiveModels,
     TeacherScorerConfig,
     _has_training_severe_reject,
     _is_face_safe,
@@ -49,6 +50,7 @@ from score_teacher import (
     collect_c3_info,
     collect_c4_info,
     collect_c5_info,
+    apply_expensive_score,
     compute_candidate_scores,
     context_keep_target_range,
     context_target_range,
@@ -67,6 +69,7 @@ from score_teacher import (
     subject_scale_target_range,
     tags_to_tokens,
     tau_improve_for_route,
+    load_c1_map,
 )
 from subject_region import ensure_crop_guidance_spec
 from support_seed import seed_family_windows, support_mass_in_box
@@ -127,6 +130,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gaic_test_json", required=True)
     parser.add_argument("--image_dir", required=True)
     parser.add_argument("--output_dir", required=True)
+    parser.add_argument("--c1_jsonl", default="")
     parser.add_argument("--top_quantile", type=float, default=DEFAULT_TOP_QUANTILE)
     parser.add_argument("--alpha_sweep", nargs="*", type=float, default=list(DEFAULT_ALPHA_SWEEP))
     parser.add_argument("--softmax_tau", type=float, default=0.2)
@@ -135,6 +139,212 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--max_images", type=int, default=0)
     parser.add_argument("--seed", type=int, default=17)
     return parser.parse_args()
+
+
+def resolve_benchmark_c1_jsonl(*, data_root: Path, explicit: str = "") -> Optional[Path]:
+    if str(explicit).strip():
+        path = Path(explicit).resolve()
+        return path if path.exists() else None
+    candidate = data_root / "artifacts/precompute/feats_c1.jsonl"
+    return candidate if candidate.exists() else None
+
+
+def build_sample_expensive_runtime(
+    *,
+    cfg: TeacherScorerConfig,
+    c1_jsonl: Optional[Path],
+) -> Tuple[Optional[Dict[str, Dict[str, np.ndarray]]], Optional[ExpensiveModels]]:
+    if (not bool(cfg.use_real_expensive)) or c1_jsonl is None or not c1_jsonl.exists():
+        return None, None
+    c1_map = load_c1_map(c1_jsonl)
+    if not c1_map:
+        return None, None
+    first_text = next(iter(c1_map.values()))["c1_txt_embed"]
+    expensive_models = ExpensiveModels(
+        text_dim=int(first_text.shape[0]),
+        align_model_name="",
+        align_pretrained="",
+        align_device="auto",
+        aesthetic_device="auto",
+        batch_size=24,
+        preprocess_workers=0,
+        pin_memory=True,
+        aesthetic_backend="hybrid",
+        aesthetic_prior_laion_weight=0.15,
+        aesthetic_mlp_path=PROJECT_ROOT / "weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth",
+        aesthetic_mlp_url="https://raw.githubusercontent.com/christophschuhmann/improved-aesthetic-predictor/main/sac+logos+ava1-l14-linearMSE.pth",
+        nima_model_path=PROJECT_ROOT / "weights/nima/NIMA_VGG16_ava-dc4e8265.pth",
+        nima_model_url="https://github.com/yunxiaoshi/Neural-IMage-Assessment/releases/download/v1.0/NIMA_VGG16_ava-dc4e8265.pth",
+        nima_use_imagenet_backbone=True,
+        nima_require_ckpt=True,
+    )
+    return c1_map, expensive_models
+
+
+def sample_expensive_cache_key(image_id: str, candidate: Dict[str, Any]) -> str:
+    return f"{str(image_id)}::{str(candidate.get('candidate_id', ''))}"
+
+
+def load_sample_expensive_cache(path: Path) -> Dict[str, Dict[str, Any]]:
+    if not path.exists():
+        return {}
+    out: Dict[str, Dict[str, Any]] = {}
+    for row in read_jsonl(path):
+        key = str(row.get("cache_key", "")).strip()
+        if key:
+            out[key] = row
+    return out
+
+
+def write_sample_expensive_cache(path: Path, rows_by_key: Dict[str, Dict[str, Any]]) -> None:
+    ordered = [rows_by_key[key] for key in sorted(rows_by_key.keys())]
+    write_jsonl(path, ordered)
+
+
+def build_cached_expensive_signal(entry: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "aesthetic_raw": entry.get("aesthetic_raw"),
+        "aesthetic_norm": entry.get("aesthetic_norm"),
+        "cosine_img_text": entry.get("cosine_img_text"),
+        "aesthetic_backend": entry.get("aesthetic_backend", "real"),
+        "aesthetic_prior_laion_weight": entry.get("aesthetic_prior_laion_weight"),
+        "aesthetic_raw_laion": entry.get("aesthetic_raw_laion"),
+        "aesthetic_norm_laion": entry.get("aesthetic_norm_laion"),
+        "aesthetic_mean_nima": entry.get("aesthetic_mean_nima"),
+        "aesthetic_std_nima": entry.get("aesthetic_std_nima"),
+        "aesthetic_norm_nima": entry.get("aesthetic_norm_nima"),
+    }
+
+
+class SampleExpensiveCacheManager:
+    def __init__(
+        self,
+        *,
+        cfg: TeacherScorerConfig,
+        c1_jsonl: Optional[Path],
+        cache_path: Path,
+    ) -> None:
+        self.cfg = cfg
+        self.c1_jsonl = c1_jsonl
+        self.cache_path = cache_path
+        self.cache_rows = load_sample_expensive_cache(cache_path)
+        self.c1_map: Optional[Dict[str, Dict[str, np.ndarray]]] = None
+        self.expensive_models: Optional[ExpensiveModels] = None
+        self.runtime_attempted = False
+
+    def _ensure_runtime(self) -> None:
+        if self.runtime_attempted:
+            return
+        self.runtime_attempted = True
+        self.c1_map, self.expensive_models = build_sample_expensive_runtime(cfg=self.cfg, c1_jsonl=self.c1_jsonl)
+
+    def apply(
+        self,
+        *,
+        image_id: str,
+        image_path: Path,
+        rows: Sequence[Dict[str, Any]],
+        route: Dict[str, Any],
+    ) -> Tuple[List[Dict[str, Any]], str]:
+        updated_rows = [copy.deepcopy(row) for row in rows]
+        cache_keys = [sample_expensive_cache_key(image_id, row) for row in updated_rows]
+        all_cached = all(key in self.cache_rows for key in cache_keys)
+        w_area = float(route.get("w_area", 0.0))
+        if all_cached:
+            for row, key in zip(updated_rows, cache_keys):
+                apply_expensive_score(
+                    candidate=row,
+                    cfg=self.cfg,
+                    w_area=w_area,
+                    expensive_signal=build_cached_expensive_signal(self.cache_rows[key]),
+                )
+            return updated_rows, "cache"
+
+        self._ensure_runtime()
+        if self.expensive_models is None or not self.c1_map or image_id not in self.c1_map or not image_path.exists():
+            return updated_rows, "unavailable"
+        text_embed = self.c1_map[image_id].get("c1_txt_embed")
+        if text_embed is None:
+            return updated_rows, "unavailable"
+
+        with Image.open(image_path) as image:
+            image_rgb = image.convert("RGB")
+            signals = self.expensive_models.predict_for_candidates(
+                image=image_rgb,
+                candidates=updated_rows,
+                text_embed=text_embed,
+                cfg=self.cfg,
+            )
+        for row, key in zip(updated_rows, cache_keys):
+            signal = signals.get(str(row.get("candidate_id", "")))
+            if signal is None:
+                continue
+            apply_expensive_score(
+                candidate=row,
+                cfg=self.cfg,
+                w_area=w_area,
+                expensive_signal=signal,
+            )
+            self.cache_rows[key] = {
+                "cache_key": key,
+                "image_id": str(image_id),
+                "candidate_id": str(row.get("candidate_id", "")),
+                "bbox_norm_xyxy": [round(float(v), 6) for v in row.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])],
+                "aesthetic_raw": signal.get("aesthetic_raw"),
+                "aesthetic_norm": signal.get("aesthetic_norm"),
+                "cosine_img_text": signal.get("cosine_img_text"),
+                "aesthetic_backend": signal.get("aesthetic_backend", "real"),
+                "aesthetic_prior_laion_weight": signal.get("aesthetic_prior_laion_weight"),
+                "aesthetic_raw_laion": signal.get("aesthetic_raw_laion"),
+                "aesthetic_norm_laion": signal.get("aesthetic_norm_laion"),
+                "aesthetic_mean_nima": signal.get("aesthetic_mean_nima"),
+                "aesthetic_std_nima": signal.get("aesthetic_std_nima"),
+                "aesthetic_norm_nima": signal.get("aesthetic_norm_nima"),
+            }
+        return updated_rows, "computed"
+
+    def flush(self) -> None:
+        if self.cache_rows:
+            write_sample_expensive_cache(self.cache_path, self.cache_rows)
+
+    def close(self) -> None:
+        if self.expensive_models is not None:
+            self.expensive_models.close()
+
+
+def maybe_apply_real_expensive_to_sample_rows(
+    *,
+    image_id: str,
+    image_path: Path,
+    rows: Sequence[Dict[str, Any]],
+    cfg: TeacherScorerConfig,
+    route: Dict[str, Any],
+    c1_map: Optional[Dict[str, Dict[str, np.ndarray]]],
+    expensive_models: Optional[ExpensiveModels],
+) -> List[Dict[str, Any]]:
+    if expensive_models is None or not c1_map or image_id not in c1_map or not image_path.exists():
+        return [copy.deepcopy(row) for row in rows]
+    text_embed = c1_map[image_id].get("c1_txt_embed")
+    if text_embed is None:
+        return [copy.deepcopy(row) for row in rows]
+    updated_rows = [copy.deepcopy(row) for row in rows]
+    with Image.open(image_path) as image:
+        image_rgb = image.convert("RGB")
+        signals = expensive_models.predict_for_candidates(
+            image=image_rgb,
+            candidates=updated_rows,
+            text_embed=text_embed,
+            cfg=cfg,
+        )
+    w_area = float(route.get("w_area", 0.0))
+    for row in updated_rows:
+        apply_expensive_score(
+            candidate=row,
+            cfg=cfg,
+            w_area=w_area,
+            expensive_signal=signals.get(str(row.get("candidate_id", ""))),
+        )
+    return updated_rows
 
 
 def load_json(path: Path) -> Any:
@@ -2482,6 +2692,7 @@ def build_sample_analysis(
     run_tag: str,
     softmax_tau: float,
     saliency_mask_resolver: Optional[SampleSaliencyMaskResolver] = None,
+    sample_expensive_cache: Optional[SampleExpensiveCacheManager] = None,
 ) -> Dict[str, Any]:
     context = build_scoring_context(cand_rec=cand_rec, feat_rec=feat_rec, cfg=cfg)
     width = int(image_meta["width"])
@@ -2506,6 +2717,16 @@ def build_sample_analysis(
     gt_mos_row = ge_rows_by_id.get(gt_mos_candidate_id, ge_gt_rows[0])
     ge_gt_best_row = ge_gt_rows[0]
     ge_prod_best_row = ge_decision["best_candidate"]
+
+    sample_expensive_status = "disabled"
+    if sample_expensive_cache is not None:
+        refreshed_rows, sample_expensive_status = sample_expensive_cache.apply(
+            image_id=image_id,
+            image_path=image_path,
+            rows=[gt_mos_row, ge_gt_best_row, ge_prod_best_row],
+            route=context["route"],
+        )
+        gt_mos_row, ge_gt_best_row, ge_prod_best_row = refreshed_rows
 
     subject_visuals = collect_subject_visuals(cand_rec=cand_rec, feat_rec=feat_rec, route=ge_route)
     saliency_mask = (
@@ -2691,6 +2912,8 @@ def build_sample_analysis(
             ge_gt_best=ge_gt_summary,
             ge_prod_best=ge_prod_summary,
         ),
+        "sample_real_expensive_status": str(sample_expensive_status),
+        "sample_real_expensive_applied": bool(sample_expensive_status in {"cache", "computed"}),
         "assets": {
             "overlay": str(overlay_path),
             "panel": str(panel_path),
@@ -3381,6 +3604,14 @@ def main() -> None:
     run_tag = infer_run_tag_from_teacher_jsonl(teacher_jsonl)
 
     cfg = load_scorer_config(teacher_jsonl)
+    c1_jsonl = resolve_benchmark_c1_jsonl(data_root=data_root, explicit=str(args.c1_jsonl))
+    sample_expensive_cache: Optional[SampleExpensiveCacheManager] = None
+    if int(args.sample_count) > 0:
+        sample_expensive_cache = SampleExpensiveCacheManager(
+            cfg=cfg,
+            c1_jsonl=c1_jsonl,
+            cache_path=output_dir / "samples" / "sample_expensive_cache.jsonl",
+        )
 
     candidate_map = load_map_by_image_id(candidates_jsonl)
     feature_map = load_map_by_image_id(features_jsonl)
@@ -3953,10 +4184,14 @@ def main() -> None:
                     run_tag=run_tag,
                     softmax_tau=float(args.softmax_tau),
                     saliency_mask_resolver=saliency_mask_resolver,
+                    sample_expensive_cache=sample_expensive_cache,
                 )
             )
     finally:
         saliency_mask_resolver.close()
+        if sample_expensive_cache is not None:
+            sample_expensive_cache.flush()
+            sample_expensive_cache.close()
 
     summary_path = output_dir / "benchmark_summary.json"
     write_json(summary_path, summary)

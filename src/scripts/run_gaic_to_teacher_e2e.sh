@@ -38,8 +38,12 @@ VLM_BACKEND="heuristic"
 VLM_FALLBACK_BACKEND="none"
 RUN_TRAINING_LABELS=1
 SAFE_LEFTOVER_POLICY="ignore"
-AUTO_LEFTOVER_VARIANTS=1
-LEFTOVER_VARIANT_POLICIES="keep_negative,ignore,promote_soft_positive"
+RUN_TRAINING_LABEL_DEBUG_VIZ=0
+TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE=50
+TRAINING_LABEL_DEBUG_VIZ_SEED=42
+TRAINING_LABEL_DEBUG_VIZ_OUT_DIR=""
+AUTO_LEFTOVER_VARIANTS=0
+LEFTOVER_VARIANT_POLICIES="keep_negative,promote_soft_positive"
 RUN_DETAILED_REPORT=0
 RUN_C6=0
 USE_REAL_EXPENSIVE=0
@@ -102,6 +106,10 @@ while [ "$#" -gt 0 ]; do
     --vlm_fallback_backend) VLM_FALLBACK_BACKEND="$2"; shift 2 ;;
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
     --safe_leftover_policy) SAFE_LEFTOVER_POLICY="$2"; shift 2 ;;
+    --run_training_label_debug_viz) RUN_TRAINING_LABEL_DEBUG_VIZ="$2"; shift 2 ;;
+    --training_label_debug_viz_sample_size) TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE="$2"; shift 2 ;;
+    --training_label_debug_viz_seed) TRAINING_LABEL_DEBUG_VIZ_SEED="$2"; shift 2 ;;
+    --training_label_debug_viz_out_dir) TRAINING_LABEL_DEBUG_VIZ_OUT_DIR="$2"; shift 2 ;;
     --auto_leftover_variants) AUTO_LEFTOVER_VARIANTS="$2"; shift 2 ;;
     --leftover_variant_policies) LEFTOVER_VARIANT_POLICIES="$2"; shift 2 ;;
     --run_detailed_report) RUN_DETAILED_REPORT="$2"; shift 2 ;;
@@ -177,10 +185,26 @@ fi
 
 if [ -n "$RUN_TAG" ]; then
   SUFFIX="_${RUN_TAG}"
-  TRAINING_LABELS_SUBDIR="$RUN_TAG"
+  case "$SAFE_LEFTOVER_POLICY" in
+    keep_negative) TRAINING_LABELS_SUBDIR="${RUN_TAG}_leftover_keepneg_monotonic" ;;
+    ignore) TRAINING_LABELS_SUBDIR="${RUN_TAG}_leftover_ignore_monotonic" ;;
+    promote_soft_positive) TRAINING_LABELS_SUBDIR="${RUN_TAG}_leftover_softpos_monotonic" ;;
+    *)
+      echo "[error] unsupported safe_leftover_policy: $SAFE_LEFTOVER_POLICY"
+      exit 1
+      ;;
+  esac
 else
   SUFFIX=""
-  TRAINING_LABELS_SUBDIR="latest"
+  case "$SAFE_LEFTOVER_POLICY" in
+    keep_negative) TRAINING_LABELS_SUBDIR="latest_leftover_keepneg_monotonic" ;;
+    ignore) TRAINING_LABELS_SUBDIR="latest_leftover_ignore_monotonic" ;;
+    promote_soft_positive) TRAINING_LABELS_SUBDIR="latest_leftover_softpos_monotonic" ;;
+    *)
+      echo "[error] unsupported safe_leftover_policy: $SAFE_LEFTOVER_POLICY"
+      exit 1
+      ;;
+  esac
 fi
 
 PREP_SUMMARY_JSON="${DATA_DIR}/gaic_prepare_summary.json"
@@ -216,6 +240,8 @@ TRAINING_GAIC_LIKE_JSON="${TRAINING_DIR}/coco/instances_conditional_detr_batch_g
 TRAINING_GAIC_LIKE_TRAIN_JSON="${TRAINING_DIR}/coco/instances_conditional_detr_batch_gaic_like_train.json"
 TRAINING_GAIC_LIKE_TEST_JSON="${TRAINING_DIR}/coco/instances_conditional_detr_batch_gaic_like_test.json"
 TRAINING_GAIC_LIKE_UNASSIGNED_JSON="${TRAINING_DIR}/coco/instances_conditional_detr_batch_gaic_like_unassigned.json"
+TRAINING_LABEL_DEBUG_VIZ_OUT_DIR=${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR:-"${TRAINING_DIR}/debug_visualizations_balanced${TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE}_bottomneg"}
+TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON="${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR}/summary/summary.json"
 if [ -z "$GAIC_CAPTION_JSONL" ]; then
   GAIC_CAPTION_JSONL="${METADATA_DIR}/gaic_captions${SUFFIX}.jsonl"
 fi
@@ -270,6 +296,7 @@ echo " gaic_generate_caps    : $GAIC_GENERATE_CAPTIONS (preset=$GAIC_CAPTION_PRE
 echo " run_c6                : $RUN_C6"
 echo " run_vlm_teacher       : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND)"
 echo " run_training_labels   : $RUN_TRAINING_LABELS (policy=$SAFE_LEFTOVER_POLICY)"
+echo " training_debug_viz    : $RUN_TRAINING_LABEL_DEBUG_VIZ (out=$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR sample_size=$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE seed=$TRAINING_LABEL_DEBUG_VIZ_SEED)"
 echo " auto_leftover_variants: $AUTO_LEFTOVER_VARIANTS (policies=$LEFTOVER_VARIANT_POLICIES)"
 echo " run_detailed_report   : $RUN_DETAILED_REPORT"
 echo " run_gaic_benchmark    : $RUN_GAIC_BENCHMARK_EVAL (sample_count=$GAIC_BENCHMARK_SAMPLE_COUNT max_images=$GAIC_BENCHMARK_MAX_IMAGES)"
@@ -354,10 +381,14 @@ validate_training_outputs() {
 
 build_training_variant() {
   local policy="$1"
+  if [ "$policy" = "$SAFE_LEFTOVER_POLICY" ]; then
+    echo "[skip] leftover variant policy matches main output: ${policy}"
+    return 0
+  fi
   local suffix
   suffix=$(leftover_policy_suffix "$policy")
-  local variant_dir="${ARTIFACTS_DIR}/training_labels/${RUN_TAG}_leftover_${suffix}"
-  local variant_validation_json="${VALIDATION_DIR}/gaic_e2e_validation_${RUN_TAG}_leftover_${suffix}.json"
+  local variant_dir="${ARTIFACTS_DIR}/training_labels/${RUN_TAG}_leftover_${suffix}_monotonic"
+  local variant_validation_json="${VALIDATION_DIR}/gaic_e2e_validation_${RUN_TAG}_leftover_${suffix}_monotonic.json"
   if [ "$SKIP_EXISTING" -eq 1 ] \
     && [ -f "${variant_dir}/validation_summary.json" ] \
     && [ -f "${variant_dir}/coco/gaic_like_conversion_summary.json" ] \
@@ -473,9 +504,16 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_backend "$VLM_BACKEND" \
   --vlm_fallback_backend "$VLM_FALLBACK_BACKEND" \
   --run_training_labels "$RUN_TRAINING_LABELS" \
+  --training_labels_dir "$TRAINING_DIR" \
   --safe_leftover_policy "$SAFE_LEFTOVER_POLICY" \
+  --run_training_label_debug_viz "$RUN_TRAINING_LABEL_DEBUG_VIZ" \
+  --training_label_debug_viz_sample_size "$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE" \
+  --training_label_debug_viz_seed "$TRAINING_LABEL_DEBUG_VIZ_SEED" \
+  --training_label_debug_viz_out_dir "$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR" \
   --run_detailed_report "$RUN_DETAILED_REPORT" \
   --gaic_reference_json "$GAIC_REFERENCE_JSON" \
+  --gaic_train_reference_json "$GAIC_TRAIN_REFERENCE_JSON" \
+  --gaic_test_reference_json "$GAIC_TEST_REFERENCE_JSON" \
   "${C7_EXTRA_ARGS[@]}" \
   "${PASSTHROUGH_ARGS[@]}"
 
@@ -589,13 +627,18 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ] && [ "$AUTO_LEFTOVER_VARIANTS" -eq 1 ] && [ 
   echo "[done] leftover variants:"
   for raw_policy in ${LEFTOVER_VARIANT_POLICIES//,/ }; do
     policy=$(printf "%s" "$raw_policy" | tr -d '[:space:]')
-    if [ -z "$policy" ]; then
+    if [ -z "$policy" ] || [ "$policy" = "$SAFE_LEFTOVER_POLICY" ]; then
       continue
     fi
     suffix=$(leftover_policy_suffix "$policy")
-    echo "  - ${ARTIFACTS_DIR}/training_labels/${RUN_TAG}_leftover_${suffix}"
-    echo "    validation: ${VALIDATION_DIR}/gaic_e2e_validation_${RUN_TAG}_leftover_${suffix}.json"
+    echo "  - ${ARTIFACTS_DIR}/training_labels/${RUN_TAG}_leftover_${suffix}_monotonic"
+    echo "    validation: ${VALIDATION_DIR}/gaic_e2e_validation_${RUN_TAG}_leftover_${suffix}_monotonic.json"
   done
+fi
+
+if [ "$RUN_TRAINING_LABELS" -eq 1 ] && [ "$RUN_TRAINING_LABEL_DEBUG_VIZ" -eq 1 ]; then
+  echo "[done] training-label debug viz: ${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR}"
+  echo "       summary: ${TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON}"
 fi
 
 echo "[done] validation summary: $VALIDATION_SUMMARY_JSON"

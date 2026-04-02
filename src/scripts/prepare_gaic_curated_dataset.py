@@ -20,11 +20,11 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Prepare a GAIC image-only dataset for the existing SSTK e2e pipeline "
+            "Prepare an image-only dataset for the existing SSTK e2e pipeline "
             "by materializing a flat curated image dir and a pseudo-filtered parquet."
         )
     )
-    parser.add_argument("--image_root", required=True, help="GAIC image root (can contain nested split dirs)")
+    parser.add_argument("--image_root", required=True, help="image root (can contain nested split dirs)")
     parser.add_argument("--output_parquet", required=True, help="output pseudo-filtered parquet path")
     parser.add_argument("--flat_image_dir", required=True, help="flat image dir used as curated_pool for downstream steps")
     parser.add_argument("--summary_json", required=True, help="preparation summary json")
@@ -63,6 +63,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=1,
         help="1=keep already matching flat image files, 0=revalidate and overwrite only when absent",
+    )
+    parser.add_argument(
+        "--dataset_name",
+        default="GAIC",
+        help="dataset name recorded in the manifest parquet",
     )
     return parser.parse_args()
 
@@ -341,7 +346,7 @@ def main() -> None:
                 "relative_path": str(item["relative_path"]),
                 "source_image_path": str(source_path),
                 "flat_image_path": str(flat_path.resolve()),
-                "dataset_name": "GAIC",
+                "dataset_name": str(args.dataset_name),
             }
         )
 

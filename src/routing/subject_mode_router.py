@@ -34,18 +34,139 @@ TEXT_HINTS = (
 )
 GROUP_HINTS = ("group", "family", "team", "crowd", "couple", "together")
 PORTRAIT_HINTS = ("portrait", "headshot", "person", "people", "selfie", "model")
-COPYSPACE_HINTS = (
+COPYSPACE_STRONG_HINTS = (
     "copy space",
     "copy-space",
     "negative space",
-    "background",
     "texture",
     "pattern",
     "isolated",
     "minimal",
+    "minimalist",
+    "white background",
+    "blank background",
+    "plain background",
+    "empty background",
+    "wallpaper",
 )
-SCENE_HINTS = ("landscape", "cityscape", "interior", "architecture", "scenery", "panorama")
-OBJECT_HINTS = ("animal", "pet", "product", "vehicle", "car", "food", "object")
+COPYSPACE_WEAK_HINTS = ("background",)
+COPYSPACE_HINTS = COPYSPACE_STRONG_HINTS + COPYSPACE_WEAK_HINTS
+TEXT_STRONG_HINTS = (
+    "document",
+    "page",
+    "sheet of paper",
+    "piece of paper",
+    "book",
+    "notebook",
+    "magazine",
+    "newspaper",
+    "menu",
+    "poster",
+    "brochure",
+    "flyer",
+    "letter",
+    "receipt",
+    "invoice",
+    "passport",
+    "certificate",
+    "map",
+)
+TEXT_WEAK_HINTS = (
+    "text",
+    "typography",
+    "banner",
+    "billboard",
+    "sign",
+    "label",
+    "screen",
+    "display",
+)
+SCENE_HINTS = (
+    "landscape",
+    "cityscape",
+    "interior",
+    "architecture",
+    "scenery",
+    "panorama",
+    "street",
+    "road",
+    "sidewalk",
+    "beach",
+    "ocean",
+    "sea",
+    "lake",
+    "mountain",
+    "forest",
+    "skyline",
+    "room",
+    "water",
+    "river",
+    "park",
+    "bridge",
+    "tower",
+)
+OBJECT_HINTS = (
+    "animal",
+    "pet",
+    "product",
+    "vehicle",
+    "car",
+    "food",
+    "object",
+    "dog",
+    "cat",
+    "bird",
+    "flower",
+    "plant",
+    "bottle",
+    "cup",
+    "phone",
+    "watch",
+    "bag",
+    "shoe",
+    "chair",
+    "table",
+    "fruit",
+    "cake",
+    "pizza",
+)
+CAPTION_PEOPLE_HINTS = (
+    "person",
+    "people",
+    "woman",
+    "man",
+    "girl",
+    "boy",
+    "child",
+    "children",
+    "lady",
+    "guy",
+    "bride",
+    "groom",
+    "worker",
+    "rider",
+    "surfer",
+    "skater",
+    "player",
+    "model",
+)
+CAPTION_GROUP_HINTS = GROUP_HINTS + (
+    "friends",
+    "men",
+    "women",
+    "children",
+    "two people",
+    "three people",
+    "several people",
+    "group of",
+)
+CAPTION_PORTRAIT_HINTS = PORTRAIT_HINTS + (
+    "close up",
+    "close-up",
+    "face",
+    "smiling at the camera",
+    "looking at the camera",
+)
 BLANK_RATIO_COPYSPACE_MIN = 0.28
 BLANK_RATIO_COPYSPACE_STRONG = 0.40
 SCENE_SCORE_MIN = 0.35
@@ -182,11 +303,281 @@ def _has_any_hint(tags_norm: Sequence[str], hints: Iterable[str]) -> bool:
     return False
 
 
+def _normalize_free_text(raw_text: Any) -> str:
+    if raw_text is None:
+        return ""
+    text = str(raw_text).replace("\n", " ").replace("_", " ").replace("-", " ")
+    return " ".join(text.split()).strip().lower()
+
+
+def _text_has_any(text: str, hints: Iterable[str]) -> bool:
+    blob = _normalize_free_text(text)
+    if not blob:
+        return False
+    for hint in hints:
+        key = _normalize_free_text(hint)
+        if key and key in blob:
+            return True
+    return False
+
+
+def _median(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    ordered = sorted(float(v) for v in values)
+    mid = len(ordered) // 2
+    if len(ordered) % 2 == 1:
+        return float(ordered[mid])
+    return float(0.5 * (ordered[mid - 1] + ordered[mid]))
+
+
+def _mean(values: Sequence[float]) -> float:
+    if not values:
+        return 0.0
+    return float(math.fsum(float(v) for v in values) / float(len(values)))
+
+
 def _box_area_ratio_xyxy(box: Sequence[float], width: int, height: int) -> float:
     w = max(1.0, float(width))
     h = max(1.0, float(height))
     area = _box_area(box)
     return float(_clamp(area / (w * h), 0.0, 1.0))
+
+
+def _infer_caption_semantics(caption_text: Any) -> Dict[str, Any]:
+    text = _normalize_free_text(caption_text)
+    has_people = _text_has_any(text, CAPTION_PEOPLE_HINTS)
+    has_group = _text_has_any(text, CAPTION_GROUP_HINTS)
+    has_portrait = _text_has_any(text, CAPTION_PORTRAIT_HINTS)
+    has_scene = _text_has_any(text, SCENE_HINTS)
+    has_object = _text_has_any(text, OBJECT_HINTS)
+    has_text_strong = _text_has_any(text, TEXT_STRONG_HINTS)
+    has_text_weak = _text_has_any(text, TEXT_WEAK_HINTS)
+    has_copyspace = _text_has_any(text, COPYSPACE_STRONG_HINTS) or (
+        "background" in text and _text_has_any(text, ("white", "blank", "plain", "empty", "isolated", "minimal"))
+    )
+    text_backed = bool(
+        has_text_strong
+        or _text_has_any(
+            text,
+            (
+                "text on",
+                "words on",
+                "covered in text",
+                "filled with text",
+                "page of",
+                "sign with text",
+                "menu on",
+            ),
+        )
+    )
+    return {
+        "available": bool(text),
+        "text": text,
+        "people_hint": bool(has_people),
+        "group_hint": bool(has_group),
+        "portrait_hint": bool(has_portrait or (has_people and _text_has_any(text, ("close up", "selfie", "face")))),
+        "scene_hint": bool(has_scene),
+        "object_hint": bool(has_object),
+        "copyspace_hint": bool(has_copyspace),
+        "text_hint": bool(has_text_strong or has_text_weak),
+        "text_backed_evidence": bool(text_backed),
+    }
+
+
+def _summarize_object_layout(
+    c2_instances: Sequence[Dict[str, Any]],
+    *,
+    width: int,
+    height: int,
+) -> Dict[str, Any]:
+    fg_rows: List[Dict[str, Any]] = []
+    for inst in c2_instances:
+        if not isinstance(inst, dict) or bool(inst.get("bg_like", False)):
+            continue
+        box = _normalize_box_xyxy(inst.get("box"), width, height)
+        if box is None:
+            continue
+        class_id = int(_safe_float(inst.get("class_id", -1), -1))
+        if class_id in PERSON_CLASS_IDS:
+            continue
+        area_ratio = _safe_float(inst.get("area_ratio", _box_area_ratio_xyxy(box, width, height)), 0.0)
+        importance = _safe_float(inst.get("importance_score", 0.0), 0.0)
+        if area_ratio < 0.01 and importance < 0.20:
+            continue
+        fg_rows.append(
+            {
+                "box": [float(v) for v in box],
+                "class_id": int(class_id),
+                "area_ratio": float(_clamp(area_ratio, 0.0, 1.0)),
+                "importance_score": float(importance),
+            }
+        )
+
+    fg_rows.sort(
+        key=lambda item: (float(item.get("importance_score", 0.0)), float(item.get("area_ratio", 0.0))),
+        reverse=True,
+    )
+    top_boxes = [row["box"] for row in fg_rows[:2]]
+    union_box = _union_box(top_boxes)
+    union_area_ratio = (
+        _box_area_ratio_xyxy(union_box, width, height)
+        if isinstance(union_box, list) and len(union_box) == 4
+        else 0.0
+    )
+    dominant_area_ratio = max((float(row.get("area_ratio", 0.0)) for row in fg_rows), default=0.0)
+    top2_gap = 0.0
+    top2_iou = 0.0
+    if len(fg_rows) >= 2:
+        top2_gap = float(fg_rows[0]["importance_score"]) - float(fg_rows[1]["importance_score"])
+        top2_iou = _iou_xyxy(fg_rows[0]["box"], fg_rows[1]["box"])
+    object_signal = bool(
+        fg_rows
+        and (
+            dominant_area_ratio >= 0.05
+            or union_area_ratio >= 0.10
+            or max((float(row.get("importance_score", 0.0)) for row in fg_rows), default=0.0) >= 0.45
+        )
+    )
+    object_multi_signal = bool(
+        len(fg_rows) >= 2
+        and union_area_ratio >= 0.12
+        and top2_iou < 0.65
+        and (top2_gap < 0.18 or dominant_area_ratio < 0.22)
+    )
+    copyspace_layout_signal = bool(
+        dominant_area_ratio > 0.0
+        and dominant_area_ratio <= 0.22
+        and union_area_ratio > 0.0
+        and union_area_ratio <= 0.30
+    )
+    return {
+        "count": int(len(fg_rows)),
+        "dominant_area_ratio": round(float(dominant_area_ratio), 6),
+        "union_area_ratio": round(float(union_area_ratio), 6),
+        "object_signal": bool(object_signal),
+        "object_multi_signal": bool(object_multi_signal),
+        "copyspace_layout_signal": bool(copyspace_layout_signal),
+        "top2_iou": round(float(top2_iou), 6),
+        "top2_gap": round(float(top2_gap), 6),
+    }
+
+
+def _summarize_public_teacher_support(public_teacher_proposals: Any) -> Dict[str, Any]:
+    if not isinstance(public_teacher_proposals, dict):
+        return {
+            "available": False,
+            "teacher_count": 0,
+            "consensus_iou": 0.0,
+            "median_area_ratio": 0.0,
+            "union_area_ratio": 0.0,
+            "center_spread": 0.0,
+            "best_margin_side": "unknown",
+            "best_margin_ratio": 0.0,
+            "object_focus_signal": False,
+            "scene_fullframe_signal": False,
+            "copyspace_signal": False,
+            "hint_category": "none",
+        }
+
+    top_boxes: List[List[float]] = []
+    for teacher_id, block in public_teacher_proposals.items():
+        if not isinstance(block, dict):
+            continue
+        free_form = block.get("free_form", [])
+        if not isinstance(free_form, list) or not free_form:
+            continue
+        box = _normalize_box_xyxy(free_form[0].get("bbox_norm_xyxy"), 1, 1)
+        if box is None:
+            continue
+        top_boxes.append([float(v) for v in box])
+    if not top_boxes:
+        return {
+            "available": False,
+            "teacher_count": 0,
+            "consensus_iou": 0.0,
+            "median_area_ratio": 0.0,
+            "union_area_ratio": 0.0,
+            "center_spread": 0.0,
+            "best_margin_side": "unknown",
+            "best_margin_ratio": 0.0,
+            "object_focus_signal": False,
+            "scene_fullframe_signal": False,
+            "copyspace_signal": False,
+            "hint_category": "none",
+        }
+
+    pairwise_ious: List[float] = []
+    center_pairs: List[float] = []
+    areas: List[float] = []
+    union_box = _union_box(top_boxes)
+    union_area_ratio = float(_box_area(union_box)) if isinstance(union_box, list) and len(union_box) == 4 else 0.0
+    margins_by_side: Dict[str, List[float]] = {"left": [], "right": [], "top": [], "bottom": []}
+    for idx, box in enumerate(top_boxes):
+        area = _box_area(box)
+        areas.append(float(_clamp(area, 0.0, 1.0)))
+        cx = 0.5 * (box[0] + box[2])
+        cy = 0.5 * (box[1] + box[3])
+        margins_by_side["left"].append(max(0.0, box[0]))
+        margins_by_side["right"].append(max(0.0, 1.0 - box[2]))
+        margins_by_side["top"].append(max(0.0, box[1]))
+        margins_by_side["bottom"].append(max(0.0, 1.0 - box[3]))
+        for jdx in range(idx + 1, len(top_boxes)):
+            other = top_boxes[jdx]
+            pairwise_ious.append(_iou_xyxy(box, other))
+            ocx = 0.5 * (other[0] + other[2])
+            ocy = 0.5 * (other[1] + other[3])
+            center_pairs.append(math.sqrt((cx - ocx) ** 2 + (cy - ocy) ** 2))
+
+    best_margin_side = "unknown"
+    best_margin_ratio = 0.0
+    if margins_by_side:
+        best_margin_side, best_margin_ratio = max(
+            ((side, _median(vals)) for side, vals in margins_by_side.items()),
+            key=lambda item: item[1],
+        )
+
+    teacher_count = len(top_boxes)
+    consensus_iou = _mean(pairwise_ious) if pairwise_ious else 1.0
+    median_area_ratio = _median(areas)
+    center_spread = max(center_pairs) if center_pairs else 0.0
+    object_focus_signal = bool(
+        teacher_count >= 2
+        and 0.12 <= median_area_ratio <= 0.65
+        and consensus_iou >= 0.35
+        and center_spread <= 0.30
+    )
+    scene_fullframe_signal = bool(
+        teacher_count >= 2
+        and median_area_ratio >= 0.72
+        and consensus_iou >= 0.35
+    )
+    copyspace_signal = bool(
+        teacher_count >= 2
+        and best_margin_ratio >= 0.16
+        and median_area_ratio <= 0.82
+    )
+    hint_category = "none"
+    if copyspace_signal:
+        hint_category = "copyspace"
+    elif object_focus_signal:
+        hint_category = "object_focus"
+    elif scene_fullframe_signal:
+        hint_category = "scene_fullframe"
+    return {
+        "available": True,
+        "teacher_count": int(teacher_count),
+        "consensus_iou": round(float(consensus_iou), 6),
+        "median_area_ratio": round(float(median_area_ratio), 6),
+        "union_area_ratio": round(float(_clamp(union_area_ratio, 0.0, 1.0)), 6),
+        "center_spread": round(float(center_spread), 6),
+        "best_margin_side": str(best_margin_side),
+        "best_margin_ratio": round(float(best_margin_ratio), 6),
+        "object_focus_signal": bool(object_focus_signal),
+        "scene_fullframe_signal": bool(scene_fullframe_signal),
+        "copyspace_signal": bool(copyspace_signal),
+        "hint_category": str(hint_category),
+    }
 
 
 def _max_foreground_area_ratio(c2_instances: Sequence[Dict[str, Any]]) -> float:
@@ -226,12 +617,16 @@ def _infer_copyspace_quality(
     tag_signal: bool,
     hint_signal: bool,
     gate_passed: bool,
+    caption_signal: bool = False,
+    teacher_signal: bool = False,
+    perception_signal: bool = False,
 ) -> str:
-    if gate_passed and tag_signal and blank_ratio >= BLANK_RATIO_COPYSPACE_STRONG:
+    semantic_signal = bool(tag_signal or caption_signal or teacher_signal)
+    if gate_passed and semantic_signal and blank_ratio >= BLANK_RATIO_COPYSPACE_STRONG:
         return "strong"
     if gate_passed:
         return "weak"
-    if tag_signal or hint_signal or blank_ratio >= BLANK_RATIO_COPYSPACE_MIN:
+    if semantic_signal or hint_signal or perception_signal or blank_ratio >= BLANK_RATIO_COPYSPACE_MIN:
         return "pseudo"
     return "none"
 
@@ -241,11 +636,24 @@ def _infer_copyspace_mode_fired_by(
     tag_signal: bool,
     hint_signal: bool,
     blank_signal: bool,
+    caption_signal: bool = False,
+    teacher_signal: bool = False,
+    perception_signal: bool = False,
 ) -> str:
+    if teacher_signal and blank_signal:
+        return "teacher+blank"
+    if caption_signal and blank_signal:
+        return "caption+blank"
     if tag_signal and blank_signal:
         return "tag+blank"
+    if perception_signal and blank_signal:
+        return "perception_layout"
     if blank_signal and hint_signal:
         return "fallback_hint"
+    if teacher_signal:
+        return "teacher_only"
+    if caption_signal:
+        return "caption_only"
     if tag_signal:
         return "tag_only"
     if blank_signal:
@@ -640,29 +1048,33 @@ def enrich_c2_topn(
 
 def _infer_mode(
     *,
-    tags_norm: Sequence[str],
-    super_cat: str,
-    c3_person_count: int,
-    text_signal: bool,
-    text_evidence_strong: bool,
+    group_signal: bool,
+    portrait_signal: bool,
+    text_mode_signal: bool,
     copyspace_gate_passed: bool,
     object_signal: bool,
+    object_multi_signal: bool,
     largest_obj_area_ratio: float,
     foreground_mass_ratio: float,
     scene_signal: bool,
     scene_score: float,
 ) -> Tuple[str, float, List[str], str]:
-    sc = str(super_cat or "").strip().lower()
     reasons: List[str] = []
-    if text_signal and text_evidence_strong and (sc in TEXT_SUPER_CATS or _has_any_hint(tags_norm, TEXT_HINTS)):
+    if text_mode_signal:
         reasons.append("text_signal")
         return "text_document", 0.95, reasons, "rule_text"
-    if c3_person_count >= 2 or _has_any_hint(tags_norm, GROUP_HINTS):
+    if group_signal:
         reasons.append("group_signal")
         return "portrait_group", 0.90, reasons, "rule_group"
-    if c3_person_count == 1 or sc in PEOPLE_SUPER_CATS or _has_any_hint(tags_norm, PORTRAIT_HINTS):
+    if portrait_signal:
         reasons.append("portrait_signal")
         return "portrait_single", 0.85, reasons, "rule_portrait"
+    if object_multi_signal and (
+        largest_obj_area_ratio >= (OBJECT_DOMINANCE_MIN * 0.75)
+        or foreground_mass_ratio >= FOREGROUND_MASS_MIN
+    ):
+        reasons.append("object_multi_signal")
+        return "object_multi", 0.72, reasons, "rule_object_multi"
     if copyspace_gate_passed:
         reasons.append("copyspace_signal")
         return "background_texture_copyspace", 0.80, reasons, "rule_copyspace"
@@ -683,27 +1095,27 @@ def _infer_mode(
 
 def _fallback_mode_after_guard(
     *,
-    tags_norm: Sequence[str],
-    super_cat: str,
-    text_signal: bool,
-    text_evidence_strong: bool,
+    text_mode_signal: bool,
     copyspace_gate_passed: bool,
     object_signal: bool,
+    object_multi_signal: bool,
     scene_signal: bool,
     scene_score: float,
 ) -> Tuple[str, float, List[str], str]:
-    sc = str(super_cat or "").strip().lower()
     reasons: List[str] = []
-    if text_signal and text_evidence_strong and (sc in TEXT_SUPER_CATS or _has_any_hint(tags_norm, TEXT_HINTS)):
+    if text_mode_signal:
         reasons.append("fallback_text_signal")
         return "text_document", 0.55, reasons, "fallback_text"
     if copyspace_gate_passed:
         reasons.append("fallback_copyspace_signal")
         return "background_texture_copyspace", 0.55, reasons, "fallback_copyspace"
+    if object_multi_signal:
+        reasons.append("fallback_object_multi_signal")
+        return "object_multi", 0.50, reasons, "fallback_object_multi"
     if scene_signal or scene_score >= SCENE_SCORE_MIN:
         reasons.append("fallback_scene_signal")
         return "scene_general", 0.50, reasons, "fallback_scene"
-    if object_signal or sc in OBJECT_SUPER_CATS or _has_any_hint(tags_norm, OBJECT_HINTS):
+    if object_signal:
         reasons.append("fallback_object_signal")
         return "object_single", 0.45, reasons, "fallback_object"
     reasons.append("fallback_ambiguous")
@@ -758,6 +1170,8 @@ def route_subject_mode(
     horizon_conf: Optional[float] = None,
     symmetry_score: Optional[float] = None,
     ocr_backend_method: Optional[str] = None,
+    caption_text: Optional[str] = None,
+    public_teacher_proposals: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     c3_list = c3_pose if isinstance(c3_pose, list) else []
     person_stats = _person_signal_stats(c2_instances=c2_instances, c3_pose=c3_list, width=width, height=height)
@@ -784,19 +1198,49 @@ def route_subject_mode(
         c2_primary_bg_like_seed = bool(c2_instances[primary_idx_seed].get("bg_like", False))
 
     sc = str(super_cat or "").strip().lower()
-    has_text_hint = _has_any_hint(tags_norm, TEXT_HINTS)
+    caption_semantics = _infer_caption_semantics(caption_text)
+    object_layout = _summarize_object_layout(c2_instances=c2_instances, width=width, height=height)
+    teacher_support = _summarize_public_teacher_support(public_teacher_proposals)
+    caption_excerpt = str(caption_semantics.get("text", ""))[:160] if caption_semantics.get("available", False) else ""
+    caption_people_hint = bool(caption_semantics.get("people_hint", False))
+    caption_group_hint = bool(caption_semantics.get("group_hint", False))
+    caption_portrait_hint = bool(caption_semantics.get("portrait_hint", False))
+    caption_scene_hint = bool(caption_semantics.get("scene_hint", False))
+    caption_object_hint = bool(caption_semantics.get("object_hint", False))
+    caption_copyspace_signal = bool(caption_semantics.get("copyspace_hint", False))
+    caption_text_backed_evidence = bool(caption_semantics.get("text_backed_evidence", False))
+
+    has_text_hint = bool(_has_any_hint(tags_norm, TEXT_HINTS) or caption_semantics.get("text_hint", False))
+    has_text_strong_hint = bool(
+        _has_any_hint(tags_norm, TEXT_STRONG_HINTS) or caption_text_backed_evidence
+    )
     has_copyspace_tag = _has_any_hint(tags_norm, COPYSPACE_HINTS)
-    has_scene_hint = _has_any_hint(tags_norm, SCENE_HINTS)
-    has_object_hint = _has_any_hint(tags_norm, OBJECT_HINTS)
-    has_explicit_people_hint = bool(sc in PEOPLE_SUPER_CATS or _has_any_hint(tags_norm, PORTRAIT_HINTS) or _has_any_hint(tags_norm, GROUP_HINTS))
+    has_copyspace_strong_tag = _has_any_hint(tags_norm, COPYSPACE_STRONG_HINTS)
+    has_scene_hint = bool(_has_any_hint(tags_norm, SCENE_HINTS) or caption_scene_hint)
+    has_object_hint = bool(_has_any_hint(tags_norm, OBJECT_HINTS) or caption_object_hint)
+    group_signal = bool(num_person >= 2 or _has_any_hint(tags_norm, GROUP_HINTS) or caption_group_hint)
+    portrait_signal = bool(
+        num_person == 1
+        or sc in PEOPLE_SUPER_CATS
+        or _has_any_hint(tags_norm, PORTRAIT_HINTS)
+        or caption_people_hint
+        or caption_portrait_hint
+    )
+    has_explicit_people_hint = bool(
+        sc in PEOPLE_SUPER_CATS
+        or _has_any_hint(tags_norm, PORTRAIT_HINTS)
+        or _has_any_hint(tags_norm, GROUP_HINTS)
+        or caption_people_hint
+        or caption_group_hint
+    )
     text_boxes = max(0, int(_safe_float(ocr_text_boxes_count, 0.0)))
     text_overlay = bool(text_overlay_likely) if text_overlay_likely is not None else False
     ocr_method = str(ocr_backend_method or "").strip().lower()
     ocr_available = ocr_method not in {"", "unknown", "unavailable", "disabled"}
-    strong_text_evidence = bool(text_boxes > 0 or text_overlay)
-    text_signal = bool(has_text_hint or text_overlay or text_boxes > 0 or str(super_cat or "").strip().lower() in TEXT_SUPER_CATS)
+    strong_text_evidence = bool(text_boxes > 0 or text_overlay or caption_text_backed_evidence)
+    text_signal = bool(has_text_hint or text_overlay or text_boxes > 0 or sc in TEXT_SUPER_CATS)
     copyspace_hint_signal = bool(copy_space_flag) if copy_space_flag is not None else False
-    copyspace_signal = bool(has_copyspace_tag or copyspace_hint_signal)
+    teacher_copyspace_signal = bool(teacher_support.get("copyspace_signal", False))
 
     if blank_ratio_est is None:
         if isinstance(union_box_seed, list) and len(union_box_seed) == 4:
@@ -807,13 +1251,6 @@ def route_subject_mode(
             blank_ratio = 0.0
     else:
         blank_ratio = _clamp(_safe_float(blank_ratio_est, 0.0), 0.0, 1.0)
-    copyspace_blank_signal = bool(blank_ratio >= BLANK_RATIO_COPYSPACE_MIN)
-    copyspace_gate_passed = bool(copyspace_signal and copyspace_blank_signal)
-    copyspace_mode_fired_by = _infer_copyspace_mode_fired_by(
-        tag_signal=bool(has_copyspace_tag),
-        hint_signal=bool(copyspace_hint_signal),
-        blank_signal=bool(copyspace_blank_signal),
-    )
     largest_obj_area_ratio = _max_foreground_area_ratio(c2_instances)
     foreground_mass_ratio = _foreground_mass_ratio(union_box_seed, width, height)
     saliency_signal = summarize_saliency_signal(c7_saliency, width=width, height=height)
@@ -822,8 +1259,74 @@ def route_subject_mode(
     if saliency_fg_ratio > 0.0:
         foreground_mass_ratio = max(foreground_mass_ratio, saliency_fg_ratio)
         blank_ratio = min(blank_ratio, saliency_blank_ratio)
-    scene_signal = bool(sc in SCENE_SUPER_CATS or has_scene_hint)
-    object_signal = bool(sc in OBJECT_SUPER_CATS or has_object_hint)
+    scene_signal = bool(
+        sc in SCENE_SUPER_CATS
+        or has_scene_hint
+        or teacher_support.get("scene_fullframe_signal", False)
+        or saliency_signal.get("scene_like_signal", False)
+    )
+    perception_object_signal = bool(object_layout.get("object_signal", False))
+    object_signal_explicit = bool(
+        sc in OBJECT_SUPER_CATS
+        or has_object_hint
+        or teacher_support.get("object_focus_signal", False)
+    )
+    object_signal = bool(object_signal_explicit or (perception_object_signal and not scene_signal))
+    perception_object_multi_signal = bool(object_layout.get("object_multi_signal", False))
+    perception_copyspace_signal = bool(
+        object_layout.get("copyspace_layout_signal", False)
+        and blank_ratio >= max(BLANK_RATIO_COPYSPACE_STRONG, 0.45)
+        and foreground_mass_ratio <= 0.28
+        and num_person <= 0
+        and not strong_text_evidence
+    )
+    copyspace_blank_signal = bool(blank_ratio >= BLANK_RATIO_COPYSPACE_MIN)
+    copyspace_semantic_signal = bool(
+        has_copyspace_strong_tag or copyspace_hint_signal or caption_copyspace_signal
+    )
+    teacher_copyspace_conflict = bool(
+        caption_people_hint
+        or caption_group_hint
+        or caption_portrait_hint
+        or caption_scene_hint
+        or caption_object_hint
+        or scene_signal
+        or object_signal_explicit
+        or strong_text_evidence
+        or teacher_support.get("scene_fullframe_signal", False)
+    )
+    teacher_copyspace_eligible = bool(
+        teacher_copyspace_signal
+        and blank_ratio >= BLANK_RATIO_COPYSPACE_STRONG
+        and not teacher_copyspace_conflict
+    )
+    copyspace_explicit_signal = bool(copyspace_semantic_signal or teacher_copyspace_eligible)
+    copyspace_signal = bool(
+        has_copyspace_tag
+        or copyspace_hint_signal
+        or caption_copyspace_signal
+        or teacher_copyspace_signal
+        or perception_copyspace_signal
+    )
+    copyspace_gate_passed = bool(
+        copyspace_blank_signal
+        and (
+            copyspace_explicit_signal
+            or (
+                perception_copyspace_signal
+                and not scene_signal
+                and not perception_object_multi_signal
+            )
+        )
+    )
+    copyspace_mode_fired_by = _infer_copyspace_mode_fired_by(
+        tag_signal=bool(has_copyspace_tag),
+        hint_signal=bool(copyspace_hint_signal),
+        blank_signal=bool(copyspace_blank_signal),
+        caption_signal=bool(caption_copyspace_signal),
+        teacher_signal=bool(teacher_copyspace_signal),
+        perception_signal=bool(perception_copyspace_signal),
+    )
     horizon_exists_prob = _clamp(_safe_float(horizon_conf, 0.0), 0.0, 1.0)
     scene_score = float(
         _clamp(
@@ -838,14 +1341,21 @@ def route_subject_mode(
     scene_subtype = None
     scene_conf = 0.0
     dominant_vertical_strength = 0.0
+    text_mode_signal = bool(
+        strong_text_evidence
+        and (
+            sc in TEXT_SUPER_CATS
+            or has_text_strong_hint
+            or (has_text_hint and max(largest_obj_area_ratio, foreground_mass_ratio) >= 0.18)
+        )
+    )
     mode, conf, reasons, base_rule_id = _infer_mode(
-        tags_norm=tags_norm,
-        super_cat=super_cat,
-        c3_person_count=num_person,
-        text_signal=text_signal,
-        text_evidence_strong=strong_text_evidence,
+        group_signal=group_signal,
+        portrait_signal=portrait_signal,
+        text_mode_signal=text_mode_signal,
         copyspace_gate_passed=copyspace_gate_passed,
         object_signal=object_signal,
+        object_multi_signal=perception_object_multi_signal,
         largest_obj_area_ratio=largest_obj_area_ratio,
         foreground_mass_ratio=foreground_mass_ratio,
         scene_signal=scene_signal,
@@ -869,47 +1379,41 @@ def route_subject_mode(
     if mode.startswith("portrait") and num_person <= 0:
         guard_reasons.append("guard_no_person_for_portrait")
         mode, conf, fb_reasons, fb_rule_id = _fallback_mode_after_guard(
-            tags_norm=tags_norm,
-            super_cat=super_cat,
-            text_signal=text_signal,
-            text_evidence_strong=strong_text_evidence,
+            text_mode_signal=text_mode_signal,
             copyspace_gate_passed=copyspace_gate_passed,
             object_signal=object_signal,
+            object_multi_signal=perception_object_multi_signal,
             scene_signal=scene_signal,
             scene_score=scene_score,
         )
         reasons.extend(guard_reasons + fb_reasons)
         router_rule_id = f"{base_rule_id}|{fb_rule_id}"
 
-    # P0 guard #2: no C4-backed text evidence should not route text_document.
-    if mode == "text_document" and not strong_text_evidence:
-        guard_reasons.append("guard_text_requires_c4_evidence")
+    # P0 guard #2: text_document requires OCR/caption-backed evidence.
+    if mode == "text_document" and not text_mode_signal:
+        guard_reasons.append("guard_text_requires_backed_evidence")
         mode, conf, fb_reasons, fb_rule_id = _fallback_mode_after_guard(
-            tags_norm=tags_norm,
-            super_cat=super_cat,
-            text_signal=False,
-            text_evidence_strong=False,
+            text_mode_signal=False,
             copyspace_gate_passed=copyspace_gate_passed,
             object_signal=object_signal,
+            object_multi_signal=perception_object_multi_signal,
             scene_signal=scene_signal,
             scene_score=scene_score,
         )
-        reasons.extend(["guard_text_requires_c4_evidence"] + fb_reasons)
+        reasons.extend(["guard_text_requires_backed_evidence"] + fb_reasons)
         router_rule_id = f"{base_rule_id}|{fb_rule_id}"
-    elif text_signal and not strong_text_evidence and "guard_text_requires_c4_evidence" not in reasons:
-        reasons.append("guard_text_requires_c4_evidence")
-        guard_reasons.append("guard_text_requires_c4_evidence")
+    elif text_signal and not text_mode_signal and "guard_text_requires_backed_evidence" not in reasons:
+        reasons.append("guard_text_requires_backed_evidence")
+        guard_reasons.append("guard_text_requires_backed_evidence")
 
     # P0 guard #3: copy-space tag only is insufficient when blank ratio is low.
     if mode == "background_texture_copyspace" and copyspace_signal and (blank_ratio < BLANK_RATIO_COPYSPACE_MIN):
         guard_reasons.append("guard_low_blank_ratio_for_copyspace")
         mode, conf, fb_reasons, fb_rule_id = _fallback_mode_after_guard(
-            tags_norm=tags_norm,
-            super_cat=super_cat,
-            text_signal=text_signal,
-            text_evidence_strong=strong_text_evidence,
+            text_mode_signal=text_mode_signal,
             copyspace_gate_passed=False,
             object_signal=object_signal,
+            object_multi_signal=perception_object_multi_signal,
             scene_signal=scene_signal,
             scene_score=scene_score,
         )
@@ -918,6 +1422,25 @@ def route_subject_mode(
     elif copyspace_signal and (blank_ratio < BLANK_RATIO_COPYSPACE_MIN) and "guard_low_blank_ratio_for_copyspace" not in reasons:
         reasons.append("guard_low_blank_ratio_for_copyspace")
         guard_reasons.append("guard_low_blank_ratio_for_copyspace")
+
+    object_focus_guard = bool(
+        mode == "background_texture_copyspace"
+        and object_signal
+        and (
+            max(
+                float(object_layout.get("dominant_area_ratio", 0.0)),
+                float(object_layout.get("union_area_ratio", 0.0)),
+            ) >= 0.18
+            or object_signal_explicit
+        )
+        and not copyspace_semantic_signal
+    )
+    if object_focus_guard:
+        guard_reasons.append("guard_object_focus_over_copyspace")
+        reasons.append("guard_object_focus_over_copyspace")
+        mode = "object_multi" if perception_object_multi_signal else "object_single"
+        conf = max(float(conf), 0.66 if mode == "object_single" else 0.72)
+        router_rule_id = f"{router_rule_id}|guard_object_focus_over_copyspace"
 
     contextual_tiny_human_scene = False
     if _should_fallback_tiny_human_to_scene(
@@ -1006,12 +1529,19 @@ def route_subject_mode(
         c2_primary_area_ratio = _safe_float(c2_instances[primary_idx].get("area_ratio", 0.0), 0.0)
         c2_primary_bg_like = bool(c2_instances[primary_idx].get("bg_like", False))
 
+    copyspace_side = _infer_copyspace_side(union_box_seed, width, height)
+    if copyspace_side == "unknown" and teacher_support.get("best_margin_side", "unknown") != "unknown":
+        copyspace_side = str(teacher_support.get("best_margin_side", "unknown"))
+
     flags = {
         "has_person": bool(num_person > 0),
         "has_text_heavy": bool(mode == "text_document"),
         "has_copyspace_tag": bool(has_copyspace_tag),
+        "has_copyspace_hint": bool(copyspace_signal),
         "is_background_like": bool(0 <= primary_idx < len(c2_instances) and c2_primary_bg_like),
         "contextual_tiny_human": bool(contextual_tiny_human_scene),
+        "caption_available": bool(caption_semantics.get("available", False)),
+        "public_teacher_support_available": bool(teacher_support.get("available", False)),
     }
 
     shot_type: Optional[str] = None
@@ -1050,7 +1580,7 @@ def route_subject_mode(
     mode_conflict = False
     if mode.startswith("portrait") and not flags["has_person"] and sc not in PEOPLE_SUPER_CATS:
         mode_conflict = True
-    if mode == "text_document" and not strong_text_evidence:
+    if mode == "text_document" and not text_mode_signal:
         mode_conflict = True
     if guard_reasons:
         mode_conflict = True
@@ -1068,16 +1598,29 @@ def route_subject_mode(
         "c2_num_instances": int(len(c2_instances)),
         "c2_primary_bg_like": bool(c2_primary_bg_like),
         "c2_primary_area_ratio": round(float(c2_primary_area_ratio), 6),
+        "caption_available": bool(caption_semantics.get("available", False)),
+        "caption_excerpt": caption_excerpt,
+        "caption_people_hint": bool(caption_semantics.get("people_hint", False)),
+        "caption_group_hint": bool(caption_semantics.get("group_hint", False)),
+        "caption_portrait_hint": bool(caption_semantics.get("portrait_hint", False)),
+        "caption_scene_hint": bool(caption_semantics.get("scene_hint", False)),
+        "caption_object_hint": bool(caption_semantics.get("object_hint", False)),
+        "caption_copyspace_hint": bool(caption_semantics.get("copyspace_hint", False)),
+        "caption_text_backed_evidence": bool(caption_semantics.get("text_backed_evidence", False)),
         "has_text_hint": bool(has_text_hint),
         "ocr_text_boxes": int(text_boxes),
         "ocr_backend_method": ocr_method or "unknown",
         "ocr_available": bool(ocr_available),
         "text_overlay_likely": bool(text_overlay),
         "text_evidence_strong": bool(strong_text_evidence),
+        "text_mode_signal": bool(text_mode_signal),
         "text_signal": bool(text_signal),
         "has_copyspace_tag": bool(has_copyspace_tag),
         "copyspace_tag_signal": bool(has_copyspace_tag),
         "copyspace_hint_signal": bool(copyspace_hint_signal),
+        "copyspace_caption_signal": bool(caption_copyspace_signal),
+        "copyspace_teacher_signal": bool(teacher_copyspace_signal),
+        "copyspace_perception_signal": bool(perception_copyspace_signal),
         "copy_space_flag": bool(copyspace_signal),
         "blank_ratio_est": round(float(blank_ratio), 6),
         "blank_ratio_thr": float(BLANK_RATIO_COPYSPACE_MIN),
@@ -1088,11 +1631,27 @@ def route_subject_mode(
         "horizon_exists_prob": round(float(horizon_exists_prob), 6),
         "horizon_conf": round(float(_safe_float(horizon_conf, 0.0)), 6),
         "symmetry_score": round(float(_safe_float(symmetry_score, 0.0)), 6),
-        "scene_tag_signal": bool(scene_signal),
+        "scene_tag_signal": bool(has_scene_hint),
+        "scene_signal": bool(scene_signal),
         "scene_score": round(float(scene_score), 6),
         "largest_obj_area_ratio": round(float(largest_obj_area_ratio), 6),
         "foreground_mass_ratio": round(float(foreground_mass_ratio), 6),
+        "nonperson_object_count": int(object_layout.get("count", 0)),
+        "nonperson_object_union_area_ratio": round(float(object_layout.get("union_area_ratio", 0.0)), 6),
+        "nonperson_object_dominant_area_ratio": round(float(object_layout.get("dominant_area_ratio", 0.0)), 6),
+        "object_multi_candidate": bool(object_layout.get("object_multi_signal", False)),
         "dominant_vertical_strength": round(float(dominant_vertical_strength), 6),
+        "public_teacher_available": bool(teacher_support.get("available", False)),
+        "public_teacher_count": int(teacher_support.get("teacher_count", 0)),
+        "public_teacher_hint_category": str(teacher_support.get("hint_category", "none")),
+        "public_teacher_consensus_iou": round(float(teacher_support.get("consensus_iou", 0.0)), 6),
+        "public_teacher_median_area_ratio": round(float(teacher_support.get("median_area_ratio", 0.0)), 6),
+        "public_teacher_best_margin_side": str(teacher_support.get("best_margin_side", "unknown")),
+        "public_teacher_best_margin_ratio": round(float(teacher_support.get("best_margin_ratio", 0.0)), 6),
+        "public_teacher_copyspace_signal": bool(teacher_support.get("copyspace_signal", False)),
+        "public_teacher_copyspace_eligible": bool(teacher_copyspace_eligible),
+        "public_teacher_object_focus_signal": bool(teacher_support.get("object_focus_signal", False)),
+        "public_teacher_scene_fullframe_signal": bool(teacher_support.get("scene_fullframe_signal", False)),
         "saliency_available": bool(saliency_signal.get("available", False)),
         "saliency_foreground_area_ratio": round(float(saliency_signal.get("foreground_area_ratio", 0.0)), 6),
         "saliency_blank_ratio_est": round(float(saliency_signal.get("blank_ratio_est", 1.0)), 6),
@@ -1105,10 +1664,14 @@ def route_subject_mode(
     copyspace = {
         "tag_signal": bool(has_copyspace_tag),
         "hint_signal": bool(copyspace_hint_signal),
+        "caption_signal": bool(caption_copyspace_signal),
+        "teacher_signal": bool(teacher_copyspace_signal),
+        "teacher_eligible": bool(teacher_copyspace_eligible),
+        "perception_signal": bool(perception_copyspace_signal),
         "blank_signal": bool(copyspace_blank_signal),
         "gate_passed": bool(copyspace_gate_passed),
         "mode_fired_by": str(copyspace_mode_fired_by),
-        "side": _infer_copyspace_side(union_box_seed, width, height),
+        "side": str(copyspace_side),
         "blank_ratio_est": round(float(blank_ratio), 6),
         "blank_ratio_thr": float(BLANK_RATIO_COPYSPACE_MIN),
         "quality": _infer_copyspace_quality(
@@ -1116,6 +1679,9 @@ def route_subject_mode(
             tag_signal=bool(has_copyspace_tag),
             hint_signal=bool(copyspace_hint_signal),
             gate_passed=bool(copyspace_gate_passed),
+            caption_signal=bool(caption_copyspace_signal),
+            teacher_signal=bool(teacher_copyspace_signal),
+            perception_signal=bool(perception_copyspace_signal),
         ),
     }
 

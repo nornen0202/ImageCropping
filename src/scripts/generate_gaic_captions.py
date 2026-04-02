@@ -186,7 +186,7 @@ class BlipCaptioner(BaseCaptioner):
         from transformers import BlipForConditionalGeneration, BlipProcessor
 
         self.processor = BlipProcessor.from_pretrained(model_id)
-        self.model = BlipForConditionalGeneration.from_pretrained(model_id, torch_dtype=dtype).to(device)
+        self.model = BlipForConditionalGeneration.from_pretrained(model_id, torch_dtype=dtype, use_safetensors=True).to(device)
         self.model.eval()
 
     @torch.no_grad()

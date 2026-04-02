@@ -176,9 +176,15 @@ Core options
 --run_detailed_report -1|0|1    detailed report 패키지 생성 (-1=auto: run_tag가 있으면 on, default: -1)
 --report_dir PATH               detailed report 출력 경로 (default: <data_dir>/artifacts/reports/<run_tag>_detailed)
 --run_training_labels -1|0|1    finalscore training labels 생성 (-1=auto: run_tag가 있으면 on, default: -1)
---training_labels_dir PATH      training labels 출력 경로 (default: <data_dir>/artifacts/training_labels/<run_tag>)
+--training_labels_dir PATH      training labels 출력 경로 (default: <data_dir>/artifacts/training_labels/<run_tag>_leftover_ignore_monotonic)
 --safe_leftover_policy NAME     keep_negative|ignore|promote_soft_positive (default: ignore)
+--run_training_label_debug_viz 0|1  GAIC GT 기반 training label debug viz 생성 (default: 0)
+--training_label_debug_viz_sample_size INT debug viz 균등 샘플 수 (default: 50)
+--training_label_debug_viz_seed INT debug viz 샘플링 seed (default: 42)
+--training_label_debug_viz_out_dir PATH debug viz 출력 경로 (default: <training_labels_dir>/debug_visualizations_balanced50_bottomneg)
 --gaic_reference_json PATH      GAIC-like 변환 기준 json (default: data/Publics/GAIC/annotations_json/instances_train.json)
+--gaic_train_reference_json PATH debug viz / split export용 official GAIC train json
+--gaic_test_reference_json PATH debug viz / split export용 official GAIC test json
 --report_examples_per_bucket N  subject count/mode evidence 샘플 수 (default: 5)
 --report_viz_stage_dir PATH     report 전용 teacher viz staging 경로
 --vlm_backend NAME              qwen25_vl|heuristic (default: qwen25_vl)
@@ -255,8 +261,15 @@ REPORT_DIR=""
 REPORT_EXAMPLES_PER_BUCKET=5
 REPORT_VIZ_STAGE_DIR=""
 RUN_TRAINING_LABELS=-1
+RUN_TRAINING_LABEL_DEBUG_VIZ=0
+TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE=50
+TRAINING_LABEL_DEBUG_VIZ_SEED=42
+TRAINING_LABEL_DEBUG_VIZ_OUT_DIR=""
 TRAINING_LABELS_DIR=""
 SAFE_LEFTOVER_POLICY="ignore"
+GAIC_REFERENCE_JSON=""
+GAIC_TRAIN_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_train.json"
+GAIC_TEST_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_test.json"
 
 # Filter
 RUN_FILTER=1
@@ -563,7 +576,13 @@ while [ "$#" -gt 0 ]; do
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
     --training_labels_dir) TRAINING_LABELS_DIR="$2"; shift 2 ;;
     --safe_leftover_policy) SAFE_LEFTOVER_POLICY="$2"; shift 2 ;;
+    --run_training_label_debug_viz) RUN_TRAINING_LABEL_DEBUG_VIZ="$2"; shift 2 ;;
+    --training_label_debug_viz_sample_size) TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE="$2"; shift 2 ;;
+    --training_label_debug_viz_seed) TRAINING_LABEL_DEBUG_VIZ_SEED="$2"; shift 2 ;;
+    --training_label_debug_viz_out_dir) TRAINING_LABEL_DEBUG_VIZ_OUT_DIR="$2"; shift 2 ;;
     --gaic_reference_json) GAIC_REFERENCE_JSON="$2"; shift 2 ;;
+    --gaic_train_reference_json) GAIC_TRAIN_REFERENCE_JSON="$2"; shift 2 ;;
+    --gaic_test_reference_json) GAIC_TEST_REFERENCE_JSON="$2"; shift 2 ;;
     --report_examples_per_bucket) REPORT_EXAMPLES_PER_BUCKET="$2"; shift 2 ;;
     --report_viz_stage_dir) REPORT_VIZ_STAGE_DIR="$2"; shift 2 ;;
     --vlm_backend) VLM_BACKEND="$2"; shift 2 ;;
@@ -757,6 +776,7 @@ MERGED_FEATS="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched.jsonl"
 MERGED_FEATS_ROUTED="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed.jsonl"
 MERGED_FEATS_C7="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl"
 MERGED_FEATS_ROUTED_C7="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl"
+MERGED_FEATS_ROUTED_FINAL="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl"
 C7_SALIENCY_SUMMARY_JSON="${PRECOMPUTE_DIR}/c7_saliency${SUFFIX}_summary.json"
 DOWNSTREAM_FEATS="$MERGED_FEATS"
 
@@ -809,14 +829,26 @@ if [ -z "$REPORT_VIZ_STAGE_DIR" ]; then
   REPORT_VIZ_STAGE_DIR="${REPORT_DIR}/assets/_staging_teacher_viz/teacher_scorer${SUFFIX}"
 fi
 if [ -z "$TRAINING_LABELS_DIR" ]; then
+  case "$SAFE_LEFTOVER_POLICY" in
+    keep_negative) _training_labels_suffix="leftover_keepneg_monotonic" ;;
+    ignore) _training_labels_suffix="leftover_ignore_monotonic" ;;
+    promote_soft_positive) _training_labels_suffix="leftover_softpos_monotonic" ;;
+    *)
+      echo "[error] unsupported safe_leftover_policy for default training_labels_dir: $SAFE_LEFTOVER_POLICY"
+      exit 1
+      ;;
+  esac
   if [ -n "$RUN_TAG" ]; then
-    TRAINING_LABELS_DIR="${TRAINING_LABELS_BASE_DIR}/${RUN_TAG}"
+    TRAINING_LABELS_DIR="${TRAINING_LABELS_BASE_DIR}/${RUN_TAG}_${_training_labels_suffix}"
   else
-    TRAINING_LABELS_DIR="${TRAINING_LABELS_BASE_DIR}/latest"
+    TRAINING_LABELS_DIR="${TRAINING_LABELS_BASE_DIR}/latest_${_training_labels_suffix}"
   fi
 fi
 if [ -z "${GAIC_REFERENCE_JSON:-}" ]; then
   GAIC_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_train.json"
+fi
+if [ -z "$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR" ]; then
+  TRAINING_LABEL_DEBUG_VIZ_OUT_DIR="${TRAINING_LABELS_DIR}/debug_visualizations_balanced${TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE}_bottomneg"
 fi
 TRAINING_LABELS_PAIRWISE_JSON="${TRAINING_LABELS_DIR}/train_pairwise.jsonl"
 TRAINING_LABELS_DETR_CANONICAL_JSON="${TRAINING_LABELS_DIR}/train_conditional_detr_canonical.jsonl"
@@ -825,6 +857,7 @@ TRAINING_LABELS_DETR_SKIPPED_JSON="${TRAINING_LABELS_DIR}/train_conditional_detr
 TRAINING_LABELS_QA_JSON="${TRAINING_LABELS_DIR}/qa_summary.json"
 TRAINING_LABELS_VALIDATION_JSON="${TRAINING_LABELS_DIR}/validation_summary.json"
 TRAINING_LABELS_REPORT_MD="${TRAINING_LABELS_DIR}/TRAINING_DATA_REPORT_KO.md"
+TRAINING_LABELS_SUBJECT_MODE_VOCAB_JSON="${TRAINING_LABELS_DIR}/subject_mode_vocab.json"
 TRAINING_LABELS_COCO_DIR="${TRAINING_LABELS_DIR}/coco"
 TRAINING_LABELS_COCO_CANONICAL_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_canonical.json"
 TRAINING_LABELS_COCO_BATCH_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_batch.json"
@@ -832,6 +865,7 @@ TRAINING_LABELS_COCO_SUMMARY_JSON="${TRAINING_LABELS_COCO_DIR}/coco_conversion_s
 TRAINING_LABELS_GAIC_LIKE_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_batch_gaic_like.json"
 TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON="${TRAINING_LABELS_COCO_DIR}/gaic_like_conversion_summary.json"
 TRAINING_LABELS_GAIC_LIKE_GUIDE_MD="${TRAINING_LABELS_COCO_DIR}/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
+TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON="${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR}/summary/summary.json"
 
 mkdir -p \
   "$PRECOMPUTE_DIR" \
@@ -965,6 +999,7 @@ promote_from_legacy_or_cleanup "$MERGED_FEATS"
 promote_from_legacy_or_cleanup "$MERGED_FEATS_ROUTED"
 promote_from_legacy_or_cleanup "$MERGED_FEATS_C7"
 promote_from_legacy_or_cleanup "$MERGED_FEATS_ROUTED_C7"
+promote_from_legacy_or_cleanup "$MERGED_FEATS_ROUTED_FINAL"
 promote_from_legacy_or_cleanup "$CANDIDATES_JSONL"
 promote_from_legacy_or_cleanup "$PUBLIC_TEACHER_RAW_JSONL"
 promote_from_legacy_or_cleanup "$PUBLIC_TEACHER_PROPOSALS_JSONL"
@@ -1086,7 +1121,10 @@ echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
 echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR policy=$SAFE_LEFTOVER_POLICY)"
+echo " training_debug_viz  : $RUN_TRAINING_LABEL_DEBUG_VIZ (out=$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR sample_size=$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE seed=$TRAINING_LABEL_DEBUG_VIZ_SEED)"
 echo " gaic_reference_json : ${GAIC_REFERENCE_JSON:-<none>}"
+echo " gaic_train_ref_json : ${GAIC_TRAIN_REFERENCE_JSON:-<none>}"
+echo " gaic_test_ref_json  : ${GAIC_TEST_REFERENCE_JSON:-<none>}"
 echo " run_detailed_report : $RUN_DETAILED_REPORT (dir=$REPORT_DIR examples_per_bucket=$REPORT_EXAMPLES_PER_BUCKET)"
 echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
 echo " vlm strict init     : $VLM_STRICT_BACKEND_INIT"
@@ -1453,12 +1491,6 @@ if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
   fi
 fi
 
-# Compatibility aliases for downstream steps.
-FEATS_C2="$DOWNSTREAM_FEATS"
-FEATS_C3_ENRICHED="$DOWNSTREAM_FEATS"
-FEATS_C5="$DOWNSTREAM_FEATS"
-FEATS_C6="$DOWNSTREAM_FEATS"
-
 # ------------------------------------------------------------------------------
 # 2.5) Precompute Visualization (optional)
 # ------------------------------------------------------------------------------
@@ -1597,6 +1629,34 @@ if [ "$ENABLE_PUBLIC_TEACHER_PROPOSALS" -eq 1 ]; then
   TEACHER_PROPOSALS_JSONL="$(csv_append_unique "$TEACHER_PROPOSALS_JSONL" "$PUBLIC_TEACHER_PROPOSALS_JSONL")"
   echo "[info] teacher proposal injection paths: $TEACHER_PROPOSALS_JSONL"
 fi
+
+# ------------------------------------------------------------------------------
+# 3.5) Re-route with Public Teacher Geometry (optional)
+# ------------------------------------------------------------------------------
+if [ "$RUN_SUBJECT_ROUTING" -eq 1 ] && [ -n "$PUBLIC_TEACHER_PROPOSALS_JSONL" ] && [ -f "$PUBLIC_TEACHER_PROPOSALS_JSONL" ]; then
+  if ! should_skip_file "$MERGED_FEATS_ROUTED_FINAL"; then
+    run_with_log "08d_reroute_subject_mode_with_public_teacher" \
+      python3 src/scripts/enrich_subject_mode_jsonl.py \
+        --input_feats_jsonl "$DOWNSTREAM_FEATS" \
+        --input_filtered_parquet "$FILTERED_PARQUET" \
+        --output_jsonl "$MERGED_FEATS_ROUTED_FINAL" \
+        --teacher_proposals_jsonl "$PUBLIC_TEACHER_PROPOSALS_JSONL" \
+        --c2_top_n "$SUBJECT_ROUTING_TOP_N" \
+        --c2_union_top_m "$SUBJECT_ROUTING_UNION_TOP_M" \
+        --allow_det_proxy "$SUBJECT_ROUTING_ALLOW_DET_PROXY"
+  fi
+  if [ ! -f "$MERGED_FEATS_ROUTED_FINAL" ]; then
+    echo "[error] routed final output missing: $MERGED_FEATS_ROUTED_FINAL"
+    exit 1
+  fi
+  DOWNSTREAM_FEATS="$MERGED_FEATS_ROUTED_FINAL"
+fi
+
+# Compatibility aliases for downstream steps.
+FEATS_C2="$DOWNSTREAM_FEATS"
+FEATS_C3_ENRICHED="$DOWNSTREAM_FEATS"
+FEATS_C5="$DOWNSTREAM_FEATS"
+FEATS_C6="$DOWNSTREAM_FEATS"
 
 # ------------------------------------------------------------------------------
 # 4) Candidate Generator
@@ -1850,6 +1910,31 @@ fi
 # ------------------------------------------------------------------------------
 # 7) Detailed Report Package (optional)
 # ------------------------------------------------------------------------------
+build_training_label_debug_viz() {
+  if [ ! -f "$TRAINING_LABELS_GAIC_LIKE_JSON" ]; then
+    echo "[warn] skip training-label debug viz: missing gaic-like json: $TRAINING_LABELS_GAIC_LIKE_JSON"
+    return 0
+  fi
+  if [ ! -f "$TRAINING_LABELS_DETR_BATCH_JSON" ] || [ ! -f "$TRAINING_LABELS_SUBJECT_MODE_VOCAB_JSON" ]; then
+    echo "[warn] skip training-label debug viz: missing batch jsonl or subject_mode_vocab."
+    return 0
+  fi
+  if [ ! -f "$GAIC_TRAIN_REFERENCE_JSON" ] || [ ! -f "$GAIC_TEST_REFERENCE_JSON" ]; then
+    echo "[warn] GAIC official train/test references not found. continuing with pos/neg-only debug viz."
+  fi
+  run_with_log "13d_build_training_label_debug_viz" \
+    python3 src/scripts/build_gaic_training_label_debug_viz.py \
+      --coco_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
+      --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
+      --gaic_gt_train_json "$GAIC_TRAIN_REFERENCE_JSON" \
+      --gaic_gt_test_json "$GAIC_TEST_REFERENCE_JSON" \
+      --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
+      --subject_mode_vocab "$TRAINING_LABELS_SUBJECT_MODE_VOCAB_JSON" \
+      --sample_size "$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE" \
+      --seed "$TRAINING_LABEL_DEBUG_VIZ_SEED" \
+      --out_dir "$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR"
+}
+
 if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
   if [ -z "$RUN_TAG" ]; then
     echo "[warn] run_detailed_report=1 but run_tag is empty. skipping detailed report package."
@@ -1949,6 +2034,13 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
         --out_summary_json "$TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON" \
         --out_guide_md "$TRAINING_LABELS_GAIC_LIKE_GUIDE_MD"
   fi
+  if [ "$RUN_TRAINING_LABEL_DEBUG_VIZ" -eq 1 ]; then
+    if ! should_skip_file "$TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON"; then
+      build_training_label_debug_viz
+    else
+      echo "[skip] training-label debug viz already exists: $TRAINING_LABEL_DEBUG_VIZ_OUT_DIR"
+    fi
+  fi
 fi
 
 echo "========================================================"
@@ -1964,6 +2056,9 @@ echo " feats c2/c3e/c4/c5/c6: $FEATS_C2 | $FEATS_C3_ENRICHED | $FEATS_C4 | $FEAT
 echo " merged feats     : $MERGED_FEATS"
 if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
   echo " routed feats     : $MERGED_FEATS_ROUTED"
+fi
+if [ "$RUN_SUBJECT_ROUTING" -eq 1 ] && [ -f "$MERGED_FEATS_ROUTED_FINAL" ]; then
+  echo " routed final     : $MERGED_FEATS_ROUTED_FINAL"
 fi
 if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
   echo " c7 saliency json : $DOWNSTREAM_FEATS"
@@ -1992,6 +2087,10 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   echo " coco summary     : $TRAINING_LABELS_COCO_SUMMARY_JSON"
   echo " gaic-like json   : $TRAINING_LABELS_GAIC_LIKE_JSON"
   echo " gaic-like guide  : $TRAINING_LABELS_GAIC_LIKE_GUIDE_MD"
+  if [ "$RUN_TRAINING_LABEL_DEBUG_VIZ" -eq 1 ]; then
+    echo " debug viz dir    : $TRAINING_LABEL_DEBUG_VIZ_OUT_DIR"
+    echo " debug viz summary: $TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON"
+  fi
 fi
 if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
   echo " report dir       : $REPORT_DIR"

@@ -32,6 +32,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from scripts.safety_score_utils import SafetyPenaltyConfig, compute_safety_penalty_bundle
 from subject_region import ensure_crop_guidance_spec
 
 
@@ -165,6 +166,36 @@ class TeacherScorerConfig:
     head_top_min_margin: float = 0.008
     head_top_face_margin_alpha: float = 0.20
 
+    # Safety-aware policy shaping
+    safety_lambda_area: float = 1.90
+    safety_lambda_ar: float = 1.75
+    safety_lambda_face: float = 1.20
+    safety_lambda_head_top: float = 1.45
+    safety_lambda_joint: float = 1.10
+    safety_lambda_lookroom: float = 0.70
+    safety_lambda_text: float = 0.85
+    safety_lambda_subject_border: float = 0.25
+    safety_bonus_area_hard: float = 0.95
+    safety_bonus_ar_hard: float = 0.95
+    safety_bonus_face_hard: float = 0.85
+    safety_bonus_head_top_hard: float = 0.95
+    safety_bonus_joint_hard: float = 0.75
+    safety_bonus_lookroom_hard: float = 0.65
+    safety_bonus_text_hard: float = 0.60
+    safety_ar_violation_scale: float = 0.05
+    safety_lookroom_scale_floor: float = 0.25
+    safety_text_soft_cap: float = 2.0
+    safety_severity_cap: float = 2.0
+    safety_joint_relax_lambda_scale: float = 0.772727273
+    safety_joint_relax_bonus_scale: float = 0.733333333
+    safety_head_top_relax_lambda_scale: float = 0.793103448
+    safety_head_top_relax_bonus_scale: float = 0.736842105
+    safety_subject_border_relax_lambda_scale: float = 0.60
+    safety_relax_joint_head_top_min_coverage: float = 0.90
+    safety_relax_subject_border_min_coverage: float = 0.85
+    safety_relax_joint_max_severe_count: int = 1
+    safety_relax_subject_border_max_joint_score: float = 0.10
+
     # Cheap scoring weights (base)
     lambda_cov: float = 1.20
     lambda_cut: float = 1.80
@@ -188,8 +219,13 @@ class TeacherScorerConfig:
     w_phi: float = 0.15
     w_center: float = 0.25
     w_horizon: float = 0.15
+    comp_place_smax_tau: float = 0.08
+    c_macro_comp_weight_scale: float = 0.88
     horizon_conf_thr: float = 0.25
     horizon_visibility_thr: float = 0.70
+    subject_scale_expand_portrait: float = 0.03
+    subject_scale_expand_general: float = 0.02
+    s_macro_bottleneck_alpha: float = 0.35
 
     # Headroom/lookroom formula constants
     sigma_h: float = 0.05
@@ -368,6 +404,25 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--head_top_kp_expand", type=float, default=0.06, help="head-top estimate from keypoints: top_kp_y - value")
     p.add_argument("--head_top_min_margin", type=float, default=0.008, help="minimum safety margin for head-top inclusion")
     p.add_argument("--head_top_face_margin_alpha", type=float, default=0.20, help="face-height based head-top safety margin")
+    p.add_argument("--safety_lambda_area", type=float, default=1.90)
+    p.add_argument("--safety_lambda_ar", type=float, default=1.75)
+    p.add_argument("--safety_lambda_face", type=float, default=1.20)
+    p.add_argument("--safety_lambda_head_top", type=float, default=1.45)
+    p.add_argument("--safety_lambda_joint", type=float, default=1.10)
+    p.add_argument("--safety_lambda_lookroom", type=float, default=0.70)
+    p.add_argument("--safety_lambda_text", type=float, default=0.85)
+    p.add_argument("--safety_lambda_subject_border", type=float, default=0.25)
+    p.add_argument("--safety_bonus_area_hard", type=float, default=0.95)
+    p.add_argument("--safety_bonus_ar_hard", type=float, default=0.95)
+    p.add_argument("--safety_bonus_face_hard", type=float, default=0.85)
+    p.add_argument("--safety_bonus_head_top_hard", type=float, default=0.95)
+    p.add_argument("--safety_bonus_joint_hard", type=float, default=0.75)
+    p.add_argument("--safety_bonus_lookroom_hard", type=float, default=0.65)
+    p.add_argument("--safety_bonus_text_hard", type=float, default=0.60)
+    p.add_argument("--safety_ar_violation_scale", type=float, default=0.05)
+    p.add_argument("--safety_lookroom_scale_floor", type=float, default=0.25)
+    p.add_argument("--safety_text_soft_cap", type=float, default=2.0)
+    p.add_argument("--safety_severity_cap", type=float, default=2.0)
     p.add_argument("--align_model_name", type=str, default="", help="OpenCLIP model for E_I(I_b)")
     p.add_argument("--align_pretrained", type=str, default="", help="OpenCLIP pretrained tag for E_I(I_b)")
     p.add_argument("--align_device", type=str, default="auto", help="auto|cpu|cuda")
@@ -444,6 +499,10 @@ def safe_optional_float(v: Any) -> Optional[float]:
     if not math.isfinite(x):
         return None
     return float(x)
+
+
+def safe_dict(value: Any) -> Dict[str, Any]:
+    return value if isinstance(value, dict) else {}
 
 
 def parse_ar(ar_text: str) -> float:
@@ -3205,6 +3264,169 @@ def effective_comp_weights(
     return {k: v / s for k, v in vals.items()}
 
 
+def _subject_mode_fallback_comp_weights(
+    cfg: TeacherScorerConfig,
+    subject_mode: str,
+    symmetry_score: float,
+    horizon_active: bool,
+) -> Dict[str, float]:
+    mode = str(subject_mode or "").strip().lower()
+    flags = {"is_landscape_scene": bool(mode in SCENE_MODES)}
+    shot_type = "group" if mode == "portrait_group" else "unknown"
+    portrait_category = "generic"
+    return effective_comp_weights(
+        cfg=cfg,
+        shot_type=shot_type,
+        portrait_category=portrait_category,
+        flags=flags,
+        symmetry_score=float(symmetry_score),
+        horizon_active=bool(horizon_active),
+    )
+
+
+def smoothmax(values: Sequence[float], tau: float) -> float:
+    seq = [float(v) for v in values if v is not None]
+    if not seq:
+        return 0.0
+    tau_eff = max(1e-6, float(tau))
+    vmax = max(seq)
+    exps = [math.exp((value - vmax) / tau_eff) for value in seq]
+    denom = sum(exps)
+    if denom <= 0.0:
+        return float(vmax)
+    return float(sum(value * exp_v for value, exp_v in zip(seq, exps)) / denom)
+
+
+def composition_family_bundle(
+    *,
+    cfg: TeacherScorerConfig,
+    subject_mode: str,
+    symmetry_score: float,
+    horizon_active: bool,
+    horizon_reward: float,
+    third_dist: Optional[float],
+    phi_dist: Optional[float],
+    center_dist: Optional[float],
+    shot_type: Optional[str] = None,
+    portrait_category: Optional[str] = None,
+    flags: Optional[Dict[str, bool]] = None,
+) -> Dict[str, Any]:
+    if shot_type is not None or portrait_category is not None or flags is not None:
+        weights = effective_comp_weights(
+            cfg=cfg,
+            shot_type=str(shot_type or "unknown"),
+            portrait_category=str(portrait_category or "generic"),
+            flags=flags or {},
+            symmetry_score=float(symmetry_score),
+            horizon_active=bool(horizon_active),
+        )
+    else:
+        weights = _subject_mode_fallback_comp_weights(
+            cfg=cfg,
+            subject_mode=str(subject_mode),
+            symmetry_score=float(symmetry_score),
+            horizon_active=bool(horizon_active),
+        )
+
+    place_total = float(weights.get("third", 0.0) + weights.get("phi", 0.0) + weights.get("center", 0.0))
+    raw_rewards = {
+        "third": None if third_dist is None else reward_dist(float(third_dist), 0.18),
+        "phi": None if phi_dist is None else reward_dist(float(phi_dist), 0.16),
+        "center": None if center_dist is None else reward_dist(float(center_dist), 0.15),
+    }
+    place_weights_norm = {}
+    if place_total > 1e-8:
+        for key in ("third", "phi", "center"):
+            place_weights_norm[key] = float(weights.get(key, 0.0)) / place_total
+    else:
+        place_weights_norm = {"third": 0.5, "phi": 0.0, "center": 0.5}
+
+    weighted_place_scores: Dict[str, Optional[float]] = {}
+    for key, reward_value in raw_rewards.items():
+        if reward_value is None:
+            weighted_place_scores[key] = None
+            continue
+        weighted_place_scores[key] = float(place_weights_norm.get(key, 0.0)) * float(reward_value)
+
+    valid_place = [(key, float(value)) for key, value in weighted_place_scores.items() if value is not None]
+    if valid_place:
+        valid_place.sort(key=lambda item: (-item[1], item[0]))
+        placement_best = str(valid_place[0][0])
+        placement_margin = float(valid_place[0][1] - valid_place[1][1]) if len(valid_place) >= 2 else float(valid_place[0][1])
+        placement_smax = smoothmax([value for _, value in valid_place], tau=float(cfg.comp_place_smax_tau))
+        placement_linear = float(sum(value for _, value in valid_place))
+    else:
+        placement_best = "na"
+        placement_margin = 0.0
+        placement_smax = 0.0
+        placement_linear = 0.0
+
+    comp_score = float(place_total) * float(placement_smax) + float(weights.get("horizon", 0.0)) * float(horizon_reward)
+    return {
+        "comp_score": clamp(comp_score, 0.0, 1.0),
+        "placement_score": clamp(float(placement_smax), 0.0, 1.0),
+        "placement_linear": clamp(float(placement_linear), 0.0, 1.0),
+        "placement_best": placement_best,
+        "placement_margin": clamp(float(placement_margin), 0.0, 1.0),
+        "weights": {key: round(float(value), 9) for key, value in weights.items()},
+        "place_weights_norm": {key: round(float(value), 9) for key, value in place_weights_norm.items()},
+        "template_scores": {
+            key: (None if value is None else round(float(value), 9))
+            for key, value in weighted_place_scores.items()
+        },
+        "raw_rewards": {
+            key: (None if value is None else round(float(value), 9))
+            for key, value in raw_rewards.items()
+        },
+    }
+
+
+def _weighted_core_mean(values: Dict[str, Optional[float]], weights: Dict[str, float]) -> Optional[float]:
+    num = 0.0
+    den = 0.0
+    for key, weight in weights.items():
+        value = values.get(key)
+        if value is None or float(weight) <= 0.0:
+            continue
+        num += float(weight) * float(value)
+        den += float(weight)
+    if den <= 0.0:
+        return None
+    return num / den
+
+
+def _hybrid_bottleneck_score(
+    values: Dict[str, Optional[float]],
+    *,
+    core_weights: Dict[str, float],
+    residual_key: Optional[str],
+    residual_weight: float,
+    bottleneck_alpha: float,
+) -> Optional[float]:
+    core_valid = {
+        key: float(values[key])
+        for key, weight in core_weights.items()
+        if key in values and values.get(key) is not None and float(weight) > 0.0
+    }
+    if not core_valid:
+        if residual_key is None or residual_weight <= 0.0 or values.get(residual_key) is None:
+            return None
+        return float(values[residual_key])
+    core_mean = _weighted_core_mean(core_valid, {key: core_weights[key] for key in core_valid})
+    if core_mean is None:
+        return None
+    core_min = min(core_valid.values())
+    alpha = clamp(float(bottleneck_alpha), 0.0, 1.0)
+    core_score = alpha * core_min + (1.0 - alpha) * core_mean
+    if residual_key is None or residual_weight <= 0.0 or values.get(residual_key) is None:
+        return core_score
+    core_weight_total = sum(float(core_weights[key]) for key in core_valid)
+    total = core_weight_total + float(residual_weight)
+    if total <= 0.0:
+        return core_score
+    return (core_weight_total * core_score + float(residual_weight) * float(values[residual_key])) / total
+
+
 def effective_lambdas(
     cfg: TeacherScorerConfig,
     shot_type: str,
@@ -3789,6 +4011,7 @@ def apply_expensive_score(
     cfg: TeacherScorerConfig,
     w_area: float,
     expensive_signal: Optional[Dict[str, Any]],
+    target_ar_value: Optional[float],
 ) -> None:
     comps = candidate.get("scores", {}).get("components", {})
     cov = safe_float(comps.get("cov", 0.0))
@@ -3866,10 +4089,56 @@ def apply_expensive_score(
     )
     score_rank = fuse_macro_scores(macro_scores=macro_scores, macro_masks=macro_masks, cfg=cfg)
     area_log_prior = float(w_area) * math.log(max(1e-8, area))
-    score_policy = score_rank + area_log_prior
-    candidate["scores"]["rank"] = float(score_rank)
-    candidate["scores"]["policy"] = float(score_policy)
-    candidate["scores"]["final"] = float(score_rank)
+    score_policy_base = score_rank + area_log_prior
+    safety_bundle = compute_safety_penalty_bundle(
+        candidate=candidate,
+        target_ar_value=target_ar_value,
+        cfg=SafetyPenaltyConfig(
+            area_min=float(cfg.area_min),
+            area_max=float(cfg.area_max),
+            ar_hard_eps=float(cfg.ar_hard_eps),
+            head_top_min_margin=float(cfg.head_top_min_margin),
+            lambda_area=float(cfg.safety_lambda_area),
+            lambda_ar=float(cfg.safety_lambda_ar),
+            lambda_face=float(cfg.safety_lambda_face),
+            lambda_head_top=float(cfg.safety_lambda_head_top),
+            lambda_joint=float(cfg.safety_lambda_joint),
+            lambda_lookroom=float(cfg.safety_lambda_lookroom),
+            lambda_text=float(cfg.safety_lambda_text),
+            lambda_subject_border=float(cfg.safety_lambda_subject_border),
+            bonus_area_hard=float(cfg.safety_bonus_area_hard),
+            bonus_ar_hard=float(cfg.safety_bonus_ar_hard),
+            bonus_face_hard=float(cfg.safety_bonus_face_hard),
+            bonus_head_top_hard=float(cfg.safety_bonus_head_top_hard),
+            bonus_joint_hard=float(cfg.safety_bonus_joint_hard),
+            bonus_lookroom_hard=float(cfg.safety_bonus_lookroom_hard),
+            bonus_text_hard=float(cfg.safety_bonus_text_hard),
+            ar_violation_scale=float(cfg.safety_ar_violation_scale),
+            lookroom_scale_floor=float(cfg.safety_lookroom_scale_floor),
+            text_soft_cap=float(cfg.safety_text_soft_cap),
+            severity_cap=float(cfg.safety_severity_cap),
+            joint_relax_lambda_scale=float(cfg.safety_joint_relax_lambda_scale),
+            joint_relax_bonus_scale=float(cfg.safety_joint_relax_bonus_scale),
+            head_top_relax_lambda_scale=float(cfg.safety_head_top_relax_lambda_scale),
+            head_top_relax_bonus_scale=float(cfg.safety_head_top_relax_bonus_scale),
+            subject_border_relax_lambda_scale=float(cfg.safety_subject_border_relax_lambda_scale),
+            relax_joint_head_top_min_coverage=float(cfg.safety_relax_joint_head_top_min_coverage),
+            relax_subject_border_min_coverage=float(cfg.safety_relax_subject_border_min_coverage),
+            relax_joint_max_severe_count=int(cfg.safety_relax_joint_max_severe_count),
+            relax_subject_border_max_joint_score=float(cfg.safety_relax_subject_border_max_joint_score),
+        ),
+    )
+    score_policy_safe = score_policy_base - float(safety_bundle["total"])
+    candidate["scores"]["rank_macro"] = float(score_rank)
+    candidate["scores"]["policy_base"] = float(score_policy_base)
+    candidate["scores"]["policy_safe"] = float(score_policy_safe)
+    candidate["scores"]["safety_penalty_total"] = float(safety_bundle["total"])
+    candidate["scores"]["safety_penalty_soft"] = float(safety_bundle["soft_total"])
+    candidate["scores"]["safety_penalty_hard"] = float(safety_bundle["hard_total"])
+    candidate["scores"]["safety_penalty_components"] = copy.deepcopy(safety_bundle)
+    candidate["scores"]["rank"] = float(score_policy_safe)
+    candidate["scores"]["policy"] = float(score_policy_safe)
+    candidate["scores"]["final"] = float(score_policy_safe)
     candidate["scores"]["area_log_prior"] = float(area_log_prior)
     candidate["macro_scores"] = macro_scores
     candidate["macro_components"] = macro_components
@@ -3877,6 +4146,9 @@ def apply_expensive_score(
     candidate["policy"] = {
         "area_ratio": float(area),
         "area_log_prior": float(area_log_prior),
+        "policy_base": float(score_policy_base),
+        "policy_safe": float(score_policy_safe),
+        "safety_penalty_total": float(safety_bundle["total"]),
     }
 
 
@@ -3954,7 +4226,16 @@ def compute_macro_score_bundle(
     scale_value = safe_optional_float(subject_scale.get("value"))
     scale_target_range = subject_scale.get("target_range", [])
     if isinstance(scale_target_range, (list, tuple)) and len(scale_target_range) >= 2:
-        scale_score = _score_from_centered_band(scale_value, scale_target_range[0], scale_target_range[1])
+        scale_expand = (
+            float(cfg.subject_scale_expand_portrait)
+            if subject_mode.startswith("portrait")
+            else float(cfg.subject_scale_expand_general)
+        )
+        scale_score = _score_from_centered_band(
+            scale_value,
+            float(scale_target_range[0]) - scale_expand,
+            float(scale_target_range[1]) + scale_expand,
+        )
     else:
         scale_score = None
     support_structure_meta = checklist.get("support_structure", {}) if isinstance(checklist.get("support_structure"), dict) else {}
@@ -4016,12 +4297,20 @@ def compute_macro_score_bundle(
             "S_border": 0.20,
             "S_softcut_quality": 0.20,
         }
-    S_macro = _weighted_subset_average(s_components, s_weights)
+    s_core_weights = {key: weight for key, weight in s_weights.items() if key != "S_softcut_quality"}
+    S_macro = _hybrid_bottleneck_score(
+        s_components,
+        core_weights=s_core_weights,
+        residual_key="S_softcut_quality",
+        residual_weight=float(s_weights.get("S_softcut_quality", 0.0)),
+        bottleneck_alpha=float(cfg.s_macro_bottleneck_alpha),
+    )
 
     headroom_meta = checklist.get("headroom", {}) if isinstance(checklist.get("headroom"), dict) else {}
     lookroom_meta = checklist.get("lookroom", {}) if isinstance(checklist.get("lookroom"), dict) else {}
     horizon_meta = checklist.get("horizon", {}) if isinstance(checklist.get("horizon"), dict) else {}
     context_meta = checklist.get("context", {}) if isinstance(checklist.get("context"), dict) else {}
+    route_snapshot = candidate.get("route_snapshot", {}) if isinstance(candidate.get("route_snapshot"), dict) else {}
     horizon_dist = safe_optional_float(horizon_meta.get("third_dist"))
     horizon_score = None
     if horizon_dist is not None:
@@ -4034,18 +4323,32 @@ def compute_macro_score_bundle(
         context_score = None
     copyspace_meta = checklist.get("copyspace", {}) if isinstance(checklist.get("copyspace"), dict) else {}
     copyspace_score = clamp(safe_float(comps.get("r_copyspace", 0.0), 0.0), 0.0, 1.0)
+    comp_bundle = composition_family_bundle(
+        cfg=cfg,
+        subject_mode=subject_mode,
+        symmetry_score=clamp(safe_float(comps.get("r_sym", 0.0), 0.0), 0.0, 1.0),
+        horizon_active=bool(horizon_meta.get("active", False)) or (horizon_score is not None),
+        horizon_reward=clamp(safe_float(comps.get("r_horizon", horizon_score or 0.0), 0.0), 0.0, 1.0),
+        third_dist=safe_optional_float(safe_dict(checklist.get("third_dist")).get("value", checklist.get("third_dist"))),
+        phi_dist=safe_optional_float(safe_dict(checklist.get("phi_dist")).get("value", checklist.get("phi_dist"))),
+        center_dist=safe_optional_float(safe_dict(checklist.get("center_dist")).get("value", checklist.get("center_dist"))),
+        shot_type=(str(route_snapshot.get("shot_type", "unknown")) if route_snapshot else None),
+        portrait_category=(str(route_snapshot.get("portrait_category", "generic")) if route_snapshot else None),
+        flags=(safe_dict(route_snapshot.get("flags")) if route_snapshot else None),
+    )
     c_components = {
-        "C_comp": clamp(safe_float(comps.get("r_comp", 0.0), 0.0), 0.0, 1.0),
+        "C_comp": clamp(safe_float(comp_bundle.get("comp_score", comps.get("r_comp", 0.0)), 0.0), 0.0, 1.0),
+        "C_place": clamp(safe_float(comp_bundle.get("placement_score", 0.0), 0.0), 0.0, 1.0),
         "C_headroom": _score_from_signed_term(safe_optional_float(comps.get("r_headroom"))),
         "C_lookroom": _score_from_signed_term(safe_optional_float(comps.get("r_lookroom"))),
         "C_horizon_y": horizon_score,
         "C_sym": clamp(safe_float(comps.get("r_sym", 0.0), 0.0), 0.0, 1.0),
         "C_context": context_score,
-        "C_copyspace": copyspace_score if subject_mode == "background_copyspace" else None,
+        "C_copyspace": copyspace_score if subject_mode in {"background_texture_copyspace", "background_copyspace"} else None,
     }
     if subject_mode.startswith("portrait"):
         c_weights = {
-            "C_comp": 0.20,
+            "C_comp": 0.20 * float(cfg.c_macro_comp_weight_scale),
             "C_headroom": 0.30,
             "C_lookroom": 0.30,
             "C_sym": 0.10,
@@ -4053,28 +4356,28 @@ def compute_macro_score_bundle(
         }
     elif subject_mode in SCENE_MODES:
         c_weights = {
-            "C_comp": 0.20,
+            "C_comp": 0.20 * float(cfg.c_macro_comp_weight_scale),
             "C_horizon_y": 0.30,
             "C_sym": 0.10,
             "C_context": 0.25,
             "C_copyspace": 0.0,
         }
-    elif subject_mode == "background_copyspace":
+    elif subject_mode in {"background_texture_copyspace", "background_copyspace"}:
         c_weights = {
-            "C_comp": 0.15,
+            "C_comp": 0.15 * float(cfg.c_macro_comp_weight_scale),
             "C_context": 0.25,
             "C_copyspace": 0.45,
             "C_sym": 0.15,
         }
     else:
         c_weights = {
-            "C_comp": 0.35,
+            "C_comp": 0.35 * float(cfg.c_macro_comp_weight_scale),
             "C_sym": 0.20,
             "C_context": 0.25,
             "C_headroom": 0.10,
             "C_lookroom": 0.10,
         }
-    if subject_mode != "background_copyspace" and str(copyspace_meta.get("label", "")).strip() == "copyspace_preserved":
+    if subject_mode not in {"background_texture_copyspace", "background_copyspace"} and str(copyspace_meta.get("label", "")).strip() == "copyspace_preserved":
         c_components["C_copyspace"] = None
     C_macro = _weighted_subset_average(c_components, c_weights)
 
@@ -4094,6 +4397,12 @@ def compute_macro_score_bundle(
     macro_components.update(s_components)
     macro_components.update(c_components)
     macro_components["T_teacher"] = T_macro
+    macro_components["C_comp_linear"] = (
+        None if comp_bundle.get("placement_linear") is None else round(float(comp_bundle.get("placement_linear")), 9)
+    )
+    macro_components["C_place_margin"] = (
+        None if comp_bundle.get("placement_margin") is None else round(float(comp_bundle.get("placement_margin")), 9)
+    )
     macro_masks = {
         "A_active": int(A_macro is not None),
         "S_active": int(S_macro is not None),
@@ -4321,21 +4630,20 @@ def compute_candidate_scores(
         visibility_thr=cfg.horizon_visibility_thr,
     )
 
-    comp_w = effective_comp_weights(
+    comp_bundle = composition_family_bundle(
         cfg=cfg,
-        shot_type=route["shot_type"],
-        portrait_category=route["portrait_category"],
-        flags=route["flags"],
+        subject_mode=str(route.get("subject_mode", "")),
         symmetry_score=c5_info["symmetry"],
         horizon_active=bool(horizon["active"]),
+        horizon_reward=float(horizon["reward"]),
+        third_dist=float(d_third),
+        phi_dist=float(d_phi),
+        center_dist=float(d_center),
+        shot_type=str(route.get("shot_type", "unknown")),
+        portrait_category=str(route.get("portrait_category", "generic")),
+        flags=safe_dict(route.get("flags")),
     )
-
-    r_comp = (
-        comp_w["third"] * r_third
-        + comp_w["phi"] * r_phi
-        + comp_w["center"] * r_center
-        + comp_w["horizon"] * horizon["reward"]
-    )
+    r_comp = float(comp_bundle["comp_score"])
 
     hr = compute_headroom_term(
         crop=crop,
@@ -4834,6 +5142,12 @@ def compute_candidate_scores(
         "source": candidate.get("source"),
         "subject_mode": str(route.get("subject_mode", "other_ambiguous")),
         "policy_id": str(route.get("policy_id", "generic_v1")),
+        "route_snapshot": {
+            "shot_type": str(route.get("shot_type", "unknown")),
+            "portrait_category": str(route.get("portrait_category", "generic")),
+            "flags": copy.deepcopy(safe_dict(route.get("flags"))),
+            "subject_mode": str(route.get("subject_mode", "other_ambiguous")),
+        },
         "source_types": candidate.get("source_types", []),
         "must_keep": bool(candidate.get("must_keep", False)),
         "priority": safe_float(candidate.get("priority", 0.0)),
@@ -4861,6 +5175,20 @@ def compute_candidate_scores(
                 "support_centroid_x": float(support_centroid_xy[0]),
                 "support_centroid_y": float(support_centroid_xy[1]),
                 "r_comp": float(r_comp),
+                "r_place": float(comp_bundle["placement_score"]),
+                "r_comp_linear": float(comp_bundle["placement_linear"]),
+                "placement_family_margin": float(comp_bundle["placement_margin"]),
+                "placement_family_best": str(comp_bundle["placement_best"]),
+                "placement_weight_third": float(comp_bundle["weights"].get("third", 0.0)),
+                "placement_weight_phi": float(comp_bundle["weights"].get("phi", 0.0)),
+                "placement_weight_center": float(comp_bundle["weights"].get("center", 0.0)),
+                "placement_weight_horizon": float(comp_bundle["weights"].get("horizon", 0.0)),
+                "placement_score_third": comp_bundle["template_scores"].get("third"),
+                "placement_score_phi": comp_bundle["template_scores"].get("phi"),
+                "placement_score_center": comp_bundle["template_scores"].get("center"),
+                "placement_reward_third": comp_bundle["raw_rewards"].get("third"),
+                "placement_reward_phi": comp_bundle["raw_rewards"].get("phi"),
+                "placement_reward_center": comp_bundle["raw_rewards"].get("center"),
                 "r_horizon": float(horizon["reward"]),
                 "r_headroom": float(hr["score"]),
                 "r_lookroom": float(lr["score"]),
@@ -5025,6 +5353,7 @@ def compute_candidate_scores(
         cfg=cfg,
         w_area=float(route["w_area"]),
         expensive_signal=None,
+        target_ar_value=target_ar,
     )
     return out
 
@@ -5211,16 +5540,23 @@ def candidate_brief(c: Dict[str, Any], rank: Optional[int] = None) -> Dict[str, 
         "hard_reject": bool(c.get("hard_reject", False)),
         "hard_reject_strict": bool(c.get("hard_reject_strict", c.get("hard_reject", False))),
         "scores": {
-            "cheap": round(safe_float(c["scores"].get("cheap", 0.0)), 6),
-            "expensive": round(safe_float(c["scores"].get("expensive", 0.0)), 6),
-            "rank": round(safe_float(c["scores"].get("rank", c["scores"].get("final", 0.0)), 0.0), 6),
-            "policy": round(safe_float(c["scores"].get("policy", c["scores"].get("final", 0.0)), 0.0), 6),
-            "final": round(safe_float(c["scores"].get("final", 0.0)), 6),
-            "final_legacy": round(safe_float(c["scores"].get("final_legacy", 0.0)), 6),
+            "cheap": round(safe_float(c["scores"].get("cheap", 0.0)), 9),
+            "expensive": round(safe_float(c["scores"].get("expensive", 0.0)), 9),
+            "rank_macro": round(safe_float(c["scores"].get("rank_macro", 0.0)), 9),
+            "rank": round(safe_float(c["scores"].get("rank", c["scores"].get("final", 0.0)), 0.0), 9),
+            "policy_base": round(safe_float(c["scores"].get("policy_base", 0.0), 0.0), 9),
+            "policy_safe": round(safe_float(c["scores"].get("policy_safe", c["scores"].get("policy", 0.0)), 0.0), 9),
+            "policy": round(safe_float(c["scores"].get("policy", c["scores"].get("final", 0.0)), 0.0), 9),
+            "final": round(safe_float(c["scores"].get("final", 0.0)), 9),
+            "final_legacy": round(safe_float(c["scores"].get("final_legacy", 0.0)), 9),
             "final_norm_0_100": round(safe_float(c["scores"].get("final_norm_0_100", 0.0)), 3),
             "rank_norm_0_100": round(safe_float(c["scores"].get("rank_norm_0_100", 0.0)), 3),
             "policy_norm_0_100": round(safe_float(c["scores"].get("policy_norm_0_100", 0.0)), 3),
-            "area_log_prior": round(safe_float(c["scores"].get("area_log_prior", 0.0), 0.0), 6),
+            "area_log_prior": round(safe_float(c["scores"].get("area_log_prior", 0.0), 0.0), 9),
+            "safety_penalty_total": round(safe_float(c["scores"].get("safety_penalty_total", 0.0), 0.0), 9),
+            "safety_penalty_soft": round(safe_float(c["scores"].get("safety_penalty_soft", 0.0), 0.0), 9),
+            "safety_penalty_hard": round(safe_float(c["scores"].get("safety_penalty_hard", 0.0), 0.0), 9),
+            "safety_penalty_components": c["scores"].get("safety_penalty_components", {}),
             "components": c["scores"].get("components", {}),
         },
         "macro_scores": c.get("macro_scores", {}),
@@ -5243,7 +5579,7 @@ def candidate_brief(c: Dict[str, Any], rank: Optional[int] = None) -> Dict[str, 
     if "teacher_target_ar" in c:
         out["teacher_target_ar"] = c.get("teacher_target_ar")
     if "teacher_raw_score" in c:
-        out["teacher_raw_score"] = round(safe_float(c.get("teacher_raw_score", 0.0)), 6)
+        out["teacher_raw_score"] = round(safe_float(c.get("teacher_raw_score", 0.0)), 9)
     if "teacher_ref_kind" in c:
         out["teacher_ref_kind"] = c.get("teacher_ref_kind")
     if "source_lineage" in c:
@@ -5793,6 +6129,7 @@ def process_one_image(
                 cfg=cfg,
                 w_area=float(route["w_area"]),
                 expensive_signal=signals.get(cid),
+                target_ar_value=tmp.get("target_ar"),
             )
         expensive_real_applied = True
 
@@ -6128,6 +6465,25 @@ def run(args: argparse.Namespace) -> None:
         save_public_teacher_ref_eval=bool(int(args.save_public_teacher_ref_eval)),
         exp_preprocess_workers=max(0, int(args.exp_preprocess_workers)),
         exp_pin_memory=bool(int(args.exp_pin_memory)),
+        safety_lambda_area=float(args.safety_lambda_area),
+        safety_lambda_ar=float(args.safety_lambda_ar),
+        safety_lambda_face=float(args.safety_lambda_face),
+        safety_lambda_head_top=float(args.safety_lambda_head_top),
+        safety_lambda_joint=float(args.safety_lambda_joint),
+        safety_lambda_lookroom=float(args.safety_lambda_lookroom),
+        safety_lambda_text=float(args.safety_lambda_text),
+        safety_lambda_subject_border=float(args.safety_lambda_subject_border),
+        safety_bonus_area_hard=float(args.safety_bonus_area_hard),
+        safety_bonus_ar_hard=float(args.safety_bonus_ar_hard),
+        safety_bonus_face_hard=float(args.safety_bonus_face_hard),
+        safety_bonus_head_top_hard=float(args.safety_bonus_head_top_hard),
+        safety_bonus_joint_hard=float(args.safety_bonus_joint_hard),
+        safety_bonus_lookroom_hard=float(args.safety_bonus_lookroom_hard),
+        safety_bonus_text_hard=float(args.safety_bonus_text_hard),
+        safety_ar_violation_scale=float(args.safety_ar_violation_scale),
+        safety_lookroom_scale_floor=float(args.safety_lookroom_scale_floor),
+        safety_text_soft_cap=float(args.safety_text_soft_cap),
+        safety_severity_cap=float(args.safety_severity_cap),
     )
 
     cand_path = Path(args.candidates_jsonl)

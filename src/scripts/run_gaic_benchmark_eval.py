@@ -245,6 +245,7 @@ class SampleExpensiveCacheManager:
         image_path: Path,
         rows: Sequence[Dict[str, Any]],
         route: Dict[str, Any],
+        target_ar_value: Optional[float],
     ) -> Tuple[List[Dict[str, Any]], str]:
         updated_rows = [copy.deepcopy(row) for row in rows]
         cache_keys = [sample_expensive_cache_key(image_id, row) for row in updated_rows]
@@ -257,6 +258,7 @@ class SampleExpensiveCacheManager:
                     cfg=self.cfg,
                     w_area=w_area,
                     expensive_signal=build_cached_expensive_signal(self.cache_rows[key]),
+                    target_ar_value=target_ar_value,
                 )
             return updated_rows, "cache"
 
@@ -284,6 +286,7 @@ class SampleExpensiveCacheManager:
                 cfg=self.cfg,
                 w_area=w_area,
                 expensive_signal=signal,
+                target_ar_value=target_ar_value,
             )
             self.cache_rows[key] = {
                 "cache_key": key,
@@ -319,6 +322,7 @@ def maybe_apply_real_expensive_to_sample_rows(
     rows: Sequence[Dict[str, Any]],
     cfg: TeacherScorerConfig,
     route: Dict[str, Any],
+    target_ar_value: Optional[float],
     c1_map: Optional[Dict[str, Dict[str, np.ndarray]]],
     expensive_models: Optional[ExpensiveModels],
 ) -> List[Dict[str, Any]]:
@@ -343,6 +347,7 @@ def maybe_apply_real_expensive_to_sample_rows(
             cfg=cfg,
             w_area=w_area,
             expensive_signal=signals.get(str(row.get("candidate_id", ""))),
+            target_ar_value=target_ar_value,
         )
     return updated_rows
 
@@ -2725,6 +2730,7 @@ def build_sample_analysis(
             image_path=image_path,
             rows=[gt_mos_row, ge_gt_best_row, ge_prod_best_row],
             route=context["route"],
+            target_ar_value=None,
         )
         gt_mos_row, ge_gt_best_row, ge_prod_best_row = refreshed_rows
 

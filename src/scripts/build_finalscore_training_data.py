@@ -705,6 +705,23 @@ def first_nonempty(*values: Any) -> Any:
     return None
 
 
+def dominant_composition_anchor(
+    third_dist: Optional[float],
+    phi_dist: Optional[float],
+    center_dist: Optional[float],
+) -> str:
+    candidates = [
+        ("thirds", third_dist),
+        ("phi", phi_dist),
+        ("center", center_dist),
+    ]
+    valid = [(name, value) for name, value in candidates if value is not None]
+    if not valid:
+        return "na"
+    valid.sort(key=lambda item: (float(item[1]), item[0]))
+    return str(valid[0][0])
+
+
 def decision_id(decision_type: str) -> int:
     return DECISION_ID_BY_TYPE.get(str(decision_type or ""), -1)
 
@@ -1204,14 +1221,95 @@ def build_checklist_scores(candidate: Dict[str, Any]) -> Dict[str, Optional[floa
     macro_components = safe_dict(candidate.get("macro_components"))
     score_components = safe_dict(safe_dict(candidate.get("scores")).get("components"))
     symmetry_score = first_nonempty(macro_components.get("C_sym"), score_components.get("r_sym"))
+    third_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("third_dist")).get("value"), raw_check.get("third_dist")))
+    phi_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("phi_dist")).get("value"), raw_check.get("phi_dist")))
+    center_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("center_dist")).get("value"), raw_check.get("center_dist")))
+    context_value = maybe_float(first_nonempty(safe_dict(raw_check.get("context")).get("value"), score_components.get("context_value")))
+    teacher_rho = maybe_float(first_nonempty(safe_dict(raw_check.get("teacher_consensus")).get("value"), score_components.get("teacher_rho")))
     return {
         "subject_coverage_ratio": round_opt(maybe_float(safe_dict(raw_check.get("subject_coverage")).get("value"))),
+        "subject_scale_ratio": round_opt(maybe_float(safe_dict(raw_check.get("subject_scale")).get("value"))),
         "headroom_ratio": round_opt(maybe_float(safe_dict(raw_check.get("headroom")).get("value"))),
         "lookroom_ratio": round_opt(maybe_float(safe_dict(raw_check.get("lookroom")).get("value"))),
         "text_keep_ratio": round_opt(maybe_float(safe_dict(raw_check.get("text_keep_ratio")).get("value"))),
+        "third_dist": round_opt(third_dist),
+        "phi_dist": round_opt(phi_dist),
+        "center_dist": round_opt(center_dist),
         "horizon_y": round_opt(maybe_float(safe_dict(raw_check.get("horizon")).get("value"))),
         "horizon_visible_ratio": round_opt(maybe_float(safe_dict(raw_check.get("horizon")).get("visible_ratio"))),
+        "context_value": round_opt(context_value),
+        "teacher_rho": round_opt(teacher_rho),
         "symmetry_score": round_opt(maybe_float(symmetry_score)),
+        "copyspace_blank_ratio_keep": round_opt(maybe_float(score_components.get("copyspace_blank_ratio_keep"))),
+    }
+
+
+def build_macro_component_targets(candidate: Dict[str, Any]) -> Dict[str, Optional[float]]:
+    macro_components = safe_dict(candidate.get("macro_components"))
+    return {
+        key: round_opt(macro_components.get(key))
+        for key in (
+            "A_aesthetic",
+            "A_align",
+            "S_cov",
+            "S_scale",
+            "S_support_structure",
+            "S_border",
+            "S_softcut_quality",
+            "C_comp",
+            "C_place",
+            "C_comp_linear",
+            "C_place_margin",
+            "C_headroom",
+            "C_lookroom",
+            "C_horizon_y",
+            "C_sym",
+            "C_context",
+            "C_copyspace",
+            "T_teacher",
+        )
+    }
+
+
+def build_composition_focus_targets(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    raw_check = safe_dict(candidate.get("checklist"))
+    score_components = safe_dict(safe_dict(candidate.get("scores")).get("components"))
+    third_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("third_dist")).get("value"), raw_check.get("third_dist")))
+    phi_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("phi_dist")).get("value"), raw_check.get("phi_dist")))
+    center_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("center_dist")).get("value"), raw_check.get("center_dist")))
+    return {
+        "dominant_anchor": dominant_composition_anchor(third_dist, phi_dist, center_dist),
+        "placement_family_best": str(score_components.get("placement_family_best", "na")),
+        "placement_family_margin": round_opt(score_components.get("placement_family_margin")),
+        "placement_score": round_opt(score_components.get("r_place")),
+        "placement_linear": round_opt(score_components.get("r_comp_linear")),
+        "placement_reward_third": round_opt(score_components.get("placement_reward_third")),
+        "placement_reward_phi": round_opt(score_components.get("placement_reward_phi")),
+        "placement_reward_center": round_opt(score_components.get("placement_reward_center")),
+        "placement_score_third": round_opt(score_components.get("placement_score_third")),
+        "placement_score_phi": round_opt(score_components.get("placement_score_phi")),
+        "placement_score_center": round_opt(score_components.get("placement_score_center")),
+    }
+
+
+def build_safety_penalty_view(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    safety_bundle = safe_dict(safe_dict(candidate.get("scores")).get("safety_penalty_components"))
+    return {
+        "total": round_opt(safety_bundle.get("total")),
+        "soft_total": round_opt(safety_bundle.get("soft_total")),
+        "hard_total": round_opt(safety_bundle.get("hard_total")),
+        "soft_components": {
+            key: round_opt(value)
+            for key, value in safe_dict(safety_bundle.get("soft_components")).items()
+        },
+        "hard_components": {
+            key: round_opt(value)
+            for key, value in safe_dict(safety_bundle.get("hard_components")).items()
+        },
+        "signals": {
+            key: round_opt(value)
+            for key, value in safe_dict(safety_bundle.get("signals")).items()
+        },
     }
 
 
@@ -1422,6 +1520,9 @@ def find_candidate(candidates: Sequence[Dict[str, Any]], candidate_id: str) -> O
 def build_candidate_canonical_record(candidate: Dict[str, Any], routing: Dict[str, Any]) -> Dict[str, Any]:
     labels = build_checklist_labels(candidate)
     scores = build_checklist_scores(candidate)
+    macro_components = build_macro_component_targets(candidate)
+    composition_focus = build_composition_focus_targets(candidate)
+    safety_penalty = build_safety_penalty_view(candidate)
     applicable_mask = build_applicable_mask(routing, candidate, labels)
     observed_mask = build_observed_mask(candidate, labels, scores)
     bbox = normalize_bbox_xyxy(candidate.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]))
@@ -1469,10 +1570,14 @@ def build_candidate_canonical_record(candidate: Dict[str, Any], routing: Dict[st
         },
         "checklist_labels": labels,
         "checklist_scores": scores,
+        "macro_components": macro_components,
+        "composition_focus": composition_focus,
+        "safety_penalty": safety_penalty,
         "applicable_mask": applicable_mask,
         "observed_mask": observed_mask,
         "why_tags": list(safe_list(candidate.get("why_tags"))),
         "reject_tags": list(safe_list(candidate.get("reject_tags"))),
+        "why_text_template": str(candidate.get("why_text_template", "")).strip(),
         "provenance": {
             "source_lineage": copy.deepcopy(candidate.get("source_lineage")),
             "teacher_ids": copy.deepcopy(candidate.get("teacher_ids")),
@@ -1637,10 +1742,14 @@ def build_matching_target(candidate_record: Dict[str, Any], target_index: int) -
         "macro_targets": candidate_record["macro_targets"],
         "checklist_labels": candidate_record["checklist_labels"],
         "checklist_scores": candidate_record["checklist_scores"],
+        "macro_components": candidate_record["macro_components"],
+        "composition_focus": candidate_record["composition_focus"],
+        "safety_penalty": candidate_record["safety_penalty"],
         "applicable_mask": candidate_record["applicable_mask"],
         "observed_mask": candidate_record["observed_mask"],
         "derived_checklist_targets": derived_targets,
         "why_tags": candidate_record["why_tags"],
+        "why_text_template": candidate_record["why_text_template"],
         "is_safe_high_score_leftover": bool(candidate_record.get("is_safe_high_score_leftover", False)),
         "safe_leftover_policy_state": str(candidate_record.get("safe_leftover_policy_state", "none")),
         "safe_leftover_policy": str(candidate_record.get("safe_leftover_policy", "keep_negative")),
@@ -1661,6 +1770,13 @@ def build_candidate_pool_entry(candidate_record: Dict[str, Any]) -> Dict[str, An
         "label_type": candidate_record["label_type"],
         "score_rank_pct": candidate_record["score_targets"]["rank_pct"],
         "score_prob": candidate_record["score_targets"]["score_prob"],
+        "score_targets": candidate_record["score_targets"],
+        "macro_targets": candidate_record["macro_targets"],
+        "macro_components": candidate_record["macro_components"],
+        "composition_focus": candidate_record["composition_focus"],
+        "safety_penalty": candidate_record["safety_penalty"],
+        "checklist_labels": candidate_record["checklist_labels"],
+        "checklist_scores": candidate_record["checklist_scores"],
         "is_positive_candidate": candidate_record["is_positive_candidate"],
         "is_hard_negative": candidate_record["is_hard_negative"],
         "is_unsafe_negative": candidate_record["is_unsafe_negative"],
@@ -1675,6 +1791,7 @@ def build_candidate_pool_entry(candidate_record: Dict[str, Any]) -> Dict[str, An
         "training_bucket": str(candidate_record.get("training_bucket", "main")),
         "why_tags": candidate_record["why_tags"],
         "reject_tags": candidate_record["reject_tags"],
+        "why_text_template": candidate_record["why_text_template"],
     }
 
 
@@ -1712,12 +1829,16 @@ def candidate_training_view(candidate: Dict[str, Any], routing: Optional[Dict[st
         "positive_anchor_reason": str(canonical.get("positive_anchor_reason", "none")),
         "training_bucket": str(canonical.get("training_bucket", "main")),
         "macro_scores": canonical["macro_targets"],
+        "macro_components": canonical["macro_components"],
+        "composition_focus": canonical["composition_focus"],
+        "safety_penalty": canonical["safety_penalty"],
         "checklist_labels": canonical["checklist_labels"],
         "checklist_scores": canonical["checklist_scores"],
         "applicable_mask": canonical["applicable_mask"],
         "observed_mask": canonical["observed_mask"],
         "why_tags": canonical["why_tags"],
         "reject_tags": canonical["reject_tags"],
+        "why_text_template": canonical["why_text_template"],
     }
 
 

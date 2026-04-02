@@ -99,7 +99,7 @@ GAIC subject routing 보강만 빠르게 재검증하려면 아래 명령을 사
 ```bash
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
-python src/scripts/enrich_subject_mode_jsonl.py \
+python3 src/scripts/enrich_subject_mode_jsonl.py \
   --input_feats_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl \
   --input_filtered_parquet data/GAIC/All/filtered_gaic_all.parquet \
   --caption_jsonl data/GAIC/All_olds/artifacts/metadata/gaic_captions_gaic_260324_r0.jsonl \
@@ -111,7 +111,7 @@ python src/scripts/enrich_subject_mode_jsonl.py \
 동일한 로직은 TestImages에도 그대로 적용됩니다.
 
 ```bash
-python src/scripts/enrich_subject_mode_jsonl.py \
+python3 src/scripts/enrich_subject_mode_jsonl.py \
   --input_feats_jsonl data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl \
   --input_filtered_parquet data/TestImages/All/filtered_test_images_all.parquet \
   --output_jsonl tmp/test_images_routed_caption_v3.jsonl \
@@ -512,7 +512,7 @@ json.decoder.JSONDecodeError: Expecting value ...
 ```bash
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
-python src/scripts/repair_teacher_outputs.py \
+python3 src/scripts/repair_teacher_outputs.py \
   --teacher_scores_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260324_r0.jsonl \
   --overview_json data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260324_r0.json \
   --overview_csv data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_gaic_260324_r0.csv \
@@ -655,7 +655,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 DATANAME=All
 RUN_TAG=gaic_260324_r2
 
-python src/scripts/run_gaic_benchmark_eval.py \
+python3 src/scripts/run_gaic_benchmark_eval.py \
   --candidates_jsonl data/GAIC/${DATANAME}/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
   --features_jsonl data/GAIC/${DATANAME}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl \
   --teacher_jsonl data/GAIC/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
@@ -996,13 +996,15 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 - 현재 구현은 official GAIC GT crop이 free-form 이라는 점을 맞춰 `FREE` 문맥 score만 계산합니다.
 - by-AR debug viz에서도 GT bbox는 official free-form bbox를 그대로 reference overlay로 쓰므로, 표시되는 GT `Score` 역시 `FREE-context training score_prob` 입니다.
 - score 정의는 raw full candidate pool이 아니라 **training label builder가 실제로 쓰는 deduped teacher subset(`cheap_top_m + selected_topk + hard_negatives + also_considered_rejected + best + baseline`) 기준 local normalization** 입니다. 즉 debug viz의 GT `Score`는 현행 training-label `score_prob`와 같은 축으로 해석하면 됩니다.
+- 기본 GT cache 생성은 cheap + macro recompute + policy_safe + local normalization까지만 다시 태웁니다. 따라서 GT `A_macro`는 `NA`일 수 있습니다.
+- GT checklist panel에서 `A_macro`까지 채우려면, GT bbox에 대해서도 expensive stage를 다시 계산한 cache를 서버에서 생성해야 합니다.
 
 로컬에서 현재 선택된 debug-viz subset만 빠르게 계산:
 
 ```bash
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
-python src/scripts/build_gaic_gt_score_cache.py \
+python3 src/scripts/build_gaic_gt_score_cache.py \
   --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260330_r0.jsonl \
   --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl \
   --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260330_r0_monotonic.jsonl \
@@ -1011,7 +1013,7 @@ python src/scripts/build_gaic_gt_score_cache.py \
   --image_ids_csv data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg/summary/selected_images.csv \
   --out_jsonl data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/gaic_gt_score_cache_free.jsonl
 
-python src/scripts/build_gaic_training_label_debug_viz.py \
+python3 src/scripts/build_gaic_training_label_debug_viz.py \
   --coco_json data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json \
   --batch_jsonl data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl \
   --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
@@ -1024,26 +1026,127 @@ python src/scripts/build_gaic_training_label_debug_viz.py \
   --out_dir data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg
 ```
 
+GT `A_macro`까지 채워야 하면, 서버에서 expensive cache를 같이 만든 뒤 로컬에서는 그 산출물을 재사용하는 것이 맞습니다.
+
+선택된 debug-viz subset만 빠르게 채우려면 `--image_ids_csv` 를 같이 주는 subset 템플릿을 쓰고,
+전체 GAIC GT cache를 만들려면 `--image_ids_csv` 없이 full-cache 템플릿을 쓰면 됩니다.
+
+```bash
+# server: selected debug-viz subset only
+#source /your/server/venv/bin/activate
+
+RUN_TAG=gaic_260402_reroute_v1
+
+python3 src/scripts/build_gaic_gt_score_cache.py \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
+  --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl \
+  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --image_ids_csv data/GAIC/All/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg/summary/selected_images.csv \
+  --c1_jsonl data/GAIC/All/artifacts/precompute/feats_c1.jsonl \
+  --image_root data/GAIC/All/images \
+  --sample_expensive_cache_jsonl data/GAIC/All/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/gaic_gt_expensive_cache_free.jsonl \
+  --out_jsonl data/GAIC/All/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/gaic_gt_score_cache_free.jsonl
+```
+
+이때:
+
+- `gaic_gt_score_cache_free.jsonl` 에 GT `macro_scores.A_macro` 가 함께 저장됩니다.
+- `gaic_gt_expensive_cache_free.jsonl` 은 GT bbox expensive signal cache라서, 이후 재생성 시 재사용됩니다.
+- 로컬은 위 두 파일만 동기화한 뒤 `build_gaic_training_label_debug_viz.py` 를 다시 실행하면 됩니다.
+
 전체 GAIC GT cache는 서버에서 한 번 생성하고, 로컬에서는 cache만 복사해서 debug viz를 다시 그리는 방식을 권장합니다.
 
 ```bash
-# server
-source /your/server/venv/bin/activate
+# server: full GAIC GT cache
+#source /your/server/venv/bin/activate
 
-python src/scripts/build_gaic_gt_score_cache.py \
-  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_<RUN_TAG>.jsonl \
+RUN_TAG=gaic_260402_reroute_v1
+
+python3 src/scripts/build_gaic_gt_score_cache.py \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
   --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl \
-  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_<RUN_TAG>_monotonic.jsonl \
+  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
   --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
   --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
-  --out_jsonl data/GAIC/All/artifacts/training_labels/<RUN_TAG>_leftover_ignore_monotonic/gaic_gt_score_cache_free.jsonl
+  --c1_jsonl data/GAIC/All/artifacts/precompute/feats_c1.jsonl \
+  --image_root data/GAIC/All/images \
+  --sample_expensive_cache_jsonl data/GAIC/All/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/gaic_gt_expensive_cache_free.jsonl \
+  --out_jsonl data/GAIC/All/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/gaic_gt_score_cache_free.jsonl
 ```
 
 그 다음 로컬에서는 위 cache 파일을 그대로 사용해 `build_gaic_training_label_debug_viz.py` 만 다시 실행하면 됩니다.
 
+로컬에서 teacher JSONL I/O 또는 GT cache 계산이 너무 무거우면, 아래처럼 **server에서 refined training label / GT cache / debug viz를 먼저 만든 뒤 로컬에는 산출물만 동기화**하는 방식을 권장합니다.
+
+```bash
+# server
+#source /your/server/venv/bin/activate
+
+RUN_TAG=gaic_260402_reroute_v1
+OUT_DIR=data/GAIC/All/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic_refined
+
+python3 src/scripts/build_finalscore_training_data.py \
+  --teacher_scores_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
+  --out_dir ${OUT_DIR} \
+  --image_root data/GAIC/All/images \
+  --safe_leftover_policy ignore
+
+mkdir -p ${OUT_DIR}/coco
+
+python3 src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
+  --batch_jsonl ${OUT_DIR}/train_conditional_detr_batch.jsonl \
+  --gaic_reference_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_train_reference_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_reference_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --out_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like.json \
+  --out_train_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_train.json \
+  --out_test_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_test.json \
+  --out_unassigned_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_unassigned.json \
+  --out_summary_json ${OUT_DIR}/coco/gaic_like_conversion_summary.json \
+  --out_guide_md ${OUT_DIR}/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md
+
+python3 src/scripts/build_gaic_gt_score_cache.py \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
+  --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl \
+  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --c1_jsonl data/GAIC/All/artifacts/precompute/feats_c1.jsonl \
+  --image_root data/GAIC/All/images \
+  --sample_expensive_cache_jsonl ${OUT_DIR}/gaic_gt_expensive_cache_free.jsonl \
+  --out_jsonl ${OUT_DIR}/gaic_gt_score_cache_free.jsonl
+
+python3 src/scripts/build_gaic_training_label_debug_viz.py \
+  --coco_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like.json \
+  --batch_jsonl ${OUT_DIR}/train_conditional_detr_batch.jsonl \
+  --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_gt_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --gt_score_cache_jsonl ${OUT_DIR}/gaic_gt_score_cache_free.jsonl \
+  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
+  --image_root data/GAIC/All/images \
+  --subject_mode_vocab ${OUT_DIR}/subject_mode_vocab.json \
+  --sample_size 50 \
+  --seed 42 \
+  --out_dir ${OUT_DIR}/debug_visualizations_balanced50_bottomneg
+```
+
+이 refined lane은 다음을 반영한다.
+
+- placement family-aware composition aggregation
+- `S_macro` bottleneck aggregation
+- conditional safety relax
+- current-score selection refresh
+- `protected_secondary_positive`
+- colored checklist debug panel
+- refined COCO/GAIC-like export를 명시적으로 먼저 생성한 뒤 debug viz를 그림
+
 참고:
 
 - `teacher_scores_ar_<RUN_TAG>.jsonl` 원본이 부분 손상되었거나 truncated 된 경우가 있으면, 현재 스크립트는 같은 디렉토리의 `teacher_scores_ar_<RUN_TAG>_monotonic.jsonl` 이 존재할 때 자동 fallback 합니다.
+- `A_macro` 유무 확인은 `train_conditional_detr_batch.jsonl`이 아니라 `train_conditional_detr_canonical.jsonl`의 `candidates[].macro_targets.A_macro` 기준으로 보는 것이 맞습니다. canonical export에서 non-null이면 expensive/macro 산출은 살아 있는 것입니다.
+- GT checklist의 `A_macro`는 `gaic_gt_score_cache_free.jsonl` 기준입니다. cheap-only GT cache면 `A_macro=NA`가 정상이고, server-side expensive GT cache를 다시 만든 뒤에만 채워집니다.
 
 또한 각 training label dir의 `coco/` 아래에는 다음 split export가 함께 생성됩니다.
 
@@ -1100,7 +1203,7 @@ for POLICY in ignore promote_soft_positive; do
     OUT_DIR=${BASE}/${RUN_TAG}_leftover_softpos_monotonic
   fi
 
-  python src/scripts/build_finalscore_training_data.py \
+  python3 src/scripts/build_finalscore_training_data.py \
     --teacher_scores_jsonl "${TEACHER_JSONL}" \
     --out_dir "${OUT_DIR}" \
     --image_root "${IMAGE_ROOT}" \
@@ -1108,12 +1211,12 @@ for POLICY in ignore promote_soft_positive; do
     --strict_validation 1 \
     --report_examples 8
 
-  python src/scripts/convert_sstk_detr_labels_to_coco.py \
+  python3 src/scripts/convert_sstk_detr_labels_to_coco.py \
     --canonical_jsonl "${OUT_DIR}/train_conditional_detr_canonical.jsonl" \
     --batch_jsonl "${OUT_DIR}/train_conditional_detr_batch.jsonl" \
     --out_dir "${OUT_DIR}/coco"
 
-  python src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
+  python3 src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
     --batch_jsonl "${OUT_DIR}/train_conditional_detr_batch.jsonl" \
     --gaic_reference_json "${GAIC_REF}" \
     --gaic_train_reference_json data/Publics/GAIC/annotations_json/instances_train.json \

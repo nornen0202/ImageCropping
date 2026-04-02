@@ -118,12 +118,8 @@
 - 구도 보조 신호: `horizon_conf`, `symmetry_score`
 
 핵심 파생 변수는 다음과 같다.
-$$
-\text{text\_signal}=\mathbb{I}[\text{has\_text\_hint} \vee \text{text\_overlay} \vee (\text{ocr\_boxes}>0) \vee (\text{super\_cat}\in\mathcal{T}_{text})]
-$$
-$$
-\text{copyspace\_allowed}=\mathbb{I}[\text{copyspace\_signal} \wedge (\text{blank\_ratio}\ge 0.28)]
-$$
+$$ \text{text\_signal}=\mathbb{I}[\text{has\_text\_hint} \vee \text{text\_overlay} \vee (\text{ocr\_boxes}>0) \vee (\text{super\_cat}\in\mathcal{T}_{text})] $$
+$$ \text{copyspace\_allowed}=\mathbb{I}[\text{copyspace\_signal} \wedge (\text{blank\_ratio}\ge 0.28)] $$
 
 ### 3.3.2 1차 모드 추론 (`_infer_mode`)
 모드 선택은 softmax 분류가 아니라 **우선순위 rule-chain**이다.
@@ -154,9 +150,7 @@ guard 트리거 시 `_fallback_mode_after_guard()`를 실행한다.
 ### 3.3.4 Guard 이후 모드 보정 로직
 - `portrait_group`: C3 person box union으로 `subject_set.union_box_xyxy` 재구성
 - `object_multi` 자동 승격 조건:
-$$
-(s_1-s_2)<0.15 \ \wedge\  \text{IoU}(b_1,b_2)<0.75
-$$
+$$ (s_1-s_2)<0.15 \ \wedge\ \text{IoU}(b_1,b_2)<0.75 $$
 (상위 2개 C2 instance 중요도 차가 작고 서로 다른 객체일 때)
 - `scene_landscape/background_texture_copyspace/text_document`: `primary_idx=-1`, `primary_source=none`
 
@@ -186,9 +180,7 @@ $$
 
 ### 3.4.1 문제 정의
 이미지 $I$에 대해 공개 teacher 집합 $\mathcal{T}=\{\text{GAIC},\text{CACNet},\text{CGS}\}$가 생성한 proposal을
-$$
-\mathcal{P}(I)=\{(t, b_{t,j}, s_{t,j})\}
-$$
+$$ \mathcal{P}(I)=\{(t, b_{t,j}, s_{t,j})\} $$
 형태로 수집한다. 여기서 $b_{t,j}$는 정규화 박스, $s_{t,j}$는 teacher 점수다.
 
 ### 3.4.2 구현 파이프라인
@@ -203,9 +195,7 @@ $$
 2. `build_teacher_proposals_jsonl.py`
 - raw -> canonical 변환
 - teacher별 `free_form`를 score 내림차순 정렬 후 `topk_per_teacher`(기본 3)로 절단
-$$
-\texttt{teacher\_proposals} = \{t: \{\texttt{free\_form}: [...],\texttt{by\_ar}:\{\}\}\}
-$$
+$$ \texttt{teacher\_proposals} = \{t: \{\texttt{free\_form}: [...],\texttt{by\_ar}:\{\}\}\} $$
 - 본 run에서는 `by_ar`는 비어 있고(`{}`), free-form만 사용
 
 3. `check_candidate_injection_gate.py`
@@ -225,9 +215,7 @@ $$
 3. Candidate 주입 단계(`generate_candidates.py`):
 - `teacher_max_seeds_per_teacher=1`(현재 run 기본값)
 - 즉 teacher마다 AR당 seed는 최대 1개만 사용하고, 나머지는 local jitter로 확장
-$$
-K_{use}(t,r)=\min\left(K_{seed},\ |\mathcal{P}^{ar}_{t,r}|+|\mathcal{P}^{free}_{t}|\right),\quad K_{seed}=1
-$$
+$$ K_{use}(t,r)=\min\left(K_{seed},\ |\mathcal{P}^{ar}_{t,r}|+|\mathcal{P}^{free}_{t}|\right),\quad K_{seed}=1 $$
 
 따라서 "결과가 하나만 나온다"는 현상은 **알고리즘의 본질적 제한**이 아니라, 현재 run의 **주입 예산 설정(`teacher_max_seeds_per_teacher=1`)**에 따른 동작이다.
 
@@ -252,27 +240,19 @@ $$
 ### 3.5.1 수학적 정의
 목표 AR 집합 $\mathcal{R}=\{1\!:\!1,9\!:\!16,16\!:\!9,3\!:\!4,4\!:\!3\}$에 대해,
 이미지 $I$마다 AR별 후보 집합
-$$
-\mathcal{B}_r = \{b_{r,i}\}_{i=1}^{N_r}, \quad b_{r,i}=(x_1,y_1,x_2,y_2)\in[0,1]^4
-$$
+$$ \mathcal{B}_r = \{b_{r,i}\}_{i=1}^{N_r}, \quad b_{r,i}=(x_1,y_1,x_2,y_2)\in[0,1]^4 $$
 을 생성한다.
 
 정규화 영역에서의 후보 면적과 실제 AR 오차는
-$$
-a(b)=(x_2-x_1)(y_2-y_1), \quad \hat r(b)=\frac{(x_2-x_1)\cdot r_I}{(y_2-y_1)}
-$$
-$$
-|\hat r(b)-r_t| \le \epsilon_r
-$$
+$$ a(b)=(x_2-x_1)(y_2-y_1), \quad \hat r(b)=\frac{(x_2-x_1)\cdot r_I}{(y_2-y_1)} $$
+$$ |\hat r(b)-r_t| \le \epsilon_r $$
 로 검사한다. 여기서 $r_I=W/H$는 원본 AR, $r_t$는 target AR다.
 
 ### 3.5.2 Baseline 후보 (must-keep)
 코드상 baseline은 과도한 crop 방지를 위한 **안전 앵커**이며, 대부분 `must_keep=True`로 보호된다.
 
 1. Full-frame baseline (`baseline_full`)
-$$
-|r_I-r_t|\le \epsilon_{full} \Rightarrow b_{full}=(0,0,1,1)
-$$
+$$ |r_I-r_t|\le \epsilon_{full} \Rightarrow b_{full}=(0,0,1,1) $$
 - 중요한 점: 이는 AR 무관 free-form 후보가 아니다.
 - `eps_ar_full=0.01` 조건을 만족할 때만 추가되며, `add_candidate()`의 AR 검사(`ar_tol=0.02`)도 다시 통과해야 한다.
 
@@ -283,22 +263,14 @@ $$
 3. Max-area slide baseline (`baseline_maxarea_slide`)
 - center baseline을 subject centroid 쪽으로 sliding.
 - 개수:
-$$
-N_{slide}=|\texttt{maxarea\_slide\_offsets}|=
-\begin{cases}
-3 & (\text{default})\\
-5 & (\text{copyspace hint})
-\end{cases}
-$$
+$$ N_{slide}=|\texttt{maxarea\_slide\_offsets}|= \begin{cases} 3 (\text{default}) 5 (\text{copyspace hint}) \end{cases} $$
 
 4. Copy-space 정렬 후보 (`copyspace_align`)
 - copyspace 힌트가 있을 때만 1개 추가(의도적 여백 확보).
 - baseline 계열이지만 `must_keep=False`로 운영.
 
 요약하면 baseline 총량은
-$$
-N_{base}=\mathbb{I}[\text{full-frame 허용}] + 1 + N_{slide} + \mathbb{I}[\text{copyspace hint}]
-$$
+$$ N_{base}=\mathbb{I}[\text{full-frame 허용}] + 1 + N_{slide} + \mathbb{I}[\text{copyspace hint}] $$
 이다.
 
 참고: scorer 코드에는 `baseline_maxarea_subject` 호환 분기가 있으나, 본 run의 generator는 해당 source를 생성하지 않는다.
@@ -306,42 +278,27 @@ $$
 ### 3.5.3 Baseline 외 후보: Grid / Subject / Jitter / Phi
 #### (A) Grid anchor + multi-scale (`grid`)
 `add_center_area_box`는 중심 $(c_x,c_y)$와 목표 면적 $a_t$에서 박스를 만든다.
-$$
-w_n = \sqrt{\frac{a_t\, r_t}{r_I}}, \quad h_n = \sqrt{\frac{a_t\, r_I}{r_t}}
-$$
-$$
-b=(c_x-\tfrac{w_n}{2}, c_y-\tfrac{h_n}{2}, c_x+\tfrac{w_n}{2}, c_y+\tfrac{h_n}{2})
-$$
+$$ w_n = \sqrt{\frac{a_t\, r_t}{r_I}}, \quad h_n = \sqrt{\frac{a_t\, r_I}{r_t}} $$
+$$ b=(c_x-\tfrac{w_n}{2}, c_y-\tfrac{h_n}{2}, c_x+\tfrac{w_n}{2}, c_y+\tfrac{h_n}{2}) $$
 
 raw 생성량(필터 전)은
-$$
-N_{grid,raw}=(M+1)(N+1)|\texttt{scale\_set}|
-$$
+$$ N_{grid,raw}=(M+1)(N+1)|\texttt{scale\_set}| $$
 이며, 현재 기본값(`12x12`, `|scale_set|=8`)에서는 최대 $13\times13\times8=1352$다.
 
 #### (B) Subject template (`object_template`)
 subject prior box 크기 $(w_s,h_s)$에서 스케일 템플릿을 적용한다.
-$$
-a_t=\text{clip}(w_sh_s\cdot m^2, a_{min}, a_{max}),\quad m\in\texttt{object\_template\_scales}
-$$
+$$ a_t=\text{clip}(w_sh_s\cdot m^2, a_{min}, a_{max}),\quad m\in\texttt{object\_template\_scales} $$
 기본 개수는 3개다.
 
 #### (C) Saliency-guided jitter (`jitter`)
-$$
-\Delta x \in \{0,\pm f_1w_s,\pm f_2w_s, ...\},\quad
-\Delta y \in \{0,\pm f_1h_s,\pm f_2h_s, ...\}
-$$
+$$ \Delta x \in \{0,\pm f_1w_s,\pm f_2w_s, ...\},\quad \Delta y \in \{0,\pm f_1h_s,\pm f_2h_s, ...\} $$
 기본값(`jitter_fracs={0.03,0.06}`, `jitter_scales=3`)에서 raw 최대 개수는
-$$
-N_{jitter,raw}=(1+2\cdot2)^2\cdot3=75
-$$
+$$ N_{jitter,raw}=(1+2\cdot2)^2\cdot3=75 $$
 이다.
 
 #### (D) Phi/Thirds (`phi_thirds`)
 중심점 집합
-$$
-\{1/3,2/3,0.382,0.618\}^2
-$$
+$$ \{1/3,2/3,0.382,0.618\}^2 $$
 (총 16개)과 `phi_scales`를 조합한다. 기본 raw 개수는 $16\times3=48$.
 
 ### 3.5.4 Public teacher proposal 주입 (v1.9)
@@ -352,18 +309,12 @@ $$
 - 없으면 free-form을 AR projection해서 seed로 사용
 
 2. AR projection
-$$
-b' = \text{project\_box\_to\_ar}(b, r_t/r_I, \texttt{prefer\_expand})
-$$
+$$ b' = \text{project\_box\_to\_ar}(b, r_t/r_I, \texttt{prefer\_expand}) $$
 
 3. local jitter neighborhood
-$$
-b_{jit}=\text{Proj}_{AR}\big(\text{ShiftScale}(b',\Delta x,\Delta y,s)\big)
-$$
+$$ b_{jit}=\text{Proj}_{AR}\big(\text{ShiftScale}(b',\Delta x,\Delta y,s)\big) $$
 기본값(`shift_frac=0.03`, `scales={0.92,1.0,1.08}`)에서 seed 1개당 jitter raw 최대는
-$$
-((2\cdot1+1)^2-1)\times3=24
-$$
+$$ ((2\cdot1+1)^2-1)\times3=24 $$
 이다.
 
 4. source 기록
@@ -386,20 +337,12 @@ $$
 
 ### 3.5.6 후보 생성 품질지표
 설계 레벨 PoC 지표:
-$$
-\text{Recall@GT}(\tau)=\Pr\Big[\max_{b\in\mathcal{B}_r}\text{IoU}(b,b_{GT})\ge \tau\Big]
-$$
-$$
-\text{OracleTop1IoU}=\max_{b\in\mathcal{B}_r}\text{IoU}(b,b_{GT})
-$$
+$$ \text{Recall@GT}(\tau)=\Pr\Big[\max_{b\in\mathcal{B}_r}\text{IoU}(b,b_{GT})\ge \tau\Big] $$
+$$ \text{OracleTop1IoU}=\max_{b\in\mathcal{B}_r}\text{IoU}(b,b_{GT}) $$
 
 현재 run은 GT 박스가 없는 운영셋이라 proxy를 사용했다.
-$$
-\text{proposal\_injected\_rate}=\frac{\#\{I:\text{proposal injected}\}}{\#\{I\}}
-$$
-$$
-\text{teacher\_seed\_top1\_rate}=\frac{\#\{(I,r):\text{top1 source startswith teacher:}\}}{\#\{(I,r)\}}
-$$
+$$ \text{proposal\_injected\_rate}=\frac{\#\{I:\text{proposal injected}\}}{\#\{I\}} $$
+$$ \text{teacher\_seed\_top1\_rate}=\frac{\#\{(I,r):\text{top1 source startswith teacher:}\}}{\#\{(I,r)\}} $$
 
 ### 3.5.7 run 결과
 - 이미지 수: 500
@@ -414,16 +357,12 @@ $$
 대상 코드: `src/score_teacher.py`
 
 운영 원칙은 **Good Composition Closed-Loop**다.
-$$
-\text{Rule} \rightarrow \text{Feature} \rightarrow \text{Score} \rightarrow \text{QA}
-$$
+$$ \text{Rule} \rightarrow \text{Feature} \rightarrow \text{Score} \rightarrow \text{QA} $$
 즉, 구도 규칙이 feature 계산과 score 항으로 연결되고, 동일 항이 QA 지표로 재검증된다.
 
 ### 3.6.1 Hard constraints (즉시 reject)
 후보 $b$에 대해 아래를 위반하면 `hard_reject=True`:
-$$
-a_{min} \le a(b) \le a_{max},\quad |\hat r(b)-r_t| \le \epsilon_r
-$$
+$$ a_{min} \le a(b) \le a_{max},\quad |\hat r(b)-r_t| \le \epsilon_r $$
 - face cut: `hard_face_rule=1`이면 즉시 reject
 - joint cut: severe joint count가 `hard_joint_reject_count` 이상이면 reject
 
@@ -431,42 +370,27 @@ $$
 
 ### 3.6.2 Cheap score: 항별 의미와 계산
 Cheap 단계는 후보 축소($N\to M$)가 목적이며, 최종식은
-$$
-S_{cheap}=\lambda_{cov}C_{subj}-\lambda_{cut}P_{cut}-\lambda_{text}P_{text}+\lambda_{comp}R_{comp}+\lambda_{hr}R_{hr}+\lambda_{lr}R_{lr}+\lambda_{sym}R_{sym}+\lambda_{ctx}R_{ctx}+\lambda_{cs}R_{cs}
-$$
+$$ S_{cheap}=\lambda_{cov}C_{subj}-\lambda_{cut}P_{cut}-\lambda_{text}P_{text}+\lambda_{comp}R_{comp}+\lambda_{hr}R_{hr}+\lambda_{lr}R_{lr}+\lambda_{sym}R_{sym}+\lambda_{ctx}R_{ctx}+\lambda_{cs}R_{cs} $$
 이다.
 
 1. 주체 보존
-$$
-C_{subj}=\frac{|b\cap b_{subj}|}{|b_{subj}|}
-$$
+$$ C_{subj}=\frac{|b\cap b_{subj}|}{|b_{subj}|} $$
 
 2. Cut penalty
-$$
-P_{cut}=\alpha_f\mathbf{1}[\text{face\_cut}] + \alpha_j\cdot\text{joint\_cutoff\_score} + \alpha_b\mathbf{1}[\text{subj\_touch\_border}]
-$$
+$$ P_{cut}=\alpha_f\mathbf{1}[\text{face\_cut}] + \alpha_j\cdot\text{joint\_cutoff\_score} + \alpha_b\mathbf{1}[\text{subj\_touch\_border}] $$
 
 3. Composition reward
-$$
-R_{comp}=w_{third}R_{third}+w_{\phi}R_{\phi}+w_{center}R_{center}+w_{horizon}R_{horizon}
-$$
+$$ R_{comp}=w_{third}R_{third}+w_{\phi}R_{\phi}+w_{center}R_{center}+w_{horizon}R_{horizon} $$
 - $R_{third},R_{\phi},R_{center}$: subject centroid의 crop-local 거리 기반 보상
 - $R_{horizon}$: horizon이 thirds 근처일수록 보상(`horizon_conf`가 임계 이상일 때만 활성)
 
 4. Headroom / Lookroom
-$$
-R_{hr}=-\frac{|r_h-r_h^*|}{\sigma_h}-\gamma_h\,\text{overflow}_h
-$$
-$$
-R_{lr}=-\frac{|r_l-r_l^*|}{\sigma_l}-\gamma_l\,\text{overflow}_l
-$$
+$$ R_{hr}=-\frac{|r_h-r_h^*|}{\sigma_h}-\gamma_h\,\text{overflow}_h $$
+$$ R_{lr}=-\frac{|r_l-r_l^*|}{\sigma_l}-\gamma_l\,\text{overflow}_l $$
 - lookroom은 gaze 방향이 left/right일 때만 활성
 
 5. Context / Copy-space
-$$
-R_{ctx}=-\frac{|\text{subj\_area}-\text{ctx\_target}|}{\sigma_{ctx}},\quad
-R_{cs}=\max(0,1-\text{subj\_area})
-$$
+$$ R_{ctx}=-\frac{|\text{subj\_area}-\text{ctx\_target}|}{\sigma_{ctx}},\quad R_{cs}=\max(0,1-\text{subj\_area}) $$
 - `has_copy_space` route일 때 `R_cs` 가중치가 강화된다.
 
 ### 3.6.3 Route-aware 파라미터 오버라이드
@@ -482,12 +406,8 @@ $$
 
 ### 3.6.4 Expensive score + Final score
 `apply_expensive_score()` 기준:
-$$
-S_{exp}=w_a A_{norm}+w_{ca}\cos(E_I,E_T)+w_{cov}C_{subj}-w_{cut}P_{cut}-w_{text}P_{text}+w_{edge}R_{edge}
-$$
-$$
-S_{final}=S_{exp}+w_{area}\log(a(b)+\epsilon)
-$$
+$$ S_{exp}=w_a A_{norm}+w_{ca}\cos(E_I,E_T)+w_{cov}C_{subj}-w_{cut}P_{cut}-w_{text}P_{text}+w_{edge}R_{edge} $$
+$$ S_{final}=S_{exp}+w_{area}\log(a(b)+\epsilon) $$
 
 - real mode: aesthetic predictor + image-text cosine
 - proxy mode: cheap 단계 proxy feature
@@ -502,9 +422,7 @@ $$
 
 ### 3.6.6 Keep-vs-Crop decision 의미와 결정 규칙
 baseline 후보 $b_{base}$와 최고점 후보 $b_{best}$의 점수 차를 사용한다.
-$$
-\Delta=S_{final}(b_{best})-S_{final}(b_{base})
-$$
+$$ \Delta=S_{final}(b_{best})-S_{final}(b_{base}) $$
 
 1. `crop`
 - 조건: $\Delta\ge\tau_{improve}$
@@ -522,9 +440,7 @@ $$
 
 ### 3.6.7 Top-K + Diversity
 정렬된 후보에서 greedy 선택:
-$$
-\max_{b_k\in\mathcal{S}} \text{IoU}(b,b_k) < \tau_{div}
-$$
+$$ \max_{b_k\in\mathcal{S}} \text{IoU}(b,b_k) < \tau_{div} $$
 
 실구현 포인트:
 - `force_ids=[chosen_candidate_id, baseline_candidate_id]`를 먼저 주입
@@ -537,15 +453,9 @@ $$
 는 설계 확장 항목이며, 본 run의 `src/score_teacher.py` 실수식에는 직접 포함되지 않는다.
 
 설계 문서식:
-$$
-R_{picd\text{-}preserve}(b)=\cos(e(I),e(I_b))-\eta \cdot KL\!\left(p(I)\parallel p(I_b)\right)
-$$
-$$
-R_{picd\text{-}target}(b)=p(I_b)[c^*]
-$$
-$$
-R_{teach}(b)=\sigma\!\left(\frac{\rho(b)-\tau}{\beta}\right)\cdot\mathbf{1}[\text{consensus}]
-$$
+$$ R_{picd\text{-}preserve}(b)=\cos(e(I),e(I_b))-\eta \cdot KL\!\left(p(I)\parallel p(I_b)\right) $$
+$$ R_{picd\text{-}target}(b)=p(I_b)[c^*] $$
+$$ R_{teach}(b)=\sigma\!\left(\frac{\rho(b)-\tau}{\beta}\right)\cdot\mathbf{1}[\text{consensus}] $$
 
 ### 3.6.9 run 결과 (AR-task=2500)
 - decision: `minimal_crop 1517`, `crop 983`
@@ -571,13 +481,9 @@ $$
 - `composition_checks_top1`, `meta_norm_v1`
 
 정리하면 VLM 입력은
-$$
-\mathcal{X}_{vlm}(I,r)=\{C_{topM}(I,r), C_{num}(I,r), b_{base}, \Delta, \tau, \text{meta\_norm}, \text{checks}\}
-$$
+$$ \mathcal{X}_{vlm}(I,r)=\{C_{topM}(I,r), C_{num}(I,r), b_{base}, \Delta, \tau, \text{meta\_norm}, \text{checks}\} $$
 이며, VLM의 역할은
-$$
-\mathcal{X}_{vlm}(I,r)\rightarrow \{(\text{candidate\_id}_k,\text{why}_k)\}_{k=1}^{K}
-$$
+$$ \mathcal{X}_{vlm}(I,r)\rightarrow \{(\text{candidate\_id}_k,\text{why}_k)\}_{k=1}^{K} $$
 로 정의된다.
 
 ### 3.7.3 정규화/검증 파이프라인
@@ -589,22 +495,16 @@ $$
 5. `also_considered`를 모델 출력 또는 hard negatives에서 구성
 
 즉, 최종 `selected_topk`는
-$$
-\text{Selected} = \text{ValidModelPick} \oplus \text{NumericFill}
-$$
+$$ \text{Selected} = \text{ValidModelPick} \oplus \text{NumericFill} $$
 구조이며, 비정상 출력으로 인한 공백 rank를 deterministic하게 메운다.
 
 또한 모델이 `decision_type`을 부정확하게 내놓더라도, 파서가 허용 집합
-$$
-\{\text{crop},\text{minimal\_crop},\text{keep\_full}\}
-$$
+$$ \{\text{crop},\text{minimal\_crop},\text{keep\_full}\} $$
 에 없는 값을 걸러 baseline decision으로 복구한다.
 
 ### 3.7.4 confidence 산식
 코드에서 teacher confidence는
-$$
-\text{conf}=\text{clip}\big(0.5+\max(0, S_{final}^{(1)}-S_{final}^{(2)}),\,0,1\big)
-$$
+$$ \text{conf}=\text{clip}\big(0.5+\max(0, S_{final}^{(1)}-S_{final}^{(2)}),\,0,1\big) $$
 로 계산된다.
 
 여기서 $S_{final}^{(1)}, S_{final}^{(2)}$는 `selected_topk` 상위 2개 후보의 teacher final score다.
@@ -616,9 +516,7 @@ $$
 - OOM 시 CPU backend 재시도 옵션 제공
 
 fallback label의 핵심은 좌표 생성이 아니라 이미 존재하는 `numeric_topk` 기반 재구성이다.
-$$
-\text{FallbackTopK} = \text{TopK}\big(\text{numeric\_topk}\big)
-$$
+$$ \text{FallbackTopK} = \text{TopK}\big(\text{numeric\_topk}\big) $$
 따라서 모델 실패 시에도 구조적 일관성은 유지된다.
 
 실제 run에서 summary상 fallback backend 사용 task는 0이지만, `why_text`의 rank2~5가 template에 수렴한 점은 별도 개선 포인트다.
@@ -665,56 +563,32 @@ QA는 단순 통계 출력이 아니라, **라벨 릴리즈 전 품질 게이트
 1. row cardinality 일치
 - candidate=500, teacher=500, vlm=2500
 2. 박스/AR/면적 유효성
-$$
-a_{min}\le a(b)\le a_{max},\quad |\hat r(b)-r_t|\le\epsilon_r
-$$
+$$ a_{min}\le a(b)\le a_{max},\quad |\hat r(b)-r_t|\le\epsilon_r $$
 3. Top-K 형식/스키마 검사
 
 ### 3.8.3 Semantic checks
 QA 집계식(코드 구현):
-$$
-\text{face\_cut\_rate}=\frac{\#\{\text{top1 face\_cut}=1\}}{N}
-$$
-$$
-\text{joint\_cut\_rate}=\frac{\#\{\text{top1 joint\_cutoff}>0.35\}}{N}
-$$
-$$
-\text{subject\_coverage\_fail\_rate}=\frac{\#\{\text{top1 coverage}<\tau_{cov}\}}{N},\quad \tau_{cov}=0.9
-$$
-$$
-\text{copyspace\_preserve\_rate}=\frac{\#\{1-\text{subj\_area}\ge \tau_{cs}\}}{\#\{\text{copyspace subset}\}},\quad \tau_{cs}=0.25
-$$
+$$ \text{face\_cut\_rate}=\frac{\#\{\text{top1 face\_cut}=1\}}{N} $$
+$$ \text{joint\_cut\_rate}=\frac{\#\{\text{top1 joint\_cutoff}>0.35\}}{N} $$
+$$ \text{subject\_coverage\_fail\_rate}=\frac{\#\{\text{top1 coverage}<\tau_{cov}\}}{N},\quad \tau_{cov}=0.9 $$
+$$ \text{copyspace\_preserve\_rate}=\frac{\#\{1-\text{subj\_area}\ge \tau_{cs}\}}{\#\{\text{copyspace subset}\}},\quad \tau_{cs}=0.25 $$
 
 ### 3.8.4 Proposal 주입 효과 지표
-$$
-\text{proposal\_injected\_rate}=\frac{\#\{\text{proposal injected}\}}{N}
-$$
-$$
-\text{teacher\_seed\_top1\_rate\_all}=\frac{\#\{\text{top1 source is teacher:*}\}}{N}
-$$
-$$
-\text{proposal\_rescue\_rate\_proxy}=\frac{\#\{\text{proposal injected and top1 is teacher:*}\}}{\#\{\text{proposal injected}\}}
-$$
+$$ \text{proposal\_injected\_rate}=\frac{\#\{\text{proposal injected}\}}{N} $$
+$$ \text{teacher\_seed\_top1\_rate\_all}=\frac{\#\{\text{top1 source is teacher:*}\}}{N} $$
+$$ \text{proposal\_rescue\_rate\_proxy}=\frac{\#\{\text{proposal injected and top1 is teacher:*}\}}{\#\{\text{proposal injected}\}} $$
 
 ### 3.8.5 Router guard consistency
-$$
-\text{guard\_no\_person\_for\_portrait\_rate}=\frac{\#\{\text{portrait mode with num\_person}=0\}}{N}
-$$
-$$
-\text{guard\_no\_text\_signal\_rate}=\frac{\#\{\text{text\_document with no OCR/text signal}\}}{N}
-$$
-$$
-\text{guard\_low\_blank\_ratio\_copyspace\_rate}=\frac{\#\{\text{copyspace mode and blank ratio<thr}\}}{N}
-$$
+$$ \text{guard\_no\_person\_for\_portrait\_rate}=\frac{\#\{\text{portrait mode with num\_person}=0\}}{N} $$
+$$ \text{guard\_no\_text\_signal\_rate}=\frac{\#\{\text{text\_document with no OCR/text signal}\}}{N} $$
+$$ \text{guard\_low\_blank\_ratio\_copyspace\_rate}=\frac{\#\{\text{copyspace mode and blank ratio<thr}\}}{N} $$
 
 ### 3.8.6 Human spot-check / Golden gate / Composition regression
 설계 문서(v1.9) 기준 운영 권장:
 1. Human spot-check: category x difficulty strata 샘플링 검수
 2. Golden gate: 고정 benchmark 통과 후 release
 3. Composition regression (PICD CDA):
-$$
-\text{CDA}=\frac{1}{N}\sum_{i=1}^{N}\mathbf{1}[\hat{neg}_i=neg_i]
-$$
+$$ \text{CDA}=\frac{1}{N}\sum_{i=1}^{N}\mathbf{1}[\hat{neg}_i=neg_i] $$
 
 주의: 본 run(`rerun1_public_e2e_260303`) 보고 산출물은 자동 QA 중심이며, Golden/CDA 결과 파일은 포함되지 않았다.
 
@@ -874,12 +748,7 @@ $$
 본 run에서 `teacher_topk_final_score_hist`의 평균은 `-5.9198`이고, QA top1 기준 `neg_rate=0.7404`다.
 
 음수 편향은 버그라기보다 현재 점수식의 설계 특성 때문이다.
-$$
-S_{final}=\underbrace{w_aA_{norm}+w_{ca}\cos(E_I,E_T)+w_{cov}C_{subj}}_{\text{bounded positive}}
--\underbrace{w_{cut}P_{cut}}_{\text{strong penalty}}
-+\underbrace{w_{edge}R_{edge}}_{R_{edge}\le 0}
-+\underbrace{w_{area}\log(a)}_{\le 0}
-$$
+$$ S_{final}=\underbrace{w_aA_{norm}+w_{ca}\cos(E_I,E_T)+w_{cov}C_{subj}}_{\text{bounded positive}} -\underbrace{w_{cut}P_{cut}}_{\text{strong penalty}} +\underbrace{w_{edge}R_{edge}}_{R_{edge}\le 0} +\underbrace{w_{area}\log(a)}_{\le 0} $$
 
 실측(top1, 2500 task)에서 음수 편향을 만드는 항은 다음이다.
 - `R_edge` 평균 약 `-5.964` (경계 근접 페널티)

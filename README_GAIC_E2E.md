@@ -1169,6 +1169,137 @@ safe high-score leftover는
 
 opt-in variant 실험을 위해 아래 분기를 만들 수 있습니다.
 
+## 5.4 Crop Score Priority Experiment Runner
+
+우선순위 기반 scorer 실험은 아래 runner로 수행합니다.
+
+- script: `src/scripts/run_crop_score_priority_experiments.py`
+- 핵심 입력:
+  - `teacher_scores_ar_<RUN_TAG>.jsonl`
+  - `candidates_ar_<RUN_TAG>.jsonl`
+  - routed feature jsonl
+  - GAIC GT json
+- 핵심 출력:
+  - experiment별 training labels
+  - experiment별 benchmark report
+  - stage winner 비교 리포트
+  - optional GT cache / debug viz
+
+### 로컬 smoke 검증
+
+로컬에서 전체 teacher JSONL을 그대로 쓰면 training-label build가 무겁습니다. smoke 검증은 `--teacher_max_images` 로 subset을 만든 뒤 돌리는 편이 맞습니다.
+
+```bash
+source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+
+python3 src/scripts/run_crop_score_priority_experiments.py \
+  --out_root data/GAIC/All/artifacts/reports/crop_score_priority_experiments_gaic_260402_reroute_v1_smoke \
+  --experiment_ids baseline_current_refined stage1_balanced stage2_balanced stage3_balanced stage4_balanced \
+  --teacher_max_images 4 \
+  --benchmark_max_images 2 \
+  --winner_benchmark_max_images 2 \
+  --run_winner_refresh 0 \
+  --debug_sample_size 2 \
+  --run_full_expensive 1 \
+  --benchmark_sample_count 0 \
+  --parallel_experiment_jobs 2 \
+  --worker_cpu_threads -1 \
+  --benchmark_num_workers 2 \
+  --gt_cache_num_workers 2
+```
+
+이 smoke는 아래를 확인하는 용도입니다.
+
+- `score_profile` 적용
+- training label refresh / monotonic QA
+- benchmark rescoring
+- GT cache / debug viz 생성
+- experiment summary / markdown report 생성
+
+### 서버 full-expensive 실험
+
+전체 GAIC overlap 대상으로 stage comparison을 하려면 서버에서 아래처럼 실행하는 편이 맞습니다.
+
+```bash
+#source /your/server/venv/bin/activate
+
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+PARALLEL_EXPERIMENT_JOBS=${N_WORKERS}
+CPU_THREADS_PER_JOB=-1
+
+export CUDA_VISIBLE_DEVICES=${GPU_IDS}
+
+RUN_TAG=gaic_260402_reroute_v1
+
+python3 src/scripts/run_crop_score_priority_experiments.py \
+  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
+  --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --image_root data/GAIC/All/images \
+  --c1_jsonl data/GAIC/All/artifacts/precompute/feats_c1.jsonl \
+  --out_root data/GAIC/All/artifacts/reports/crop_score_priority_experiments_${RUN_TAG} \
+  --benchmark_max_images 0 \
+  --winner_benchmark_max_images 0 \
+  --run_winner_refresh 1 \
+  --run_full_expensive 1 \
+  --debug_sample_size 50 \
+  --build_debug_viz_for_all 1 \
+  --parallel_experiment_jobs ${PARALLEL_EXPERIMENT_JOBS} \
+  --worker_cpu_threads ${CPU_THREADS_PER_JOB} \
+  --benchmark_gpu_ids ${GPU_IDS} \
+  --benchmark_num_workers ${N_WORKERS} \
+  --gt_cache_gpu_ids ${GPU_IDS} \
+  --gt_cache_num_workers ${N_WORKERS} \
+  | tee src/scripts/logs/run_crop_score_priority_experiments_${RUN_TAG}.log
+```
+
+이 full run은 기본적으로:
+
+- baseline `current_refined`
+- stage1~4 기본형과 tuning variant
+- stage별 winner selection
+- baseline + stage winner debug viz
+
+를 생성합니다.
+
+runner는 benchmark full-expensive cache와 GT expensive cache를 `<out_root>/shared_*cache*.jsonl` 로 공유하므로, tuning candidate가 많아도 동일 raw expensive signal을 실험 간 재사용합니다.
+
+GPU 사용 관련 메모:
+
+- teacher scorer 본체는 기존과 동일하게 `run_teacher_scorer.sh` / `run_phaseA_to_teacher_e2e.sh` 의 shard 기반 multi-GPU 실행을 사용합니다. 즉 scorer 단계는 `--teacher_gpu_ids`, `--teacher_num_workers` 로 이미 분산 가능합니다.
+- stage scorer 실험에서 GPU를 쓰는 구간은 `run_gaic_benchmark_eval.py --run_full_expensive 1` 과 `build_gaic_gt_score_cache.py --c1_jsonl ... --image_root ...` 입니다.
+- 이제 experiment runner는 이 두 구간을 shard precompute로 분리합니다.
+  - `--benchmark_num_workers N`: benchmark full-expensive raw cache precompute shard 수
+  - `--gt_cache_num_workers N`: GT expensive cache shard 수
+  - `--parallel_experiment_jobs N`: training-label build/benchmark 실험 job 병렬 수
+  - `--worker_cpu_threads M`: 각 job/shard subprocess가 사용할 BLAS/OpenMP thread cap. `-1` 또는 생략 시 현재 환경의 최대 CPU 코어 수를 읽고 해당 phase의 동시 worker 수로 나눈 auto 값이 적용됩니다.
+- `--benchmark_gpu_ids`, `--gt_cache_gpu_ids` 를 비워 두면 우선 `CUDA_VISIBLE_DEVICES` 를 따르고, 그것도 비어 있으면 `nvidia-smi -L` 로 보이는 전체 GPU를 자동 사용합니다. 따라서 멀티-GPU 서버에서는 별도 CSV를 안 줘도 기본적으로 “보이는 GPU 수만큼 shard”가 잡힙니다.
+- 반대로 특정 GPU만 쓰고 싶으면 `CUDA_VISIBLE_DEVICES=2,3` 또는 `--benchmark_gpu_ids 2,3 --gt_cache_gpu_ids 2,3` 처럼 제한하면 됩니다.
+- 이 shard precompute는 raw expensive signal cache만 병렬 생성하고, 실제 benchmark metric 집계는 cache 재사용 기반 single-process로 마무리합니다. 이렇게 해야 실험 간 raw expensive signal 재사용이 가능하고 summary merge 복잡도도 낮습니다.
+- benchmark sample panel이나 GT cache expensive stage 로그에 `[expensive] align model ... on cuda`, `aesthetic backend ...` 가 보이면 실제로 GPU가 사용된 것입니다.
+
+CPU 병렬화 메모:
+
+- `--parallel_experiment_jobs` 는 서로 다른 scorer profile 실험을 병렬로 돌립니다.
+- 각 subprocess 내부에서 NumPy/BLAS가 코어를 과점유하면 오히려 느려질 수 있으므로, runner는 `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `NUMEXPR_NUM_THREADS` 를 `--worker_cpu_threads` 값으로 자동 제한합니다.
+- `--worker_cpu_threads=-1` 이면 `os.cpu_count()` 기준 전체 코어 수를 읽고, phase별 동시 worker 수(`parallel_experiment_jobs`, `benchmark_num_workers`, `gt_cache_num_workers`)로 나눠 auto cap을 계산합니다.
+- 고정값을 주고 싶으면 양수로 직접 지정하면 됩니다.
+
+`--build_debug_viz_for_all 1` 을 주면 tuning candidate까지 모두 debug viz를 만들 수 있지만, GT cache와 viz 렌더링 비용이 커지므로 서버에서만 권장합니다.
+
+### 주요 결과 파일
+
+- `<out_root>/experiment_summary.json`
+- `<out_root>/EXPERIMENT_REPORT_KO.md`
+- `<out_root>/<experiment_id>/training_labels/...`
+- `<out_root>/<experiment_id>/benchmark/benchmark_summary.json`
+- `<out_root>/<experiment_id>/training_labels/debug_visualizations_balanced50_bottomneg`
+
+현재 objective는 `Ge.score_policy` benchmark 지표 + production-policy GT match 지표를 합산하고, monotonic/safe-pool QA 위반에 penalty를 주는 방식입니다. 세부 식과 stage 정의는 [Implement_Docs/Crop_Score_Impact_Analysis_KO_2026-04-02.md](./Implement_Docs/Crop_Score_Impact_Analysis_KO_2026-04-02.md) 를 참고하면 됩니다.
+
 - `keep_negative`: 이 후보를 기존처럼 `candidate_pool`의 `negative/near_negative`로 유지
 - `ignore`: 이 후보를 `ignored_candidates`로 분리하고 negative annotation에서 제외
 - `promote_soft_positive`: 이 후보를 `soft_positive`로 승격하고 `matching_targets`에 포함

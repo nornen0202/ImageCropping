@@ -74,6 +74,7 @@ from score_teacher import (
 from subject_region import ensure_crop_guidance_spec
 from support_seed import seed_family_windows, support_mass_in_box
 from scripts.build_finalscore_training_data import rank_pct_desc, robust_z_scores, sigmoid, softmax_local
+from scripts.score_profile_utils import apply_profile_to_cfg, build_profile_metadata
 from scripts.build_single_image_crop_report import (
     best_teacher_refs,
     build_panel as build_detailed_panel,
@@ -137,7 +138,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample_count", type=int, default=6)
     parser.add_argument("--ge_full_topk", type=int, default=DEFAULT_GE_FULL_TOPK)
     parser.add_argument("--max_images", type=int, default=0)
+    parser.add_argument(
+        "--image_ids_csv",
+        default="",
+        help="Optional CSV containing image_id column. When set, benchmark evaluates only those images in CSV order.",
+    )
     parser.add_argument("--seed", type=int, default=17)
+    parser.add_argument("--score_profile", default="current_refined")
+    parser.add_argument("--score_profile_overrides_json", default="")
+    parser.add_argument("--run_full_expensive", type=int, default=0)
+    parser.add_argument("--full_expensive_cache_jsonl", default="")
+    parser.add_argument("--precompute_full_expensive_cache_only", type=int, default=0)
+    parser.add_argument("--num_shards", type=int, default=1)
+    parser.add_argument("--shard_index", type=int, default=0)
+    parser.add_argument("--align_device", default="auto")
+    parser.add_argument("--aesthetic_device", default="auto")
+    parser.add_argument("--exp_batch_size", type=int, default=24)
+    parser.add_argument("--exp_preprocess_workers", type=int, default=0)
+    parser.add_argument("--exp_pin_memory", type=int, default=1)
     return parser.parse_args()
 
 
@@ -149,10 +167,29 @@ def resolve_benchmark_c1_jsonl(*, data_root: Path, explicit: str = "") -> Option
     return candidate if candidate.exists() else None
 
 
+def load_image_ids_from_csv(path: Path) -> List[str]:
+    image_ids: List[str] = []
+    seen: set[str] = set()
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            image_id = str(row.get("image_id", "")).strip()
+            if not image_id or image_id in seen:
+                continue
+            image_ids.append(image_id)
+            seen.add(image_id)
+    return image_ids
+
+
 def build_sample_expensive_runtime(
     *,
     cfg: TeacherScorerConfig,
     c1_jsonl: Optional[Path],
+    align_device: str = "auto",
+    aesthetic_device: str = "auto",
+    exp_batch_size: int = 24,
+    exp_preprocess_workers: int = 0,
+    exp_pin_memory: bool = True,
 ) -> Tuple[Optional[Dict[str, Dict[str, np.ndarray]]], Optional[ExpensiveModels]]:
     if (not bool(cfg.use_real_expensive)) or c1_jsonl is None or not c1_jsonl.exists():
         return None, None
@@ -164,11 +201,11 @@ def build_sample_expensive_runtime(
         text_dim=int(first_text.shape[0]),
         align_model_name="",
         align_pretrained="",
-        align_device="auto",
-        aesthetic_device="auto",
-        batch_size=24,
-        preprocess_workers=0,
-        pin_memory=True,
+        align_device=str(align_device),
+        aesthetic_device=str(aesthetic_device),
+        batch_size=max(1, int(exp_batch_size)),
+        preprocess_workers=max(0, int(exp_preprocess_workers)),
+        pin_memory=bool(exp_pin_memory),
         aesthetic_backend="hybrid",
         aesthetic_prior_laion_weight=0.15,
         aesthetic_mlp_path=PROJECT_ROOT / "weights/improved-aesthetic-predictor/sac+logos+ava1-l14-linearMSE.pth",
@@ -223,10 +260,20 @@ class SampleExpensiveCacheManager:
         cfg: TeacherScorerConfig,
         c1_jsonl: Optional[Path],
         cache_path: Path,
+        align_device: str = "auto",
+        aesthetic_device: str = "auto",
+        exp_batch_size: int = 24,
+        exp_preprocess_workers: int = 0,
+        exp_pin_memory: bool = True,
     ) -> None:
         self.cfg = cfg
         self.c1_jsonl = c1_jsonl
         self.cache_path = cache_path
+        self.align_device = str(align_device)
+        self.aesthetic_device = str(aesthetic_device)
+        self.exp_batch_size = max(1, int(exp_batch_size))
+        self.exp_preprocess_workers = max(0, int(exp_preprocess_workers))
+        self.exp_pin_memory = bool(exp_pin_memory)
         self.cache_rows = load_sample_expensive_cache(cache_path)
         self.c1_map: Optional[Dict[str, Dict[str, np.ndarray]]] = None
         self.expensive_models: Optional[ExpensiveModels] = None
@@ -236,7 +283,15 @@ class SampleExpensiveCacheManager:
         if self.runtime_attempted:
             return
         self.runtime_attempted = True
-        self.c1_map, self.expensive_models = build_sample_expensive_runtime(cfg=self.cfg, c1_jsonl=self.c1_jsonl)
+        self.c1_map, self.expensive_models = build_sample_expensive_runtime(
+            cfg=self.cfg,
+            c1_jsonl=self.c1_jsonl,
+            align_device=self.align_device,
+            aesthetic_device=self.aesthetic_device,
+            exp_batch_size=self.exp_batch_size,
+            exp_preprocess_workers=self.exp_preprocess_workers,
+            exp_pin_memory=self.exp_pin_memory,
+        )
 
     def apply(
         self,
@@ -718,6 +773,14 @@ def bootstrap_confidence_interval(
 def stable_fraction(text: str) -> float:
     digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:16]
     return int(digest, 16) / float(16**16 - 1)
+
+
+def stable_shard_index(text: str, num_shards: int) -> int:
+    n = max(1, int(num_shards))
+    if n == 1:
+        return 0
+    digest = hashlib.sha1(text.encode("utf-8")).hexdigest()[:8]
+    return int(digest, 16) % n
 
 
 def assign_calibration_split(official_split: str, image_id: str) -> str:
@@ -1206,11 +1269,14 @@ def attach_local_normalization(candidates: Sequence[Dict[str, Any]], *, softmax_
 
 def score_candidates_freeform(
     *,
+    image_id: str,
+    image_path: Optional[Path],
     cand_rec: Dict[str, Any],
     feat_rec: Dict[str, Any],
     candidates: Sequence[Dict[str, Any]],
     cfg: TeacherScorerConfig,
     softmax_tau: float,
+    full_expensive_cache: Optional[SampleExpensiveCacheManager] = None,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any], Dict[str, Any]]:
     context = build_scoring_context(cand_rec=cand_rec, feat_rec=feat_rec, cfg=cfg)
     scored: List[Dict[str, Any]] = []
@@ -1229,6 +1295,14 @@ def score_candidates_freeform(
                 teacher_ctx=context["teacher_ctx"],
                 cfg=cfg,
             )
+        )
+    if full_expensive_cache is not None and image_path is not None:
+        scored, _ = full_expensive_cache.apply(
+            image_id=image_id,
+            image_path=image_path,
+            rows=scored,
+            route=context["route"],
+            target_ar_value=None,
         )
     normalized = attach_local_normalization(scored, softmax_tau=softmax_tau)
     return normalized, context["route"], context["teacher_ctx"]
@@ -1279,11 +1353,7 @@ def derive_decision_from_full_pool(
             cheap_top_m.append(baseline)
 
     normalize_final_scores(cheap_top_m)
-    exp_sorted = sorted(
-        cheap_top_m,
-        key=lambda candidate: safe_float(candidate.get("scores", {}).get("final", -1e9), -1e9),
-        reverse=True,
-    )
+    exp_sorted = sorted(cheap_top_m, key=score_rank_value, reverse=True)
     non_hard_sorted = [candidate for candidate in exp_sorted if not _has_training_severe_reject(candidate)]
     rank_pool = non_hard_sorted if non_hard_sorted else exp_sorted
     best = rank_pool[0] if rank_pool else baseline or scored[0]
@@ -2706,6 +2776,8 @@ def build_sample_analysis(
     gt_lookup = {f"gaic_gt_{safe_int(ann.get('id', 0))}": ann for ann in anns}
     raw_free_pool = copy.deepcopy((cand_rec.get("candidates_by_ar") or {}).get("FREE") or [])
     ge_scored, ge_route, ge_teacher_ctx = score_candidates_freeform(
+        image_id=image_id,
+        image_path=image_path,
         cand_rec=cand_rec,
         feat_rec=feat_rec,
         candidates=raw_free_pool + gt_candidates,
@@ -3596,6 +3668,13 @@ def build_markdown_report(
 def main() -> None:
     args = parse_args()
     start_ts = time.time()
+    if int(args.num_shards) < 1:
+        raise SystemExit(f"--num_shards must be >= 1 (got {args.num_shards})")
+    if int(args.shard_index) < 0 or int(args.shard_index) >= int(args.num_shards):
+        raise SystemExit(
+            f"--shard_index must satisfy 0 <= shard_index < num_shards "
+            f"(got shard_index={args.shard_index}, num_shards={args.num_shards})"
+        )
 
     candidates_jsonl = Path(args.candidates_jsonl).resolve()
     features_jsonl = Path(args.features_jsonl).resolve()
@@ -3610,19 +3689,47 @@ def main() -> None:
     run_tag = infer_run_tag_from_teacher_jsonl(teacher_jsonl)
 
     cfg = load_scorer_config(teacher_jsonl)
+    cfg, profile_spec = apply_profile_to_cfg(
+        cfg,
+        profile_name=str(args.score_profile),
+        override_json_path=str(args.score_profile_overrides_json),
+    )
+    profile_metadata = build_profile_metadata(cfg, profile_spec)
     c1_jsonl = resolve_benchmark_c1_jsonl(data_root=data_root, explicit=str(args.c1_jsonl))
     sample_expensive_cache: Optional[SampleExpensiveCacheManager] = None
+    full_expensive_cache: Optional[SampleExpensiveCacheManager] = None
+    if int(args.run_full_expensive) > 0:
+        full_cache_path = (
+            Path(args.full_expensive_cache_jsonl).resolve()
+            if str(args.full_expensive_cache_jsonl).strip()
+            else (output_dir / "full_expensive_cache.jsonl")
+        )
+        full_expensive_cache = SampleExpensiveCacheManager(
+            cfg=cfg,
+            c1_jsonl=c1_jsonl,
+            cache_path=full_cache_path,
+            align_device=str(args.align_device),
+            aesthetic_device=str(args.aesthetic_device),
+            exp_batch_size=int(args.exp_batch_size),
+            exp_preprocess_workers=int(args.exp_preprocess_workers),
+            exp_pin_memory=bool(int(args.exp_pin_memory) > 0),
+        )
     if int(args.sample_count) > 0:
         sample_expensive_cache = SampleExpensiveCacheManager(
             cfg=cfg,
             c1_jsonl=c1_jsonl,
             cache_path=output_dir / "samples" / "sample_expensive_cache.jsonl",
+            align_device=str(args.align_device),
+            aesthetic_device=str(args.aesthetic_device),
+            exp_batch_size=int(args.exp_batch_size),
+            exp_preprocess_workers=int(args.exp_preprocess_workers),
+            exp_pin_memory=bool(int(args.exp_pin_memory) > 0),
         )
 
     candidate_map = load_map_by_image_id(candidates_jsonl)
     feature_map = load_map_by_image_id(features_jsonl)
     training_regression_path = training_label_dir / "train_regression.jsonl"
-    training_groups = load_training_regression_groups(training_regression_path)
+    training_groups = load_training_regression_groups(training_regression_path) if training_regression_path.exists() else {}
     qa_summary_path = training_label_dir / "qa_summary.json"
     validation_summary_path = training_label_dir / "validation_summary.json"
     qa_summary = load_json(qa_summary_path) if qa_summary_path.exists() else {}
@@ -3631,8 +3738,66 @@ def main() -> None:
     gt_images, gt_anns = load_gaic_annotations(gaic_train_json, gaic_test_json)
 
     overlap_ids = sorted(set(candidate_map.keys()).intersection(feature_map.keys()).intersection(gt_images.keys()).intersection(gt_anns.keys()))
+    requested_image_ids: List[str] = []
+    if str(args.image_ids_csv).strip():
+        requested_image_ids = load_image_ids_from_csv(Path(args.image_ids_csv).resolve())
+        overlap_lookup = set(overlap_ids)
+        overlap_ids = [image_id for image_id in requested_image_ids if image_id in overlap_lookup]
     if args.max_images > 0:
         overlap_ids = overlap_ids[: int(args.max_images)]
+    if int(args.num_shards) > 1:
+        overlap_ids = [
+            image_id
+            for image_id in overlap_ids
+            if stable_shard_index(str(image_id), int(args.num_shards)) == int(args.shard_index)
+        ]
+
+    if int(args.precompute_full_expensive_cache_only) > 0:
+        if full_expensive_cache is None:
+            raise SystemExit("--precompute_full_expensive_cache_only requires --run_full_expensive 1")
+        processed_images = 0
+        try:
+            for image_id in overlap_ids:
+                cand_rec = candidate_map[image_id]
+                feat_rec = feature_map[image_id]
+                image_meta = gt_images[image_id]
+                anns = gt_anns[image_id]
+                width = int(image_meta["width"])
+                height = int(image_meta["height"])
+                gt_candidates = build_gt_candidates(anns, width=width, height=height)
+                raw_free_pool = copy.deepcopy((cand_rec.get("candidates_by_ar") or {}).get("FREE") or [])
+                score_candidates_freeform(
+                    image_id=image_id,
+                    image_path=image_dir / image_meta["file_name"],
+                    cand_rec=cand_rec,
+                    feat_rec=feat_rec,
+                    candidates=raw_free_pool + gt_candidates,
+                    cfg=cfg,
+                    softmax_tau=float(args.softmax_tau),
+                    full_expensive_cache=full_expensive_cache,
+                )
+                processed_images += 1
+        finally:
+            full_expensive_cache.flush()
+            full_expensive_cache.close()
+            if sample_expensive_cache is not None:
+                sample_expensive_cache.close()
+        print(
+            json.dumps(
+                {
+                    "status": "ok",
+                    "mode": "precompute_full_expensive_cache_only",
+                    "cache_jsonl": str(full_cache_path),
+                    "processed_images": int(processed_images),
+                    "num_shards": int(args.num_shards),
+                    "shard_index": int(args.shard_index),
+                    "align_device": str(args.align_device),
+                    "aesthetic_device": str(args.aesthetic_device),
+                },
+                ensure_ascii=False,
+            )
+        )
+        return
 
     candidate_eval_rows: List[Dict[str, Any]] = []
     ge_full_topk_rows: List[Dict[str, Any]] = []
@@ -3658,18 +3823,24 @@ def main() -> None:
         training_free_counts.append(len(training_groups.get(image_id, [])))
 
         gc_scored, gc_route, _ = score_candidates_freeform(
+            image_id=image_id,
+            image_path=image_dir / image_meta["file_name"],
             cand_rec=cand_rec,
             feat_rec=feat_rec,
             candidates=gt_candidates,
             cfg=cfg,
             softmax_tau=float(args.softmax_tau),
+            full_expensive_cache=full_expensive_cache,
         )
         ge_scored, ge_route, ge_teacher_ctx = score_candidates_freeform(
+            image_id=image_id,
+            image_path=image_dir / image_meta["file_name"],
             cand_rec=cand_rec,
             feat_rec=feat_rec,
             candidates=raw_free_pool + gt_candidates,
             cfg=cfg,
             softmax_tau=float(args.softmax_tau),
+            full_expensive_cache=full_expensive_cache,
         )
         ge_decision = derive_decision_from_full_pool(
             scored=ge_scored,
@@ -3728,11 +3899,7 @@ def main() -> None:
             width=width,
             height=height,
         )
-        decision_pool = sorted(
-            ge_decision.get("rank_pool", []),
-            key=lambda row: safe_float(row.get("scores", {}).get("final", -1e9), -1e9),
-            reverse=True,
-        )
+        decision_pool = sorted(ge_decision.get("rank_pool", []), key=score_rank_value, reverse=True)
         policy_pool = sorted(decision_pool, key=score_policy_value, reverse=True)
         rank_best_candidate = ge_decision["best_candidate"]
         policy_best_candidate = policy_pool[0] if policy_pool else rank_best_candidate
@@ -3934,6 +4101,14 @@ def main() -> None:
             "alpha_sweep": [float(value) for value in args.alpha_sweep],
             "softmax_tau": float(args.softmax_tau),
             "sample_count": int(args.sample_count),
+            "image_ids_csv": str(Path(args.image_ids_csv).resolve()) if str(args.image_ids_csv).strip() else "",
+            "score_profile": profile_metadata,
+            "run_full_expensive": bool(int(args.run_full_expensive) > 0),
+            "full_expensive_cache_jsonl": (
+                str(Path(args.full_expensive_cache_jsonl).resolve())
+                if str(args.full_expensive_cache_jsonl).strip()
+                else str(output_dir / "full_expensive_cache.jsonl")
+            ) if full_expensive_cache is not None else "",
             "scorer_config": asdict(cfg),
         },
         "sources": {
@@ -3951,6 +4126,7 @@ def main() -> None:
             "run_image_count": len(candidate_map),
             "feature_image_count": len(feature_map),
             "gt_total_image_count": len(gt_images),
+            "requested_image_count": len(requested_image_ids),
             "overlap_image_count": len(overlap_ids),
             "overlap_train_count": sum(1 for row in image_records if row["official_split"] == "train"),
             "overlap_test_count": sum(1 for row in image_records if row["official_split"] == "test"),
@@ -4195,9 +4371,12 @@ def main() -> None:
             )
     finally:
         saliency_mask_resolver.close()
-        if sample_expensive_cache is not None:
-            sample_expensive_cache.flush()
-            sample_expensive_cache.close()
+    if sample_expensive_cache is not None:
+        sample_expensive_cache.flush()
+        sample_expensive_cache.close()
+    if full_expensive_cache is not None:
+        full_expensive_cache.flush()
+        full_expensive_cache.close()
 
     summary_path = output_dir / "benchmark_summary.json"
     write_json(summary_path, summary)

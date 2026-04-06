@@ -14,6 +14,7 @@ if str(PROJECT_SRC) not in sys.path:
     sys.path.insert(0, str(PROJECT_SRC))
 
 from scripts.safety_score_utils import SafetyPenaltyConfig, compute_safety_penalty_bundle, parse_target_ar_value
+from scripts.score_profile_utils import apply_profile_to_cfg, build_profile_metadata
 
 try:
     from PIL import Image, ImageDraw, ImageFont
@@ -121,6 +122,7 @@ ORDINAL_LABEL_MAPS: Dict[str, Dict[str, int]] = {
 }
 DEFAULT_SAFETY_PENALTY_CFG = SafetyPenaltyConfig()
 REFRESH_TEACHER_CFG: Any = None
+REFRESH_PROFILE_METADATA: Dict[str, Any] = {}
 COMPUTE_MACRO_SCORE_BUNDLE = None
 FUSE_MACRO_SCORES = None
 NORMALIZE_FINAL_SCORES = None
@@ -201,6 +203,7 @@ def build_route_snapshot(routing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 def ensure_refresh_teacher_runtime() -> None:
     global REFRESH_TEACHER_CFG
+    global REFRESH_PROFILE_METADATA
     global COMPUTE_MACRO_SCORE_BUNDLE
     global FUSE_MACRO_SCORES
     global NORMALIZE_FINAL_SCORES
@@ -220,12 +223,35 @@ def ensure_refresh_teacher_runtime() -> None:
     )
 
     REFRESH_TEACHER_CFG = TeacherScorerConfig()
+    REFRESH_PROFILE_METADATA = build_profile_metadata(
+        REFRESH_TEACHER_CFG,
+        {
+            "profile_name": "current_refined",
+            "label": "Current Refined",
+            "stage": 0,
+            "description": "default scorer config",
+            "override_json_path": "",
+            "overrides": {},
+        },
+    )
     COMPUTE_MACRO_SCORE_BUNDLE = compute_macro_score_bundle
     FUSE_MACRO_SCORES = fuse_macro_scores
     NORMALIZE_FINAL_SCORES = normalize_final_scores
     PICK_BASELINE_CANDIDATES = pick_baseline_candidates
     DECIDE_KEEP_VS_CROP = decide_keep_vs_crop
     SELECT_TOPK_DIVERSE = select_topk_diverse
+
+
+def configure_refresh_teacher_profile(*, profile_name: str, override_json_path: str = "") -> None:
+    global REFRESH_TEACHER_CFG
+    global REFRESH_PROFILE_METADATA
+    ensure_refresh_teacher_runtime()
+    REFRESH_TEACHER_CFG, profile_spec = apply_profile_to_cfg(
+        REFRESH_TEACHER_CFG,
+        profile_name=profile_name,
+        override_json_path=override_json_path,
+    )
+    REFRESH_PROFILE_METADATA = build_profile_metadata(REFRESH_TEACHER_CFG, profile_spec)
 
 
 def build_refresh_safety_penalty_cfg() -> SafetyPenaltyConfig:
@@ -346,7 +372,7 @@ def apply_training_safe_policy_score(
     scores["safety_penalty_hard"] = safe_float(safety_bundle.get("hard_total", 0.0), 0.0)
     scores["safety_penalty_components"] = copy.deepcopy(safety_bundle)
     scores["area_log_prior"] = float(area_log_prior)
-    scores["rank"] = float(policy_safe)
+    scores["rank"] = float(score_rank)
     scores["policy"] = float(policy_safe)
     scores["final"] = float(policy_safe)
     out["scores"] = scores
@@ -1085,16 +1111,16 @@ def annotate_group_candidates(
     chosen_id = str(safe_dict(refreshed_ar_res.get("decision")).get("chosen_candidate_id", ""))
     decision_type = str(safe_dict(refreshed_ar_res.get("decision")).get("decision_type", ""))
 
-    raw_scores = [safe_policy_raw_score(c, target_ar=target_ar) for c in candidates]
-    policy_scores = list(raw_scores)
-    rank_pcts = rank_pct_desc(raw_scores)
-    z_scores = robust_z_scores(raw_scores)
-    softmax_scores = softmax_local(raw_scores, tau=softmax_tau)
+    rank_scores = [candidate_rank_score(c) for c in candidates]
+    policy_scores = [safe_policy_raw_score(c, target_ar=target_ar) for c in candidates]
+    rank_pcts = rank_pct_desc(rank_scores)
+    z_scores = robust_z_scores(rank_scores)
+    softmax_scores = softmax_local(rank_scores, tau=softmax_tau)
     pseudo_mos = [1.0 + 4.0 * sigmoid(z) for z in z_scores]
     policy_rank_pcts = rank_pct_desc(policy_scores)
     policy_z_scores = robust_z_scores(policy_scores)
     policy_softmax_scores = softmax_local(policy_scores, tau=softmax_tau)
-    top1_score = max(raw_scores) if raw_scores else 0.0
+    top1_score = max(rank_scores) if rank_scores else 0.0
 
     annotated: List[Dict[str, Any]] = []
     for idx, cand in enumerate(candidates):
@@ -1136,7 +1162,7 @@ def annotate_group_candidates(
                 and not out["is_unsafe_negative"]
             )
         )
-        margin_to_top1 = max(0.0, top1_score - raw_scores[idx])
+        margin_to_top1 = max(0.0, top1_score - rank_scores[idx])
         out["score_margin_to_top1"] = float(margin_to_top1)
         out["is_hard_negative"] = bool(
             out["is_unsafe_negative"] and out["score_rank_pct"] <= float(hard_negative_rank_pct_max)
@@ -3971,6 +3997,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--report_examples", type=int, default=8)
     parser.add_argument("--strict_validation", type=int, default=1)
+    parser.add_argument("--score_profile", default="current_refined")
+    parser.add_argument("--score_profile_overrides_json", default="")
     return parser.parse_args()
 
 
@@ -3980,6 +4008,10 @@ def main() -> None:
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     dataset_context = infer_dataset_context(out_dir, teacher_scores_jsonl)
+    configure_refresh_teacher_profile(
+        profile_name=str(args.score_profile),
+        override_json_path=str(args.score_profile_overrides_json),
+    )
 
     teacher_records = load_teacher_records(teacher_scores_jsonl)
     subject_mode_vocab = build_subject_mode_vocab(teacher_records)
@@ -4042,6 +4074,9 @@ def main() -> None:
     )
     (out_dir / "checklist_target_schema.json").write_text(
         json.dumps(checklist_target_schema(), ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    (out_dir / "score_profile.json").write_text(
+        json.dumps(REFRESH_PROFILE_METADATA, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     report_text = build_markdown_report(
         teacher_scores_jsonl=teacher_scores_jsonl,

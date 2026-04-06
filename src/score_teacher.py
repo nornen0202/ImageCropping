@@ -221,11 +221,23 @@ class TeacherScorerConfig:
     w_horizon: float = 0.15
     comp_place_smax_tau: float = 0.08
     c_macro_comp_weight_scale: float = 0.88
+    c_macro_place_weight_scale: float = 0.0
+    c_macro_headroom_weight_scale: float = 1.0
+    c_macro_lookroom_weight_scale: float = 1.0
+    c_macro_horizon_weight_scale: float = 1.0
+    c_macro_sym_weight_scale: float = 1.0
+    c_macro_context_weight_scale: float = 1.0
+    c_macro_copyspace_weight_scale: float = 1.0
     horizon_conf_thr: float = 0.25
     horizon_visibility_thr: float = 0.70
     subject_scale_expand_portrait: float = 0.03
     subject_scale_expand_general: float = 0.02
     s_macro_bottleneck_alpha: float = 0.35
+    s_macro_cov_weight_scale: float = 1.0
+    s_macro_scale_weight_scale: float = 1.0
+    s_macro_support_weight_scale: float = 1.0
+    s_macro_border_weight_scale: float = 1.0
+    s_macro_softcut_weight_scale: float = 1.0
 
     # Headroom/lookroom formula constants
     sigma_h: float = 0.05
@@ -246,6 +258,7 @@ class TeacherScorerConfig:
     rank_weight_s: float = 1.0
     rank_weight_c: float = 1.0
     rank_weight_t: float = 0.10
+    policy_area_weight_scale: float = 1.0
     a_macro_aesthetic_weight: float = 0.75
     a_macro_align_weight: float = 0.25
     aesthetic_score_min: float = 1.0
@@ -4062,7 +4075,7 @@ def apply_expensive_score(
             + cfg.w_edge * r_edge
             + cfg.w_teach * r_teach
         )
-        legacy_final_score = exp_score + float(w_area) * math.log(max(1e-8, area))
+        legacy_final_score = exp_score + float(w_area) * float(cfg.policy_area_weight_scale) * math.log(max(1e-8, area))
     else:
         exp_score = 0.0
         legacy_final_score = 0.0
@@ -4088,7 +4101,7 @@ def apply_expensive_score(
         cfg=cfg,
     )
     score_rank = fuse_macro_scores(macro_scores=macro_scores, macro_masks=macro_masks, cfg=cfg)
-    area_log_prior = float(w_area) * math.log(max(1e-8, area))
+    area_log_prior = float(w_area) * float(cfg.policy_area_weight_scale) * math.log(max(1e-8, area))
     score_policy_base = score_rank + area_log_prior
     safety_bundle = compute_safety_penalty_bundle(
         candidate=candidate,
@@ -4136,7 +4149,7 @@ def apply_expensive_score(
     candidate["scores"]["safety_penalty_soft"] = float(safety_bundle["soft_total"])
     candidate["scores"]["safety_penalty_hard"] = float(safety_bundle["hard_total"])
     candidate["scores"]["safety_penalty_components"] = copy.deepcopy(safety_bundle)
-    candidate["scores"]["rank"] = float(score_policy_safe)
+    candidate["scores"]["rank"] = float(score_rank)
     candidate["scores"]["policy"] = float(score_policy_safe)
     candidate["scores"]["final"] = float(score_policy_safe)
     candidate["scores"]["area_log_prior"] = float(area_log_prior)
@@ -4297,6 +4310,12 @@ def compute_macro_score_bundle(
             "S_border": 0.20,
             "S_softcut_quality": 0.20,
         }
+    s_weights["S_cov"] = float(s_weights.get("S_cov", 0.0)) * float(cfg.s_macro_cov_weight_scale)
+    s_weights["S_scale"] = float(s_weights.get("S_scale", 0.0)) * float(cfg.s_macro_scale_weight_scale)
+    if "S_support_structure" in s_weights:
+        s_weights["S_support_structure"] = float(s_weights.get("S_support_structure", 0.0)) * float(cfg.s_macro_support_weight_scale)
+    s_weights["S_border"] = float(s_weights.get("S_border", 0.0)) * float(cfg.s_macro_border_weight_scale)
+    s_weights["S_softcut_quality"] = float(s_weights.get("S_softcut_quality", 0.0)) * float(cfg.s_macro_softcut_weight_scale)
     s_core_weights = {key: weight for key, weight in s_weights.items() if key != "S_softcut_quality"}
     S_macro = _hybrid_bottleneck_score(
         s_components,
@@ -4348,6 +4367,7 @@ def compute_macro_score_bundle(
     }
     if subject_mode.startswith("portrait"):
         c_weights = {
+            "C_place": 0.30,
             "C_comp": 0.20 * float(cfg.c_macro_comp_weight_scale),
             "C_headroom": 0.30,
             "C_lookroom": 0.30,
@@ -4356,6 +4376,7 @@ def compute_macro_score_bundle(
         }
     elif subject_mode in SCENE_MODES:
         c_weights = {
+            "C_place": 0.30,
             "C_comp": 0.20 * float(cfg.c_macro_comp_weight_scale),
             "C_horizon_y": 0.30,
             "C_sym": 0.10,
@@ -4364,6 +4385,7 @@ def compute_macro_score_bundle(
         }
     elif subject_mode in {"background_texture_copyspace", "background_copyspace"}:
         c_weights = {
+            "C_place": 0.10,
             "C_comp": 0.15 * float(cfg.c_macro_comp_weight_scale),
             "C_context": 0.25,
             "C_copyspace": 0.45,
@@ -4371,12 +4393,20 @@ def compute_macro_score_bundle(
         }
     else:
         c_weights = {
+            "C_place": 0.25,
             "C_comp": 0.35 * float(cfg.c_macro_comp_weight_scale),
             "C_sym": 0.20,
             "C_context": 0.25,
             "C_headroom": 0.10,
             "C_lookroom": 0.10,
         }
+    c_weights["C_place"] = float(c_weights.get("C_place", 0.0)) * float(cfg.c_macro_place_weight_scale)
+    c_weights["C_headroom"] = float(c_weights.get("C_headroom", 0.0)) * float(cfg.c_macro_headroom_weight_scale)
+    c_weights["C_lookroom"] = float(c_weights.get("C_lookroom", 0.0)) * float(cfg.c_macro_lookroom_weight_scale)
+    c_weights["C_horizon_y"] = float(c_weights.get("C_horizon_y", 0.0)) * float(cfg.c_macro_horizon_weight_scale)
+    c_weights["C_sym"] = float(c_weights.get("C_sym", 0.0)) * float(cfg.c_macro_sym_weight_scale)
+    c_weights["C_context"] = float(c_weights.get("C_context", 0.0)) * float(cfg.c_macro_context_weight_scale)
+    c_weights["C_copyspace"] = float(c_weights.get("C_copyspace", 0.0)) * float(cfg.c_macro_copyspace_weight_scale)
     if subject_mode not in {"background_texture_copyspace", "background_copyspace"} and str(copyspace_meta.get("label", "")).strip() == "copyspace_preserved":
         c_components["C_copyspace"] = None
     C_macro = _weighted_subset_average(c_components, c_weights)
@@ -5422,13 +5452,15 @@ def normalize_final_scores(cands: Sequence[Dict[str, Any]]) -> None:
     for c in cands:
         v = safe_float(c["scores"].get("rank", c["scores"].get("final", 0.0)))
         rank_norm = 100.0 * (v - mn) / (mx - mn)
-        c["scores"]["final_norm_0_100"] = rank_norm
         c["scores"]["rank_norm_0_100"] = rank_norm
         if policy_mx - policy_mn < 1e-9:
+            c["scores"]["final_norm_0_100"] = 50.0
             c["scores"]["policy_norm_0_100"] = 50.0
         else:
             p = safe_float(c["scores"].get("policy", 0.0))
-            c["scores"]["policy_norm_0_100"] = 100.0 * (p - policy_mn) / (policy_mx - policy_mn)
+            policy_norm = 100.0 * (p - policy_mn) / (policy_mx - policy_mn)
+            c["scores"]["final_norm_0_100"] = policy_norm
+            c["scores"]["policy_norm_0_100"] = policy_norm
 
 
 def decide_keep_vs_crop(best: Dict[str, Any], baseline: Dict[str, Any], tau_improve: float) -> Dict[str, Any]:
@@ -5524,7 +5556,7 @@ def select_topk_diverse(
 
 
 def select_hard_negatives(cands: Sequence[Dict[str, Any]], max_n: int = 5) -> List[Dict[str, Any]]:
-    mids = [c for c in cands if 40.0 <= safe_float(c["scores"].get("final_norm_0_100", -1)) <= 60.0]
+    mids = [c for c in cands if 40.0 <= safe_float(c["scores"].get("rank_norm_0_100", -1)) <= 60.0]
     mids.sort(key=lambda x: safe_float(x["scores"].get("rank", x["scores"].get("final", 0.0))), reverse=True)
     return mids[:max_n]
 
@@ -6147,7 +6179,7 @@ def process_one_image(
         is_freeform = bool(tmp.get("is_freeform", False))
 
         normalize_final_scores(cheap_top_m)
-        exp_sorted = sorted(cheap_top_m, key=lambda x: safe_float(x["scores"].get("final", -1e9)), reverse=True)
+        exp_sorted = sorted(cheap_top_m, key=lambda x: safe_float(x["scores"].get("rank", x["scores"].get("final", -1e9)), reverse=True))
         non_hard_sorted = [c for c in exp_sorted if not _has_training_severe_reject(c)]
         rank_pool = non_hard_sorted if non_hard_sorted else exp_sorted
 

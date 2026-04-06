@@ -619,6 +619,16 @@ def build_python_cmd(script_rel: str, *args: str) -> List[str]:
     return [sys.executable, str(PROJECT_ROOT / script_rel), *args]
 
 
+def resolve_input_path(path_text: str) -> Path:
+    raw = Path(path_text)
+    if raw.is_absolute():
+        return raw.resolve()
+    cwd_candidate = (Path.cwd() / raw).resolve()
+    if cwd_candidate.exists():
+        return cwd_candidate
+    return (PROJECT_ROOT / raw).resolve()
+
+
 def benchmark_runtime_args() -> List[str]:
     return []
 
@@ -671,9 +681,9 @@ def precompute_shared_full_expensive_cache(
             cmd = build_python_cmd(
                 "src/scripts/run_gaic_benchmark_eval.py",
                 "--candidates_jsonl",
-                str((PROJECT_ROOT / args.candidates_jsonl).resolve()),
+                str(resolve_input_path(args.candidates_jsonl)),
                 "--features_jsonl",
-                str((PROJECT_ROOT / args.features_jsonl).resolve()),
+                str(resolve_input_path(args.features_jsonl)),
                 "--teacher_jsonl",
                 str(teacher_jsonl_path),
                 "--training_label_dir",
@@ -683,11 +693,11 @@ def precompute_shared_full_expensive_cache(
                 "--gaic_test_json",
                 str(gt_paths[1]),
                 "--image_dir",
-                str((PROJECT_ROOT / args.image_root).resolve()),
+                str(resolve_input_path(args.image_root)),
                 "--output_dir",
                 str(out_root / f"_tmp_benchmark_cache_precompute_{shard_index}"),
                 "--c1_jsonl",
-                str((PROJECT_ROOT / args.c1_jsonl).resolve()),
+                str(resolve_input_path(args.c1_jsonl)),
                 "--softmax_tau",
                 str(args.benchmark_softmax_tau),
                 "--max_images",
@@ -759,7 +769,7 @@ def run_experiment_pipeline(
                 "--out_dir",
                 str(training_dir),
                 "--image_root",
-                str((PROJECT_ROOT / args.image_root).resolve()),
+                str(resolve_input_path(args.image_root)),
                 "--softmax_tau",
                 str(args.softmax_tau),
                 "--listwise_top_pos",
@@ -806,6 +816,8 @@ def run_experiment_pipeline(
                 str(coco_dir / "gaic_like_conversion_summary.json"),
                 "--out_guide_md",
                 str(coco_dir / "GAIC_LIKE_FORMAT_GUIDE.md"),
+                "--image_root",
+                str(resolve_input_path(args.image_root)),
             ),
             cwd=PROJECT_ROOT,
             log_path=logs_dir / f"{spec.experiment_id}_convert_gaic_like.log",
@@ -815,9 +827,9 @@ def run_experiment_pipeline(
             build_python_cmd(
                 "src/scripts/run_gaic_benchmark_eval.py",
                 "--candidates_jsonl",
-                str((PROJECT_ROOT / args.candidates_jsonl).resolve()),
+                str(resolve_input_path(args.candidates_jsonl)),
                 "--features_jsonl",
-                str((PROJECT_ROOT / args.features_jsonl).resolve()),
+                str(resolve_input_path(args.features_jsonl)),
                 "--teacher_jsonl",
                 str(teacher_jsonl_path),
                 "--training_label_dir",
@@ -827,11 +839,11 @@ def run_experiment_pipeline(
                 "--gaic_test_json",
                 str(gt_paths[1]),
                 "--image_dir",
-                str((PROJECT_ROOT / args.image_root).resolve()),
+                str(resolve_input_path(args.image_root)),
                 "--output_dir",
                 str(benchmark_dir),
                 "--c1_jsonl",
-                str((PROJECT_ROOT / args.c1_jsonl).resolve()),
+                str(resolve_input_path(args.c1_jsonl)),
                 "--top_quantile",
                 str(args.benchmark_top_quantile),
                 "--softmax_tau",
@@ -893,9 +905,9 @@ def build_gt_cache_for_experiment(
             build_python_cmd(
                 "src/scripts/build_gaic_gt_score_cache.py",
                 "--candidates_jsonl",
-                str((PROJECT_ROOT / args.candidates_jsonl).resolve()),
+                str(resolve_input_path(args.candidates_jsonl)),
                 "--features_jsonl",
-                str((PROJECT_ROOT / args.features_jsonl).resolve()),
+                str(resolve_input_path(args.features_jsonl)),
                 "--teacher_jsonl",
                 str(teacher_jsonl_path),
                 "--gaic_train_json",
@@ -907,9 +919,9 @@ def build_gt_cache_for_experiment(
                 "--image_ids_csv",
                 str(selected_ids_csv),
                 "--c1_jsonl",
-                str((PROJECT_ROOT / args.c1_jsonl).resolve()),
+                str(resolve_input_path(args.c1_jsonl)),
                 "--image_root",
-                str((PROJECT_ROOT / args.image_root).resolve()),
+                str(resolve_input_path(args.image_root)),
                 "--sample_expensive_cache_jsonl",
                 str(shared_gt_expensive_cache),
                 "--score_profile",
@@ -942,9 +954,9 @@ def build_gt_cache_for_experiment(
             cmd = build_python_cmd(
                 "src/scripts/build_gaic_gt_score_cache.py",
                 "--candidates_jsonl",
-                str((PROJECT_ROOT / args.candidates_jsonl).resolve()),
+                str(resolve_input_path(args.candidates_jsonl)),
                 "--features_jsonl",
-                str((PROJECT_ROOT / args.features_jsonl).resolve()),
+                str(resolve_input_path(args.features_jsonl)),
                 "--teacher_jsonl",
                 str(teacher_jsonl_path),
                 "--gaic_train_json",
@@ -956,9 +968,9 @@ def build_gt_cache_for_experiment(
                 "--image_ids_csv",
                 str(selected_ids_csv),
                 "--c1_jsonl",
-                str((PROJECT_ROOT / args.c1_jsonl).resolve()),
+                str(resolve_input_path(args.c1_jsonl)),
                 "--image_root",
-                str((PROJECT_ROOT / args.image_root).resolve()),
+                str(resolve_input_path(args.image_root)),
                 "--sample_expensive_cache_jsonl",
                 str(shard_exp),
                 "--score_profile",
@@ -991,11 +1003,11 @@ def main() -> None:
     ensure_dir(out_root)
     logs_dir = out_root / "logs"
     ensure_dir(logs_dir)
-    gt_paths = [(PROJECT_ROOT / args.gaic_train_json).resolve(), (PROJECT_ROOT / args.gaic_test_json).resolve()]
+    gt_paths = [resolve_input_path(args.gaic_train_json), resolve_input_path(args.gaic_test_json)]
     shared_full_expensive_cache = out_root / "shared_full_expensive_cache.jsonl"
     shared_gt_expensive_cache = out_root / "shared_gt_expensive_cache_free.jsonl"
     teacher_jsonl_path = build_teacher_subset_jsonl(
-        (PROJECT_ROOT / args.teacher_jsonl).resolve(),
+        resolve_input_path(args.teacher_jsonl),
         out_root / "teacher_subset.jsonl",
         int(args.teacher_max_images),
     )
@@ -1058,9 +1070,9 @@ def main() -> None:
                     build_python_cmd(
                         "src/scripts/run_gaic_benchmark_eval.py",
                         "--candidates_jsonl",
-                        str((PROJECT_ROOT / args.candidates_jsonl).resolve()),
+                        str(resolve_input_path(args.candidates_jsonl)),
                         "--features_jsonl",
-                        str((PROJECT_ROOT / args.features_jsonl).resolve()),
+                        str(resolve_input_path(args.features_jsonl)),
                         "--teacher_jsonl",
                         str(teacher_jsonl_path),
                         "--training_label_dir",
@@ -1070,11 +1082,11 @@ def main() -> None:
                         "--gaic_test_json",
                         str(gt_paths[1]),
                         "--image_dir",
-                        str((PROJECT_ROOT / args.image_root).resolve()),
+                        str(resolve_input_path(args.image_root)),
                         "--output_dir",
                         str(benchmark_dir),
                         "--c1_jsonl",
-                        str((PROJECT_ROOT / args.c1_jsonl).resolve()),
+                        str(resolve_input_path(args.c1_jsonl)),
                         "--top_quantile",
                         str(args.benchmark_top_quantile),
                         "--softmax_tau",
@@ -1126,7 +1138,7 @@ def main() -> None:
                 debug_sample_size = int(args.debug_sample_size_all)
             selected_ids = select_debug_image_ids(
                 coco_json=coco_json,
-                image_root=(PROJECT_ROOT / args.image_root).resolve(),
+                image_root=resolve_input_path(args.image_root),
                 subject_mode_vocab=subject_mode_vocab,
                 gt_paths=gt_paths,
                 sample_size=debug_sample_size,
@@ -1167,7 +1179,7 @@ def main() -> None:
                         "--teacher_jsonl",
                         str(teacher_jsonl_path),
                         "--image_root",
-                        str((PROJECT_ROOT / args.image_root).resolve()),
+                        str(resolve_input_path(args.image_root)),
                         "--subject_mode_vocab",
                         str(subject_mode_vocab),
                         "--sample_size",

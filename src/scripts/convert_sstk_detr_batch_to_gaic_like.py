@@ -4,9 +4,11 @@ import argparse
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from PIL import Image
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 def safe_dict(value: Any) -> Dict[str, Any]:
@@ -62,6 +64,24 @@ def load_split_image_ids(path: Optional[Path]) -> set[str]:
     return {str(safe_dict(row).get("id", "")) for row in safe_list(payload.get("images")) if str(safe_dict(row).get("id", ""))}
 
 
+def load_reference_image_meta(path: Optional[Path]) -> Dict[str, Dict[str, Any]]:
+    if path is None or not path.exists():
+        return {}
+    payload = load_json(path)
+    out: Dict[str, Dict[str, Any]] = {}
+    for image in safe_list(payload.get("images")):
+        row = safe_dict(image)
+        image_id = str(row.get("id", "")).strip()
+        if not image_id:
+            continue
+        out[image_id] = {
+            "file_name": str(row.get("file_name") or "").strip(),
+            "width": safe_int(row.get("width"), 0),
+            "height": safe_int(row.get("height"), 0),
+        }
+    return out
+
+
 def build_split_lookup(
     train_reference_path: Optional[Path],
     test_reference_path: Optional[Path],
@@ -72,6 +92,13 @@ def build_split_lookup(
     for image_id in load_split_image_ids(test_reference_path):
         lookup[image_id] = "test"
     return lookup
+
+
+def merge_reference_image_meta(paths: Iterable[Optional[Path]]) -> Dict[str, Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    for path in paths:
+        merged.update(load_reference_image_meta(path))
+    return merged
 
 
 def split_name_for_image(image_id: str, split_lookup: Optional[Dict[str, str]]) -> str:
@@ -104,16 +131,181 @@ def load_image_size(image_path: str, size_cache: Dict[str, Tuple[int, int]]) -> 
     path = Path(image_path)
     if not path.exists():
         raise FileNotFoundError(f"image not found: {path}")
+    if path.is_dir():
+        raise IsADirectoryError(f"image path points to directory, not file: {path}")
     with Image.open(path) as image:
         size = (int(image.width), int(image.height))
     size_cache[image_path] = size
     return size
 
 
+def resolve_cli_path(path_text: str) -> Optional[Path]:
+    text = str(path_text or "").strip()
+    if not text:
+        return None
+    raw = Path(text)
+    candidate_paths = []
+    if raw.is_absolute():
+        candidate_paths.append(raw)
+    else:
+        candidate_paths.append((Path.cwd() / raw).resolve())
+        candidate_paths.append((PROJECT_ROOT / raw).resolve())
+    for candidate in candidate_paths:
+        if candidate.exists():
+            return candidate
+        candidate_text = str(candidate)
+        if "/group-volume/users/" in candidate_text:
+            alt = Path(candidate_text.replace("/group-volume/users/", "/group-volume/", 1))
+            if alt.exists():
+                return alt
+    return candidate_paths[0] if candidate_paths else None
+
+
+def discover_size_sidecar_paths() -> List[Path]:
+    patterns = [
+        "data/GAIC/All/artifacts/candidates/candidates_ar_*.jsonl",
+        "data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_*.jsonl",
+    ]
+    roots = [Path.cwd(), PROJECT_ROOT]
+    out: List[Path] = []
+    seen: set[str] = set()
+    for root in roots:
+        for pattern in patterns:
+            for match in sorted(root.glob(pattern)):
+                if not match.is_file():
+                    continue
+                key = str(match.resolve())
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(match.resolve())
+    return out
+
+
+def load_size_sidecar_meta(
+    image_ids: set[str],
+    *,
+    explicit_paths: Optional[Sequence[Path]] = None,
+) -> Dict[str, Dict[str, Any]]:
+    if not image_ids:
+        return {}
+    paths = [path for path in safe_list(explicit_paths) if isinstance(path, Path) and path.exists()]
+    if not paths:
+        paths = discover_size_sidecar_paths()
+    out: Dict[str, Dict[str, Any]] = {}
+    remaining = set(image_ids)
+    for path in paths:
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                for line in handle:
+                    if not remaining:
+                        break
+                    row = json.loads(line)
+                    image_id = str(safe_dict(row).get("image_id", "")).strip()
+                    if not image_id or image_id not in remaining:
+                        continue
+                    width = safe_int(safe_dict(row).get("width"), 0)
+                    height = safe_int(safe_dict(row).get("height"), 0)
+                    if width <= 0 or height <= 0:
+                        continue
+                    file_name = ""
+                    image_path_text = str(safe_dict(row).get("image_path") or "").strip()
+                    if image_path_text:
+                        file_name = basename_only(image_path_text)
+                    if not file_name:
+                        file_name = f"{image_id}.jpg"
+                    out[image_id] = {
+                        "width": width,
+                        "height": height,
+                        "file_name": file_name,
+                        "source_path": str(path),
+                    }
+                    remaining.discard(image_id)
+        except Exception:
+            continue
+    return out
+
+
+def iter_image_root_candidates(image_root: Optional[Path]) -> List[Path]:
+    if image_root is None:
+        return []
+    candidates: List[Path] = []
+    seen: set[str] = set()
+    for candidate in (image_root, resolve_cli_path(str(image_root))):
+        if candidate is None:
+            continue
+        resolved = candidate.resolve()
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        candidates.append(resolved)
+        text = str(resolved)
+        if "/group-volume/users/" in text:
+            alt = Path(text.replace("/group-volume/users/", "/group-volume/", 1))
+            if alt.exists():
+                alt_resolved = alt.resolve()
+                alt_key = str(alt_resolved)
+                if alt_key not in seen:
+                    seen.add(alt_key)
+                    candidates.append(alt_resolved)
+    return [candidate for candidate in candidates if candidate.exists() and candidate.is_dir()]
+
+
+def resolve_image_path_from_root(image_root: Optional[Path], image_id: str) -> Optional[Path]:
+    for root in iter_image_root_candidates(image_root):
+        for match in sorted(root.glob(f"{image_id}.*")):
+            if match.is_file():
+                return match
+        for match in sorted(root.rglob(f"{image_id}.*")):
+            if match.is_file():
+                return match
+    return None
+
+
+def resolve_record_image_info(
+    record: Dict[str, Any],
+    image_root: Optional[Path],
+    *,
+    size_cache: Dict[str, Tuple[int, int]],
+    reference_image_meta: Optional[Dict[str, Dict[str, Any]]] = None,
+    size_sidecar_meta: Optional[Dict[str, Dict[str, Any]]] = None,
+) -> Tuple[str, int, int, str]:
+    image_path_text = str(record.get("image_path") or "").strip()
+    if image_path_text:
+        path = Path(image_path_text)
+        if path.exists() and path.is_file():
+            width, height = load_image_size(str(path), size_cache)
+            return str(path), width, height, basename_only(str(path))
+    image_id = str(record.get("image_id") or "").strip()
+    fallback = resolve_image_path_from_root(image_root, image_id)
+    if fallback is not None:
+        width, height = load_image_size(str(fallback), size_cache)
+        return str(fallback), width, height, basename_only(str(fallback))
+    ref_meta = safe_dict(safe_dict(reference_image_meta).get(image_id))
+    if ref_meta:
+        width = safe_int(ref_meta.get("width"), 0)
+        height = safe_int(ref_meta.get("height"), 0)
+        file_name = str(ref_meta.get("file_name") or f"{image_id}.jpg").strip() or f"{image_id}.jpg"
+        if width > 0 and height > 0:
+            return image_path_text or file_name, width, height, basename_only(file_name)
+    sidecar_meta = safe_dict(safe_dict(size_sidecar_meta).get(image_id))
+    if sidecar_meta:
+        width = safe_int(sidecar_meta.get("width"), 0)
+        height = safe_int(sidecar_meta.get("height"), 0)
+        file_name = str(sidecar_meta.get("file_name") or f"{image_id}.jpg").strip() or f"{image_id}.jpg"
+        if width > 0 and height > 0:
+            return image_path_text or file_name, width, height, basename_only(file_name)
+    raise FileNotFoundError(f"unable to resolve image file for image_id={image_id}")
+
+
 def build_gaic_like_instances(
     batch_records: Sequence[Dict[str, Any]],
     *,
+    image_root: Optional[Path] = None,
     split_lookup: Optional[Dict[str, str]] = None,
+    reference_image_meta: Optional[Dict[str, Dict[str, Any]]] = None,
+    size_sidecar_meta: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     images: List[Dict[str, Any]] = []
     annotations: List[Dict[str, Any]] = []
@@ -123,8 +315,13 @@ def build_gaic_like_instances(
     split_image_counts: Counter[str] = Counter()
     split_annotation_counts: Counter[str] = Counter()
     for image_entry_id, record in enumerate(batch_records, start=1):
-        image_path = str(record.get("image_path") or "")
-        width, height = load_image_size(image_path, size_cache)
+        image_path, width, height, file_name = resolve_record_image_info(
+            record,
+            image_root,
+            size_cache=size_cache,
+            reference_image_meta=reference_image_meta,
+            size_sidecar_meta=size_sidecar_meta,
+        )
         routing = safe_dict(record.get("routing"))
         decision_target = safe_dict(record.get("decision_target"))
         label_generation = safe_dict(record.get("label_generation"))
@@ -134,7 +331,7 @@ def build_gaic_like_instances(
         split_image_counts[split_name] += 1
         images.append(
             {
-                "file_name": basename_only(image_path),
+                "file_name": file_name,
                 "height": height,
                 "width": width,
                 "id": image_entry_id,
@@ -577,6 +774,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out_json", required=True)
     parser.add_argument("--out_summary_json", required=True)
     parser.add_argument("--out_guide_md", required=True)
+    parser.add_argument("--image_root", default="")
     parser.add_argument("--gaic_train_reference_json", default="")
     parser.add_argument("--gaic_test_reference_json", default="")
     parser.add_argument("--out_train_json", default="")
@@ -592,8 +790,9 @@ def main() -> None:
     out_json = Path(args.out_json)
     out_summary_json = Path(args.out_summary_json)
     out_guide_md = Path(args.out_guide_md)
-    gaic_train_reference_json = Path(args.gaic_train_reference_json) if str(args.gaic_train_reference_json).strip() else None
-    gaic_test_reference_json = Path(args.gaic_test_reference_json) if str(args.gaic_test_reference_json).strip() else None
+    image_root = resolve_cli_path(args.image_root) if str(args.image_root).strip() else None
+    gaic_train_reference_json = resolve_cli_path(args.gaic_train_reference_json) if str(args.gaic_train_reference_json).strip() else None
+    gaic_test_reference_json = resolve_cli_path(args.gaic_test_reference_json) if str(args.gaic_test_reference_json).strip() else None
     out_train_json = Path(args.out_train_json) if str(args.out_train_json).strip() else default_split_output_path(out_json, "train")
     out_test_json = Path(args.out_test_json) if str(args.out_test_json).strip() else default_split_output_path(out_json, "test")
     out_unassigned_json = Path(args.out_unassigned_json) if str(args.out_unassigned_json).strip() else default_split_output_path(out_json, "unassigned")
@@ -606,7 +805,20 @@ def main() -> None:
 
     batch_records = load_jsonl(batch_jsonl)
     split_lookup = build_split_lookup(gaic_train_reference_json, gaic_test_reference_json)
-    payload = build_gaic_like_instances(batch_records, split_lookup=split_lookup or None)
+    reference_image_meta = merge_reference_image_meta([gaic_reference_json, gaic_train_reference_json, gaic_test_reference_json])
+    unresolved_image_ids = {
+        str(safe_dict(record).get("image_id", "")).strip()
+        for record in batch_records
+        if str(safe_dict(record).get("image_id", "")).strip() and str(safe_dict(record).get("image_id", "")).strip() not in reference_image_meta
+    }
+    size_sidecar_meta = load_size_sidecar_meta(unresolved_image_ids)
+    payload = build_gaic_like_instances(
+        batch_records,
+        image_root=image_root,
+        split_lookup=split_lookup or None,
+        reference_image_meta=reference_image_meta,
+        size_sidecar_meta=size_sidecar_meta,
+    )
     expected_annotation_count = sum(
         len(safe_list(record.get("matching_targets"))) + len(safe_list(record.get("candidate_pool")))
         for record in batch_records

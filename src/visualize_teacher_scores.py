@@ -14,6 +14,7 @@ import os
 import random
 import tarfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -56,7 +57,19 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--draw_subject_box", type=int, default=1)
     p.add_argument("--draw_subject_mask", type=int, default=1)
+    p.add_argument("--num_workers", type=int, default=0, help="CPU render workers (0=all cores, 1=single).")
     return p.parse_args()
+
+
+def resolve_num_workers(requested_workers: int, num_items: int) -> int:
+    if num_items <= 1:
+        return 1
+    req = int(requested_workers)
+    if req == 1:
+        return 1
+    if req <= 0:
+        req = max(1, int(os.cpu_count() or 1))
+    return max(1, min(req, num_items))
 
 
 def parse_image_ids_arg(values: Sequence[str]) -> List[str]:
@@ -521,45 +534,67 @@ def main() -> None:
     if int(args.draw_subject_mask) != 0 and args.features_jsonl:
         c2_map = load_c2_map(Path(args.features_jsonl), image_ids)
     subject_mask_cache: Dict[str, Optional[np.ndarray]] = {}
-
-    rendered = 0
-    by_ar_count: Dict[str, int] = defaultdict(int)
-    by_decision_count: Dict[str, int] = defaultdict(int)
-    missing_images = 0
-
-    for t in tasks:
-        image_id = t["image_id"]
+    for image_id in image_ids:
+        subject_mask_cache[image_id] = None
         raw = img_map.get(image_id)
         if raw is None:
-            missing_images += 1
             continue
+        if int(args.draw_subject_mask) != 0 and image_id in c2_map:
+            subject_mask_cache[image_id] = build_subject_mask(
+                c2_list=c2_map.get(image_id, []),
+                subject_box_norm=next((t.get("subject_box") for t in tasks if str(t.get("image_id", "")) == image_id), None),
+                w=raw.shape[1],
+                h=raw.shape[0],
+            )
 
-        ar = t["target_ar"]
+    missing_images = 0
+    render_workers = resolve_num_workers(int(args.num_workers), len(tasks))
+
+    def render_task(task: Dict[str, Any]) -> Tuple[str, str]:
+        image_id = task["image_id"]
+        raw = img_map.get(image_id)
+        if raw is None:
+            raise FileNotFoundError(image_id)
+        ar = task["target_ar"]
         ar_tok = ar.replace(":", "x")
         subdir = out_dir / "by_ar" / ar_tok
         subdir.mkdir(parents=True, exist_ok=True)
-
-        if image_id not in subject_mask_cache:
-            subject_mask_cache[image_id] = None
-            if int(args.draw_subject_mask) != 0 and image_id in c2_map:
-                subject_mask_cache[image_id] = build_subject_mask(
-                    c2_list=c2_map.get(image_id, []),
-                    subject_box_norm=t.get("subject_box"),
-                    w=raw.shape[1],
-                    h=raw.shape[0],
-                )
         vis = draw_one(
             raw_bgr=raw,
-            task=t,
+            task=task,
             draw_subject_box=int(args.draw_subject_box) != 0,
             subject_mask=subject_mask_cache.get(image_id),
         )
         out_path = subdir / f"{image_id}.jpg"
         cv2.imwrite(str(out_path), vis)
+        return ar, str(task["decision_type"])
 
-        rendered += 1
-        by_ar_count[ar] += 1
-        by_decision_count[t["decision_type"]] += 1
+    rendered = 0
+    by_ar_count: Dict[str, int] = defaultdict(int)
+    by_decision_count: Dict[str, int] = defaultdict(int)
+    if render_workers <= 1:
+        for task in tasks:
+            try:
+                ar, decision_type = render_task(task)
+            except FileNotFoundError:
+                missing_images += 1
+                continue
+            rendered += 1
+            by_ar_count[ar] += 1
+            by_decision_count[decision_type] += 1
+    else:
+        with ThreadPoolExecutor(max_workers=render_workers) as executor:
+            future_map = {executor.submit(render_task, task): task for task in tasks}
+            for future in as_completed(future_map):
+                task = future_map[future]
+                try:
+                    ar, decision_type = future.result()
+                except FileNotFoundError:
+                    missing_images += 1
+                    continue
+                rendered += 1
+                by_ar_count[ar] += 1
+                by_decision_count[decision_type] += 1
 
     overview = {
         "inputs": {
@@ -574,6 +609,7 @@ def main() -> None:
             "decision_filter": args.decision_filter,
             "num_samples": args.num_samples,
             "explicit_image_ids": explicit_ids,
+            "num_workers": render_workers,
         },
         "summary": {
             "tasks_selected": len(tasks),

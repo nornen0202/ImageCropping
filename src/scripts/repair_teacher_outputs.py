@@ -23,6 +23,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
+from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+
 
 @dataclass
 class JsonlStats:
@@ -56,6 +58,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--strict_expected_match", type=int, default=1, help="1=if expected rows known, require exact match")
     p.add_argument("--dry_run", type=int, default=0)
     p.add_argument("--verbose", type=int, default=1)
+    p.add_argument("--progress", type=int, default=1)
+    p.add_argument("--progress_every", type=int, default=1000)
+    p.add_argument("--progress_min_seconds", type=float, default=10.0)
     return p.parse_args()
 
 
@@ -77,13 +82,28 @@ def count_lines(path: Path) -> int:
     return c
 
 
-def analyze_jsonl(path: Path) -> JsonlStats:
+def analyze_jsonl(
+    path: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 1000,
+    progress_min_seconds: float = 10.0,
+) -> JsonlStats:
     rows = 0
     exp_rows = 0
     parse_error_rows = 0
     if path.exists():
+        total = count_nonempty_lines(path) if progress else None
+        tracker = ProgressTracker(
+            f"repair_teacher_outputs:analyze_jsonl:{path.name}",
+            total=total,
+            unit="rows",
+            every=progress_every,
+            min_seconds=progress_min_seconds,
+            enabled=progress,
+        )
         with path.open("r", encoding="utf-8") as f:
-            for line in f:
+            for idx, line in enumerate(f, start=1):
                 line = line.strip()
                 if not line:
                     continue
@@ -95,6 +115,8 @@ def analyze_jsonl(path: Path) -> JsonlStats:
                 rows += 1
                 if bool(d.get("teacher_scorer", {}).get("expensive_real_applied", False)):
                     exp_rows += 1
+                tracker.update(idx)
+        tracker.finish(rows, extra=f"parse_errors={parse_error_rows}")
         mtime = path.stat().st_mtime
     else:
         mtime = 0.0
@@ -112,7 +134,13 @@ def shard_index_from_name(name: str) -> int:
     return int(m.group(1)) if m else 10**9
 
 
-def analyze_shard_dir(shard_dir: Path) -> Optional[ShardDirStats]:
+def analyze_shard_dir(
+    shard_dir: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 1000,
+    progress_min_seconds: float = 10.0,
+) -> Optional[ShardDirStats]:
     if not shard_dir.exists() or not shard_dir.is_dir():
         return None
     files = sorted(
@@ -125,12 +153,27 @@ def analyze_shard_dir(shard_dir: Path) -> Optional[ShardDirStats]:
     total_exp = 0
     total_parse_errors = 0
     latest_mtime = 0.0
-    for fp in files:
-        st = analyze_jsonl(fp)
+    tracker = ProgressTracker(
+        f"repair_teacher_outputs:analyze_shard_dir:{shard_dir.name}",
+        total=len(files),
+        unit="files",
+        every=1,
+        min_seconds=1.0,
+        enabled=progress,
+    )
+    for idx, fp in enumerate(files, start=1):
+        st = analyze_jsonl(
+            fp,
+            progress=progress,
+            progress_every=progress_every,
+            progress_min_seconds=progress_min_seconds,
+        )
         total_rows += st.rows
         total_exp += st.expensive_real_rows
         total_parse_errors += st.parse_error_rows
         latest_mtime = max(latest_mtime, st.mtime)
+        tracker.update(idx, extra=f"path={fp.name} rows={st.rows}")
+    tracker.finish(len(files), extra=f"rows={total_rows}")
     return ShardDirStats(
         shard_dir=shard_dir,
         shard_files=files,
@@ -244,14 +287,31 @@ def should_promote(
     return False
 
 
-def merge_shards_to_output(shard_files: Sequence[Path], out_jsonl: Path) -> None:
+def merge_shards_to_output(
+    shard_files: Sequence[Path],
+    out_jsonl: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 1000,
+    progress_min_seconds: float = 10.0,
+) -> None:
     out_jsonl.parent.mkdir(parents=True, exist_ok=True)
+    tracker = ProgressTracker(
+        "repair_teacher_outputs:merge_shards",
+        total=len(shard_files),
+        unit="files",
+        every=1,
+        min_seconds=1.0,
+        enabled=progress,
+    )
     with out_jsonl.open("w", encoding="utf-8") as fout:
-        for fp in shard_files:
+        for idx, fp in enumerate(shard_files, start=1):
             with fp.open("r", encoding="utf-8") as fin:
                 for line in fin:
                     if line.strip():
                         fout.write(line if line.endswith("\n") else line + "\n")
+            tracker.update(idx, extra=f"path={fp.name}")
+    tracker.finish(len(shard_files), extra=f"output={out_jsonl.name}")
 
 
 def ensure_integrity(
@@ -278,6 +338,9 @@ def run_py(script: Path, args: Sequence[str]) -> None:
 def main() -> None:
     args = parse_args()
     verbose = as_bool(args.verbose)
+    progress_enabled = bool(int(args.progress))
+    progress_every = max(1, int(args.progress_every))
+    progress_min_seconds = max(0.0, float(args.progress_min_seconds))
     prefer_real = as_bool(args.prefer_real_expensive)
     strict_expected = as_bool(args.strict_expected_match)
     dry_run = as_bool(args.dry_run)
@@ -289,7 +352,16 @@ def main() -> None:
     qa_csv = Path(args.qa_csv)
     candidates_jsonl = Path(args.candidates_jsonl) if str(args.candidates_jsonl).strip() else Path("")
 
-    final_stats = analyze_jsonl(out_jsonl)
+    progress_log(
+        f"repair_teacher_outputs: start | teacher_scores_jsonl={out_jsonl}",
+        enabled=progress_enabled,
+    )
+    final_stats = analyze_jsonl(
+        out_jsonl,
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
+    )
     expected_rows = None
     if candidates_jsonl:
         expected_rows = expected_rows_from_candidates(candidates_jsonl, int(args.max_images))
@@ -300,7 +372,12 @@ def main() -> None:
     )
     shard_stats: List[ShardDirStats] = []
     for d in shard_dirs:
-        st = analyze_shard_dir(d)
+        st = analyze_shard_dir(
+            d,
+            progress=progress_enabled,
+            progress_every=progress_every,
+            progress_min_seconds=progress_min_seconds,
+        )
         if st is not None:
             shard_stats.append(st)
 
@@ -372,7 +449,13 @@ def main() -> None:
     if promote:
         info(f"[repair] promoting shards -> {out_jsonl}", verbose=verbose)
         if not dry_run:
-            merge_shards_to_output(best_shard.shard_files, out_jsonl)
+            merge_shards_to_output(
+                best_shard.shard_files,
+                out_jsonl,
+                progress=progress_enabled,
+                progress_every=progress_every,
+                progress_min_seconds=progress_min_seconds,
+            )
             script_dir = Path(__file__).resolve().parent
             run_py(
                 script_dir / "rebuild_teacher_overview.py",
@@ -424,7 +507,12 @@ def main() -> None:
                 ],
             )
 
-    final_after = analyze_jsonl(out_jsonl)
+    final_after = analyze_jsonl(
+        out_jsonl,
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
+    )
     info(
         "[repair] final(after) rows={} expensive_real_rows={} parse_error_rows={}".format(
             final_after.rows,
@@ -432,6 +520,10 @@ def main() -> None:
             final_after.parse_error_rows,
         ),
         verbose=verbose,
+    )
+    progress_log(
+        f"repair_teacher_outputs: finished | rows={final_after.rows} | expensive_real_rows={final_after.expensive_real_rows}",
+        enabled=progress_enabled,
     )
     ensure_integrity(stats=final_after, expected_rows=expected_rows, context=str(out_jsonl))
 

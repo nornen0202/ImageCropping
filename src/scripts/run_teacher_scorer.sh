@@ -338,6 +338,38 @@ for req in "${REQUIRED_INPUTS[@]}"; do
   fi
 done
 
+detect_cpu_cores() {
+  local detected
+  detected=$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)
+  if [ -z "$detected" ] || [ "$detected" -le 0 ] 2>/dev/null; then
+    detected=$(nproc 2>/dev/null || true)
+  fi
+  if [ -z "$detected" ] || [ "$detected" -le 0 ] 2>/dev/null; then
+    detected=1
+  fi
+  echo "$detected"
+}
+
+resolve_exp_preprocess_workers() {
+  local requested="$1"
+  local concurrent_workers="$2"
+  if [ -n "$requested" ] && [ "$requested" -gt 0 ] 2>/dev/null; then
+    echo "$requested"
+    return
+  fi
+  local cpu_cores
+  cpu_cores="$(detect_cpu_cores)"
+  local workers="${concurrent_workers:-1}"
+  if [ -z "$workers" ] || [ "$workers" -le 0 ] 2>/dev/null; then
+    workers=1
+  fi
+  local per_worker=$(( cpu_cores / workers ))
+  if [ "$per_worker" -le 0 ]; then
+    per_worker=1
+  fi
+  echo "$per_worker"
+}
+
 echo "[config] server_mode=$SERVER_MODE tar_dir=$TAR_DIR image_dir=${IMAGE_DIR:-<none>}"
 echo "[config] candidates=$CANDIDATES_JSONL"
 echo "[config] features=$FEATURES_JSONL"
@@ -358,6 +390,7 @@ run_teacher_one() {
   local shard_index="$4"
   local num_shards="$5"
   local progress="$6"
+  local preprocess_workers="$7"
 
   python3 src/score_teacher.py \
     --candidates_jsonl "$CANDIDATES_JSONL" \
@@ -387,7 +420,7 @@ run_teacher_one() {
     --exp_batch_size "$EXP_BATCH_SIZE" \
     --expensive_eval_top_m "$EXPENSIVE_EVAL_TOP_M" \
     --save_public_teacher_ref_eval "$SAVE_PUBLIC_TEACHER_REF_EVAL" \
-    --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
+    --exp_preprocess_workers "$preprocess_workers" \
     --exp_pin_memory "$EXP_PIN_MEMORY" \
     --aesthetic_mlp_path "$AESTHETIC_MLP_PATH" \
     --aesthetic_mlp_url "$AESTHETIC_MLP_URL" \
@@ -436,13 +469,17 @@ if [ "$MULTI_GPU" -ne 0 ]; then
 
   if [ "$WORKERS" -le 1 ]; then
     echo "[warn] multi_gpu=1 but effective workers<=1. falling back to single."
-    run_teacher_one "$OUTPUT_JSONL" "$OUTPUT_OVERVIEW_JSON" "$OUTPUT_OVERVIEW_CSV" 0 1 1
+    SINGLE_PREPROCESS_WORKERS="$(resolve_exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" 1)"
+    echo "[config] resolved_exp_preprocess_workers(single)=$SINGLE_PREPROCESS_WORKERS"
+    run_teacher_one "$OUTPUT_JSONL" "$OUTPUT_OVERVIEW_JSON" "$OUTPUT_OVERVIEW_CSV" 0 1 1 "$SINGLE_PREPROCESS_WORKERS"
   else
     if [ -z "$SHARD_TMP_DIR" ]; then
       SHARD_TMP_DIR="${OUTPUT_JSONL}.shards.$$"
     fi
     mkdir -p "$SHARD_TMP_DIR"
+    SHARD_PREPROCESS_WORKERS="$(resolve_exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" "$WORKERS")"
     echo "[multi] teacher shard mode enabled: gpu_ids=${GPU_CSV} workers=${WORKERS}"
+    echo "[config] resolved_exp_preprocess_workers(per_shard)=$SHARD_PREPROCESS_WORKERS total_cpu_cores=$(detect_cpu_cores)"
     PIDS=()
     SHARD_JSONL=()
     i=0
@@ -461,7 +498,7 @@ if [ "$MULTI_GPU" -ne 0 ]; then
       echo "[multi] launch shard=$i/$WORKERS gpu=$GPU_ID -> $SH_OUT_JSONL"
       (
         export CUDA_VISIBLE_DEVICES="$GPU_ID"
-        run_teacher_one "$SH_OUT_JSONL" "$SH_OUT_OV_JSON" "$SH_OUT_OV_CSV" "$i" "$WORKERS" "$SH_PROGRESS"
+        run_teacher_one "$SH_OUT_JSONL" "$SH_OUT_OV_JSON" "$SH_OUT_OV_CSV" "$i" "$WORKERS" "$SH_PROGRESS" "$SHARD_PREPROCESS_WORKERS"
       ) >"$SH_LOG" 2>&1 &
       PIDS+=("$!")
       i=$((i + 1))
@@ -493,7 +530,9 @@ if [ "$MULTI_GPU" -ne 0 ]; then
     echo "[multi] rebuilt overview -> $OUTPUT_OVERVIEW_JSON"
   fi
 else
-  run_teacher_one "$OUTPUT_JSONL" "$OUTPUT_OVERVIEW_JSON" "$OUTPUT_OVERVIEW_CSV" 0 1 1
+  SINGLE_PREPROCESS_WORKERS="$(resolve_exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" 1)"
+  echo "[config] resolved_exp_preprocess_workers(single)=$SINGLE_PREPROCESS_WORKERS"
+  run_teacher_one "$OUTPUT_JSONL" "$OUTPUT_OVERVIEW_JSON" "$OUTPUT_OVERVIEW_CSV" 0 1 1 "$SINGLE_PREPROCESS_WORKERS"
 fi
 
 if [ "$RUN_QA" -eq 1 ]; then

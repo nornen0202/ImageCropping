@@ -43,7 +43,22 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--sample_count", type=int, default=8)
     p.add_argument("--max_images", type=int, default=0)
     p.add_argument("--skip_existing", type=int, default=1)
+    p.add_argument("--gpu_ids", default="")
+    p.add_argument("--gpu_workers", type=int, default=0)
     return p.parse_args()
+
+
+def parse_gpu_ids(gpu_ids: str) -> List[str]:
+    return [part.strip() for part in str(gpu_ids or "").split(",") if part.strip()]
+
+
+def resolve_gpu_workers(gpu_ids: Sequence[str], requested_workers: int) -> int:
+    req = int(requested_workers)
+    if req > 0:
+        return max(1, req)
+    if gpu_ids:
+        return max(1, len(gpu_ids))
+    return 1
 
 
 def run_cmd(args: Sequence[str], *, cwd: Path) -> None:
@@ -464,29 +479,42 @@ def main() -> None:
             encoding="utf-8",
         )
     else:
+        saliency_cmd = [
+            py,
+            "src/scripts/augment_saliency_subject_features.py",
+            "--input_jsonl",
+            str(input_features_jsonl),
+            "--output_jsonl",
+            str(saliency_jsonl),
+            "--image_dir",
+            str(image_dir),
+            "--priority",
+            str(args.saliency_priority),
+            "--weights_dir",
+            str(args.weights_dir),
+            "--device",
+            str(args.device),
+            "--summary_json",
+            str(saliency_summary_json),
+            "--overwrite",
+            "1",
+            "--max_images",
+            str(args.max_images),
+        ]
+        gpu_ids = parse_gpu_ids(str(args.gpu_ids))
+        if len(gpu_ids) > 1 and str(args.device) != "cpu":
+            saliency_cmd.extend(
+                [
+                    "--multi_gpu",
+                    "1",
+                    "--gpu_ids",
+                    ",".join(gpu_ids),
+                    "--num_workers",
+                    str(resolve_gpu_workers(gpu_ids, int(args.gpu_workers))),
+                ]
+            )
         maybe_run(
-            [
-                py,
-                "src/scripts/augment_saliency_subject_features.py",
-                "--input_jsonl",
-                str(input_features_jsonl),
-                "--output_jsonl",
-                str(saliency_jsonl),
-                "--image_dir",
-                str(image_dir),
-                "--priority",
-                str(args.saliency_priority),
-                "--weights_dir",
-                str(args.weights_dir),
-                "--device",
-                str(args.device),
-                "--summary_json",
-                str(saliency_summary_json),
-                "--overwrite",
-                "1",
-                "--max_images",
-                str(args.max_images),
-            ],
+            saliency_cmd,
             cwd=REPO_ROOT,
             outputs=[saliency_jsonl, saliency_summary_json],
             skip_existing=bool(int(args.skip_existing)),

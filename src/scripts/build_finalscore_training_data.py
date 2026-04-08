@@ -5,6 +5,7 @@ import copy
 import json
 import math
 import sys
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
@@ -13,6 +14,7 @@ PROJECT_SRC = Path(__file__).resolve().parents[1]
 if str(PROJECT_SRC) not in sys.path:
     sys.path.insert(0, str(PROJECT_SRC))
 
+from scripts.progress_utils import count_nonempty_lines
 from scripts.safety_score_utils import SafetyPenaltyConfig, compute_safety_penalty_bundle, parse_target_ar_value
 from scripts.score_profile_utils import apply_profile_to_cfg, build_profile_metadata
 
@@ -121,6 +123,7 @@ ORDINAL_LABEL_MAPS: Dict[str, Dict[str, int]] = {
     },
 }
 DEFAULT_SAFETY_PENALTY_CFG = SafetyPenaltyConfig()
+BASE_REFRESH_TEACHER_CFG: Any = None
 REFRESH_TEACHER_CFG: Any = None
 REFRESH_PROFILE_METADATA: Dict[str, Any] = {}
 COMPUTE_MACRO_SCORE_BUNDLE = None
@@ -132,6 +135,102 @@ SELECT_TOPK_DIVERSE = None
 PROTECTED_SECONDARY_IOU_MIN = 0.20
 PROTECTED_SECONDARY_IOU_MAX = 0.92
 PROTECTED_SECONDARY_SCORE_DELTA_MAX = 0.10
+
+
+def format_duration(seconds: float) -> str:
+    total_seconds = max(0.0, float(seconds))
+    if total_seconds < 60.0:
+        return f"{total_seconds:.1f}s"
+    minutes, secs = divmod(int(round(total_seconds)), 60)
+    if minutes < 60:
+        return f"{minutes}m{secs:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m{secs:02d}s"
+
+
+def progress_log(message: str, *, enabled: bool = True) -> None:
+    if not enabled:
+        return
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+    print(f"[progress {timestamp}] {message}", flush=True)
+
+
+def build_progress_bar(count: int, total: int, width: int = 24) -> str:
+    if total <= 0:
+        return "[?]"
+    ratio = max(0.0, min(1.0, float(count) / float(total)))
+    filled = int(ratio * width)
+    if filled >= width:
+        return "[" + "=" * width + "]"
+    if filled <= 0:
+        return "[" + "." * width + "]"
+    return "[" + "=" * max(0, filled - 1) + ">" + "." * max(0, width - filled) + "]"
+
+
+class ProgressTracker:
+    def __init__(
+        self,
+        label: str,
+        *,
+        total: Optional[int] = None,
+        unit: str = "items",
+        every: int = 100,
+        min_seconds: float = 10.0,
+        enabled: bool = True,
+    ) -> None:
+        self.label = str(label)
+        self.total = int(total) if total is not None else None
+        self.unit = str(unit)
+        self.every = max(1, int(every))
+        self.min_seconds = max(0.0, float(min_seconds))
+        self.enabled = bool(enabled)
+        self.started_at = time.monotonic()
+        self.last_emit_at = self.started_at
+        self.last_count = 0
+        if self.enabled:
+            total_part = f" total={self.total}" if self.total is not None else ""
+            progress_log(f"{self.label}: start{total_part} unit={self.unit}", enabled=True)
+
+    def _build_message(self, count: int, extra: str = "") -> str:
+        elapsed = time.monotonic() - self.started_at
+        if self.total is not None and self.total > 0:
+            pct = 100.0 * float(count) / float(self.total)
+            parts = [
+                f"{self.label}: {build_progress_bar(count, self.total)} {count}/{self.total} ({pct:.1f}%)",
+            ]
+            if count > 0 and elapsed > 0.0 and count < self.total:
+                rate = float(count) / float(elapsed)
+                remaining = max(0, self.total - count)
+                eta_seconds = float(remaining) / max(rate, 1e-9)
+                parts.append(f"{format_duration(elapsed)}<{format_duration(eta_seconds)}")
+            else:
+                parts.append(format_duration(elapsed))
+        else:
+            parts = [
+                f"{self.label}: {count} {self.unit}",
+                format_duration(elapsed),
+            ]
+        if extra:
+            parts.append(extra)
+        return " | ".join(parts)
+
+    def update(self, count: int, *, extra: str = "") -> None:
+        if not self.enabled:
+            return
+        now = time.monotonic()
+        force = bool(self.total is not None and count >= self.total)
+        count_due = (count - self.last_count) >= self.every
+        time_due = (now - self.last_emit_at) >= self.min_seconds and count > self.last_count
+        if not (force or count_due or time_due):
+            return
+        progress_log(self._build_message(int(count), extra=extra), enabled=True)
+        self.last_count = int(count)
+        self.last_emit_at = now
+
+    def finish(self, count: int, *, extra: str = "") -> None:
+        if not self.enabled:
+            return
+        progress_log(self._build_message(int(count), extra=extra), enabled=True)
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
@@ -202,6 +301,7 @@ def build_route_snapshot(routing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def ensure_refresh_teacher_runtime() -> None:
+    global BASE_REFRESH_TEACHER_CFG
     global REFRESH_TEACHER_CFG
     global REFRESH_PROFILE_METADATA
     global COMPUTE_MACRO_SCORE_BUNDLE
@@ -222,18 +322,13 @@ def ensure_refresh_teacher_runtime() -> None:
         select_topk_diverse,
     )
 
-    REFRESH_TEACHER_CFG = TeacherScorerConfig()
-    REFRESH_PROFILE_METADATA = build_profile_metadata(
-        REFRESH_TEACHER_CFG,
-        {
-            "profile_name": "current_refined",
-            "label": "Current Refined",
-            "stage": 0,
-            "description": "default scorer config",
-            "override_json_path": "",
-            "overrides": {},
-        },
+    BASE_REFRESH_TEACHER_CFG = TeacherScorerConfig()
+    REFRESH_TEACHER_CFG, profile_spec = apply_profile_to_cfg(
+        BASE_REFRESH_TEACHER_CFG,
+        profile_name="single_stage2",
+        override_json_path="",
     )
+    REFRESH_PROFILE_METADATA = build_profile_metadata(REFRESH_TEACHER_CFG, profile_spec)
     COMPUTE_MACRO_SCORE_BUNDLE = compute_macro_score_bundle
     FUSE_MACRO_SCORES = fuse_macro_scores
     NORMALIZE_FINAL_SCORES = normalize_final_scores
@@ -243,11 +338,12 @@ def ensure_refresh_teacher_runtime() -> None:
 
 
 def configure_refresh_teacher_profile(*, profile_name: str, override_json_path: str = "") -> None:
+    global BASE_REFRESH_TEACHER_CFG
     global REFRESH_TEACHER_CFG
     global REFRESH_PROFILE_METADATA
     ensure_refresh_teacher_runtime()
     REFRESH_TEACHER_CFG, profile_spec = apply_profile_to_cfg(
-        REFRESH_TEACHER_CFG,
+        BASE_REFRESH_TEACHER_CFG,
         profile_name=profile_name,
         override_json_path=override_json_path,
     )
@@ -641,23 +737,60 @@ def safe_list(value: Any) -> List[Any]:
     return value if isinstance(value, list) else []
 
 
-def write_jsonl(path: Path, rows: Iterable[Dict[str, Any]]) -> int:
+def write_jsonl(
+    path: Path,
+    rows: Iterable[Dict[str, Any]],
+    *,
+    progress_label: str = "",
+    progress: bool = False,
+    progress_every: int = 5000,
+    progress_min_seconds: float = 10.0,
+) -> int:
     count = 0
+    total = len(rows) if hasattr(rows, "__len__") else None
+    tracker = ProgressTracker(
+        progress_label or f"write_jsonl:{path.name}",
+        total=total,
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
             count += 1
+            tracker.update(count, extra=f"path={path.name}")
+    tracker.finish(count, extra=f"path={path.name}")
     return count
 
 
-def load_teacher_records(path: Path) -> List[Dict[str, Any]]:
+def load_teacher_records(
+    path: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 1000,
+    progress_min_seconds: float = 10.0,
+) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
+    total = count_nonempty_lines(path) if progress else None
+    tracker = ProgressTracker(
+        f"load_teacher_records:{path.name}",
+        total=total,
+        unit="records",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    record_count = 0
     with path.open("r", encoding="utf-8") as handle:
         for line_idx, line in enumerate(handle, 1):
             if not line.strip():
                 continue
             try:
                 records.append(json.loads(line))
+                record_count += 1
+                tracker.update(record_count, extra=f"line={line_idx}")
             except json.JSONDecodeError as exc:
                 raise RuntimeError(
                     "teacher_scores_jsonl is malformed: "
@@ -666,6 +799,7 @@ def load_teacher_records(path: Path) -> List[Dict[str, Any]]:
                     "Repair teacher outputs first with "
                     "`src/scripts/repair_teacher_outputs.py`, or rerun the teacher stage."
                 ) from exc
+    tracker.finish(record_count, extra=f"path={path.name}")
     return records
 
 
@@ -842,6 +976,21 @@ def candidate_rank_score(candidate: Dict[str, Any]) -> float:
     return safe_float(scores.get("rank", scores.get("final", -1e9)), -1e9)
 
 
+def candidate_crop_utility_score(candidate: Dict[str, Any]) -> float:
+    scores = safe_dict(candidate.get("scores"))
+    if "policy_safe" in scores:
+        return safe_float(scores.get("policy_safe", 0.0), -1e9)
+    if "policy" in scores:
+        return safe_float(scores.get("policy", 0.0), -1e9)
+    if "final" in scores:
+        return safe_float(scores.get("final", 0.0), -1e9)
+    return safe_float(scores.get("rank", -1e9), -1e9)
+
+
+def is_main_supervision_candidate(candidate: Dict[str, Any]) -> bool:
+    return (not bool(candidate.get("is_ignore_candidate", False))) and (not bool(candidate.get("is_overflow_candidate", False)))
+
+
 def refresh_ar_result_from_current_scores(
     ar_res: Dict[str, Any],
     *,
@@ -859,10 +1008,10 @@ def refresh_ar_result_from_current_scores(
 
     ensure_refresh_teacher_runtime()
     NORMALIZE_FINAL_SCORES(rescored)
-    exp_sorted = sorted(rescored, key=candidate_rank_score, reverse=True)
+    exp_sorted = sorted(rescored, key=candidate_crop_utility_score, reverse=True)
     non_hard_sorted = [candidate for candidate in exp_sorted if not is_unsafe_candidate(candidate)]
-    rank_pool = non_hard_sorted if non_hard_sorted else exp_sorted
-    best = rank_pool[0] if rank_pool else exp_sorted[0]
+    utility_pool = non_hard_sorted if non_hard_sorted else exp_sorted
+    best = utility_pool[0] if utility_pool else exp_sorted[0]
 
     baseline_id = str(safe_dict(ar_res.get("baseline_candidate")).get("candidate_id", ""))
     baseline = find_candidate(exp_sorted, baseline_id)
@@ -885,13 +1034,13 @@ def refresh_ar_result_from_current_scores(
     target_len = max(1, len(safe_list(ar_res.get("selected_topk"))) or int(REFRESH_TEACHER_CFG.top_k))
     force_ids = [decision.get("chosen_candidate_id"), baseline_effective.get("candidate_id")]
     selected_topk = SELECT_TOPK_DIVERSE(
-        sorted_cands=rank_pool,
+        sorted_cands=utility_pool,
         k=target_len,
         tau_div=float(REFRESH_TEACHER_CFG.tau_div),
         force_ids=force_ids,
         ar_log_gap_thr=(float(REFRESH_TEACHER_CFG.free_topk_ar_log_gap) if str(target_ar).strip().upper() == "FREE" else None),
     )
-    if len(selected_topk) < target_len and rank_pool is not exp_sorted:
+    if len(selected_topk) < target_len and utility_pool is not exp_sorted:
         already = {str(candidate.get("candidate_id", "")) for candidate in selected_topk}
         tail = [candidate for candidate in exp_sorted if str(candidate.get("candidate_id", "")) not in already]
         if tail:
@@ -918,6 +1067,7 @@ def refresh_ar_result_from_current_scores(
         "selected_topk_ids": [str(candidate.get("candidate_id", "")) for candidate in selected_topk],
         "selected_topk_k": int(target_len),
         "tau_improve": float(tau_improve),
+        "sort_metric": "crop_utility_raw",
     }
     return refreshed
 
@@ -947,7 +1097,7 @@ def maybe_repair_training_decision(
     safe_any_crop = [
         c for c in safe_candidates if not bool(c.get("is_baseline_candidate", False))
     ]
-    safe_crop = max((safe_selected_crop or safe_any_crop), key=candidate_rank_score, default=None)
+    safe_crop = max((safe_selected_crop or safe_any_crop), key=candidate_crop_utility_score, default=None)
 
     original_decision_type = str(decision.get("decision_type", ""))
     replacement: Optional[Dict[str, Any]]
@@ -973,6 +1123,7 @@ def maybe_repair_training_decision(
     repaired_decision["chosen_score_policy"] = float(
         safe_float(replacement_scores.get("policy", replacement_scores.get("final", 0.0)), 0.0)
     )
+    repaired_decision["chosen_crop_utility_raw"] = float(candidate_crop_utility_score(replacement))
 
     repair_info = {
         "applied": True,
@@ -1112,7 +1263,8 @@ def annotate_group_candidates(
     decision_type = str(safe_dict(refreshed_ar_res.get("decision")).get("decision_type", ""))
 
     rank_scores = [candidate_rank_score(c) for c in candidates]
-    policy_scores = [safe_policy_raw_score(c, target_ar=target_ar) for c in candidates]
+    utility_scores = [candidate_crop_utility_score(c) for c in candidates]
+    policy_scores = list(utility_scores)
     rank_pcts = rank_pct_desc(rank_scores)
     z_scores = robust_z_scores(rank_scores)
     softmax_scores = softmax_local(rank_scores, tau=softmax_tau)
@@ -1120,7 +1272,7 @@ def annotate_group_candidates(
     policy_rank_pcts = rank_pct_desc(policy_scores)
     policy_z_scores = robust_z_scores(policy_scores)
     policy_softmax_scores = softmax_local(policy_scores, tau=softmax_tau)
-    top1_score = max(rank_scores) if rank_scores else 0.0
+    top1_score = max(utility_scores) if utility_scores else 0.0
 
     annotated: List[Dict[str, Any]] = []
     for idx, cand in enumerate(candidates):
@@ -1137,6 +1289,11 @@ def annotate_group_candidates(
         out["score_policy_z_local"] = float(policy_z_scores[idx])
         out["score_policy_sigmoid_z_local"] = float(sigmoid(policy_z_scores[idx]))
         out["score_policy_softmax_local"] = float(policy_softmax_scores[idx])
+        out["crop_utility_raw"] = float(utility_scores[idx])
+        out["crop_utility_rank_pct"] = float(policy_rank_pcts[idx])
+        out["crop_utility_z_local"] = float(policy_z_scores[idx])
+        out["crop_utility_prob"] = float(sigmoid(policy_z_scores[idx]))
+        out["crop_utility_softmax_local"] = float(policy_softmax_scores[idx])
         out["is_top1"] = str(out.get("candidate_id", "")) == top1_id
         out["is_selected_topk"] = str(out.get("candidate_id", "")) in selected_id_set
         out["is_best_candidate"] = str(out.get("candidate_id", "")) == best_id
@@ -1162,10 +1319,11 @@ def annotate_group_candidates(
                 and not out["is_unsafe_negative"]
             )
         )
-        margin_to_top1 = max(0.0, top1_score - rank_scores[idx])
+        margin_to_top1 = max(0.0, top1_score - utility_scores[idx])
         out["score_margin_to_top1"] = float(margin_to_top1)
+        out["crop_utility_margin_to_top1"] = float(margin_to_top1)
         out["is_hard_negative"] = bool(
-            out["is_unsafe_negative"] and out["score_rank_pct"] <= float(hard_negative_rank_pct_max)
+            out["is_unsafe_negative"] and out["score_policy_rank_pct"] <= float(hard_negative_rank_pct_max)
         )
         out["is_near_negative"] = bool(
             (not out["is_positive_candidate"])
@@ -1194,8 +1352,8 @@ def annotate_group_candidates(
 
     annotated.sort(
         key=lambda cand: (
-            safe_float(safe_dict(cand.get("scores")).get("rank", safe_dict(cand.get("scores")).get("final", 0.0))),
-            safe_float(cand.get("score_softmax_local", 0.0)),
+            candidate_crop_utility_score(cand),
+            safe_float(cand.get("score_policy_softmax_local", cand.get("crop_utility_softmax_local", 0.0))),
         ),
         reverse=True,
     )
@@ -1237,7 +1395,13 @@ def build_checklist_labels(candidate: Dict[str, Any]) -> Dict[str, str]:
         "joint_cut": checklist_label_for(candidate, "joint_cut"),
         "text_keep": checklist_label_for(candidate, "text_keep_ratio"),
         "copyspace": checklist_label_for(candidate, "copyspace"),
+        "third_dist": checklist_label_for(candidate, "third_dist"),
+        "phi_dist": checklist_label_for(candidate, "phi_dist"),
+        "center_dist": checklist_label_for(candidate, "center_dist"),
+        "teacher_consensus": checklist_label_for(candidate, "teacher_consensus"),
+        "ar": checklist_label_for(candidate, "ar"),
         "horizon_state": horizon_state,
+        "horizon": horizon_state,
         "context": checklist_label_for(candidate, "context"),
     }
 
@@ -1284,7 +1448,6 @@ def build_macro_component_targets(candidate: Dict[str, Any]) -> Dict[str, Option
             "S_softcut_quality",
             "C_comp",
             "C_place",
-            "C_comp_linear",
             "C_place_margin",
             "C_headroom",
             "C_lookroom",
@@ -1300,15 +1463,18 @@ def build_macro_component_targets(candidate: Dict[str, Any]) -> Dict[str, Option
 def build_composition_focus_targets(candidate: Dict[str, Any]) -> Dict[str, Any]:
     raw_check = safe_dict(candidate.get("checklist"))
     score_components = safe_dict(safe_dict(candidate.get("scores")).get("components"))
+    macro_components = safe_dict(candidate.get("macro_components"))
     third_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("third_dist")).get("value"), raw_check.get("third_dist")))
     phi_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("phi_dist")).get("value"), raw_check.get("phi_dist")))
     center_dist = maybe_float(first_nonempty(safe_dict(raw_check.get("center_dist")).get("value"), raw_check.get("center_dist")))
+    placement_best = str(score_components.get("placement_family_best", "na"))
+    if placement_best in {"", "na", "none", "null"}:
+        placement_best = dominant_composition_anchor(third_dist, phi_dist, center_dist)
     return {
         "dominant_anchor": dominant_composition_anchor(third_dist, phi_dist, center_dist),
-        "placement_family_best": str(score_components.get("placement_family_best", "na")),
-        "placement_family_margin": round_opt(score_components.get("placement_family_margin")),
-        "placement_score": round_opt(score_components.get("r_place")),
-        "placement_linear": round_opt(score_components.get("r_comp_linear")),
+        "placement_family_best": placement_best,
+        "placement_family_margin": round_opt(first_nonempty(score_components.get("placement_family_margin"), macro_components.get("C_place_margin"))),
+        "placement_score": round_opt(first_nonempty(score_components.get("r_place"), macro_components.get("C_place"))),
         "placement_reward_third": round_opt(score_components.get("placement_reward_third")),
         "placement_reward_phi": round_opt(score_components.get("placement_reward_phi")),
         "placement_reward_center": round_opt(score_components.get("placement_reward_center")),
@@ -1504,6 +1670,38 @@ def build_routing_record(
         ),
         0.0,
     )
+    effective_subject_region = safe_dict(
+        first_nonempty(
+            routing.get("effective_subject_region"),
+            subject_prior.get("effective_subject_region"),
+        )
+    )
+    crop_guidance_spec = safe_dict(effective_subject_region.get("crop_guidance_spec"))
+    support_spec = safe_dict(crop_guidance_spec.get("support_spec"))
+    subject_support_overlay = {
+        "mode": (
+            "support_map"
+            if (
+                bool(effective_subject_region.get("support_map_enabled", False))
+                or str(effective_subject_region.get("score_mode", "") or "") == "support_map"
+            )
+            and bool(support_spec)
+            else "bbox"
+        ),
+        "score_mode": str(first_nonempty(effective_subject_region.get("score_mode"), safe_dict(routing.get("flags")).get("subject_score_mode"), "")),
+        "state": str(first_nonempty(effective_subject_region.get("state"), safe_dict(routing.get("flags")).get("subject_effective_state"), "")),
+        "subject_repr_type": str(first_nonempty(effective_subject_region.get("subject_repr_type"), subject_prior.get("subject_repr_type"), "")),
+        "support_map_enabled": bool(effective_subject_region.get("support_map_enabled", False)),
+        "bbox_norm_xyxy": normalize_bbox_or_none(
+            first_nonempty(
+                effective_subject_region.get("effective_bbox_norm_xyxy"),
+                effective_subject_region.get("support_bbox_norm_xyxy"),
+                effective_subject_region.get("scoring_bbox_norm_xyxy"),
+                subject_prior.get("bbox_norm_xyxy"),
+            )
+        ),
+        "support_spec": copy.deepcopy(support_spec) if support_spec else {},
+    }
     return {
         "subject_mode": subject_mode,
         "subject_mode_id": subject_mode_to_id.get(subject_mode, -1),
@@ -1513,6 +1711,7 @@ def build_routing_record(
         "scene_subtype": first_nonempty(routing.get("scene_subtype"), route_global.get("scene_subtype")),
         "shot_type": first_nonempty(routing.get("shot_type"), route_global.get("shot_type")),
         "subject_prior_bbox_norm_xyxy": normalize_bbox_or_none(subject_prior.get("bbox_norm_xyxy")),
+        "subject_support_overlay": subject_support_overlay,
         "subject_set": copy.deepcopy(first_nonempty(routing.get("subject_set"), route_global.get("subject_set"))),
         "router_rule_id": first_nonempty(routing.get("router_rule_id"), route_global.get("router_rule_id")),
         "flags": copy.deepcopy(first_nonempty(routing.get("flags"), route_global.get("flags"), {})),
@@ -1533,6 +1732,7 @@ def build_baseline_record(ar_res: Dict[str, Any], *, target_ar: Optional[str] = 
         "bbox_cxcywh": bbox_xyxy_to_cxcywh(normalize_bbox_xyxy(baseline.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]))),
         "score_rank": round(safe_float(safe_dict(baseline.get("scores")).get("rank", 0.0)), 6),
         "score_policy": round(safe_float(safe_dict(baseline.get("scores")).get("policy", 0.0)), 6),
+        "crop_utility_raw": round(safe_float(safe_dict(baseline.get("scores")).get("policy_safe", safe_dict(baseline.get("scores")).get("policy", 0.0))), 6),
     }
 
 
@@ -1558,6 +1758,7 @@ def build_candidate_canonical_record(candidate: Dict[str, Any], routing: Dict[st
         "candidate_id": str(candidate.get("candidate_id", "")),
         "source": str(candidate.get("source", "")),
         "label_type": str(candidate.get("label_type", "")),
+        "admissible": not bool(candidate.get("is_unsafe_negative", False)) and not bool(candidate.get("is_hard_negative", False)),
         "is_positive_candidate": bool(candidate.get("is_positive_candidate", False)),
         "is_soft_positive": bool(candidate.get("is_soft_positive", False)),
         "is_hard_negative": bool(candidate.get("is_hard_negative", False)),
@@ -1576,17 +1777,23 @@ def build_candidate_canonical_record(candidate: Dict[str, Any], routing: Dict[st
         "area_ratio": round(safe_float(candidate.get("area_ratio", 0.0)), 6),
         "score_targets": {
             "score_prob": round(score_prob_from_annotated_candidate(candidate), 9),
+            "crop_utility_prob": round(score_prob_from_annotated_candidate(candidate), 9),
             "rank_pct": round(safe_float(candidate.get("score_rank_pct", 0.0)), 9),
             "z_local": round(safe_float(candidate.get("score_z_local", 0.0)), 9),
             "softmax_local": round(safe_float(candidate.get("score_softmax_local", 0.0)), 9),
             "pseudo_mos_1to5": round(safe_float(candidate.get("pseudo_mos_1to5", 1.0)), 9),
+            "crop_utility_rank_pct": round(safe_float(candidate.get("crop_utility_rank_pct", candidate.get("score_policy_rank_pct", 0.0))), 9),
+            "crop_utility_z_local": round(safe_float(candidate.get("crop_utility_z_local", candidate.get("score_policy_z_local", 0.0))), 9),
+            "crop_utility_softmax_local": round(safe_float(candidate.get("crop_utility_softmax_local", candidate.get("score_policy_softmax_local", 0.0))), 9),
             "score_raw_rank": round(safe_float(raw_scores.get("rank", raw_scores.get("final", 0.0))), 9),
             "score_raw_policy": round(safe_float(raw_scores.get("policy", raw_scores.get("final", 0.0))), 9),
             "score_raw_policy_base": round(safe_float(raw_scores.get("policy_base", raw_scores.get("policy", raw_scores.get("final", 0.0)))), 9),
             "score_raw_policy_safe": round(safe_float(raw_scores.get("policy_safe", raw_scores.get("policy", raw_scores.get("final", 0.0)))), 9),
+            "crop_utility_raw": round(safe_float(raw_scores.get("policy_safe", raw_scores.get("policy", raw_scores.get("final", 0.0)))), 9),
             "score_raw_rank_macro": round(safe_float(raw_scores.get("rank_macro", raw_scores.get("rank", raw_scores.get("final", 0.0)))), 9),
             "score_raw_safety_penalty_total": round(safe_float(raw_scores.get("safety_penalty_total", 0.0)), 9),
             "score_margin_to_top1": round(safe_float(candidate.get("score_margin_to_top1", 0.0)), 9),
+            "crop_utility_margin_to_top1": round(safe_float(candidate.get("crop_utility_margin_to_top1", candidate.get("score_margin_to_top1", 0.0))), 9),
         },
         "macro_targets": {
             "A_macro": round(safe_float(macro_scores.get("A_macro", 0.0)), 6),
@@ -1626,6 +1833,7 @@ def build_label_generation_record(
     return {
         "safe_leftover_policy": str(safe_leftover_policy),
         "safe_high_score_leftover_count": int(sum(state_counts.values())),
+        "ignored_safe_leftover_count": int(state_counts.get("ignored", 0) + state_counts.get("monotonic_safe_overflow_ignored", 0)),
         "safe_high_score_leftover_state_counts": dict(state_counts),
         "overflow_candidate_count": int(sum(1 for candidate in candidates if bool(candidate.get("is_overflow_candidate", False)))),
         "weak_positive_pruned_count": int(
@@ -1671,6 +1879,7 @@ def build_decision_record(
         "decision_type": decision_type,
         "decision_id": decision_id(decision_type),
         "delta_vs_base": round(safe_float(decision.get("delta_improve", 0.0)), 6),
+        "decision_delta_vs_baseline": round(safe_float(decision.get("delta_improve", 0.0)), 6),
         "tau_improve": round(safe_float(decision.get("tau_improve", 0.0)), 6),
         "mode": str(safe_dict(ar_res.get("routing")).get("subject_mode", "")),
         "policy_id": str(safe_dict(ar_res.get("routing")).get("policy_id", "")),
@@ -1682,8 +1891,10 @@ def build_decision_record(
         "winner_post_gate_candidate_id": chosen_id,
         "best_score_rank": round(safe_float(safe_dict(best.get("scores")).get("rank", 0.0)), 6),
         "best_score_policy": round(safe_float(safe_dict(best.get("scores")).get("policy", 0.0)), 6),
+        "best_crop_utility_raw": round(safe_float(safe_dict(best.get("scores")).get("policy_safe", safe_dict(best.get("scores")).get("policy", 0.0))), 6),
         "base_score_rank": round(safe_float(safe_dict(baseline.get("scores")).get("rank", 0.0)), 6),
         "base_score_policy": round(safe_float(safe_dict(baseline.get("scores")).get("policy", 0.0)), 6),
+        "base_crop_utility_raw": round(safe_float(safe_dict(baseline.get("scores")).get("policy_safe", safe_dict(baseline.get("scores")).get("policy", 0.0))), 6),
         "chosen_score_rank": round(
             safe_float(
                 safe_dict(safe_dict(chosen).get("scores")).get("rank", decision.get("chosen_score_rank", 0.0)),
@@ -1694,6 +1905,13 @@ def build_decision_record(
         "chosen_score_policy": round(
             safe_float(
                 safe_dict(safe_dict(chosen).get("scores")).get("policy", decision.get("chosen_score_policy", 0.0)),
+                0.0,
+            ),
+            6,
+        ),
+        "chosen_crop_utility_raw": round(
+            safe_float(
+                safe_dict(safe_dict(chosen).get("scores")).get("policy_safe", safe_dict(safe_dict(chosen).get("scores")).get("policy", decision.get("chosen_score_policy", 0.0))),
                 0.0,
             ),
             6,
@@ -1710,6 +1928,7 @@ def build_structured_decision(decision_row: Dict[str, Any]) -> Dict[str, Any]:
         "decision_type": decision_row["decision_type"],
         "decision_id": decision_row["decision_id"],
         "delta_vs_base": decision_row["delta_vs_base"],
+        "decision_delta_vs_baseline": decision_row["decision_delta_vs_baseline"],
         "tau_improve": decision_row["tau_improve"],
         "base_candidate_id": decision_row["base_candidate_id"],
         "winner_pre_gate_candidate_id": decision_row["winner_pre_gate_candidate_id"],
@@ -1719,6 +1938,7 @@ def build_structured_decision(decision_row: Dict[str, Any]) -> Dict[str, Any]:
         "winner_post_gate_bbox": decision_row["winner_post_gate_bbox"],
         "chosen_score_rank": decision_row["chosen_score_rank"],
         "chosen_score_policy": decision_row["chosen_score_policy"],
+        "chosen_crop_utility_raw": decision_row["chosen_crop_utility_raw"],
     }
     if safe_dict(decision_row.get("training_repair")):
         out["training_repair"] = copy.deepcopy(safe_dict(decision_row.get("training_repair")))
@@ -1831,16 +2051,25 @@ def candidate_training_view(candidate: Dict[str, Any], routing: Optional[Dict[st
         "bbox_cxcywh": canonical["bbox_cxcywh"],
         "source": canonical["source"],
         "area_ratio": canonical["area_ratio"],
-        "score_raw_final": canonical["score_targets"]["score_raw_rank"],
+        "score_raw_final": canonical["score_targets"]["crop_utility_raw"],
         "score_raw_rank": canonical["score_targets"]["score_raw_rank"],
         "score_raw_policy": canonical["score_targets"]["score_raw_policy"],
+        "crop_utility_raw": canonical["score_targets"]["crop_utility_raw"],
         "score_raw_final_legacy": round(safe_float(safe_dict(candidate.get("scores")).get("final_legacy", 0.0)), 6),
         "score_prob": canonical["score_targets"]["score_prob"],
+        "crop_utility_prob": canonical["score_targets"]["crop_utility_prob"],
         "score_rank_pct": canonical["score_targets"]["rank_pct"],
         "score_z_local": canonical["score_targets"]["z_local"],
         "score_softmax_local": canonical["score_targets"]["softmax_local"],
         "pseudo_mos_1to5": canonical["score_targets"]["pseudo_mos_1to5"],
+        "score_policy_rank_pct": canonical["score_targets"]["crop_utility_rank_pct"],
+        "score_policy_z_local": canonical["score_targets"]["crop_utility_z_local"],
+        "score_policy_softmax_local": canonical["score_targets"]["crop_utility_softmax_local"],
+        "crop_utility_rank_pct": canonical["score_targets"]["crop_utility_rank_pct"],
+        "crop_utility_z_local": canonical["score_targets"]["crop_utility_z_local"],
+        "crop_utility_softmax_local": canonical["score_targets"]["crop_utility_softmax_local"],
         "label_type": canonical["label_type"],
+        "admissible": canonical["admissible"],
         "is_positive_candidate": canonical["is_positive_candidate"],
         "is_soft_positive": canonical["is_soft_positive"],
         "is_hard_negative": canonical["is_hard_negative"],
@@ -1881,22 +2110,24 @@ def build_pairwise_records(
         return []
     decision = safe_dict(ar_res.get("decision"))
     mode = str(safe_dict(ar_res.get("routing")).get("subject_mode", ""))
-    positives = [c for c in candidates if bool(c.get("is_positive_candidate", False))]
-    hard_negatives = [c for c in candidates if str(c.get("label_type", "")) in {"hard_negative", "unsafe_negative"}]
-    near_negatives = [c for c in candidates if str(c.get("label_type", "")) == "near_negative"]
-    best = next((c for c in candidates if bool(c.get("is_best_candidate", False))), None)
-    baseline = next((c for c in candidates if bool(c.get("is_baseline_candidate", False))), None)
+    main_candidates = [c for c in candidates if is_main_supervision_candidate(c)]
+    positives = [c for c in main_candidates if bool(c.get("is_positive_candidate", False))]
+    negatives = [c for c in main_candidates if not bool(c.get("is_positive_candidate", False))]
+    near_negatives = [c for c in negatives if str(c.get("label_type", "")) == "near_negative"]
+    other_negatives = [c for c in negatives if str(c.get("label_type", "")) == "negative"]
+    best = next((c for c in main_candidates if bool(c.get("is_best_candidate", False))), None)
+    baseline = next((c for c in main_candidates if bool(c.get("is_baseline_candidate", False))), None)
     out: List[Dict[str, Any]] = []
     seen: set[Tuple[str, str, str]] = set()
 
     def add_pair(a: Dict[str, Any], b: Dict[str, Any], pair_type: str) -> None:
-        if bool(a.get("is_ignore_candidate", False)) or bool(b.get("is_ignore_candidate", False)):
+        if (not is_main_supervision_candidate(a)) or (not is_main_supervision_candidate(b)):
             return
         key = (str(a.get("candidate_id", "")), str(b.get("candidate_id", "")), pair_type)
         if not key[0] or not key[1] or key in seen:
             return
-        score_a = safe_float(safe_dict(a.get("scores")).get("rank", safe_dict(a.get("scores")).get("final", 0.0)))
-        score_b = safe_float(safe_dict(b.get("scores")).get("rank", safe_dict(b.get("scores")).get("final", 0.0)))
+        score_a = candidate_crop_utility_score(a)
+        score_b = candidate_crop_utility_score(b)
         margin = score_a - score_b
         if margin < float(pair_margin_min):
             return
@@ -1912,9 +2143,12 @@ def build_pairwise_records(
                 "candidate_id_b": str(b.get("candidate_id", "")),
                 "label": 1,
                 "score_margin": round(margin, 6),
+                "crop_utility_margin": round(margin, 6),
                 "pair_type": pair_type,
                 "score_rank_pct_a": round(safe_float(a.get("score_rank_pct", 0.0)), 6),
                 "score_rank_pct_b": round(safe_float(b.get("score_rank_pct", 0.0)), 6),
+                "crop_utility_rank_pct_a": round(safe_float(a.get("crop_utility_rank_pct", a.get("score_policy_rank_pct", 0.0))), 6),
+                "crop_utility_rank_pct_b": round(safe_float(b.get("crop_utility_rank_pct", b.get("score_policy_rank_pct", 0.0))), 6),
                 "label_type_a": str(a.get("label_type", "")),
                 "label_type_b": str(b.get("label_type", "")),
                 "source_a": str(a.get("source", "")),
@@ -1925,13 +2159,13 @@ def build_pairwise_records(
 
     top1 = positives[0] if positives else None
     if top1 is not None:
-        for cand in hard_negatives[: max(0, int(max_hard_pairs))]:
-            add_pair(top1, cand, "top1_vs_hard_negative")
         for cand in near_negatives[: max(0, int(max_near_pairs))]:
             add_pair(top1, cand, "top1_vs_near_negative")
+        for cand in other_negatives[: max(0, int(max_hard_pairs))]:
+            add_pair(top1, cand, "top1_vs_negative")
     for cand in positives[1:3]:
-        for neg in hard_negatives[:2]:
-            add_pair(cand, neg, "topk_vs_hard_negative")
+        for neg in (near_negatives + other_negatives)[:2]:
+            add_pair(cand, neg, "topk_vs_negative")
     if best is not None and baseline is not None and str(best.get("candidate_id", "")) != str(baseline.get("candidate_id", "")):
         add_pair(best, baseline, "baseline_vs_best")
     return out
@@ -1951,14 +2185,15 @@ def build_listwise_record(
     routing = safe_dict(ar_res.get("routing"))
     mode = str(routing.get("subject_mode", ""))
     decision = safe_dict(ar_res.get("decision"))
-    positives = [c for c in candidates if bool(c.get("is_positive_candidate", False))]
-    hard_negs = [c for c in candidates if str(c.get("label_type", "")) in {"hard_negative", "unsafe_negative"}]
-    other_negs = [c for c in candidates if str(c.get("label_type", "")) in {"near_negative", "negative"}]
+    main_candidates = [c for c in candidates if is_main_supervision_candidate(c)]
+    positives = [c for c in main_candidates if bool(c.get("is_positive_candidate", False))]
+    near_negs = [c for c in main_candidates if str(c.get("label_type", "")) == "near_negative"]
+    other_negs = [c for c in main_candidates if str(c.get("label_type", "")) == "negative"]
     chosen: List[Dict[str, Any]] = []
     seen: set[str] = set()
 
     def maybe_add(cand: Dict[str, Any]) -> None:
-        if bool(cand.get("is_ignore_candidate", False)):
+        if not is_main_supervision_candidate(cand):
             return
         cid = str(cand.get("candidate_id", ""))
         if not cid or cid in seen:
@@ -1968,13 +2203,13 @@ def build_listwise_record(
 
     for cand in positives[: max(1, int(top_pos))]:
         maybe_add(cand)
-    baseline = next((c for c in candidates if bool(c.get("is_baseline_candidate", False))), None)
-    best = next((c for c in candidates if bool(c.get("is_best_candidate", False))), None)
+    baseline = next((c for c in main_candidates if bool(c.get("is_baseline_candidate", False))), None)
+    best = next((c for c in main_candidates if bool(c.get("is_best_candidate", False))), None)
     if baseline is not None:
         maybe_add(baseline)
     if best is not None:
         maybe_add(best)
-    for cand in hard_negs[: max(1, int(neg // 2))]:
+    for cand in near_negs[: max(1, int(neg // 2))]:
         maybe_add(cand)
     for cand in other_negs[: max(0, int(neg))]:
         if len(chosen) >= int(top_pos) + int(neg):
@@ -1983,12 +2218,13 @@ def build_listwise_record(
 
     if not chosen:
         return None
-    raw_scores = [safe_float(safe_dict(c.get("scores")).get("rank", safe_dict(c.get("scores")).get("final", 0.0))) for c in chosen]
+    raw_scores = [candidate_crop_utility_score(c) for c in chosen]
     probs = softmax_local(raw_scores, tau=softmax_tau)
     candidate_rows = []
     for cand, prob in zip(chosen, probs):
         row = candidate_training_view(cand, routing=routing)
         row["score_softmax_local"] = round(float(prob), 6)
+        row["crop_utility_softmax_local"] = round(float(prob), 6)
         candidate_rows.append(row)
     return {
         "image_id": image_id,
@@ -2011,7 +2247,7 @@ def build_checklist_records(
     decision_type = str(safe_dict(ar_res.get("decision")).get("decision_type", ""))
     out = []
     for cand in candidates:
-        if bool(cand.get("is_ignore_candidate", False)):
+        if not is_main_supervision_candidate(cand):
             continue
         row = candidate_training_view(cand, routing=routing)
         row.update(
@@ -2038,7 +2274,7 @@ def build_regression_records(
     decision_type = str(safe_dict(ar_res.get("decision")).get("decision_type", ""))
     rows = []
     for cand in candidates:
-        if bool(cand.get("is_ignore_candidate", False)):
+        if not is_main_supervision_candidate(cand):
             continue
         row = candidate_training_view(cand, routing=routing)
         row.update(
@@ -2123,6 +2359,15 @@ def build_conditional_detr_records(
         "decision": decision,
         "candidates": canonical_candidates,
         "teacher_meta": teacher_meta,
+        "score_semantics": {
+            "official_score_name": "crop_utility",
+            "official_score_field": "crop_utility_raw",
+            "official_prob_name": "crop_utility_prob",
+            "official_prob_field": "crop_utility_prob",
+            "admissibility_field": "admissible",
+            "internal_alias_of": "policy_safe",
+            "decision_semantics": "baseline_relative",
+        },
         "checklist_schema_version": "sstk_check_v2",
     }
     batch_record = {
@@ -2139,6 +2384,15 @@ def build_conditional_detr_records(
         "ignored_candidates": ignored_candidates,
         "overflow_candidates": overflow_candidates,
         "teacher_meta": teacher_meta,
+        "score_semantics": {
+            "official_score_name": "crop_utility",
+            "official_score_field": "crop_utility_raw",
+            "official_prob_name": "crop_utility_prob",
+            "official_prob_field": "crop_utility_prob",
+            "admissibility_field": "admissible",
+            "internal_alias_of": "policy_safe",
+            "decision_semantics": "baseline_relative",
+        },
         "checklist_schema_version": "sstk_check_v2",
     }
     return canonical_record, batch_record
@@ -2157,6 +2411,9 @@ def build_training_datasets(
     safe_leftover_policy: str,
     subject_mode_to_id: Optional[Dict[str, int]] = None,
     image_root: Optional[Path] = None,
+    progress: bool = False,
+    progress_every: int = 250,
+    progress_min_seconds: float = 10.0,
 ) -> Dict[str, List[Dict[str, Any]]]:
     subject_mode_to_id = subject_mode_to_id or build_subject_mode_vocab(teacher_records)
     pairwise_rows: List[Dict[str, Any]] = []
@@ -2167,8 +2424,22 @@ def build_training_datasets(
     canonical_rows: List[Dict[str, Any]] = []
     batch_rows: List[Dict[str, Any]] = []
     skipped_rows: List[Dict[str, Any]] = []
+    total_records = len(teacher_records)
+    total_groups = sum(
+        len(safe_dict(safe_dict(rec.get("teacher_scorer")).get("results_by_ar")))
+        for rec in teacher_records
+    )
+    tracker = ProgressTracker(
+        "build_training_datasets",
+        total=total_groups,
+        unit="ar_groups",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    groups_done = 0
 
-    for rec in teacher_records:
+    for record_idx, rec in enumerate(teacher_records, start=1):
         image_id = str(rec.get("image_id", ""))
         results_by_ar = safe_dict(safe_dict(rec.get("teacher_scorer")).get("results_by_ar"))
         for target_ar, ar_res in results_by_ar.items():
@@ -2271,6 +2542,23 @@ def build_training_datasets(
                         "decision": canonical_record["decision"],
                     }
                 )
+            groups_done += 1
+            tracker.update(
+                groups_done,
+                extra=(
+                    f"record={record_idx}/{total_records} | image_id={image_id} | "
+                    f"pairwise={len(pairwise_rows)} | batch={len(batch_rows)} | skipped={len(skipped_rows)}"
+                ),
+            )
+
+    tracker.finish(
+        groups_done,
+        extra=(
+            f"records={total_records} | pairwise={len(pairwise_rows)} | listwise={len(listwise_rows)} | "
+            f"decision={len(decision_rows)} | checklist={len(checklist_rows)} | regression={len(regression_rows)} | "
+            f"canonical={len(canonical_rows)} | batch={len(batch_rows)} | skipped={len(skipped_rows)}"
+        ),
+    )
 
     return {
         "pairwise": pairwise_rows,
@@ -2296,6 +2584,9 @@ def build_qa_summary(
     datasets: Dict[str, List[Dict[str, Any]]],
     *,
     safe_leftover_policy: str,
+    progress: bool = False,
+    progress_every: int = 500,
+    progress_min_seconds: float = 10.0,
 ) -> Dict[str, Any]:
     pairwise_rows = datasets["pairwise"]
     listwise_rows = datasets["listwise"]
@@ -2381,6 +2672,15 @@ def build_qa_summary(
         "monotonic_safe_ignored_total": 0,
         "rows_with_main_pool_monotonicity_violation": 0,
     }
+    tracker = ProgressTracker(
+        "build_qa_summary",
+        total=len(batch_rows) + len(canonical_rows),
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    progress_count = 0
     for row in batch_rows:
         for target in row.get("matching_targets", []):
             applicable = safe_dict(target.get("applicable_mask"))
@@ -2409,6 +2709,8 @@ def build_qa_summary(
         for overflow in row.get("overflow_candidates", []):
             consistency_audit["overflow_candidate_total"] += 1
             consistency_audit["overflow_bucket_reason_counts"][str(overflow.get("overflow_bucket_reason", "unknown"))] += 1
+        progress_count += 1
+        tracker.update(progress_count, extra=f"phase=batch_rows | image_id={row.get('image_id', '')}")
 
     for row in canonical_rows:
         key = (str(row.get("image_id", "")), str(row.get("target_ar", "")))
@@ -2477,10 +2779,13 @@ def build_qa_summary(
             consistency_audit["rows_with_higher_scored_unsafe_pool_candidates"] += 1
         if has_overflow_higher:
             consistency_audit["rows_with_higher_scored_overflow_candidates"] += 1
+        progress_count += 1
+        tracker.update(progress_count, extra=f"phase=canonical_rows | image_id={row.get('image_id', '')}")
 
     consistency_audit["training_repair_by_reason"] = dict(consistency_audit["training_repair_by_reason"])
     consistency_audit["safe_high_score_leftover_state_counts"] = dict(consistency_audit["safe_high_score_leftover_state_counts"])
     consistency_audit["overflow_bucket_reason_counts"] = dict(consistency_audit["overflow_bucket_reason_counts"])
+    tracker.finish(progress_count, extra=f"pairwise={len(pairwise_rows)} | batch={len(batch_rows)} | canonical={len(canonical_rows)}")
 
     return {
         "generation_policy": {
@@ -2543,12 +2848,27 @@ def build_qa_summary(
     }
 
 
-def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, Any]:
+def validate_datasets(
+    datasets: Dict[str, List[Dict[str, Any]]],
+    *,
+    progress: bool = False,
+    progress_every: int = 500,
+    progress_min_seconds: float = 10.0,
+) -> Dict[str, Any]:
     canonical_rows = datasets["conditional_detr_canonical"]
     batch_rows = datasets["conditional_detr_batch"]
     skipped_rows = datasets.get("conditional_detr_skipped", [])
     errors: List[str] = []
     warnings: List[str] = []
+    tracker = ProgressTracker(
+        "validate_datasets",
+        total=len(canonical_rows) + len(batch_rows),
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    progress_count = 0
 
     if len(canonical_rows) != len(batch_rows):
         errors.append(
@@ -2582,6 +2902,8 @@ def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, An
             seen_candidate_ids.add(candidate_id)
             if not bbox_is_valid(candidate.get("bbox_norm_xyxy")):
                 errors.append(f"{prefix} invalid candidate bbox for {candidate_id}")
+        progress_count += 1
+        tracker.update(progress_count, extra=f"phase=canonical_rows | image_id={image_id}")
 
     for row in batch_rows:
         image_id = str(row.get("image_id", ""))
@@ -2665,6 +2987,8 @@ def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, An
                 )
         if row.get("image_path") is None:
             warnings.append(f"{prefix} image_path unresolved")
+        progress_count += 1
+        tracker.update(progress_count, extra=f"phase=batch_rows | image_id={image_id}")
 
     summary = {
         "status": "ok" if not errors else "failed",
@@ -2678,6 +3002,7 @@ def validate_datasets(datasets: Dict[str, List[Dict[str, Any]]]) -> Dict[str, An
             "conditional_detr_skipped": len(skipped_rows),
         },
     }
+    tracker.finish(progress_count, extra=f"errors={len(errors)} | warnings={len(warnings)}")
     return summary
 
 
@@ -3000,6 +3325,8 @@ def build_report_examples(
     batch_rows: Sequence[Dict[str, Any]],
     out_dir: Path,
     max_examples: int,
+    *,
+    progress: bool = False,
 ) -> List[Dict[str, Any]]:
     selected = choose_report_examples(canonical_rows, max_examples=max(0, int(max_examples)))
     batch_map = {(str(row.get("image_id", "")), str(row.get("target_ar", ""))): row for row in batch_rows}
@@ -3012,6 +3339,14 @@ def build_report_examples(
     for old_path in candidate_examples_dir.glob("*.png"):
         old_path.unlink()
     examples: List[Dict[str, Any]] = []
+    tracker = ProgressTracker(
+        "build_report_examples",
+        total=len(selected),
+        unit="examples",
+        every=1,
+        min_seconds=1.0,
+        enabled=progress,
+    )
     for idx, row in enumerate(selected, start=1):
         image_id = str(row.get("image_id", ""))
         target_ar = str(row.get("target_ar", ""))
@@ -3019,6 +3354,7 @@ def build_report_examples(
         file_name = f"{idx:02d}_{image_id}_{safe_ar}.png"
         output_path = examples_dir / file_name
         if not render_report_example(row, output_path):
+            tracker.update(idx, extra=f"skip_render image_id={image_id} target_ar={target_ar}")
             continue
         decision = safe_dict(row.get("decision"))
         routing = safe_dict(row.get("routing"))
@@ -3291,6 +3627,8 @@ def build_report_examples(
                 "candidate_visuals": candidate_visuals,
             }
         )
+        tracker.update(idx, extra=f"image_id={image_id} target_ar={target_ar} candidate_visuals={len(candidate_visuals)}")
+    tracker.finish(len(selected), extra=f"rendered={len(examples)}")
     return examples
 
 
@@ -3341,6 +3679,10 @@ def infer_dataset_context(*paths: Path) -> Dict[str, str]:
 def collect_label_guide_summary(
     canonical_rows: Sequence[Dict[str, Any]],
     batch_rows: Sequence[Dict[str, Any]],
+    *,
+    progress: bool = False,
+    progress_every: int = 500,
+    progress_min_seconds: float = 10.0,
 ) -> Dict[str, Any]:
     score_values: Dict[str, List[float]] = defaultdict(list)
     macro_values: Dict[str, List[float]] = defaultdict(list)
@@ -3355,6 +3697,15 @@ def collect_label_guide_summary(
     why_tags: set[str] = set()
     reject_tags: set[str] = set()
     routing_flag_counts: Counter[str] = Counter()
+    tracker = ProgressTracker(
+        "collect_label_guide_summary",
+        total=len(canonical_rows) + len(batch_rows),
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    progress_count = 0
 
     for row in canonical_rows:
         routing = safe_dict(row.get("routing"))
@@ -3392,6 +3743,8 @@ def collect_label_guide_summary(
                     checklist_score_values[key].append(float(value))
             for key, value in safe_dict(candidate.get("checklist_labels")).items():
                 checklist_label_values[key].add(str(value))
+        progress_count += 1
+        tracker.update(progress_count, extra=f"phase=canonical_rows | image_id={row.get('image_id', '')}")
 
     for row in batch_rows:
         for target in safe_list(row.get("matching_targets")):
@@ -3400,7 +3753,13 @@ def collect_label_guide_summary(
                 for key, value in safe_dict(derived.get(group)).items():
                     if isinstance(value, (int, float)):
                         derived_values[(group, key)].append(float(value))
+        progress_count += 1
+        tracker.update(progress_count, extra=f"phase=batch_rows | image_id={row.get('image_id', '')}")
 
+    tracker.finish(
+        progress_count,
+        extra=f"subject_modes={len(subject_mode_to_id)} | policies={len(policy_ids)} | decision_types={len(decision_type_to_id)}",
+    )
     return {
         "score_values": dict(score_values),
         "macro_values": dict(macro_values),
@@ -3418,7 +3777,13 @@ def collect_label_guide_summary(
     }
 
 
-def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+def build_gaic_like_report_summary(
+    batch_rows: Sequence[Dict[str, Any]],
+    *,
+    progress: bool = False,
+    progress_every: int = 500,
+    progress_min_seconds: float = 10.0,
+) -> Dict[str, Any]:
     label_type_counts: Counter[str] = Counter()
     omitted_label_type_counts: Counter[str] = Counter()
     positive_count = 0
@@ -3428,7 +3793,15 @@ def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict
     score_values: List[float] = []
     raw_image_ids: set[str] = set()
     safe_leftover_policies: Counter[str] = Counter()
-    for row in batch_rows:
+    tracker = ProgressTracker(
+        "build_gaic_like_report_summary",
+        total=len(batch_rows),
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    for row_idx, row in enumerate(batch_rows, start=1):
         raw_image_ids.add(str(row.get("image_id", "")))
         safe_leftover_policies[str(safe_dict(row.get("label_generation")).get("safe_leftover_policy", "keep_negative"))] += 1
         for target in safe_list(row.get("matching_targets")):
@@ -3445,6 +3818,8 @@ def build_gaic_like_report_summary(batch_rows: Sequence[Dict[str, Any]]) -> Dict
         for candidate in safe_list(row.get("overflow_candidates")):
             overflow_count += 1
             omitted_label_type_counts[str(candidate.get("label_type", "overflow"))] += 1
+        tracker.update(row_idx, extra=f"image_id={row.get('image_id', '')}")
+    tracker.finish(len(batch_rows), extra=f"images={len(raw_image_ids)} | positive={positive_count} | negative={negative_count}")
     return {
         "image_rows": len(batch_rows),
         "unique_raw_images": len(raw_image_ids),
@@ -3997,8 +4372,11 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--report_examples", type=int, default=8)
     parser.add_argument("--strict_validation", type=int, default=1)
-    parser.add_argument("--score_profile", default="current_refined")
+    parser.add_argument("--score_profile", default="single_stage2")
     parser.add_argument("--score_profile_overrides_json", default="")
+    parser.add_argument("--progress", type=int, default=1)
+    parser.add_argument("--progress_every", type=int, default=250)
+    parser.add_argument("--progress_min_seconds", type=float, default=10.0)
     return parser.parse_args()
 
 
@@ -4012,10 +4390,35 @@ def main() -> None:
         profile_name=str(args.score_profile),
         override_json_path=str(args.score_profile_overrides_json),
     )
+    progress_enabled = bool(int(args.progress))
+    progress_every = max(1, int(args.progress_every))
+    progress_min_seconds = max(0.0, float(args.progress_min_seconds))
+    progress_log(
+        (
+            "build_finalscore_training_data: start"
+            f" | teacher_scores_jsonl={teacher_scores_jsonl}"
+            f" | out_dir={out_dir}"
+            f" | safe_leftover_policy={args.safe_leftover_policy}"
+        ),
+        enabled=progress_enabled,
+    )
 
-    teacher_records = load_teacher_records(teacher_scores_jsonl)
+    teacher_records = load_teacher_records(
+        teacher_scores_jsonl,
+        progress=progress_enabled,
+        progress_every=max(500, progress_every),
+        progress_min_seconds=progress_min_seconds,
+    )
     subject_mode_vocab = build_subject_mode_vocab(teacher_records)
     image_root = resolve_default_image_root(teacher_scores_jsonl, args.image_root)
+    total_groups = sum(
+        len(safe_dict(safe_dict(rec.get("teacher_scorer")).get("results_by_ar")))
+        for rec in teacher_records
+    )
+    progress_log(
+        f"build_finalscore_training_data: teacher_records={len(teacher_records)} | ar_groups={total_groups} | subject_modes={len(subject_mode_vocab)}",
+        enabled=progress_enabled,
+    )
     datasets = build_training_datasets(
         teacher_records=teacher_records,
         softmax_tau=float(args.softmax_tau),
@@ -4029,41 +4432,121 @@ def main() -> None:
         safe_leftover_policy=str(args.safe_leftover_policy),
         subject_mode_to_id=subject_mode_vocab,
         image_root=image_root,
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
     )
-    qa_summary = build_qa_summary(datasets, safe_leftover_policy=str(args.safe_leftover_policy))
-    validation_summary = validate_datasets(datasets)
+    progress_log("build_finalscore_training_data: build_qa_summary", enabled=progress_enabled)
+    qa_summary = build_qa_summary(
+        datasets,
+        safe_leftover_policy=str(args.safe_leftover_policy),
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
+    )
+    progress_log("build_finalscore_training_data: validate_datasets", enabled=progress_enabled)
+    validation_summary = validate_datasets(
+        datasets,
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
+    )
+    progress_log("build_finalscore_training_data: collect_label_guide_summary", enabled=progress_enabled)
     label_guide = collect_label_guide_summary(
         datasets["conditional_detr_canonical"],
         datasets["conditional_detr_batch"],
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
     )
     label_guide["dataset_label"] = dataset_context["dataset_label"]
     label_guide["run_label"] = out_dir.name
-    gaic_like_summary = build_gaic_like_report_summary(datasets["conditional_detr_batch"])
+    progress_log("build_finalscore_training_data: build_gaic_like_report_summary", enabled=progress_enabled)
+    gaic_like_summary = build_gaic_like_report_summary(
+        datasets["conditional_detr_batch"],
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
+    )
+    progress_log("build_finalscore_training_data: build_report_examples", enabled=progress_enabled)
     examples = build_report_examples(
         datasets["conditional_detr_canonical"],
         datasets["conditional_detr_batch"],
         out_dir=out_dir,
         max_examples=args.report_examples,
+        progress=progress_enabled,
     )
 
+    progress_log("build_finalscore_training_data: write output jsonl files", enabled=progress_enabled)
     counts = {
-        "train_pairwise.jsonl": write_jsonl(out_dir / "train_pairwise.jsonl", datasets["pairwise"]),
-        "train_listwise.jsonl": write_jsonl(out_dir / "train_listwise.jsonl", datasets["listwise"]),
-        "train_decision.jsonl": write_jsonl(out_dir / "train_decision.jsonl", datasets["decision"]),
-        "train_checklist.jsonl": write_jsonl(out_dir / "train_checklist.jsonl", datasets["checklist"]),
-        "train_regression.jsonl": write_jsonl(out_dir / "train_regression.jsonl", datasets["regression"]),
+        "train_pairwise.jsonl": write_jsonl(
+            out_dir / "train_pairwise.jsonl",
+            datasets["pairwise"],
+            progress_label="write_jsonl:train_pairwise.jsonl",
+            progress=progress_enabled,
+            progress_every=max(2000, progress_every * 10),
+            progress_min_seconds=progress_min_seconds,
+        ),
+        "train_listwise.jsonl": write_jsonl(
+            out_dir / "train_listwise.jsonl",
+            datasets["listwise"],
+            progress_label="write_jsonl:train_listwise.jsonl",
+            progress=progress_enabled,
+            progress_every=max(1000, progress_every * 5),
+            progress_min_seconds=progress_min_seconds,
+        ),
+        "train_decision.jsonl": write_jsonl(
+            out_dir / "train_decision.jsonl",
+            datasets["decision"],
+            progress_label="write_jsonl:train_decision.jsonl",
+            progress=progress_enabled,
+            progress_every=max(1000, progress_every * 5),
+            progress_min_seconds=progress_min_seconds,
+        ),
+        "train_checklist.jsonl": write_jsonl(
+            out_dir / "train_checklist.jsonl",
+            datasets["checklist"],
+            progress_label="write_jsonl:train_checklist.jsonl",
+            progress=progress_enabled,
+            progress_every=max(2000, progress_every * 10),
+            progress_min_seconds=progress_min_seconds,
+        ),
+        "train_regression.jsonl": write_jsonl(
+            out_dir / "train_regression.jsonl",
+            datasets["regression"],
+            progress_label="write_jsonl:train_regression.jsonl",
+            progress=progress_enabled,
+            progress_every=max(2000, progress_every * 10),
+            progress_min_seconds=progress_min_seconds,
+        ),
         "train_conditional_detr_canonical.jsonl": write_jsonl(
-            out_dir / "train_conditional_detr_canonical.jsonl", datasets["conditional_detr_canonical"]
+            out_dir / "train_conditional_detr_canonical.jsonl",
+            datasets["conditional_detr_canonical"],
+            progress_label="write_jsonl:train_conditional_detr_canonical.jsonl",
+            progress=progress_enabled,
+            progress_every=max(1000, progress_every * 5),
+            progress_min_seconds=progress_min_seconds,
         ),
         "train_conditional_detr_batch.jsonl": write_jsonl(
-            out_dir / "train_conditional_detr_batch.jsonl", datasets["conditional_detr_batch"]
+            out_dir / "train_conditional_detr_batch.jsonl",
+            datasets["conditional_detr_batch"],
+            progress_label="write_jsonl:train_conditional_detr_batch.jsonl",
+            progress=progress_enabled,
+            progress_every=max(1000, progress_every * 5),
+            progress_min_seconds=progress_min_seconds,
         ),
         "train_conditional_detr_skipped.jsonl": write_jsonl(
-            out_dir / "train_conditional_detr_skipped.jsonl", datasets["conditional_detr_skipped"]
+            out_dir / "train_conditional_detr_skipped.jsonl",
+            datasets["conditional_detr_skipped"],
+            progress_label="write_jsonl:train_conditional_detr_skipped.jsonl",
+            progress=progress_enabled,
+            progress_every=max(500, progress_every * 2),
+            progress_min_seconds=progress_min_seconds,
         ),
         "report_examples": len(examples),
     }
 
+    progress_log("build_finalscore_training_data: write summary artifacts", enabled=progress_enabled)
     (out_dir / "qa_summary.json").write_text(json.dumps(qa_summary, ensure_ascii=False, indent=2), encoding="utf-8")
     (out_dir / "validation_summary.json").write_text(
         json.dumps(validation_summary, ensure_ascii=False, indent=2), encoding="utf-8"
@@ -4078,6 +4561,7 @@ def main() -> None:
     (out_dir / "score_profile.json").write_text(
         json.dumps(REFRESH_PROFILE_METADATA, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    progress_log("build_finalscore_training_data: build_markdown_report", enabled=progress_enabled)
     report_text = build_markdown_report(
         teacher_scores_jsonl=teacher_scores_jsonl,
         out_dir=out_dir,
@@ -4090,6 +4574,16 @@ def main() -> None:
         dataset_context=dataset_context,
     )
     (out_dir / "TRAINING_DATA_REPORT_KO.md").write_text(report_text, encoding="utf-8")
+    progress_log(
+        (
+            "build_finalscore_training_data: finished"
+            f" | status={validation_summary['status']}"
+            f" | canonical={len(datasets['conditional_detr_canonical'])}"
+            f" | batch={len(datasets['conditional_detr_batch'])}"
+            f" | examples={len(examples)}"
+        ),
+        enabled=progress_enabled,
+    )
 
     print(
         json.dumps(

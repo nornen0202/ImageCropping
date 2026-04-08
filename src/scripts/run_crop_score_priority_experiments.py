@@ -207,6 +207,15 @@ EXPERIMENT_SPECS: List[ExperimentSpec] = [
         stage_family="stage2",
     ),
     ExperimentSpec(
+        experiment_id="single_stage2_utility",
+        stage=2,
+        label="Single Utility Stage2",
+        description="현행 policy_safe를 단일 scorer(crop_utility) semantics로 해석하는 1+2순위 profile.",
+        profile_name="single_stage2",
+        overrides={},
+        stage_family="single",
+    ),
+    ExperimentSpec(
         experiment_id="stage3_balanced",
         stage=3,
         label="Stage3 Balanced",
@@ -435,8 +444,9 @@ def merge_jsonl_unique(input_paths: Sequence[Path], output_path: Path, *, key_fi
 
 
 def benchmark_objective(summary: Dict[str, Any], qa_summary: Dict[str, Any], validation_summary: Dict[str, Any]) -> float:
-    ge_policy = safe_dict(safe_dict(summary.get("Ge", {})).get("trend_by_field", {})).get("score_policy", {})
-    prod_policy = safe_dict(safe_dict(summary.get("Ge", {})).get("prod_selection_policy", {}))
+    ge_summary = safe_dict(summary.get("Ge", {}))
+    ge_policy = safe_dict(safe_dict(ge_summary.get("trend_by_field", {})).get("crop_utility", safe_dict(ge_summary.get("trend_by_field", {})).get("score_policy", {})))
+    prod_policy = safe_dict(ge_summary.get("prod_selection_crop_utility", ge_summary.get("prod_selection_policy", {})))
     consistency = safe_dict(qa_summary.get("consistency_audit"))
     validation_ok = 1.0 if str(validation_summary.get("status", "")).lower() == "ok" else 0.0
 
@@ -462,8 +472,9 @@ def collect_experiment_metrics(training_dir: Path, benchmark_dir: Path) -> Dict[
     validation_summary = load_json(training_dir / "validation_summary.json")
     benchmark_summary = load_json(benchmark_dir / "benchmark_summary.json")
     consistency = safe_dict(qa_summary.get("consistency_audit"))
-    ge_policy = safe_dict(safe_dict(benchmark_summary.get("Ge", {})).get("trend_by_field", {})).get("score_policy", {})
-    ge_prod_policy = safe_dict(safe_dict(benchmark_summary.get("Ge", {})).get("prod_selection_policy", {}))
+    ge_summary = safe_dict(benchmark_summary.get("Ge", {}))
+    ge_policy = safe_dict(safe_dict(ge_summary.get("trend_by_field", {})).get("crop_utility", safe_dict(ge_summary.get("trend_by_field", {})).get("score_policy", {})))
+    ge_prod_policy = safe_dict(ge_summary.get("prod_selection_crop_utility", ge_summary.get("prod_selection_policy", {})))
     return {
         "objective": benchmark_objective(benchmark_summary, qa_summary, validation_summary),
         "validation_status": str(validation_summary.get("status", "")),
@@ -609,7 +620,7 @@ def experiment_report_markdown(
     lines.append("")
     lines.append("## Notes")
     lines.append("")
-    lines.append("- `objective`는 `Ge.score_policy` trend + production-policy GT matching 지표를 합산하고, monotonic/safe-pool 위반에 penalty를 준 값입니다.")
+    lines.append("- `objective`는 공식 `Ge.crop_utility` trend + production crop_utility GT matching 지표를 합산하고, monotonic/safe-pool 위반에 penalty를 준 값입니다.")
     lines.append("- `baseline_current_refined`는 비교 기준이며 stage winner 선발에는 stage1~4만 사용합니다.")
     lines.append("- debug viz는 기본적으로 baseline + 각 stage winner에 대해 생성됩니다. `--build_debug_viz_for_all 1`이면 모든 실험에 대해 생성합니다.")
     return "\n".join(lines).rstrip() + "\n"

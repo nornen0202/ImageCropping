@@ -547,7 +547,15 @@ def _conservative_scene_anchor(
         overlap = iou_xyxy(raw, sal_box or raw)
         if overlap >= 0.10:
             return expand_box_to_min_area(raw, min_area=max(target_area, raw_area))
-    return centered_box(anchor_cx, anchor_cy, target_area, image_ar)
+    anchor_box = centered_box(anchor_cx, anchor_cy, target_area, image_ar)
+    if raw is None or raw_area <= 0.0:
+        return anchor_box
+    # Even when we demote a tiny/raw person to a scene-like anchor, the fallback
+    # anchor should still fully contain the original raw subject extent.
+    merged = union_boxes([anchor_box, raw])
+    if merged is None:
+        return anchor_box
+    return expand_box_to_min_area(merged, min_area=max(target_area, box_area(merged)))
 
 
 def _saliency_support_box(saliency: Dict[str, Any]) -> Optional[List[float]]:

@@ -18,6 +18,13 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh
 # 서버 기본 실행
 bash src/scripts/run_phaseA_to_teacher_e2e.sh --server_mode 1 --data_dir data/SSTK/10K
 
+# 공용 GPU 기본값을 한 번에 주기(stage별 *_gpu_ids / *_num_workers 기본값 전파)
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/SSTK/10K \
+  --gpu_ids 0,1,2,3 \
+  --gpu_workers 4
+
 # 필터는 건너뛰고(이미 parquet 있음) 나머지만 실행
 bash src/scripts/run_phaseA_to_teacher_e2e.sh --run_filter 0 --skip_existing 1
 
@@ -115,6 +122,8 @@ Core options
 --skip_existing 0|1             output 파일이 있으면 단계 skip (default: 1)
 --run_tag TAG                   candidates/teacher 출력 suffix (default: "")
 --max_images INT                0=all, >0=앞에서 n장(candidate/teacher) (default: 0)
+--gpu_ids CSV                   공용 GPU 목록 alias. 비어 있는 stage별 *_gpu_ids 기본값으로 전파
+--gpu_workers INT               공용 shard worker alias. 비어 있는 stage별 *_num_workers 기본값으로 전파
 --cand_ar_list CSV              candidate target AR 목록 (예: FREE,1:1,9:16,16:9,3:4,4:3)
 --cand_num_workers INT          candidate 생성 멀티프로세스 worker 수 (0=auto, 1=single)
 --cand_mp_chunksize INT         candidate 멀티프로세스 map chunksize (default: 64)
@@ -178,6 +187,8 @@ Core options
 --run_training_labels -1|0|1    finalscore training labels 생성 (-1=auto: run_tag가 있으면 on, default: -1)
 --training_labels_dir PATH      training labels 출력 경로 (default: <data_dir>/artifacts/training_labels/<run_tag>_leftover_ignore_monotonic)
 --safe_leftover_policy NAME     keep_negative|ignore|promote_soft_positive (default: ignore)
+--score_profile NAME            build_finalscore_training_data.py scorer profile (default: single_stage2)
+--score_profile_overrides_json PATH  optional scorer override json passed to build_finalscore_training_data.py
 --run_training_label_debug_viz 0|1  GAIC GT 기반 training label debug viz 생성 (default: 0)
 --training_label_debug_viz_sample_size INT debug viz 균등 샘플 수 (default: 50)
 --training_label_debug_viz_seed INT debug viz 샘플링 seed (default: 42)
@@ -267,9 +278,13 @@ TRAINING_LABEL_DEBUG_VIZ_SEED=42
 TRAINING_LABEL_DEBUG_VIZ_OUT_DIR=""
 TRAINING_LABELS_DIR=""
 SAFE_LEFTOVER_POLICY="ignore"
+SCORE_PROFILE="single_stage2"
+SCORE_PROFILE_OVERRIDES_JSON=""
 GAIC_REFERENCE_JSON=""
 GAIC_TRAIN_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_train.json"
 GAIC_TEST_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_test.json"
+SHARED_GPU_IDS=""
+SHARED_GPU_WORKERS=0
 
 # Filter
 RUN_FILTER=1
@@ -447,6 +462,8 @@ while [ "$#" -gt 0 ]; do
     --run_tag) RUN_TAG="$2"; shift 2 ;;
     --skip_existing) SKIP_EXISTING="$2"; shift 2 ;;
     --precompute_mode) PRECOMPUTE_MODE="$2"; shift 2 ;;
+    --gpu_ids) SHARED_GPU_IDS="$2"; shift 2 ;;
+    --gpu_workers) SHARED_GPU_WORKERS="$2"; shift 2 ;;
     --extract_gpu_ids) EXTRACT_GPU_IDS="$2"; shift 2 ;;
 
     --run_filter) RUN_FILTER="$2"; shift 2 ;;
@@ -576,6 +593,8 @@ while [ "$#" -gt 0 ]; do
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
     --training_labels_dir) TRAINING_LABELS_DIR="$2"; shift 2 ;;
     --safe_leftover_policy) SAFE_LEFTOVER_POLICY="$2"; shift 2 ;;
+    --score_profile) SCORE_PROFILE="$2"; shift 2 ;;
+    --score_profile_overrides_json) SCORE_PROFILE_OVERRIDES_JSON="$2"; shift 2 ;;
     --run_training_label_debug_viz) RUN_TRAINING_LABEL_DEBUG_VIZ="$2"; shift 2 ;;
     --training_label_debug_viz_sample_size) TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE="$2"; shift 2 ;;
     --training_label_debug_viz_seed) TRAINING_LABEL_DEBUG_VIZ_SEED="$2"; shift 2 ;;
@@ -625,9 +644,80 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+normalize_csv_ids() {
+  local s="${1:-}"
+  s=$(echo "$s" | tr -d ' ')
+  s=$(echo "$s" | sed -E 's/^,+//; s/,+$//; s/,+/,/g')
+  echo "$s"
+}
+
+count_csv_ids() {
+  local s
+  s=$(normalize_csv_ids "${1:-}")
+  if [ -z "$s" ]; then
+    echo 0
+    return
+  fi
+  awk -F',' '{print NF}' <<< "$s"
+}
+
+resolve_gpu_workers() {
+  local gpu_ids="$1"
+  local requested="$2"
+  local gpu_count
+  gpu_count=$(count_csv_ids "$gpu_ids")
+  if [ "$gpu_count" -le 0 ]; then
+    echo ""
+    return
+  fi
+  if [ -n "$requested" ] && [ "$requested" -gt 0 ] 2>/dev/null; then
+    if [ "$requested" -lt "$gpu_count" ]; then
+      echo "$requested"
+    else
+      echo "$gpu_count"
+    fi
+    return
+  fi
+  echo "$gpu_count"
+}
+
 if [ "$PRECOMPUTE_MODE" != "unified" ] && [ "$PRECOMPUTE_MODE" != "split" ]; then
   echo "[error] --precompute_mode must be one of: unified, split"
   exit 1
+fi
+
+EFFECTIVE_SHARED_GPU_IDS=$(normalize_csv_ids "$SHARED_GPU_IDS")
+EFFECTIVE_SHARED_GPU_WORKERS=$(resolve_gpu_workers "$EFFECTIVE_SHARED_GPU_IDS" "$SHARED_GPU_WORKERS")
+if [ -n "$EFFECTIVE_SHARED_GPU_IDS" ]; then
+  if [ -z "$FILTER_TAG_EMBED_GPU_IDS" ]; then
+    FILTER_TAG_EMBED_GPU_IDS="$EFFECTIVE_SHARED_GPU_IDS"
+  fi
+  if [ -z "$EXTRACT_GPU_IDS" ]; then
+    EXTRACT_GPU_IDS="$EFFECTIVE_SHARED_GPU_IDS"
+  fi
+  if [ -z "$PUBLIC_INFER_GPU_IDS" ]; then
+    PUBLIC_INFER_GPU_IDS="$EFFECTIVE_SHARED_GPU_IDS"
+  fi
+  if [ -z "$TEACHER_GPU_IDS" ]; then
+    TEACHER_GPU_IDS="$EFFECTIVE_SHARED_GPU_IDS"
+  fi
+  if [ -z "$VLM_GPU_IDS" ]; then
+    VLM_GPU_IDS="$EFFECTIVE_SHARED_GPU_IDS"
+  fi
+fi
+if [ -n "$EFFECTIVE_SHARED_GPU_WORKERS" ]; then
+  if [ -z "$NUM_WORKERS" ]; then
+    NUM_WORKERS="$EFFECTIVE_SHARED_GPU_WORKERS"
+  fi
+  if [ -z "$PUBLIC_INFER_NUM_WORKERS" ]; then
+    PUBLIC_INFER_NUM_WORKERS="$EFFECTIVE_SHARED_GPU_WORKERS"
+  fi
+  if [ -z "$TEACHER_NUM_WORKERS" ]; then
+    TEACHER_NUM_WORKERS="$EFFECTIVE_SHARED_GPU_WORKERS"
+  fi
+  if [ -z "$VLM_NUM_WORKERS" ]; then
+    VLM_NUM_WORKERS="$EFFECTIVE_SHARED_GPU_WORKERS"
+  fi
 fi
 
 if [ "$EXTRACT_MULTI_GPU" -gt 1 ]; then
@@ -698,7 +788,10 @@ if [ "$TEACHER_MULTI_GPU" -gt 1 ]; then
 fi
 
 if [ "$TEACHER_MULTI_GPU" -lt 0 ]; then
-  GPU_CNT=$(nvidia-smi -L 2>/dev/null | wc -l || echo 0)
+  GPU_CNT=$(count_csv_ids "$TEACHER_GPU_IDS")
+  if [ "$GPU_CNT" -le 0 ]; then
+    GPU_CNT=$(nvidia-smi -L 2>/dev/null | wc -l || echo 0)
+  fi
   if [ "$USE_REAL_EXPENSIVE" -eq 1 ] && [ "$GPU_CNT" -gt 1 ]; then
     TEACHER_MULTI_GPU=1
   else
@@ -1089,6 +1182,7 @@ echo " server_mode         : $SERVER_MODE"
 echo " tar_dir             : $TAR_DIR"
 echo " run_tag             : ${RUN_TAG:-<none>}"
 echo " skip_existing       : $SKIP_EXISTING"
+echo " shared_gpu_defaults : gpu_ids=${EFFECTIVE_SHARED_GPU_IDS:-<none>} workers=${EFFECTIVE_SHARED_GPU_WORKERS:-auto}"
 echo " precompute_mode     : $PRECOMPUTE_MODE"
 echo " run_filter          : $RUN_FILTER"
 echo " filter_train_match  : $FILTER_REQUIRE_TRAIN_MATCH"
@@ -1121,6 +1215,7 @@ echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
 echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR policy=$SAFE_LEFTOVER_POLICY)"
+echo " score_profile       : $SCORE_PROFILE (overrides=${SCORE_PROFILE_OVERRIDES_JSON:-<none>})"
 echo " training_debug_viz  : $RUN_TRAINING_LABEL_DEBUG_VIZ (out=$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR sample_size=$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE seed=$TRAINING_LABEL_DEBUG_VIZ_SEED)"
 echo " gaic_reference_json : ${GAIC_REFERENCE_JSON:-<none>}"
 echo " gaic_train_ref_json : ${GAIC_TRAIN_REFERENCE_JSON:-<none>}"
@@ -1382,6 +1477,7 @@ else
         python3 src/scripts/merge_feature_jsonl.py \
           --input_parquet "$FILTERED_PARQUET" \
           --inputs "${merge_inputs[@]}" \
+          --progress 1 \
           --output_jsonl "$MERGED_FEATS"
     fi
   fi
@@ -1857,6 +1953,7 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --max_images "$MAX_IMAGES" \
         --prefer_real_expensive "$USE_REAL_EXPENSIVE" \
         --strict_expected_match "$TEACHER_AUTO_REPAIR_STRICT" \
+        --progress 1 \
         --verbose 1
   fi
 fi
@@ -1932,6 +2029,7 @@ build_training_label_debug_viz() {
       --subject_mode_vocab "$TRAINING_LABELS_SUBJECT_MODE_VOCAB_JSON" \
       --sample_size "$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE" \
       --seed "$TRAINING_LABEL_DEBUG_VIZ_SEED" \
+      --progress 1 \
       --out_dir "$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR"
 }
 
@@ -1956,6 +2054,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
         --teacher_qa_json "$TEACHER_QA_JSON" \
         --components_viz_dir "$COMPONENT_VIZ_OUT_DIR" \
         --output_report_dir "$REPORT_DIR" \
+        --progress 1 \
         --examples_per_bucket "$REPORT_EXAMPLES_PER_BUCKET"
 
     REPORT_EXAMPLE_IDS_FILE="${REPORT_DIR}/assets/analytics/report_example_image_ids_${RUN_TAG}.txt"
@@ -1963,6 +2062,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
       python3 src/scripts/build_sstk_detailed_report.py \
         --run_tag "$RUN_TAG" \
         --data_root "$DATA_DIR" \
+        --progress 1 \
         --report_dir "$REPORT_DIR"
 
     if [ -f "$REPORT_EXAMPLE_IDS_FILE" ]; then
@@ -1984,6 +2084,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
           --run_tag "$RUN_TAG" \
           --data_root "$DATA_DIR" \
           --report_dir "$REPORT_DIR" \
+          --progress 1 \
           --teacher_viz_fallback_dir "$REPORT_VIZ_STAGE_DIR"
     else
       echo "[warn] report example id list not found: $REPORT_EXAMPLE_IDS_FILE"
@@ -2007,6 +2108,9 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
         --out_dir "$TRAINING_LABELS_DIR" \
         --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
         --safe_leftover_policy "$SAFE_LEFTOVER_POLICY" \
+        --score_profile "$SCORE_PROFILE" \
+        --score_profile_overrides_json "$SCORE_PROFILE_OVERRIDES_JSON" \
+        --progress 1 \
         --strict_validation 1 \
         --report_examples 8
   fi
@@ -2019,6 +2123,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
       python3 src/scripts/convert_sstk_detr_labels_to_coco.py \
         --canonical_jsonl "$TRAINING_LABELS_DETR_CANONICAL_JSON" \
         --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
+        --progress 1 \
         --out_dir "$TRAINING_LABELS_COCO_DIR"
   fi
   if [ ! -f "$GAIC_REFERENCE_JSON" ]; then
@@ -2032,6 +2137,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
         --gaic_reference_json "$GAIC_REFERENCE_JSON" \
         --out_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
         --out_summary_json "$TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON" \
+        --progress 1 \
         --out_guide_md "$TRAINING_LABELS_GAIC_LIKE_GUIDE_MD"
   fi
   if [ "$RUN_TRAINING_LABEL_DEBUG_VIZ" -eq 1 ]; then

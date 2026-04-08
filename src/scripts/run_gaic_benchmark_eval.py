@@ -88,6 +88,7 @@ from scripts.build_single_image_crop_report import (
 PRIMARY_SCORE_FIELDS = (
     "score_rank",
     "score_policy",
+    "crop_utility_raw",
     "score_rank_pct",
     "score_z_local",
     "score_z_local_std",
@@ -98,9 +99,10 @@ PRIMARY_SCORE_FIELDS = (
     "score_policy_z_local_std",
     "score_policy_sigmoid_z_local",
     "policy_pseudo_mos_1to5",
+    "crop_utility_prob",
 )
-PRIMARY_PROTOCOL_FIELD = "score_rank"
-LOCAL_Z_FIELD = "score_z_local"
+PRIMARY_PROTOCOL_FIELD = "crop_utility_raw"
+LOCAL_Z_FIELD = "score_policy_z_local"
 DEFAULT_ALPHA_SWEEP = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
 DEFAULT_TOP_QUANTILE = 0.8
 DEFAULT_GE_FULL_TOPK = 10
@@ -144,7 +146,7 @@ def parse_args() -> argparse.Namespace:
         help="Optional CSV containing image_id column. When set, benchmark evaluates only those images in CSV order.",
     )
     parser.add_argument("--seed", type=int, default=17)
-    parser.add_argument("--score_profile", default="current_refined")
+    parser.add_argument("--score_profile", default="single_stage2")
     parser.add_argument("--score_profile_overrides_json", default="")
     parser.add_argument("--run_full_expensive", type=int, default=0)
     parser.add_argument("--full_expensive_cache_jsonl", default="")
@@ -831,8 +833,19 @@ def score_rank_value(candidate: Dict[str, Any]) -> float:
     return safe_float(candidate.get("score_rank", safe_float(candidate.get("scores", {}).get("rank", 0.0), 0.0)), 0.0)
 
 
+def score_crop_utility_value(candidate: Dict[str, Any]) -> float:
+    scores = candidate.get("scores")
+    if not isinstance(scores, dict):
+        scores = {}
+    if "crop_utility_raw" in candidate:
+        return safe_float(candidate.get("crop_utility_raw", 0.0), 0.0)
+    if "policy_safe" in scores:
+        return safe_float(scores.get("policy_safe", 0.0), 0.0)
+    return safe_float(candidate.get("score_policy", safe_float(scores.get("policy", scores.get("final", 0.0)), 0.0)), 0.0)
+
+
 def score_policy_value(candidate: Dict[str, Any]) -> float:
-    return safe_float(candidate.get("score_policy", safe_float(candidate.get("scores", {}).get("policy", 0.0), 0.0)), 0.0)
+    return score_crop_utility_value(candidate)
 
 
 def canonical_source_family(source: Any) -> str:
@@ -948,6 +961,7 @@ def build_prod_selection_payload(
         "bbox_norm_xyxy": [round(float(v), 6) for v in candidate.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])],
         "score_rank": round(score_rank_value(candidate), 6),
         "score_policy": round(score_policy_value(candidate), 6),
+        "crop_utility_raw": round(score_crop_utility_value(candidate), 6),
         "score_sigmoid_z_local": round(
             safe_float(
                 candidate.get("score_sigmoid_z_local", candidate.get("pseudo_prob_rank_local", 0.0)),
@@ -959,6 +973,7 @@ def build_prod_selection_payload(
         "score_policy_z_local": round(safe_float(candidate.get("score_policy_z_local", 0.0), 0.0), 6),
         "pseudo_prob_rank_local": round(safe_float(candidate.get("pseudo_prob_rank_local", 0.0), 0.0), 6),
         "pseudo_prob_policy_local": round(safe_float(candidate.get("pseudo_prob_policy_local", 0.0), 0.0), 6),
+        "crop_utility_prob": round(safe_float(candidate.get("pseudo_prob_policy_local", 0.0), 0.0), 6),
         "decision_type": decision_type,
         "source": str(candidate.get("source", "")),
         "winner_source_family": canonical_source_family(candidate.get("source", "")),
@@ -999,6 +1014,7 @@ def make_output_row(
         "mos": round(safe_float(ann.get("score", 0.0), 0.0), 6),
         "score_rank": round(score_rank_value(row), 6),
         "score_policy": round(score_policy_value(row), 6),
+        "crop_utility_raw": round(score_crop_utility_value(row), 6),
         "score_rank_pct": round(safe_float(row.get("score_rank_pct", 0.0), 0.0), 6),
         "score_z_local": round(safe_float(row.get("score_z_local", 0.0), 0.0), 6),
         "score_z_local_std": round(safe_float(row.get("score_z_local_std", 0.0), 0.0), 6),
@@ -1011,6 +1027,7 @@ def make_output_row(
         "score_policy_z_local_std": round(safe_float(row.get("score_policy_z_local_std", 0.0), 0.0), 6),
         "score_policy_sigmoid_z_local": round(safe_float(row.get("score_policy_sigmoid_z_local", 0.0), 0.0), 6),
         "pseudo_prob_policy_local": round(safe_float(row.get("pseudo_prob_policy_local", 0.0), 0.0), 6),
+        "crop_utility_prob": round(safe_float(row.get("pseudo_prob_policy_local", 0.0), 0.0), 6),
         "policy_pseudo_mos_1to5": round(safe_float(row.get("policy_pseudo_mos_1to5", 0.0), 0.0), 6),
         "raw_score_rank": round(safe_float(row.get("scores", {}).get("rank", 0.0), 0.0), 6),
         "raw_score_policy": round(safe_float(row.get("scores", {}).get("policy", 0.0), 0.0), 6),
@@ -1246,6 +1263,7 @@ def attach_local_normalization(candidates: Sequence[Dict[str, Any]], *, softmax_
     ):
         candidate["score_rank"] = safe_float(candidate.get("scores", {}).get("rank", candidate.get("scores", {}).get("final", 0.0)), 0.0)
         candidate["score_policy"] = safe_float(candidate.get("scores", {}).get("policy", candidate.get("scores", {}).get("final", 0.0)), 0.0)
+        candidate["crop_utility_raw"] = candidate["score_policy"]
         candidate["score_rank_pct"] = float(pct)
         candidate["score_z_local"] = float(z_score)
         candidate["score_z_local_std"] = float(z_std)
@@ -1264,6 +1282,7 @@ def attach_local_normalization(candidates: Sequence[Dict[str, Any]], *, softmax_
         candidate["pseudo_prob_policy_local_std"] = float(sigmoid(policy_z_std))
         candidate["score_policy_softmax_local"] = float(policy_softmax_v)
         candidate["policy_pseudo_mos_1to5"] = float(1.0 + 4.0 * sigmoid(policy_z))
+        candidate["crop_utility_prob"] = candidate["pseudo_prob_policy_local"]
     return scored
 
 
@@ -1353,14 +1372,17 @@ def derive_decision_from_full_pool(
             cheap_top_m.append(baseline)
 
     normalize_final_scores(cheap_top_m)
-    exp_sorted = sorted(cheap_top_m, key=score_rank_value, reverse=True)
-    non_hard_sorted = [candidate for candidate in exp_sorted if not _has_training_severe_reject(candidate)]
-    rank_pool = non_hard_sorted if non_hard_sorted else exp_sorted
-    best = rank_pool[0] if rank_pool else baseline or scored[0]
+    utility_sorted = sorted(cheap_top_m, key=score_crop_utility_value, reverse=True)
+    rank_sorted = sorted(cheap_top_m, key=score_rank_value, reverse=True)
+    non_hard_utility_sorted = [candidate for candidate in utility_sorted if not _has_training_severe_reject(candidate)]
+    non_hard_rank_sorted = [candidate for candidate in rank_sorted if not _has_training_severe_reject(candidate)]
+    utility_pool = non_hard_utility_sorted if non_hard_utility_sorted else utility_sorted
+    rank_pool = non_hard_rank_sorted if non_hard_rank_sorted else rank_sorted
+    best = utility_pool[0] if utility_pool else baseline or scored[0]
 
     baseline_effective = baseline
     if baseline_effective is None or bool(baseline_effective.get("hard_reject", False)):
-        baseline_effective = non_hard_sorted[0] if non_hard_sorted else best
+        baseline_effective = non_hard_utility_sorted[0] if non_hard_utility_sorted else best
     if baseline_effective is None:
         baseline_effective = best
 
@@ -1381,6 +1403,7 @@ def derive_decision_from_full_pool(
         "baseline_candidate": baseline_effective,
         "decision": decision,
         "cheap_top_m": cheap_top_m,
+        "utility_pool": utility_pool,
         "rank_pool": rank_pool,
         "baseline_iou_to_teacher": baseline_iou_to_teacher,
     }
@@ -1675,6 +1698,10 @@ def summarize_prod_selection_pairwise(
             mean([1.0 if str(rank_row.get("candidate_id", "")) != str(policy_row.get("candidate_id", "")) else 0.0 for rank_row, policy_row in paired]),
             6,
         ),
+        "crop_utility_vs_rank_disagreement_rate": round(
+            mean([1.0 if str(rank_row.get("candidate_id", "")) != str(policy_row.get("candidate_id", "")) else 0.0 for rank_row, policy_row in paired]),
+            6,
+        ),
         "rank_better_iou_rate": round(
             mean([1.0 if safe_float(rank_row.get("iou_to_gt_best", 0.0), 0.0) > safe_float(policy_row.get("iou_to_gt_best", 0.0), 0.0) else 0.0 for rank_row, policy_row in paired]),
             6,
@@ -1683,11 +1710,19 @@ def summarize_prod_selection_pairwise(
             mean([1.0 if safe_float(policy_row.get("iou_to_gt_best", 0.0), 0.0) > safe_float(rank_row.get("iou_to_gt_best", 0.0), 0.0) else 0.0 for rank_row, policy_row in paired]),
             6,
         ),
+        "crop_utility_better_iou_rate": round(
+            mean([1.0 if safe_float(policy_row.get("iou_to_gt_best", 0.0), 0.0) > safe_float(rank_row.get("iou_to_gt_best", 0.0), 0.0) else 0.0 for rank_row, policy_row in paired]),
+            6,
+        ),
         "rank_better_percentile_rate": round(
             mean([1.0 if safe_float(rank_row.get("matched_gt_mos_percentile", 0.0), 0.0) > safe_float(policy_row.get("matched_gt_mos_percentile", 0.0), 0.0) else 0.0 for rank_row, policy_row in paired]),
             6,
         ),
         "policy_better_percentile_rate": round(
+            mean([1.0 if safe_float(policy_row.get("matched_gt_mos_percentile", 0.0), 0.0) > safe_float(rank_row.get("matched_gt_mos_percentile", 0.0), 0.0) else 0.0 for rank_row, policy_row in paired]),
+            6,
+        ),
+        "crop_utility_better_percentile_rate": round(
             mean([1.0 if safe_float(policy_row.get("matched_gt_mos_percentile", 0.0), 0.0) > safe_float(rank_row.get("matched_gt_mos_percentile", 0.0), 0.0) else 0.0 for rank_row, policy_row in paired]),
             6,
         ),
@@ -1707,11 +1742,15 @@ def summarize_score_modes(
         grouped[str(record.get("score_mode", "") or "missing")].append(record)
     out: Dict[str, Any] = {}
     for mode_name, rows in sorted(grouped.items()):
-        trend_rows = [record[protocol]["metrics_by_field"]["score_rank"] for record in rows]
+        trend_rows = [
+            record[protocol]["metrics_by_field"].get(PRIMARY_PROTOCOL_FIELD, record[protocol]["metrics_by_field"].get("score_rank", {}))
+            for record in rows
+        ]
         local_prob = compute_local_probability_summary(
             [record[protocol]["rows"] for record in rows],
             alpha=alpha,
             top_quantile=top_quantile,
+            z_field=LOCAL_Z_FIELD,
         )
         prod_rows = [record["Ge"]["production_best"] for record in rows if isinstance(record.get("Ge", {}).get("production_best"), dict)]
         out[mode_name] = {
@@ -1779,11 +1818,15 @@ def summarize_failure_cohorts(
         if not rows:
             out[name] = {"image_count": 0}
             continue
-        trend_rows = [record[protocol]["metrics_by_field"]["score_rank"] for record in rows]
+        trend_rows = [
+            record[protocol]["metrics_by_field"].get(PRIMARY_PROTOCOL_FIELD, record[protocol]["metrics_by_field"].get("score_rank", {}))
+            for record in rows
+        ]
         local_prob = compute_local_probability_summary(
             [record[protocol]["rows"] for record in rows],
             alpha=alpha,
             top_quantile=top_quantile,
+            z_field=LOCAL_Z_FIELD,
         )
         prod_rows = [record["Ge"]["production_best"] for record in rows if isinstance(record.get("Ge", {}).get("production_best"), dict)]
         out[name] = {
@@ -2697,10 +2740,13 @@ def sample_analysis_bullets(
         bullets.append("이번 run은 proxy-expensive 설정이라 `A_macro`와 `T_macro`가 비활성입니다. 따라서 `score_rank`는 사실상 활성 macro인 `S_macro`와 `C_macro`의 평균으로 결정됩니다.")
 
     rank_gap = safe_float(ge_prod_best.get("score_rank", 0.0), 0.0) - safe_float(ge_gt_best.get("score_rank", 0.0), 0.0)
-    policy_gap = safe_float(ge_prod_best.get("score_policy", 0.0), 0.0) - safe_float(ge_gt_best.get("score_policy", 0.0), 0.0)
+    policy_gap = safe_float(ge_prod_best.get("crop_utility_raw", ge_prod_best.get("score_policy", 0.0)), 0.0) - safe_float(
+        ge_gt_best.get("crop_utility_raw", ge_gt_best.get("score_policy", 0.0)),
+        0.0,
+    )
     if rank_gap > 0.0:
         bullets.append(
-            f"`Ge prod best`가 `Ge GT best`보다 `score_rank`에서 `{rank_gap:+.6f}`, `score_policy`에서 `{policy_gap:+.6f}` 앞섰습니다."
+            f"`Ge prod best`가 `Ge GT best`보다 `score_rank`에서 `{rank_gap:+.6f}`, `crop_utility_raw`에서 `{policy_gap:+.6f}` 앞섰습니다."
         )
     elif rank_gap < 0.0:
         bullets.append(
@@ -3266,7 +3312,7 @@ def append_sample_analysis_markdown(
     lines.append("비교 해석:")
     lines.append("")
     lines.append(
-        f"- `Ge prod best` vs `Ge GT best`: rank gap=`{comparisons['prod_vs_gt_rank_gap']:+.6f}`, policy gap=`{comparisons['prod_vs_gt_policy_gap']:+.6f}`, IoU=`{comparisons['prod_vs_gt_iou']:.3f}`"
+        f"- `Ge prod best` vs `Ge GT best`: rank gap=`{comparisons['prod_vs_gt_rank_gap']:+.6f}`, crop_utility gap=`{comparisons['prod_vs_gt_policy_gap']:+.6f}`, IoU=`{comparisons['prod_vs_gt_iou']:.3f}`"
     )
     lines.append(
         f"- `GT MOS best` vs `Ge GT best` IoU=`{comparisons['gt_mos_vs_ge_gt_iou']:.3f}`, `GT MOS best` vs `Ge prod best` IoU=`{comparisons['gt_mos_vs_ge_prod_iou']:.3f}`"
@@ -3315,7 +3361,7 @@ def build_markdown_report(
     lines.append("- `Gc`: GAIC GT crop 집합만 사용합니다. local normalization은 GT annotation 집합 내부에서만 계산합니다.")
     lines.append("- `Ge`: GAIC GT crop을 production FREE-form candidate pool에 주입합니다. local normalization은 전체 production pool과 주입된 GT를 함께 놓고 계산합니다.")
     lines.append("- 5장과 6장은 `GT-only ranking` 관점입니다. 실제 production end-to-end 선택은 7장에서 따로 봅니다.")
-    lines.append("- `score_z_local`과 `score_policy_z_local`은 mean/std가 아니라 median/MAD 기반의 robust z-score 입니다.")
+    lines.append("- 공식 local normalization은 `crop_utility_raw` / `score_policy_z_local` 기준이며, legacy `score_rank` 계열도 비교용으로 함께 남깁니다.")
     lines.append("- `sigmoid(alpha * robust_z_local)` 계열 값은 calibrated probability가 아니라 `pseudo-probability` 또는 `top-q propensity`로 해석해야 합니다.")
     lines.append("")
     lines.append("## 3. 지표 설명")
@@ -3341,7 +3387,7 @@ def build_markdown_report(
     lines.append("")
     key_rows = []
     for protocol in ("Gc", "Ge"):
-        trend = summary[protocol]["trend_by_field"]["score_rank"]
+        trend = summary[protocol]["trend_by_field"].get("crop_utility_raw", summary[protocol]["trend_by_field"]["score_rank"])
         local_prob = summary[protocol]["local_probability"]["test"]
         calib = summary[protocol]["global_calibration"]["test"]
         key_rows.append(
@@ -3363,8 +3409,8 @@ def build_markdown_report(
     lines.append("해석:")
     lines.append("")
     lines.append("- `Gc`는 높고 `Ge`가 떨어지면, scorer 자체는 GT crop을 잘 정렬하지만 production candidate space 또는 policy layer에서 drift가 생긴다는 뜻입니다.")
-    lines.append("- `score_policy`가 `score_rank`보다 MOS와 더 잘 맞는 구간이 실제로 존재하므로 calibration도 `rank`와 `policy`를 같이 보는 편이 안전합니다.")
-    lines.append("- raw `score_rank`, raw `score_policy`는 candidate-local score이고, end-to-end 차이는 local-normalized 계열과 실제 production winner에서 드러납니다.")
+    lines.append("- 공식 단일 scorer는 `crop_utility_raw`이고, legacy `score_rank`는 비교 기준으로 유지됩니다.")
+    lines.append("- raw `score_rank`, raw `crop_utility_raw`는 candidate-local score이고, end-to-end 차이는 local-normalized 계열과 실제 production winner에서 더 뚜렷하게 드러납니다.")
     lines.append("")
     lines.append("## 5. 공식 Test Subset (`GT-only ranking`)")
     lines.append("")
@@ -3403,27 +3449,27 @@ def build_markdown_report(
         lines.append(f"### {protocol}")
         lines.append("")
         lines.extend(markdown_table(["필드", "Spearman", "Kendall", "PairAcc", "Hit@1", "Top-q"], rows))
-        lines.append("")
+    lines.append("")
     lines.append("## 7. Ge Production-Inclusive Selection")
     lines.append("")
     ge_prod = summary["Ge"].get("prod_selection", {})
-    ge_prod_policy = summary["Ge"].get("prod_selection_policy", {})
-    ge_prod_pairwise = summary["Ge"].get("prod_selection_rank_vs_policy", {})
+    ge_prod_rank = summary["Ge"].get("prod_selection_rank", {})
+    ge_prod_pairwise = summary["Ge"].get("prod_selection_rank_vs_crop_utility", summary["Ge"].get("prod_selection_rank_vs_policy", {}))
     lines.extend(
         markdown_table(
             ["지표", "값", "해석"],
             [
                 ["이미지 수", str(ge_prod.get("image_count", 0)), "production winner를 집계한 이미지 수입니다."],
-                ["rank winner non-GT rate", f"{safe_float(ge_prod.get('non_gt_winner_rate', 0.0), 0.0):.3f}", "`score_rank` 기준 최종 winner가 GT annotation 그 자체가 아닌 production 후보인 비율입니다."],
-                ["policy winner non-GT rate", f"{safe_float(ge_prod_policy.get('non_gt_winner_rate', 0.0), 0.0):.3f}", "`score_policy` 기준 최종 winner가 GT annotation 그 자체가 아닌 production 후보인 비율입니다."],
-                ["rank winner IoU to GT MOS best", f"{safe_float(ge_prod.get('gt_best_iou_mean', 0.0), 0.0):.3f}", "`score_rank` winner가 사람 MOS 최고 GT와 평균적으로 얼마나 겹치는지입니다."],
-                ["policy winner IoU to GT MOS best", f"{safe_float(ge_prod_policy.get('gt_best_iou_mean', 0.0), 0.0):.3f}", "`score_policy` winner가 사람 MOS 최고 GT와 평균적으로 얼마나 겹치는지입니다."],
-                ["rank winner GT percentile", f"{safe_float(ge_prod.get('matched_gt_mos_percentile_mean', 0.0), 0.0):.3f}", "`score_rank` winner와 가장 많이 겹치는 GT의 MOS percentile 평균입니다."],
-                ["policy winner GT percentile", f"{safe_float(ge_prod_policy.get('matched_gt_mos_percentile_mean', 0.0), 0.0):.3f}", "`score_policy` winner와 가장 많이 겹치는 GT의 MOS percentile 평균입니다."],
-                ["rank-policy disagreement", f"{safe_float(ge_prod_pairwise.get('policy_vs_rank_disagreement_rate', 0.0), 0.0):.3f}", "두 production winner가 서로 다른 비율입니다."],
-                ["policy better GT percentile", f"{safe_float(ge_prod_pairwise.get('policy_better_percentile_rate', 0.0), 0.0):.3f}", "`score_policy` winner가 `score_rank` winner보다 GT percentile이 높은 비율입니다."],
-                ["policy better IoU", f"{safe_float(ge_prod_pairwise.get('policy_better_iou_rate', 0.0), 0.0):.3f}", "`score_policy` winner가 `score_rank` winner보다 GT best IoU가 높은 비율입니다."],
-                ["GT-vs-rank disagreement", f"{safe_float(ge_prod.get('gt_vs_prod_disagreement_rate', 0.0), 0.0):.3f}", "Ge GT best와 `score_rank` production winner가 다른 비율입니다."],
+                ["crop_utility winner non-GT rate", f"{safe_float(ge_prod.get('non_gt_winner_rate', 0.0), 0.0):.3f}", "공식 `crop_utility` 기준 최종 winner가 GT annotation 그 자체가 아닌 production 후보인 비율입니다."],
+                ["rank winner non-GT rate", f"{safe_float(ge_prod_rank.get('non_gt_winner_rate', 0.0), 0.0):.3f}", "legacy `score_rank` 기준 최종 winner가 GT annotation 그 자체가 아닌 production 후보인 비율입니다."],
+                ["crop_utility winner IoU to GT MOS best", f"{safe_float(ge_prod.get('gt_best_iou_mean', 0.0), 0.0):.3f}", "`crop_utility` winner가 사람 MOS 최고 GT와 평균적으로 얼마나 겹치는지입니다."],
+                ["rank winner IoU to GT MOS best", f"{safe_float(ge_prod_rank.get('gt_best_iou_mean', 0.0), 0.0):.3f}", "`score_rank` winner가 사람 MOS 최고 GT와 평균적으로 얼마나 겹치는지입니다."],
+                ["crop_utility winner GT percentile", f"{safe_float(ge_prod.get('matched_gt_mos_percentile_mean', 0.0), 0.0):.3f}", "`crop_utility` winner와 가장 많이 겹치는 GT의 MOS percentile 평균입니다."],
+                ["rank winner GT percentile", f"{safe_float(ge_prod_rank.get('matched_gt_mos_percentile_mean', 0.0), 0.0):.3f}", "`score_rank` winner와 가장 많이 겹치는 GT의 MOS percentile 평균입니다."],
+                ["crop_utility-rank disagreement", f"{safe_float(ge_prod_pairwise.get('crop_utility_vs_rank_disagreement_rate', ge_prod_pairwise.get('policy_vs_rank_disagreement_rate', 0.0)), 0.0):.3f}", "공식 `crop_utility` winner와 legacy `score_rank` winner가 서로 다른 비율입니다."],
+                ["crop_utility better GT percentile", f"{safe_float(ge_prod_pairwise.get('crop_utility_better_percentile_rate', ge_prod_pairwise.get('policy_better_percentile_rate', 0.0)), 0.0):.3f}", "`crop_utility` winner가 `score_rank` winner보다 GT percentile이 높은 비율입니다."],
+                ["crop_utility better IoU", f"{safe_float(ge_prod_pairwise.get('crop_utility_better_iou_rate', ge_prod_pairwise.get('policy_better_iou_rate', 0.0)), 0.0):.3f}", "`crop_utility` winner가 `score_rank` winner보다 GT best IoU가 높은 비율입니다."],
+                ["GT-vs-crop_utility disagreement", f"{safe_float(ge_prod.get('gt_vs_prod_disagreement_rate', 0.0), 0.0):.3f}", "Ge GT best와 공식 `crop_utility` production winner가 다른 비율입니다."],
             ],
         )
     )
@@ -3433,18 +3479,18 @@ def build_markdown_report(
         for name, count in sorted(ge_prod.get("winner_source_family_counts", {}).items(), key=lambda item: (-item[1], item[0]))
     ]
     if source_rows:
-        lines.append("rank winner source family 분포:")
+        lines.append("crop_utility winner source family 분포:")
         lines.append("")
         lines.extend(markdown_table(["source family", "count", "matched GT top-q rate"], source_rows))
         lines.append("")
-    policy_source_rows = [
-        [name, str(count), compact_float(ge_prod_policy.get("winner_source_family_topq_rate", {}).get(name), 3)]
-        for name, count in sorted(ge_prod_policy.get("winner_source_family_counts", {}).items(), key=lambda item: (-item[1], item[0]))
+    rank_source_rows = [
+        [name, str(count), compact_float(ge_prod_rank.get("winner_source_family_topq_rate", {}).get(name), 3)]
+        for name, count in sorted(ge_prod_rank.get("winner_source_family_counts", {}).items(), key=lambda item: (-item[1], item[0]))
     ]
-    if policy_source_rows:
-        lines.append("policy winner source family 분포:")
+    if rank_source_rows:
+        lines.append("rank winner source family 분포:")
         lines.append("")
-        lines.extend(markdown_table(["source family", "count", "matched GT top-q rate"], policy_source_rows))
+        lines.extend(markdown_table(["source family", "count", "matched GT top-q rate"], rank_source_rows))
         lines.append("")
     score_mode_rows = [
         [
@@ -3512,7 +3558,7 @@ def build_markdown_report(
         )
     )
     lines.append("")
-    lines.append("## 10. Failure Cohorts (`Ge score_rank`)")
+    lines.append("## 10. Failure Cohorts (`Ge crop_utility`)")
     lines.append("")
     cohort_rows = []
     for cohort_name, cohort in summary["Ge"].get("failure_cohorts", {}).items():
@@ -3570,7 +3616,7 @@ def build_markdown_report(
     lines.append("")
     lines.extend(markdown_table(["bucket", "GTbest mass", "raw mass", "candidate mass", "support mass", "support<0.5", "centroid-in", "centroid dist"], support_mass_rows))
     lines.append("")
-    lines.append("## 11. 모드별 분해 (`score_rank`)")
+    lines.append("## 11. 모드별 분해 (`crop_utility_raw`)")
     lines.append("")
     for protocol in ("Gc", "Ge"):
         rows = []
@@ -3612,9 +3658,9 @@ def build_markdown_report(
     lines.append("")
     lines.append(f"![Ge 산점도]({plot_paths['ge_scatter'].relative_to(output_dir).as_posix()})")
     lines.append("")
-    lines.append(f"![Ge rank 신뢰도 곡선]({plot_paths['ge_reliability'].relative_to(output_dir).as_posix()})")
+    lines.append(f"![Ge crop_utility 신뢰도 곡선]({plot_paths['ge_reliability'].relative_to(output_dir).as_posix()})")
     lines.append("")
-    lines.append(f"![Ge policy 신뢰도 곡선]({plot_paths['ge_policy_reliability'].relative_to(output_dir).as_posix()})")
+    lines.append(f"![Ge rank 비교 신뢰도 곡선]({plot_paths['ge_policy_reliability'].relative_to(output_dir).as_posix()})")
     lines.append("")
     lines.append("## 14. 샘플 갤러리")
     lines.append("")
@@ -3627,14 +3673,14 @@ def build_markdown_report(
     lines.append("- 남보라 반투명 heatmap `support mass`: low-res support map mass를 업샘플링한 시각화입니다. `score_mode=support_map`인 샘플에서만 보이며, scorer macro가 더 직접적으로 참조하는 support 분포를 보여줍니다.")
     lines.append("- 인물 사진도 동일하게 보라색 bbox가 표시됩니다. portrait에서 이 박스는 대개 scorer가 참조하는 bbox subject region이며, yellow saliency mask는 보조 evidence입니다.")
     lines.append("- 노랑 반투명 mask `c7 saliency`: BiRefNet/IS-Net/OpenCV fallback으로 샘플 이미지에 대해 다시 추론한 saliency foreground 영역입니다. bbox가 아니라 mask 자체를 오버레이합니다.")
-    lines.append("- 각 bbox 라벨에는 `sigz`와 `rank`를 같이 적습니다. 여기서 `sigz`는 기본적으로 `score_policy_sigmoid_z_local`인 policy pseudo probability 입니다. 해당 값이 없을 때만 `score_sigmoid_z_local = sigmoid(score_z_local)` 계열 fallback을 사용합니다. training label의 `score_prob`도 같은 기본값을 사용하며, calibrated probability가 아니라 pseudo-probability로 해석해야 합니다.")
+    lines.append("- 각 bbox 라벨에는 `sigz`와 `rank`를 같이 적습니다. 여기서 `sigz`는 기본적으로 공식 `crop_utility_prob == score_policy_sigmoid_z_local` 입니다. 해당 값이 없을 때만 `score_sigmoid_z_local = sigmoid(score_z_local)` 계열 fallback을 사용합니다. training label의 `score_prob`도 같은 기본값을 사용하며, calibrated probability가 아니라 pseudo-probability로 해석해야 합니다.")
     lines.append("- GT 후보인 경우 라벨은 `MOS`, `sigz`, `rank`를 모두 적습니다. 즉 사람 평점과 teacher의 local-normalized 점수를 동시에 볼 수 있습니다.")
     lines.append("- 비GT 후보인 경우 라벨은 `sigz`, `rank`만 적습니다. MOS가 없기 때문입니다.")
     lines.append("- 초록 이중선 bbox `GT MOS best`: 해당 이미지의 GAIC GT 중 사람 MOS가 가장 높은 정답 크롭입니다.")
-    lines.append("- 파랑 실선 bbox `Gc best`: `Gc` 프로토콜에서 GT 크롭들만 놓고 점수화했을 때 `score_rank`가 가장 높은 GT 크롭입니다.")
-    lines.append("- 주황 파선 bbox `Ge GT best`: `Ge` 프로토콜에서 GT 크롭을 프로덕션 후보 풀에 주입한 뒤, GT 크롭들만 다시 비교했을 때 `score_rank`가 가장 높은 GT 크롭입니다.")
-    lines.append("- 빨강 굵은 실선 bbox `Ge prod best`: `Ge` 프로토콜에서 프로덕션 자유형 후보와 주입된 GT를 모두 합친 전체 후보 중 최종 winner입니다.")
-    lines.append("- `score_rank`와 `sigz`는 MOS나 IoU가 아니라 모델의 후보 내부 순위화 계열 점수입니다. 절대값보다 같은 이미지 안에서의 상대 순서를 봐야 합니다.")
+    lines.append("- 파랑 실선 bbox `Gc best`: `Gc` 프로토콜에서 GT 크롭들만 놓고 점수화했을 때 공식 `crop_utility_raw`가 가장 높은 GT 크롭입니다.")
+    lines.append("- 주황 파선 bbox `Ge GT best`: `Ge` 프로토콜에서 GT 크롭을 프로덕션 후보 풀에 주입한 뒤, GT 크롭들만 다시 비교했을 때 공식 `crop_utility_raw`가 가장 높은 GT 크롭입니다.")
+    lines.append("- 빨강 굵은 실선 bbox `Ge prod best`: `Ge` 프로토콜에서 프로덕션 자유형 후보와 주입된 GT를 모두 합친 전체 후보 중 공식 `crop_utility` winner입니다.")
+    lines.append("- `score_rank`는 legacy 비교용 필드이고, 실제 선택/label/benchmark 기준은 `crop_utility_raw` 입니다. 절대값보다 같은 이미지 안에서의 상대 순서를 봐야 합니다.")
     lines.append("- overlay 상단 패널의 `Gc/Ge spearman`은 해당 이미지에서 예측 순위와 GT MOS 순위의 일치도이고, `coverage top1_iou`는 `Ge prod best` 박스가 GT 최고 MOS 박스와 얼마나 겹치는지의 IoU입니다.")
     lines.append("- 샘플별 상세 표의 `latent mass recall`은 GT 상위 crop latent support 기준입니다. distributed scene에서는 이 값이 bbox IoU보다 더 중요한 진단 근거가 됩니다.")
     lines.append("")
@@ -3653,10 +3699,10 @@ def build_markdown_report(
     lines.append("- `candidate_eval_rows.jsonl`: `Gc`와 `Ge`의 GT-only candidate 행과 예측 점수를 담습니다.")
     lines.append("- `ge_full_candidates_topk.jsonl`: `Ge` full production+GT decision pool의 상위 후보를 이미지별로 저장한 prod-inclusive artifact 입니다.")
     lines.append("- `per_image_metrics.csv`: 이미지/프로토콜 단위의 1차 지표 요약입니다.")
-    lines.append("- `benchmark_summary.json`의 `split_breakdown`: 공식 train/test 부분집합 기준 `score_rank` 핵심 지표입니다.")
-    lines.append("- `benchmark_summary.json`의 `prod_selection`: production 최종 winner의 GT percentile / IoU / source family 분해입니다.")
-    lines.append("- `benchmark_summary.json`의 `prod_selection_policy`: `score_policy` 기준 production winner 분해입니다.")
-    lines.append("- `benchmark_summary.json`의 `prod_selection_rank_vs_policy`: rank winner와 policy winner 비교 표입니다.")
+    lines.append("- `benchmark_summary.json`의 `split_breakdown`: 공식 train/test 부분집합 기준 `crop_utility_raw` 핵심 지표입니다.")
+    lines.append("- `benchmark_summary.json`의 `prod_selection` / `prod_selection_crop_utility`: 공식 `crop_utility` production winner의 GT percentile / IoU / source family 분해입니다.")
+    lines.append("- `benchmark_summary.json`의 `prod_selection_rank`: legacy `score_rank` 기준 production winner 분해입니다.")
+    lines.append("- `benchmark_summary.json`의 `prod_selection_rank_vs_crop_utility`: rank winner와 crop_utility winner 비교 표입니다.")
     lines.append("- `benchmark_summary.json`의 `failure_cohorts`: low-confidence subject, tiny raw anchor, neutralized, source-family cohort를 따로 집계한 결과입니다.")
     lines.append("- `benchmark_summary.json`의 `score_mode_distribution`: `subject_preservation / support_map / neutralized`별 품질 분해입니다.")
     lines.append("- `benchmark_summary.json`의 `subject_support_diagnostics`: bbox IoU와 latent support mass를 함께 보는 subject-region 진단 요약입니다.")
@@ -3899,12 +3945,12 @@ def main() -> None:
             width=width,
             height=height,
         )
-        decision_pool = sorted(ge_decision.get("rank_pool", []), key=score_rank_value, reverse=True)
-        policy_pool = sorted(decision_pool, key=score_policy_value, reverse=True)
-        rank_best_candidate = ge_decision["best_candidate"]
-        policy_best_candidate = policy_pool[0] if policy_pool else rank_best_candidate
+        decision_pool = sorted(ge_decision.get("utility_pool", ge_decision.get("rank_pool", [])), key=score_crop_utility_value, reverse=True)
+        rank_pool = sorted(ge_decision.get("rank_pool", []), key=score_rank_value, reverse=True)
+        utility_best_candidate = ge_decision["best_candidate"]
+        rank_best_candidate = rank_pool[0] if rank_pool else utility_best_candidate
         prod_best_payload = build_prod_selection_payload(
-            candidate=rank_best_candidate,
+            candidate=utility_best_candidate,
             anns=anns,
             width=width,
             height=height,
@@ -3912,18 +3958,18 @@ def main() -> None:
             gt_best_row=gt_best_row,
             decision_type=str(ge_decision["decision"]["decision_type"]),
         )
-        policy_best_payload = build_prod_selection_payload(
-            candidate=policy_best_candidate,
+        rank_best_payload = build_prod_selection_payload(
+            candidate=rank_best_candidate,
             anns=anns,
             width=width,
             height=height,
             top_quantile=float(args.top_quantile),
             gt_best_row=gt_best_row,
-            decision_type="policy_rank_pool",
+            decision_type="rank_pool",
         )
         prod_source_family = str(prod_best_payload["winner_source_family"])
-        policy_source_family = str(policy_best_payload["winner_source_family"])
-        policy_rank_disagree = str(prod_best_payload["candidate_id"]) != str(policy_best_payload["candidate_id"])
+        rank_source_family = str(rank_best_payload["winner_source_family"])
+        utility_rank_disagree = str(prod_best_payload["candidate_id"]) != str(rank_best_payload["candidate_id"])
         for rank_idx, row in enumerate(decision_pool[: max(1, int(args.ge_full_topk))], start=1):
             topk_match = gt_match_summary(
                 candidate=row,
@@ -3947,6 +3993,7 @@ def main() -> None:
                     "score_final": round(safe_float(row.get("scores", {}).get("final", 0.0), 0.0), 6),
                     "score_rank": round(score_rank_value(row), 6),
                     "score_policy": round(score_policy_value(row), 6),
+                    "crop_utility_raw": round(score_crop_utility_value(row), 6),
                     "score_z_local": round(safe_float(row.get("score_z_local", 0.0), 0.0), 6),
                     "score_policy_z_local": round(safe_float(row.get("score_policy_z_local", 0.0), 0.0), 6),
                     "matched_gt_iou": topk_match["best_iou"],
@@ -3992,11 +4039,11 @@ def main() -> None:
                     "subject_mode": subject_mode,
                     "mode_bucket": mode_bucket(subject_mode),
                     "num_gt": len(rendered_rows),
-                    "spearman": metrics_by_field["score_rank"]["spearman"],
-                    "kendall_tau_b": metrics_by_field["score_rank"]["kendall_tau_b"],
-                    "weighted_pair_acc": metrics_by_field["score_rank"]["weighted_pair_acc"],
-                    "hit_at_1": metrics_by_field["score_rank"]["hit_at_1"],
-                    "topq_jaccard": metrics_by_field["score_rank"]["topq_jaccard"],
+                    "spearman": metrics_by_field[PRIMARY_PROTOCOL_FIELD]["spearman"],
+                    "kendall_tau_b": metrics_by_field[PRIMARY_PROTOCOL_FIELD]["kendall_tau_b"],
+                    "weighted_pair_acc": metrics_by_field[PRIMARY_PROTOCOL_FIELD]["weighted_pair_acc"],
+                    "hit_at_1": metrics_by_field[PRIMARY_PROTOCOL_FIELD]["hit_at_1"],
+                    "topq_jaccard": metrics_by_field[PRIMARY_PROTOCOL_FIELD]["topq_jaccard"],
                     "subject_mode_conf": round(safe_float(ge_route.get("subject_mode_conf", 0.0), 0.0), 6),
                     "raw_anchor_area": round(box_area(subject_visuals["raw_anchor_norm_xyxy"]), 6) if subject_visuals.get("raw_anchor_norm_xyxy") else 0.0,
                     "subject_reliability": round(safe_float(subject_visuals.get("subject_reliability", 0.0), 0.0), 6),
@@ -4019,12 +4066,19 @@ def main() -> None:
                     "support_centroid_distance": round(safe_float(subject_support_metrics["support_region"]["centroid_distance"], 0.0), 6),
                     "blank_ratio_est": round(safe_float(subject_visuals.get("saliency_blank_ratio_est", ge_route.get("router_signals", {}).get("blank_ratio_est", 0.0)), 0.0), 6),
                     "ge_winner_source_family": prod_source_family,
-                    "ge_policy_winner_source_family": policy_source_family,
-                    "ge_policy_rank_disagree": bool(policy_rank_disagree),
+                    "ge_crop_utility_winner_source_family": prod_source_family,
+                    "ge_rank_winner_source_family": rank_source_family,
+                    "ge_crop_utility_rank_disagree": bool(utility_rank_disagree),
+                    "ge_policy_winner_source_family": prod_source_family,
+                    "ge_policy_rank_disagree": bool(utility_rank_disagree),
                     "ge_prod_gt_best_iou": prod_best_payload["iou_to_gt_best"],
                     "ge_prod_matched_gt_percentile": prod_best_payload["matched_gt_mos_percentile"],
-                    "ge_policy_gt_best_iou": policy_best_payload["iou_to_gt_best"],
-                    "ge_policy_matched_gt_percentile": policy_best_payload["matched_gt_mos_percentile"],
+                    "ge_rank_gt_best_iou": rank_best_payload["iou_to_gt_best"],
+                    "ge_rank_matched_gt_percentile": rank_best_payload["matched_gt_mos_percentile"],
+                    "ge_crop_utility_gt_best_iou": prod_best_payload["iou_to_gt_best"],
+                    "ge_crop_utility_matched_gt_percentile": prod_best_payload["matched_gt_mos_percentile"],
+                    "ge_policy_gt_best_iou": prod_best_payload["iou_to_gt_best"],
+                    "ge_policy_matched_gt_percentile": prod_best_payload["matched_gt_mos_percentile"],
                 }
             )
 
@@ -4065,8 +4119,11 @@ def main() -> None:
                 "support_fallback_reason": str(subject_visuals.get("support_fallback_reason", "")),
                 "blank_ratio_est": round(safe_float(subject_visuals.get("saliency_blank_ratio_est", ge_route.get("router_signals", {}).get("blank_ratio_est", 0.0)), 0.0), 6),
                 "ge_winner_source_family": prod_source_family,
-                "ge_policy_winner_source_family": policy_source_family,
-                "ge_policy_rank_disagree": bool(policy_rank_disagree),
+                "ge_crop_utility_winner_source_family": prod_source_family,
+                "ge_rank_winner_source_family": rank_source_family,
+                "ge_crop_utility_rank_disagree": bool(utility_rank_disagree),
+                "ge_policy_winner_source_family": prod_source_family,
+                "ge_policy_rank_disagree": bool(utility_rank_disagree),
                 "subject_support_metrics": subject_support_metrics,
                 "subject_visuals": subject_visuals,
                 "gt_best_row": gt_best_row,
@@ -4074,7 +4131,9 @@ def main() -> None:
                 "Ge": {
                     **protocol_payloads["Ge"],
                     "production_best": prod_best_payload,
-                    "production_best_policy": policy_best_payload,
+                    "production_best_crop_utility": prod_best_payload,
+                    "production_best_policy": prod_best_payload,
+                    "production_best_rank": rank_best_payload,
                 },
             }
         )
@@ -4184,7 +4243,7 @@ def main() -> None:
             val_image_rows,
             alpha_candidates=[float(value) for value in args.alpha_sweep],
             top_quantile=float(args.top_quantile),
-            z_field="score_z_local",
+            z_field=LOCAL_Z_FIELD,
         )
         train_plus_val_rows = [
             row
@@ -4193,7 +4252,7 @@ def main() -> None:
             for row in rows
         ]
         calibrator_fit_rows = train_plus_val_rows or [row for rows in protocol_image_rows for row in rows]
-        calibrator = fit_isotonic_calibrator(calibrator_fit_rows, alpha=best_alpha, z_field="score_z_local")
+        calibrator = fit_isotonic_calibrator(calibrator_fit_rows, alpha=best_alpha, z_field=LOCAL_Z_FIELD)
         summary[protocol]["local_probability"] = {
             "best_alpha": best_alpha,
             "alpha_sweep": alpha_summaries,
@@ -4201,19 +4260,19 @@ def main() -> None:
                 [rows for rows in protocol_image_rows if str(rows[0]["calibration_split"]) == "train"],
                 alpha=best_alpha,
                 top_quantile=float(args.top_quantile),
-                z_field="score_z_local",
+                z_field=LOCAL_Z_FIELD,
             ),
             "val": compute_local_probability_summary(
                 val_image_rows,
                 alpha=best_alpha,
                 top_quantile=float(args.top_quantile),
-                z_field="score_z_local",
+                z_field=LOCAL_Z_FIELD,
             ),
             "test": compute_local_probability_summary(
                 test_image_rows,
                 alpha=best_alpha,
                 top_quantile=float(args.top_quantile),
-                z_field="score_z_local",
+                z_field=LOCAL_Z_FIELD,
             ),
         }
         summary[protocol]["global_calibration"] = {
@@ -4223,7 +4282,7 @@ def main() -> None:
                 calibrator,
                 [row for rows in test_image_rows for row in rows],
                 alpha=best_alpha,
-                z_field="score_z_local",
+                z_field=LOCAL_Z_FIELD,
             ),
         }
         summary[protocol]["local_probability_variants"] = {}
@@ -4273,14 +4332,19 @@ def main() -> None:
                 ),
             }
 
-    summary["Ge"]["prod_selection"] = summarize_prod_selection([record["Ge"]["production_best"] for record in image_records])
-    summary["Ge"]["prod_selection_policy"] = summarize_prod_selection(
-        [record["Ge"]["production_best_policy"] for record in image_records if isinstance(record.get("Ge", {}).get("production_best_policy"), dict)]
+    utility_prod_rows = [record["Ge"]["production_best"] for record in image_records]
+    rank_prod_rows = [record["Ge"]["production_best_rank"] for record in image_records if isinstance(record.get("Ge", {}).get("production_best_rank"), dict)]
+    summary["Ge"]["prod_selection"] = summarize_prod_selection(utility_prod_rows)
+    summary["Ge"]["prod_selection_crop_utility"] = copy.deepcopy(summary["Ge"]["prod_selection"])
+    summary["Ge"]["prod_selection_policy"] = copy.deepcopy(summary["Ge"]["prod_selection"])
+    summary["Ge"]["prod_selection_rank"] = summarize_prod_selection(rank_prod_rows)
+    summary["Ge"]["prod_selection_rank_vs_crop_utility"] = summarize_prod_selection_pairwise(
+        rank_prod_rows,
+        utility_prod_rows,
     )
-    summary["Ge"]["prod_selection_rank_vs_policy"] = summarize_prod_selection_pairwise(
-        [record["Ge"]["production_best"] for record in image_records],
-        [record["Ge"]["production_best_policy"] for record in image_records if isinstance(record.get("Ge", {}).get("production_best_policy"), dict)],
-    )
+    summary["Ge"]["prod_selection_rank_vs_policy"] = copy.deepcopy(summary["Ge"]["prod_selection_rank_vs_crop_utility"])
+    summary["Ge"]["trend_by_field"]["crop_utility"] = copy.deepcopy(summary["Ge"]["trend_by_field"].get("crop_utility_raw", {}))
+    summary["Ge"]["trend_by_field"]["score_policy"] = copy.deepcopy(summary["Ge"]["trend_by_field"].get("crop_utility_raw", {}))
     summary["Ge"]["score_mode_distribution"] = summarize_score_modes(
         image_records=image_records,
         protocol="Ge",
@@ -4297,44 +4361,44 @@ def main() -> None:
 
     plot_dir = output_dir / "plots"
     ensure_dir(plot_dir)
-    gc_spearman_values = [record["Gc"]["metrics_by_field"]["score_rank"]["spearman"] for record in image_records]
-    ge_spearman_values = [record["Ge"]["metrics_by_field"]["score_rank"]["spearman"] for record in image_records]
+    gc_spearman_values = [record["Gc"]["metrics_by_field"].get(PRIMARY_PROTOCOL_FIELD, record["Gc"]["metrics_by_field"]["score_rank"])["spearman"] for record in image_records]
+    ge_spearman_values = [record["Ge"]["metrics_by_field"].get(PRIMARY_PROTOCOL_FIELD, record["Ge"]["metrics_by_field"]["score_rank"])["spearman"] for record in image_records]
     plot_paths = {
         "protocol_compare": plot_dir / "protocol_compare_primary.png",
         "gc_spearman_hist": plot_dir / "gc_spearman_hist.png",
         "ge_spearman_hist": plot_dir / "ge_spearman_hist.png",
-        "gc_scatter": plot_dir / "gc_score_rank_vs_mos.png",
-        "ge_scatter": plot_dir / "ge_score_rank_vs_mos.png",
+        "gc_scatter": plot_dir / "gc_crop_utility_vs_mos.png",
+        "ge_scatter": plot_dir / "ge_crop_utility_vs_mos.png",
         "ge_reliability": plot_dir / "ge_reliability_topq.png",
-        "ge_policy_reliability": plot_dir / "ge_policy_reliability_topq.png",
+        "ge_policy_reliability": plot_dir / "ge_rank_reliability_topq.png",
     }
     plot_protocol_comparison(summary, plot_paths["protocol_compare"])
     plot_histogram(gc_spearman_values, "Gc per-image Spearman", "Spearman", plot_paths["gc_spearman_hist"], color="#4c78a8")
     plot_histogram(ge_spearman_values, "Ge per-image Spearman", "Spearman", plot_paths["ge_spearman_hist"], color="#f58518")
     plot_scatter(
-        [row["score_rank"] for row in candidate_eval_rows if row["protocol"] == "Gc"],
+        [row["crop_utility_raw"] for row in candidate_eval_rows if row["protocol"] == "Gc"],
         [row["mos"] for row in candidate_eval_rows if row["protocol"] == "Gc"],
-        "Gc score_rank vs MOS",
-        "score_rank",
+        "Gc crop_utility vs MOS",
+        "crop_utility_raw",
         "MOS",
         plot_paths["gc_scatter"],
     )
     plot_scatter(
-        [row["score_rank"] for row in candidate_eval_rows if row["protocol"] == "Ge"],
+        [row["crop_utility_raw"] for row in candidate_eval_rows if row["protocol"] == "Ge"],
         [row["mos"] for row in candidate_eval_rows if row["protocol"] == "Ge"],
-        "Ge score_rank vs MOS",
-        "score_rank",
+        "Ge crop_utility vs MOS",
+        "crop_utility_raw",
         "MOS",
         plot_paths["ge_scatter"],
     )
     plot_reliability(
         summary["Ge"]["local_probability"]["test"]["topq_curve"],
-        "Ge top-q reliability",
+        "Ge crop_utility top-q reliability",
         plot_paths["ge_reliability"],
     )
     plot_reliability(
-        summary["Ge"]["local_probability_variants"]["policy_robust"]["test"]["topq_curve"],
-        "Ge policy top-q reliability",
+        summary["Ge"]["local_probability_variants"]["rank_robust"]["test"]["topq_curve"],
+        "Ge rank top-q reliability",
         plot_paths["ge_policy_reliability"],
     )
 

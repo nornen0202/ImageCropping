@@ -29,15 +29,20 @@ VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activ
 PSEUDO_TAR_CHUNK_SIZE=256
 LINK_MODE="symlink"
 PREPARE_MAX_IMAGES=0
+PREPARE_NUM_WORKERS=0
 SKIP_EXISTING=1
 SKIP_EXISTING_LINKS=1
 PREPARE_ONLY=0
 SKIP_VALIDATION=0
+GPU_IDS=""
+GPU_WORKERS=0
 RUN_VLM_TEACHER=1
 VLM_BACKEND="heuristic"
 VLM_FALLBACK_BACKEND="none"
 RUN_TRAINING_LABELS=1
 SAFE_LEFTOVER_POLICY="ignore"
+SCORE_PROFILE="single_stage2"
+SCORE_PROFILE_OVERRIDES_JSON=""
 RUN_TRAINING_LABEL_DEBUG_VIZ=0
 TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE=50
 TRAINING_LABEL_DEBUG_VIZ_SEED=42
@@ -71,6 +76,9 @@ GAIC_CAPTION_PROMPT=""
 GAIC_CAPTION_JSONL=""
 GAIC_CAPTION_SUMMARY_JSON=""
 GAIC_CAPTION_SKIP_EXISTING=1
+GAIC_CAPTION_MULTI_GPU=-1
+GAIC_CAPTION_GPU_IDS=""
+GAIC_CAPTION_NUM_WORKERS=0
 RUN_GAIC_BENCHMARK_EVAL=0
 GAIC_BENCHMARK_SAMPLE_COUNT=8
 GAIC_BENCHMARK_MAX_IMAGES=0
@@ -97,15 +105,20 @@ while [ "$#" -gt 0 ]; do
     --pseudo_tar_chunk_size) PSEUDO_TAR_CHUNK_SIZE="$2"; shift 2 ;;
     --link_mode) LINK_MODE="$2"; shift 2 ;;
     --prepare_max_images) PREPARE_MAX_IMAGES="$2"; shift 2 ;;
+    --prepare_num_workers) PREPARE_NUM_WORKERS="$2"; shift 2 ;;
     --skip_existing) SKIP_EXISTING="$2"; shift 2 ;;
     --skip_existing_links) SKIP_EXISTING_LINKS="$2"; shift 2 ;;
     --prepare_only) PREPARE_ONLY="$2"; shift 2 ;;
     --skip_validation) SKIP_VALIDATION="$2"; shift 2 ;;
+    --gpu_ids) GPU_IDS="$2"; shift 2 ;;
+    --gpu_workers) GPU_WORKERS="$2"; shift 2 ;;
     --run_vlm_teacher) RUN_VLM_TEACHER="$2"; shift 2 ;;
     --vlm_backend) VLM_BACKEND="$2"; shift 2 ;;
     --vlm_fallback_backend) VLM_FALLBACK_BACKEND="$2"; shift 2 ;;
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
     --safe_leftover_policy) SAFE_LEFTOVER_POLICY="$2"; shift 2 ;;
+    --score_profile) SCORE_PROFILE="$2"; shift 2 ;;
+    --score_profile_overrides_json) SCORE_PROFILE_OVERRIDES_JSON="$2"; shift 2 ;;
     --run_training_label_debug_viz) RUN_TRAINING_LABEL_DEBUG_VIZ="$2"; shift 2 ;;
     --training_label_debug_viz_sample_size) TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE="$2"; shift 2 ;;
     --training_label_debug_viz_seed) TRAINING_LABEL_DEBUG_VIZ_SEED="$2"; shift 2 ;;
@@ -138,6 +151,9 @@ while [ "$#" -gt 0 ]; do
     --gaic_caption_jsonl) GAIC_CAPTION_JSONL="$2"; shift 2 ;;
     --gaic_caption_summary_json) GAIC_CAPTION_SUMMARY_JSON="$2"; shift 2 ;;
     --gaic_caption_skip_existing) GAIC_CAPTION_SKIP_EXISTING="$2"; shift 2 ;;
+    --gaic_caption_multi_gpu) GAIC_CAPTION_MULTI_GPU="$2"; shift 2 ;;
+    --gaic_caption_gpu_ids) GAIC_CAPTION_GPU_IDS="$2"; shift 2 ;;
+    --gaic_caption_num_workers) GAIC_CAPTION_NUM_WORKERS="$2"; shift 2 ;;
     --run_gaic_benchmark_eval) RUN_GAIC_BENCHMARK_EVAL="$2"; shift 2 ;;
     --gaic_benchmark_sample_count) GAIC_BENCHMARK_SAMPLE_COUNT="$2"; shift 2 ;;
     --gaic_benchmark_max_images) GAIC_BENCHMARK_MAX_IMAGES="$2"; shift 2 ;;
@@ -165,6 +181,79 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+normalize_csv_ids() {
+  local s="${1:-}"
+  s=$(echo "$s" | tr -d ' ')
+  s=$(echo "$s" | sed -E 's/^,+//; s/,+$//; s/,+/,/g')
+  echo "$s"
+}
+
+count_csv_ids() {
+  local s
+  s=$(normalize_csv_ids "${1:-}")
+  if [ -z "$s" ]; then
+    echo 0
+    return
+  fi
+  awk -F',' '{print NF}' <<< "$s"
+}
+
+detect_gpu_ids() {
+  local csv="${CUDA_VISIBLE_DEVICES:-}"
+  csv=$(normalize_csv_ids "$csv")
+  if [ -n "$csv" ]; then
+    echo "$csv"
+    return
+  fi
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    echo ""
+    return
+  fi
+  nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | awk '{print $1}' | paste -sd, -
+}
+
+detect_cpu_cores() {
+  local detected
+  detected=$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)
+  if [ -z "$detected" ] || [ "$detected" -le 0 ] 2>/dev/null; then
+    detected=$(nproc 2>/dev/null || true)
+  fi
+  if [ -z "$detected" ] || [ "$detected" -le 0 ] 2>/dev/null; then
+    detected=1
+  fi
+  echo "$detected"
+}
+
+resolve_cpu_workers() {
+  local requested="$1"
+  local cpu_cores="$2"
+  if [ -n "$requested" ] && [ "$requested" -gt 0 ] 2>/dev/null; then
+    echo "$requested"
+    return
+  fi
+  echo "$cpu_cores"
+}
+
+resolve_gpu_workers() {
+  local gpu_ids="$1"
+  local requested="$2"
+  local gpu_count
+  gpu_count=$(count_csv_ids "$gpu_ids")
+  if [ "$gpu_count" -le 0 ]; then
+    echo ""
+    return
+  fi
+  if [ -n "$requested" ] && [ "$requested" -gt 0 ] 2>/dev/null; then
+    if [ "$requested" -lt "$gpu_count" ]; then
+      echo "$requested"
+    else
+      echo "$gpu_count"
+    fi
+    return
+  fi
+  echo "$gpu_count"
+}
+
 mkdir -p "$DATA_DIR"
 if [ -z "$FLAT_IMAGE_DIR" ]; then
   FLAT_IMAGE_DIR="${DATA_DIR}/images"
@@ -180,6 +269,27 @@ if [ "$GAIC_GENERATE_CAPTIONS" -lt 0 ]; then
     GAIC_GENERATE_CAPTIONS=1
   else
     GAIC_GENERATE_CAPTIONS=0
+  fi
+fi
+
+CPU_CORES=$(detect_cpu_cores)
+EFFECTIVE_PREPARE_NUM_WORKERS=$(resolve_cpu_workers "$PREPARE_NUM_WORKERS" "$CPU_CORES")
+EFFECTIVE_GPU_IDS=$(normalize_csv_ids "$GPU_IDS")
+if [ -z "$EFFECTIVE_GPU_IDS" ]; then
+  EFFECTIVE_GPU_IDS=$(normalize_csv_ids "$(detect_gpu_ids)")
+fi
+EFFECTIVE_GPU_WORKERS=$(resolve_gpu_workers "$EFFECTIVE_GPU_IDS" "$GPU_WORKERS")
+EFFECTIVE_CAPTION_GPU_IDS=$(normalize_csv_ids "$GAIC_CAPTION_GPU_IDS")
+if [ -z "$EFFECTIVE_CAPTION_GPU_IDS" ]; then
+  EFFECTIVE_CAPTION_GPU_IDS="$EFFECTIVE_GPU_IDS"
+fi
+EFFECTIVE_CAPTION_GPU_WORKERS=$(resolve_gpu_workers "$EFFECTIVE_CAPTION_GPU_IDS" "$GAIC_CAPTION_NUM_WORKERS")
+EFFECTIVE_CAPTION_GPU_COUNT=$(count_csv_ids "$EFFECTIVE_CAPTION_GPU_IDS")
+if [ "$GAIC_CAPTION_MULTI_GPU" -lt 0 ]; then
+  if [ "$EFFECTIVE_CAPTION_GPU_COUNT" -gt 1 ] && [[ "$GAIC_CAPTION_DEVICE" != cpu* ]]; then
+    GAIC_CAPTION_MULTI_GPU=1
+  else
+    GAIC_CAPTION_MULTI_GPU=0
   fi
 fi
 
@@ -286,16 +396,19 @@ echo " flat_image_dir        : $FLAT_IMAGE_DIR"
 echo " bucket                : $BUCKET"
 echo " run_tag               : $RUN_TAG"
 echo " prepare_max_images    : $PREPARE_MAX_IMAGES"
+echo " prepare_num_workers   : $EFFECTIVE_PREPARE_NUM_WORKERS (cpu_cores=$CPU_CORES)"
 echo " pseudo_tar_chunk_size : $PSEUDO_TAR_CHUNK_SIZE"
 echo " link_mode             : $LINK_MODE"
 echo " skip_existing         : $SKIP_EXISTING"
+echo " shared_gpu_ids        : ${EFFECTIVE_GPU_IDS:-auto} (workers=${EFFECTIVE_GPU_WORKERS:-auto})"
 echo " run_c1                : $RUN_C1"
 echo " use_real_expensive    : $USE_REAL_EXPENSIVE"
 echo " run_c7_saliency       : $RUN_C7_SALIENCY (priority=$C7_SALIENCY_PRIORITY device=$C7_SALIENCY_DEVICE)"
-echo " gaic_generate_caps    : $GAIC_GENERATE_CAPTIONS (preset=$GAIC_CAPTION_PRESET backend=${GAIC_CAPTION_BACKEND:-auto})"
+echo " gaic_generate_caps    : $GAIC_GENERATE_CAPTIONS (preset=$GAIC_CAPTION_PRESET backend=${GAIC_CAPTION_BACKEND:-auto} multi_gpu=$GAIC_CAPTION_MULTI_GPU gpu_ids=${EFFECTIVE_CAPTION_GPU_IDS:-auto} workers=${EFFECTIVE_CAPTION_GPU_WORKERS:-auto})"
 echo " run_c6                : $RUN_C6"
 echo " run_vlm_teacher       : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND)"
 echo " run_training_labels   : $RUN_TRAINING_LABELS (policy=$SAFE_LEFTOVER_POLICY)"
+echo " score_profile         : $SCORE_PROFILE (overrides=${SCORE_PROFILE_OVERRIDES_JSON:-<none>})"
 echo " training_debug_viz    : $RUN_TRAINING_LABEL_DEBUG_VIZ (out=$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR sample_size=$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE seed=$TRAINING_LABEL_DEBUG_VIZ_SEED)"
 echo " auto_leftover_variants: $AUTO_LEFTOVER_VARIANTS (policies=$LEFTOVER_VARIANT_POLICIES)"
 echo " run_detailed_report   : $RUN_DETAILED_REPORT"
@@ -349,6 +462,7 @@ build_gaic_like_export() {
     --out_json "$out_json" \
     --out_summary_json "$out_summary_json" \
     --out_guide_md "$out_guide_md" \
+    --progress 1 \
     --out_train_json "$out_train_json" \
     --out_test_json "$out_test_json" \
     --out_unassigned_json "$out_unassigned_json" \
@@ -376,7 +490,7 @@ validate_training_outputs() {
       --vlm_summary_json "$VLM_SUMMARY_JSON"
     )
   fi
-  python3 src/scripts/validate_gaic_e2e_outputs.py "${validate_args[@]}"
+  python3 src/scripts/validate_gaic_e2e_outputs.py --progress 1 "${validate_args[@]}"
 }
 
 build_training_variant() {
@@ -402,11 +516,15 @@ build_training_variant() {
     --out_dir "$variant_dir" \
     --image_root "$FLAT_IMAGE_DIR" \
     --safe_leftover_policy "$policy" \
+    --score_profile "$SCORE_PROFILE" \
+    --score_profile_overrides_json "$SCORE_PROFILE_OVERRIDES_JSON" \
+    --progress 1 \
     --strict_validation 1 \
     --report_examples 8
   python3 src/scripts/convert_sstk_detr_labels_to_coco.py \
     --canonical_jsonl "${variant_dir}/train_conditional_detr_canonical.jsonl" \
     --batch_jsonl "${variant_dir}/train_conditional_detr_batch.jsonl" \
+    --progress 1 \
     --out_dir "${variant_dir}/coco"
   build_gaic_like_export "$variant_dir"
   validate_training_outputs "$variant_dir" "$variant_validation_json"
@@ -439,7 +557,15 @@ if [ "$GAIC_GENERATE_CAPTIONS" -eq 1 ]; then
     --num_beams "$GAIC_CAPTION_NUM_BEAMS"
     --skip_existing "$GAIC_CAPTION_SKIP_EXISTING"
     --max_images "$PREPARE_MAX_IMAGES"
+    --progress 1
+    --multi_gpu "$GAIC_CAPTION_MULTI_GPU"
   )
+  if [ -n "$EFFECTIVE_CAPTION_GPU_IDS" ]; then
+    CAPTION_ARGS+=(--gpu_ids "$EFFECTIVE_CAPTION_GPU_IDS")
+  fi
+  if [ -n "$EFFECTIVE_CAPTION_GPU_WORKERS" ]; then
+    CAPTION_ARGS+=(--num_workers "$EFFECTIVE_CAPTION_GPU_WORKERS")
+  fi
   if [ -n "$GAIC_CAPTION_BACKEND" ]; then
     CAPTION_ARGS+=(--backend "$GAIC_CAPTION_BACKEND")
   fi
@@ -470,6 +596,8 @@ python3 src/scripts/prepare_gaic_curated_dataset.py \
   --pseudo_tar_chunk_size "$PSEUDO_TAR_CHUNK_SIZE" \
   --link_mode "$LINK_MODE" \
   --max_images "$PREPARE_MAX_IMAGES" \
+  --progress 1 \
+  --num_workers "$EFFECTIVE_PREPARE_NUM_WORKERS" \
   --skip_existing_links "$SKIP_EXISTING_LINKS" \
   "${PREPARE_CAPTION_ARGS[@]}"
 
@@ -481,6 +609,13 @@ fi
 C7_EXTRA_ARGS=()
 if [ -n "$C7_SALIENCY_WEIGHTS_DIR" ]; then
   C7_EXTRA_ARGS+=(--c7_saliency_weights_dir "$C7_SALIENCY_WEIGHTS_DIR")
+fi
+PHASEA_SHARED_ACCEL_ARGS=()
+if [ -n "$EFFECTIVE_GPU_IDS" ]; then
+  PHASEA_SHARED_ACCEL_ARGS+=(--gpu_ids "$EFFECTIVE_GPU_IDS")
+fi
+if [ -n "$EFFECTIVE_GPU_WORKERS" ]; then
+  PHASEA_SHARED_ACCEL_ARGS+=(--gpu_workers "$EFFECTIVE_GPU_WORKERS")
 fi
 
 bash src/scripts/run_phaseA_to_teacher_e2e.sh \
@@ -506,6 +641,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_training_labels "$RUN_TRAINING_LABELS" \
   --training_labels_dir "$TRAINING_DIR" \
   --safe_leftover_policy "$SAFE_LEFTOVER_POLICY" \
+  --score_profile "$SCORE_PROFILE" \
+  --score_profile_overrides_json "$SCORE_PROFILE_OVERRIDES_JSON" \
   --run_training_label_debug_viz "$RUN_TRAINING_LABEL_DEBUG_VIZ" \
   --training_label_debug_viz_sample_size "$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE" \
   --training_label_debug_viz_seed "$TRAINING_LABEL_DEBUG_VIZ_SEED" \
@@ -514,6 +651,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --gaic_reference_json "$GAIC_REFERENCE_JSON" \
   --gaic_train_reference_json "$GAIC_TRAIN_REFERENCE_JSON" \
   --gaic_test_reference_json "$GAIC_TEST_REFERENCE_JSON" \
+  "${PHASEA_SHARED_ACCEL_ARGS[@]}" \
   "${C7_EXTRA_ARGS[@]}" \
   "${PASSTHROUGH_ARGS[@]}"
 
@@ -559,7 +697,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   )
 fi
 
-python3 src/scripts/validate_gaic_e2e_outputs.py "${VALIDATE_ARGS[@]}"
+python3 src/scripts/validate_gaic_e2e_outputs.py --progress 1 "${VALIDATE_ARGS[@]}"
 
 BENCHMARK_FEATURES_JSONL="$ROUTED_JSONL"
 if [ ! -f "$BENCHMARK_FEATURES_JSONL" ]; then
@@ -618,6 +756,12 @@ if [ "$RUN_GAIC_SUBJECT_REGION_AB" -eq 1 ]; then
   )
   if [ -n "$GAIC_SUBJECT_AB_SALIENCY_JSONL_OVERRIDE" ]; then
     AB_ARGS+=(--saliency_jsonl_override "$GAIC_SUBJECT_AB_SALIENCY_JSONL_OVERRIDE")
+  fi
+  if [ -n "$EFFECTIVE_GPU_IDS" ]; then
+    AB_ARGS+=(--gpu_ids "$EFFECTIVE_GPU_IDS")
+  fi
+  if [ -n "$EFFECTIVE_GPU_WORKERS" ]; then
+    AB_ARGS+=(--gpu_workers "$EFFECTIVE_GPU_WORKERS")
   fi
   echo "[run] GAIC saliency/subject-region A/B -> ${GAIC_SUBJECT_AB_RUN_TAG}"
   python3 src/scripts/run_gaic_subject_region_ab.py "${AB_ARGS[@]}"

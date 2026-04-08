@@ -211,11 +211,7 @@ def resolve_num_workers(requested_workers: int, num_items: int) -> int:
     if req == 1:
         return 1
     if req <= 0:
-        cpu = int(os.cpu_count() or 1)
-        # Keep one core for IO/OS and avoid excessive process fan-out by default.
-        req = max(1, min(16, cpu - 1))
-        if num_items < 256:
-            req = 1
+        req = max(1, int(os.cpu_count() or 1))
     return max(1, min(req, num_items))
 
 

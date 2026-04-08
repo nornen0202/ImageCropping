@@ -123,8 +123,16 @@ def extract_raw_candidate_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
         "candidate_id": str(raw.get("candidate_id", "")),
         "source": str(raw.get("source", "")),
         "bbox_norm_xyxy": list(raw.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])),
+        "admissible": not bool(raw.get("is_unsafe_negative", False)) and not bool(raw.get("is_hard_negative", False)),
         "score_detail": {
             "score_prob": round_opt(
+                first_nonempty(
+                    raw.get("score_policy_sigmoid_z_local"),
+                    raw.get("score_sigmoid_z_local"),
+                ),
+                9,
+            ),
+            "crop_utility_prob": round_opt(
                 first_nonempty(
                     raw.get("score_policy_sigmoid_z_local"),
                     raw.get("score_sigmoid_z_local"),
@@ -135,6 +143,7 @@ def extract_raw_candidate_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
             "score_raw_policy": round_opt(scores.get("policy", scores.get("final"))),
             "score_raw_policy_base": round_opt(scores.get("policy_base", scores.get("policy", scores.get("final")))),
             "score_raw_policy_safe": round_opt(scores.get("policy_safe", scores.get("policy", scores.get("final")))),
+            "crop_utility_raw": round_opt(scores.get("policy_safe", scores.get("policy", scores.get("final")))),
             "score_raw_rank_macro": round_opt(scores.get("rank_macro")),
             "area_log_prior": round_opt(scores.get("area_log_prior")),
             "safety_penalty_total": round_opt(scores.get("safety_penalty_total")),
@@ -157,7 +166,6 @@ def extract_raw_candidate_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
                 "S_softcut_quality",
                 "C_comp",
                 "C_place",
-                "C_comp_linear",
                 "C_place_margin",
                 "C_headroom",
                 "C_lookroom",
@@ -208,7 +216,6 @@ def extract_raw_candidate_detail(candidate: Dict[str, Any]) -> Dict[str, Any]:
             "placement_family_best": str(score_components.get("placement_family_best", "na")),
             "placement_family_margin": round_opt(score_components.get("placement_family_margin")),
             "placement_score": round_opt(score_components.get("r_place")),
-            "placement_linear": round_opt(score_components.get("r_comp_linear")),
             "placement_reward_third": round_opt(score_components.get("placement_reward_third")),
             "placement_reward_phi": round_opt(score_components.get("placement_reward_phi")),
             "placement_reward_center": round_opt(score_components.get("placement_reward_center")),
@@ -267,13 +274,24 @@ def iter_teacher_ar_candidates(ar_result: Dict[str, Any]) -> Iterator[Dict[str, 
             yield cand
 
 
-def build_teacher_detail_index(path: Path) -> Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]:
+def build_teacher_detail_index(
+    path: Path,
+    *,
+    image_ids: Optional[Iterable[str]] = None,
+) -> Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]:
     if not path.exists():
         return {}
+    wanted = None
+    if image_ids is not None:
+        wanted = {str(image_id).strip() for image_id in image_ids if str(image_id).strip()}
+        if not wanted:
+            return {}
     by_image: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
     for row in load_jsonl_rows(path):
         image_id = str(row.get("image_id", "")).strip()
         if not image_id:
+            continue
+        if wanted is not None and image_id not in wanted:
             continue
         results_by_ar = safe_dict(safe_dict(row.get("teacher_scorer")).get("results_by_ar"))
         if not results_by_ar:
@@ -286,4 +304,6 @@ def build_teacher_detail_index(path: Path) -> Dict[str, Dict[str, Dict[str, Dict
                 if not candidate_id or candidate_id in ar_map:
                     continue
                 ar_map[candidate_id] = extract_raw_candidate_detail(candidate)
+        if wanted is not None and len(by_image) >= len(wanted):
+            break
     return by_image

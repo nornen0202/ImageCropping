@@ -166,6 +166,12 @@ DATANAME=10K
 RUN_TAG=v17_server
 ```
 
+직접 [run_phaseA_to_teacher_e2e.sh](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_phaseA_to_teacher_e2e.sh) 를 호출할 때는 공용 alias도 사용할 수 있습니다.
+
+- `--gpu_ids`: 비어 있는 `--filter_tag_embed_gpu_ids`, `--extract_gpu_ids`, `--public_infer_gpu_ids`, `--teacher_gpu_ids`, `--vlm_gpu_ids` 기본값으로 전파됩니다.
+- `--gpu_workers`: 비어 있는 `--num_workers`, `--public_infer_num_workers`, `--teacher_num_workers`, `--vlm_num_workers` 기본값으로 전파됩니다.
+- 특정 단계만 다른 GPU/worker를 쓰고 싶으면 기존 stage별 옵션을 함께 넘기면 되고, 그 값이 공용 alias보다 우선합니다.
+
 ### 3.1 로컬(가상환경 자동 활성화) 기본 실행
 ```bash
 DATANAME=10K_local
@@ -211,12 +217,10 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --curated_image_dir data/SSTK/${DATANAME}/images \
   --prefer_curated_images 1 \
   --extract_mode auto \
-  --extract_gpu_ids ${GPU_IDS} \
-  --num_workers ${N_WORKERS} \
+  --gpu_ids ${GPU_IDS} \
+  --gpu_workers ${N_WORKERS} \
   --use_real_expensive 1 \
   --teacher_multi_gpu 1 \
-  --teacher_gpu_ids ${GPU_IDS} \
-  --teacher_num_workers ${N_WORKERS} \
   --align_device cuda \
   --aesthetic_device cuda \
   --exp_batch_size 512 \
@@ -291,8 +295,8 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --prefer_curated_images 1 \
   --run_c7_saliency 1 \
   --c7_saliency_priority quality_first \
-  --extract_gpu_ids ${GPU_IDS} \
-  --num_workers ${N_WORKERS} \
+  --gpu_ids ${GPU_IDS} \
+  --gpu_workers ${N_WORKERS} \
   --skip_existing 1 \
   --run_tag rerun1_c7
 ```
@@ -397,6 +401,10 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 선행 조건: `2.1 초기 환경 세팅(품질최우선 전체 파이프라인용)`을 완료한 상태에서 실행하세요.
 
 아래 템플릿은 **현재 구현된 품질 최우선 모듈(C4=PP-OCRv5 server, C5=ScaleLSD 우선, C6=Gaze-LLE/Gazelle 우선)**까지 포함한 end-to-end 실행 템플릿입니다.
+
+참고:
+- 이 3.6 템플릿은 실무형 풀 옵션에 가깝지만, 현재 기준의 "최대 옵션 실행"은 아닙니다.
+- 특히 `run_vlm_teacher`, `run_c7_saliency`, `run_training_label_debug_viz` 가 꺼져 있고, `run_training_labels`, `run_detailed_report` 는 `RUN_TAG` 기반 auto 동작에 기대고 있습니다.
 
 중요:
 - `--run_filter 0`은 `data/SSTK/${DATANAME}/filtered_sstk_*.parquet`가 이미 있을 때만 사용하세요.
@@ -508,6 +516,117 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_tag ${RUN_TAG} \
   | tee src/scripts/logs/run_phaseA_to_teacher_${DATANAME}_${RUN_TAG}.log
 ```
+
+### 3.6a 서버 최대 옵션 full-run
+
+현재 [run_phaseA_to_teacher_e2e.sh](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_phaseA_to_teacher_e2e.sh) 가 직접 지원하는 주요 옵션을 사실상 전부 켜려면 아래 템플릿을 사용하세요. 즉 filter, `C1~C7`, public teacher proposals, candidate, teacher, VLM teacher, training labels, debug viz, detailed report까지 한 번에 수행합니다.
+
+```bash
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+
+POOL_SIZE=10000
+DATANAME=Full_${POOL_SIZE}
+RUN_TAG=sstk_full_max_260407_v1
+
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --bucket sstk_100 \
+  --data_dir data/SSTK/${DATANAME} \
+  --server_mode 1 \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --run_filter 1 \
+  --curated_pool_size ${POOL_SIZE} \
+  --top_percentile 0.2 \
+  --filter_require_train_match 1 \
+  --filter_tag_embed_multi_gpu 1 \
+  --gpu_ids ${GPU_IDS} \
+  --gpu_workers ${N_WORKERS} \
+  --export_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --prefer_curated_images 1 \
+  --skip_existing 0 \
+  --precompute_mode unified \
+  --run_c1 1 \
+  --run_c2 1 \
+  --run_c3 1 \
+  --run_c4 1 \
+  --run_c5 1 \
+  --run_c6 1 \
+  --run_c3_enrich 1 \
+  --run_merge 1 \
+  --run_subject_routing 1 \
+  --subject_routing_top_n 5 \
+  --subject_routing_union_top_m 3 \
+  --subject_routing_allow_det_proxy 1 \
+  --extract_mode auto \
+  --extract_multi_gpu 1 \
+  --extract_priority quality_first \
+  --c5_priority quality_first \
+  --batch_size 512 \
+  --c3_person_verify_strict 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --run_candidates 1 \
+  --cand_ar_list FREE,1:1,9:16,16:9,3:4,4:3 \
+  --use_actual_image_size 1 \
+  --strict_actual_size 1 \
+  --run_component_viz 1 \
+  --component_viz_num_samples 120 \
+  --component_viz_out_dir data/SSTK/${DATANAME}/artifacts/precompute/visualizations/components_${RUN_TAG} \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --public_teacher_max_images -1 \
+  --public_teacher_device auto \
+  --public_gaic_weight_path weights/public_cropping_teachers/gaic/shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth \
+  --public_infer_multi_gpu 1 \
+  --public_infer_skip_on_oom 1 \
+  --public_infer_fallback_cpu_on_oom 1 \
+  --public_infer_fallback_cpu_max_images 3 \
+  --public_infer_skip_if_fallback_failed 1 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --teacher_multi_gpu 1 \
+  --cheap_top_m 30 \
+  --top_k 5 \
+  --tau_div 0.75 \
+  --align_device cuda \
+  --aesthetic_device cuda \
+  --exp_batch_size 512 \
+  --run_qa 1 \
+  --run_viz 1 \
+  --num_viz 120 \
+  --run_vlm_teacher 1 \
+  --vlm_backend qwen25_vl \
+  --vlm_fallback_backend heuristic \
+  --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
+  --vlm_device auto \
+  --vlm_top_m 12 \
+  --vlm_top_k 5 \
+  --vlm_multi_gpu 1 \
+  --run_training_labels 1 \
+  --safe_leftover_policy ignore \
+  --run_training_label_debug_viz 1 \
+  --training_label_debug_viz_sample_size 50 \
+  --training_label_debug_viz_seed 42 \
+  --run_detailed_report 1 \
+  --run_tag ${RUN_TAG} \
+  | tee src/scripts/logs/run_phaseA_to_teacher_${DATANAME}_${RUN_TAG}.log
+```
+
+위 명령의 실제 동작:
+
+- filter부터 시작하는 SSTK full E2E 수행
+- filter / precompute / public teacher / teacher / VLM 단계에 공용 `--gpu_ids`, `--gpu_workers` 기본값을 전파
+- `C7 saliency`, component viz, public teacher proposal reroute, VLM teacher, training labels, debug viz, detailed report까지 모두 수행
+
+주의:
+
+- 이것이 현재 `run_phaseA_to_teacher_e2e.sh` 기준의 사실상 최대 옵션 실행입니다.
+- 문서의 3.6과 비교하면 가장 큰 차이는 `run_c7_saliency=1`, `run_vlm_teacher=1`, `run_training_label_debug_viz=1`, `run_training_labels=1`, `run_detailed_report=1`을 명시적으로 켠 점입니다.
+- 이 스크립트 자체에는 wrapper 계열처럼 `auto_leftover_variants` 옵션이 없습니다. 추가 leftover variant가 필요하면 `build_finalscore_training_data.py`를 정책별로 별도 재실행해야 합니다.
+- `run_c4=1`, `enable_public_teacher_proposals=1`, `run_vlm_teacher=1`까지 켜므로 GPU/디스크/런타임 비용이 가장 큽니다.
 
 처음부터 완전 신규 실행이면 위 명령에서 아래 한 줄만 바꿔서 시작하세요.
 ```bash

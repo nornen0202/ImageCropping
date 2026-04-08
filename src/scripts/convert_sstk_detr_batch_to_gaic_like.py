@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from PIL import Image
+from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -37,9 +38,29 @@ def safe_int(value: Any, default: int = 0) -> int:
         return int(default)
 
 
-def load_jsonl(path: Path) -> List[Dict[str, Any]]:
+def load_jsonl(
+    path: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 1000,
+    progress_min_seconds: float = 10.0,
+) -> List[Dict[str, Any]]:
+    total = count_nonempty_lines(path) if progress else None
+    tracker = ProgressTracker(
+        f"convert_sstk_detr_batch_to_gaic_like:load_jsonl:{path.name}",
+        total=total,
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    rows: List[Dict[str, Any]] = []
     with path.open("r", encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle]
+        for idx, line in enumerate(handle, start=1):
+            rows.append(json.loads(line))
+            tracker.update(idx)
+    tracker.finish(len(rows), extra=f"path={path.name}")
+    return rows
 
 
 def load_json(path: Path) -> Dict[str, Any]:
@@ -306,6 +327,9 @@ def build_gaic_like_instances(
     split_lookup: Optional[Dict[str, str]] = None,
     reference_image_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     size_sidecar_meta: Optional[Dict[str, Dict[str, Any]]] = None,
+    progress: bool = False,
+    progress_every: int = 250,
+    progress_min_seconds: float = 10.0,
 ) -> Dict[str, Any]:
     images: List[Dict[str, Any]] = []
     annotations: List[Dict[str, Any]] = []
@@ -314,6 +338,14 @@ def build_gaic_like_instances(
     safe_leftover_policies: set[str] = set()
     split_image_counts: Counter[str] = Counter()
     split_annotation_counts: Counter[str] = Counter()
+    tracker = ProgressTracker(
+        "convert_sstk_detr_batch_to_gaic_like:build_instances",
+        total=len(batch_records),
+        unit="records",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
     for image_entry_id, record in enumerate(batch_records, start=1):
         image_path, width, height, file_name = resolve_record_image_info(
             record,
@@ -395,6 +427,8 @@ def build_gaic_like_instances(
             )
             ann_id += 1
             split_annotation_counts[split_name] += 1
+        tracker.update(image_entry_id, extra=f"annotations={len(annotations)}")
+    tracker.finish(len(batch_records), extra=f"images={len(images)} annotations={len(annotations)}")
     return {
         "images": images,
         "type": "instances",
@@ -442,6 +476,9 @@ def validate_gaic_like_instances(
     *,
     expected_image_count: int,
     expected_annotation_count: int,
+    progress: bool = False,
+    progress_every: int = 2000,
+    progress_min_seconds: float = 10.0,
 ) -> Dict[str, Any]:
     images = safe_list(payload.get("images"))
     annotations = safe_list(payload.get("annotations"))
@@ -474,7 +511,15 @@ def validate_gaic_like_instances(
     negative_count = 0
     score_values: List[float] = []
     label_type_counter: Counter[str] = Counter()
-    for annotation in annotations:
+    tracker = ProgressTracker(
+        "convert_sstk_detr_batch_to_gaic_like:validate",
+        total=len(annotations),
+        unit="annotations",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    for idx, annotation in enumerate(annotations, start=1):
         row = safe_dict(annotation)
         ann_id = safe_int(row.get("id"), -1)
         if ann_id in ann_ids:
@@ -515,6 +560,8 @@ def validate_gaic_like_instances(
             for macro_key in ("A_macro", "S_macro", "C_macro", "T_macro"):
                 if macro_key not in macro_targets:
                     warnings.append(f"annotation {ann_id} missing macro target {macro_key}")
+        tracker.update(idx)
+    tracker.finish(len(annotations), extra=f"errors={len(errors)} warnings={len(warnings)}")
     return {
         "status": "ok" if not errors else "failed",
         "image_count": len(images),
@@ -780,11 +827,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out_train_json", default="")
     parser.add_argument("--out_test_json", default="")
     parser.add_argument("--out_unassigned_json", default="")
+    parser.add_argument("--progress", type=int, default=1)
+    parser.add_argument("--progress_every", type=int, default=250)
+    parser.add_argument("--progress_min_seconds", type=float, default=10.0)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    progress_enabled = bool(int(args.progress))
+    progress_every = max(1, int(args.progress_every))
+    progress_min_seconds = max(0.0, float(args.progress_min_seconds))
     batch_jsonl = Path(args.batch_jsonl)
     gaic_reference_json = Path(args.gaic_reference_json)
     out_json = Path(args.out_json)
@@ -803,7 +856,16 @@ def main() -> None:
     out_test_json.parent.mkdir(parents=True, exist_ok=True)
     out_unassigned_json.parent.mkdir(parents=True, exist_ok=True)
 
-    batch_records = load_jsonl(batch_jsonl)
+    progress_log(
+        f"convert_sstk_detr_batch_to_gaic_like: start | batch_jsonl={batch_jsonl} | out_json={out_json}",
+        enabled=progress_enabled,
+    )
+    batch_records = load_jsonl(
+        batch_jsonl,
+        progress=progress_enabled,
+        progress_every=max(500, progress_every),
+        progress_min_seconds=progress_min_seconds,
+    )
     split_lookup = build_split_lookup(gaic_train_reference_json, gaic_test_reference_json)
     reference_image_meta = merge_reference_image_meta([gaic_reference_json, gaic_train_reference_json, gaic_test_reference_json])
     unresolved_image_ids = {
@@ -818,6 +880,9 @@ def main() -> None:
         split_lookup=split_lookup or None,
         reference_image_meta=reference_image_meta,
         size_sidecar_meta=size_sidecar_meta,
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
     )
     expected_annotation_count = sum(
         len(safe_list(record.get("matching_targets"))) + len(safe_list(record.get("candidate_pool")))
@@ -827,6 +892,9 @@ def main() -> None:
         payload,
         expected_image_count=len(batch_records),
         expected_annotation_count=expected_annotation_count,
+        progress=progress_enabled,
+        progress_every=max(1000, progress_every * 4),
+        progress_min_seconds=progress_min_seconds,
     )
     reference = load_json(gaic_reference_json)
     write_json(out_json, payload)
@@ -853,6 +921,9 @@ def main() -> None:
                 split_payload,
                 expected_image_count=split_image_counts[split_name],
                 expected_annotation_count=split_annotation_counts[split_name],
+                progress=progress_enabled,
+                progress_every=max(1000, progress_every * 4),
+                progress_min_seconds=progress_min_seconds,
             )
         split_exports = {
             "enabled": True,
@@ -879,6 +950,10 @@ def main() -> None:
     out_guide_md.write_text(
         build_format_guide(reference, payload, validation_summary, out_json, split_exports=split_exports),
         encoding="utf-8",
+    )
+    progress_log(
+        f"convert_sstk_detr_batch_to_gaic_like: finished | images={validation_summary['image_count']} | annotations={validation_summary['annotation_count']}",
+        enabled=progress_enabled,
     )
     print(
         json.dumps(

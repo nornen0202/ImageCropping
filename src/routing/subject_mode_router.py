@@ -179,10 +179,18 @@ CONTEXTUAL_TINY_HUMAN_BLANK_RATIO_MIN = 0.85
 CONTEXTUAL_TINY_HUMAN_FOREGROUND_MASS_MAX = 0.10
 PORTRAIT_TINY_SUBJECT_UNKNOWN_SHOT_MAX = 0.08
 PERSON_CLASS_IDS = {0}
-PERSON_BOX_DEDUP_IOU = 0.85
+PERSON_BOX_DEDUP_IOU = 0.60
+PERSON_BOX_DEDUP_CONTAINMENT = 0.82
+PERSON_BOX_MAX_WIDTH_TO_HEIGHT = 1.35
+PERSON_DET_SCORE_CONFIRM_MIN = 0.65
+POSE_SCORE_CONFIRM_MIN = 0.55
 POSE_SCORE_PERSON_MIN = 0.30
 POSE_FACE_SCORE_MIN = 0.20
 POSE_C2_SUPPORT_IOU_MIN = 0.10
+PORTRAIT_OBJECT_OVERRIDE_PERSON_AREA_MAX = 0.12
+PORTRAIT_OBJECT_OVERRIDE_DOM_MIN = 0.16
+PORTRAIT_OBJECT_OVERRIDE_UNION_MIN = 0.14
+PORTRAIT_OBJECT_OVERRIDE_REL_GAIN = 1.60
 SCENE_SUBTYPE_UNKNOWN = "scene_general_unknown"
 SCENE_HORIZON_TARGETS: Dict[str, List[float]] = {
     "scene_landscape_nature": [1.0 / 3.0, 2.0 / 3.0],
@@ -259,6 +267,26 @@ def _union_box(boxes: Sequence[Sequence[float]]) -> Optional[List[float]]:
     if x2 <= x1 or y2 <= y1:
         return None
     return [x1, y1, x2, y2]
+
+
+def _intersection_ratio_to_smaller(a: Sequence[float], b: Sequence[float]) -> float:
+    ax1, ay1, ax2, ay2 = [float(v) for v in a]
+    bx1, by1, bx2, by2 = [float(v) for v in b]
+    ix1, iy1 = max(ax1, bx1), max(ay1, by1)
+    ix2, iy2 = min(ax2, bx2), min(ay2, by2)
+    inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    if inter <= 0.0:
+        return 0.0
+    denom = min(_box_area(a), _box_area(b))
+    if denom <= 1e-8:
+        return 0.0
+    return float(inter / denom)
+
+
+def _box_width_to_height(box: Sequence[float]) -> float:
+    w = max(1e-6, float(box[2]) - float(box[0]))
+    h = max(1e-6, float(box[3]) - float(box[1]))
+    return float(w / h)
 
 
 def normalize_tags(raw_tags: Any) -> List[str]:
@@ -736,10 +764,63 @@ def _dedupe_boxes(boxes: Sequence[Sequence[float]], iou_thr: float = PERSON_BOX_
     kept: List[List[float]] = []
     for box in boxes:
         cand = [float(v) for v in box]
-        if any(_iou_xyxy(cand, prev) >= float(iou_thr) for prev in kept):
+        if any(
+            _iou_xyxy(cand, prev) >= float(iou_thr)
+            or _intersection_ratio_to_smaller(cand, prev) >= float(PERSON_BOX_DEDUP_CONTAINMENT)
+            for prev in kept
+        ):
             continue
         kept.append(cand)
     return kept
+
+
+def _pose_support_summary_for_box(box: Sequence[float], c3_pose: Sequence[Dict[str, Any]], width: int, height: int) -> Dict[str, float]:
+    match_count = 0
+    max_overlap = 0.0
+    max_pose_score = 0.0
+    max_face_score = 0.0
+    for pose in c3_pose:
+        if not isinstance(pose, dict):
+            continue
+        pose_box = _normalize_box_xyxy(pose.get("bbox"), width, height)
+        if pose_box is None:
+            continue
+        overlap = _iou_xyxy(box, pose_box)
+        if overlap < POSE_C2_SUPPORT_IOU_MIN:
+            continue
+        match_count += 1
+        max_overlap = max(max_overlap, overlap)
+        max_pose_score = max(max_pose_score, _safe_float(pose.get("score", 0.0), 0.0))
+        face = pose.get("face", {}) if isinstance(pose.get("face"), dict) else {}
+        max_face_score = max(max_face_score, _safe_float(face.get("score", 0.0), 0.0))
+    return {
+        "match_count": float(match_count),
+        "max_overlap": float(max_overlap),
+        "max_pose_score": float(max_pose_score),
+        "max_face_score": float(max_face_score),
+    }
+
+
+def _is_confirmed_person_box(
+    box: Sequence[float],
+    *,
+    det_score: float,
+    pose_support: Dict[str, float],
+) -> bool:
+    aspect_wh = _box_width_to_height(box)
+    max_face_score = _safe_float(pose_support.get("max_face_score", 0.0), 0.0)
+    max_pose_score = _safe_float(pose_support.get("max_pose_score", 0.0), 0.0)
+    plausible_shape = bool(aspect_wh <= PERSON_BOX_MAX_WIDTH_TO_HEIGHT or max_face_score >= POSE_FACE_SCORE_MIN)
+    pose_backed = bool(max_face_score >= POSE_FACE_SCORE_MIN or max_pose_score >= POSE_SCORE_CONFIRM_MIN)
+    det_backed = bool(det_score >= PERSON_DET_SCORE_CONFIRM_MIN)
+    return bool(plausible_shape and (pose_backed or det_backed))
+
+
+def _is_confirmed_pose_box(box: Sequence[float], *, pose_score: float, face_score: float) -> bool:
+    aspect_wh = _box_width_to_height(box)
+    if face_score >= POSE_FACE_SCORE_MIN:
+        return True
+    return bool(pose_score >= POSE_SCORE_CONFIRM_MIN and aspect_wh <= PERSON_BOX_MAX_WIDTH_TO_HEIGHT)
 
 
 def _person_signal_stats(
@@ -748,6 +829,8 @@ def _person_signal_stats(
     width: int,
     height: int,
 ) -> Dict[str, Any]:
+    c3_list = c3_pose if isinstance(c3_pose, list) else []
+    c2_person_boxes_raw: List[List[float]] = []
     c2_person_boxes: List[List[float]] = []
     for inst in c2_instances:
         if not isinstance(inst, dict):
@@ -760,11 +843,14 @@ def _person_signal_stats(
         box = _normalize_box_xyxy(inst.get("box"), width, height)
         if box is None:
             continue
-        c2_person_boxes.append(box)
+        c2_person_boxes_raw.append(box)
+        pose_support = _pose_support_summary_for_box(box, c3_list, width, height)
+        det_score = _safe_float(inst.get("score", 0.0), 0.0)
+        if _is_confirmed_person_box(box, det_score=det_score, pose_support=pose_support):
+            c2_person_boxes.append(box)
     c2_person_boxes = _dedupe_boxes(c2_person_boxes)
 
     c3_supported_boxes: List[List[float]] = []
-    c3_list = c3_pose if isinstance(c3_pose, list) else []
     for pose in c3_list:
         if not isinstance(pose, dict):
             continue
@@ -778,7 +864,7 @@ def _person_signal_stats(
         if c2_person_boxes:
             if overlap < POSE_C2_SUPPORT_IOU_MIN:
                 continue
-        elif pose_score < POSE_SCORE_PERSON_MIN and face_score < POSE_FACE_SCORE_MIN:
+        elif not _is_confirmed_pose_box(box, pose_score=pose_score, face_score=face_score):
             continue
         c3_supported_boxes.append(box)
     c3_supported_boxes = _dedupe_boxes(c3_supported_boxes)
@@ -788,6 +874,7 @@ def _person_signal_stats(
     return {
         "num_person": int(len(effective_boxes)),
         "num_person_c2": int(len(c2_person_boxes)),
+        "num_person_c2_raw": int(len(_dedupe_boxes(c2_person_boxes_raw))),
         "num_person_c3_supported": int(len(c3_supported_boxes)),
         "num_person_source": num_person_source,
         "person_union_box_xyxy": _union_box(effective_boxes),
@@ -1152,6 +1239,45 @@ def _should_fallback_tiny_human_to_scene(
     )
 
 
+def _should_override_portrait_to_object(
+    *,
+    mode: str,
+    num_person: int,
+    person_union_area_ratio: float,
+    has_explicit_people_hint: bool,
+    object_signal: bool,
+    largest_obj_area_ratio: float,
+    foreground_mass_ratio: float,
+    nonperson_union_area_ratio: float,
+    caption_object_hint: bool,
+    teacher_object_focus_signal: bool,
+) -> bool:
+    if not str(mode or "").startswith("portrait"):
+        return False
+    if int(num_person) <= 0:
+        return False
+    if has_explicit_people_hint:
+        return False
+    if person_union_area_ratio <= 0.0 or person_union_area_ratio > float(PORTRAIT_OBJECT_OVERRIDE_PERSON_AREA_MAX):
+        return False
+    if not object_signal:
+        return False
+    object_dom = max(float(largest_obj_area_ratio), float(nonperson_union_area_ratio))
+    object_support = max(float(foreground_mass_ratio), float(nonperson_union_area_ratio))
+    strong_object = bool(
+        object_dom >= float(PORTRAIT_OBJECT_OVERRIDE_DOM_MIN)
+        or object_support >= float(PORTRAIT_OBJECT_OVERRIDE_UNION_MIN)
+        or caption_object_hint
+        or teacher_object_focus_signal
+    )
+    if not strong_object:
+        return False
+    return bool(
+        object_dom >= max(float(PORTRAIT_OBJECT_OVERRIDE_DOM_MIN), person_union_area_ratio * float(PORTRAIT_OBJECT_OVERRIDE_REL_GAIN))
+        or object_support >= max(float(PORTRAIT_OBJECT_OVERRIDE_UNION_MIN), person_union_area_ratio * (float(PORTRAIT_OBJECT_OVERRIDE_REL_GAIN) + 0.4))
+    )
+
+
 def route_subject_mode(
     *,
     tags_norm: Sequence[str],
@@ -1442,6 +1568,24 @@ def route_subject_mode(
         conf = max(float(conf), 0.66 if mode == "object_single" else 0.72)
         router_rule_id = f"{router_rule_id}|guard_object_focus_over_copyspace"
 
+    if _should_override_portrait_to_object(
+        mode=mode,
+        num_person=num_person,
+        person_union_area_ratio=person_union_area_ratio,
+        has_explicit_people_hint=has_explicit_people_hint,
+        object_signal=object_signal,
+        largest_obj_area_ratio=float(object_layout.get("dominant_area_ratio", largest_obj_area_ratio)),
+        foreground_mass_ratio=foreground_mass_ratio,
+        nonperson_union_area_ratio=float(object_layout.get("union_area_ratio", 0.0)),
+        caption_object_hint=caption_object_hint,
+        teacher_object_focus_signal=bool(teacher_support.get("object_focus_signal", False)),
+    ):
+        guard_reasons.append("guard_contextual_person_object_focus")
+        reasons.append("guard_contextual_person_object_focus")
+        mode = "object_multi" if perception_object_multi_signal else "object_single"
+        conf = max(float(conf), 0.68 if mode == "object_single" else 0.74)
+        router_rule_id = f"{router_rule_id}|guard_contextual_person_object_focus"
+
     contextual_tiny_human_scene = False
     if _should_fallback_tiny_human_to_scene(
         mode=mode,
@@ -1498,10 +1642,15 @@ def route_subject_mode(
             if isinstance(person_union, list) and len(person_union) == 4:
                 union_box = [round(float(v), 3) for v in person_union]
     elif mode.startswith("object"):
-        if len(c2_instances) >= 2:
-            s1 = _safe_float(c2_instances[0].get("importance_score", 0.0), 0.0)
-            s2 = _safe_float(c2_instances[1].get("importance_score", 0.0), 0.0)
-            iou12 = _iou_xyxy(c2_instances[0].get("box", [0, 0, 0, 0]), c2_instances[1].get("box", [0, 0, 0, 0]))
+        nonperson_rows = [
+            inst
+            for inst in c2_instances
+            if int(_safe_float(inst.get("class_id", -1), -1)) not in PERSON_CLASS_IDS
+        ]
+        if len(nonperson_rows) >= 2:
+            s1 = _safe_float(nonperson_rows[0].get("importance_score", 0.0), 0.0)
+            s2 = _safe_float(nonperson_rows[1].get("importance_score", 0.0), 0.0)
+            iou12 = _iou_xyxy(nonperson_rows[0].get("box", [0, 0, 0, 0]), nonperson_rows[1].get("box", [0, 0, 0, 0]))
             if (s1 - s2) < 0.15 and iou12 < 0.75:
                 mode = "object_multi"
                 conf = max(conf, 0.70)
@@ -1509,8 +1658,8 @@ def route_subject_mode(
                 multi_subject = True
                 union_box = _union_box(
                     [
-                        [float(v) for v in c2_instances[0].get("box", [0, 0, 0, 0])],
-                        [float(v) for v in c2_instances[1].get("box", [0, 0, 0, 0])],
+                        [float(v) for v in nonperson_rows[0].get("box", [0, 0, 0, 0])],
+                        [float(v) for v in nonperson_rows[1].get("box", [0, 0, 0, 0])],
                     ]
                 )
                 if union_box is not None:
@@ -1592,6 +1741,7 @@ def route_subject_mode(
         "super_cat": sc,
         "num_person": int(num_person),
         "num_person_c2": int(person_stats.get("num_person_c2", 0)),
+        "num_person_c2_raw": int(person_stats.get("num_person_c2_raw", 0)),
         "num_person_c3_supported": int(person_stats.get("num_person_c3_supported", 0)),
         "num_person_source": str(person_stats.get("num_person_source", "none")),
         "person_union_area_ratio": round(float(person_union_area_ratio), 6),

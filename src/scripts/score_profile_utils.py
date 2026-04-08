@@ -13,6 +13,14 @@ PROFILE_PRESETS: Dict[str, Dict[str, Any]] = {
         "stage": 0,
         "description": "현재 refined monotonic scorer baseline.",
         "overrides": {},
+        "semantics": {
+            "official_score_name": "policy_safe",
+            "official_score_field": "score_raw_policy_safe",
+            "official_prob_name": "score_prob",
+            "official_prob_field": "score_prob",
+            "single_scorer_semantics": False,
+            "decision_semantics": "baseline_relative",
+        },
     },
     "priority_stage1": {
         "label": "Priority Stage 1",
@@ -52,6 +60,45 @@ PROFILE_PRESETS: Dict[str, Dict[str, Any]] = {
             "c_macro_sym_weight_scale": 0.0,
             "c_macro_context_weight_scale": 1.10,
             "c_macro_copyspace_weight_scale": 0.0,
+        },
+        "semantics": {
+            "official_score_name": "policy_safe",
+            "official_score_field": "score_raw_policy_safe",
+            "official_prob_name": "score_prob",
+            "official_prob_field": "score_prob",
+            "single_scorer_semantics": False,
+            "decision_semantics": "baseline_relative",
+        },
+    },
+    "single_stage2": {
+        "label": "Single Utility Stage 2",
+        "stage": 2,
+        "description": "현행 policy_safe를 단일 scorer(crop_utility) semantics로 해석하는 1+2순위 profile.",
+        "overrides": {
+            "rank_weight_a": 0.75,
+            "rank_weight_s": 1.20,
+            "rank_weight_c": 0.95,
+            "rank_weight_t": 0.18,
+            "policy_area_weight_scale": 0.90,
+            "c_macro_place_weight_scale": 1.50,
+            "c_macro_comp_weight_scale": 0.0,
+            "c_macro_headroom_weight_scale": 1.0,
+            "c_macro_lookroom_weight_scale": 1.0,
+            "c_macro_horizon_weight_scale": 0.0,
+            "c_macro_sym_weight_scale": 0.0,
+            "c_macro_context_weight_scale": 1.10,
+            "c_macro_copyspace_weight_scale": 0.0,
+            "a_macro_aesthetic_weight": 0.78,
+            "a_macro_align_weight": 0.22,
+        },
+        "semantics": {
+            "official_score_name": "crop_utility",
+            "official_score_field": "crop_utility_raw",
+            "official_prob_name": "crop_utility_prob",
+            "official_prob_field": "crop_utility_prob",
+            "single_scorer_semantics": True,
+            "decision_semantics": "baseline_relative",
+            "alias_of": "policy_safe",
         },
     },
     "priority_stage3": {
@@ -122,16 +169,17 @@ def resolve_profile_spec(
     profile_name: str,
     override_json_path: str = "",
 ) -> Dict[str, Any]:
-    preset = PROFILE_PRESETS.get(str(profile_name).strip(), PROFILE_PRESETS["current_refined"])
+    preset = PROFILE_PRESETS.get(str(profile_name).strip(), PROFILE_PRESETS["single_stage2"])
     overrides = copy.deepcopy(preset.get("overrides", {}))
     overrides.update(_load_override_json(override_json_path))
     return {
-        "profile_name": str(profile_name).strip() or "current_refined",
+        "profile_name": str(profile_name).strip() or "single_stage2",
         "label": str(preset.get("label", profile_name)),
         "stage": int(preset.get("stage", 0)),
         "description": str(preset.get("description", "")),
         "overrides": overrides,
         "override_json_path": str(override_json_path or ""),
+        "semantics": copy.deepcopy(preset.get("semantics", {})),
     }
 
 
@@ -190,6 +238,7 @@ def build_profile_metadata(cfg: Any, spec: Dict[str, Any]) -> Dict[str, Any]:
         "description": spec["description"],
         "override_json_path": spec.get("override_json_path", ""),
         "overrides": copy.deepcopy(spec.get("overrides", {})),
+        "semantics": copy.deepcopy(spec.get("semantics", {})),
         "active_components": active_score_components(cfg),
         "scorer_cfg": cfg_to_dict(cfg),
     }

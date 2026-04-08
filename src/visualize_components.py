@@ -34,6 +34,7 @@ import json
 import os
 import tarfile
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
@@ -723,7 +724,19 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--max_masks_per_image", type=int, default=8)
     parser.add_argument("--kp_score_thr", type=float, default=0.05)
+    parser.add_argument("--num_workers", type=int, default=0, help="CPU render workers (0=all cores, 1=single).")
     return parser.parse_args()
+
+
+def resolve_num_workers(requested_workers: int, num_items: int) -> int:
+    if num_items <= 1:
+        return 1
+    req = int(requested_workers)
+    if req == 1:
+        return 1
+    if req <= 0:
+        req = max(1, int(os.cpu_count() or 1))
+    return max(1, min(req, num_items))
 
 
 def main() -> None:
@@ -800,23 +813,39 @@ def main() -> None:
     tar_to_ids: Dict[str, List[str]] = defaultdict(list)
     rendered_ids: List[str] = []
     missing_ids: List[str] = []
+    render_workers = resolve_num_workers(int(args.num_workers), len(selected_ids))
+
+    def render_one(image_id: str, raw_bgr: np.ndarray) -> str:
+        cv2.imwrite(str(out_dir / "original" / f"{image_id}.jpg"), raw_bgr)
+        save_visualizations_for_image(image_id, raw_bgr, c2_map, c3_map, c4_map, c5_map, c6_map, args)
+        return image_id
+
+    executor: Optional[ThreadPoolExecutor] = None
+    future_map = {}
+    if render_workers > 1:
+        executor = ThreadPoolExecutor(max_workers=render_workers)
 
     for image_id in selected_ids:
         orig_path = out_dir / "original" / f"{image_id}.jpg"
         if orig_path.exists():
             raw = cv2.imread(str(orig_path))
             if raw is not None:
-                save_visualizations_for_image(image_id, raw, c2_map, c3_map, c4_map, c5_map, c6_map, args)
-                rendered_ids.append(image_id)
+                if executor is None:
+                    render_one(image_id, raw)
+                    rendered_ids.append(image_id)
+                else:
+                    future_map[executor.submit(render_one, image_id, raw)] = image_id
                 continue
 
         local_img_path = find_image_in_dir(args.image_dir, image_id)
         if local_img_path is not None:
             raw = cv2.imread(str(local_img_path))
             if raw is not None:
-                cv2.imwrite(str(orig_path), raw)
-                save_visualizations_for_image(image_id, raw, c2_map, c3_map, c4_map, c5_map, c6_map, args)
-                rendered_ids.append(image_id)
+                if executor is None:
+                    render_one(image_id, raw)
+                    rendered_ids.append(image_id)
+                else:
+                    future_map[executor.submit(render_one, image_id, raw)] = image_id
                 continue
 
         if image_id not in mapping:
@@ -852,10 +881,11 @@ def main() -> None:
 
                     img = Image.open(io.BytesIO(f.read())).convert("RGB")
                     raw_bgr = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
-                    cv2.imwrite(str(out_dir / "original" / f"{base}.jpg"), raw_bgr)
-
-                    save_visualizations_for_image(base, raw_bgr, c2_map, c3_map, c4_map, c5_map, c6_map, args)
-                    rendered_ids.append(base)
+                    if executor is None:
+                        render_one(base, raw_bgr)
+                        rendered_ids.append(base)
+                    else:
+                        future_map[executor.submit(render_one, base, raw_bgr)] = base
 
                     id_set.remove(base)
                     if not id_set:
@@ -865,6 +895,13 @@ def main() -> None:
         except Exception as e:
             print(f"Error reading tar {tar_path}: {e}")
             missing_ids.extend(sorted(id_set))
+
+    if executor is not None:
+        try:
+            for future in as_completed(future_map):
+                rendered_ids.append(future.result())
+        finally:
+            executor.shutdown(wait=True)
 
     summary = {
         "inputs": {
@@ -881,6 +918,7 @@ def main() -> None:
         "selected_count": len(selected_ids),
         "rendered_count": len(rendered_ids),
         "missing_count": len(missing_ids),
+        "num_workers": render_workers,
         "selected_ids": selected_ids,
         "missing_ids": missing_ids,
     }

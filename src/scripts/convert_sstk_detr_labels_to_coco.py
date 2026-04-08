@@ -8,6 +8,8 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from PIL import Image
 
+from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+
 
 def safe_dict(value: Any) -> Dict[str, Any]:
     return value if isinstance(value, dict) else {}
@@ -26,9 +28,29 @@ def safe_float(value: Any, default: float = 0.0) -> float:
         return float(default)
 
 
-def load_jsonl(path: Path) -> List[Dict[str, Any]]:
+def load_jsonl(
+    path: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 1000,
+    progress_min_seconds: float = 10.0,
+) -> List[Dict[str, Any]]:
+    total = count_nonempty_lines(path) if progress else None
+    tracker = ProgressTracker(
+        f"convert_sstk_detr_labels_to_coco:load_jsonl:{path.name}",
+        total=total,
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
     with path.open("r", encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle]
+        rows: List[Dict[str, Any]] = []
+        for idx, line in enumerate(handle, start=1):
+            rows.append(json.loads(line))
+            tracker.update(idx)
+    tracker.finish(len(rows), extra=f"path={path.name}")
+    return rows
 
 
 def relativize_path(path_str: Optional[str], cwd: Path) -> Optional[str]:
@@ -89,11 +111,26 @@ def build_common_image_entry(
     }
 
 
-def build_batch_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, Any]:
+def build_batch_coco(
+    records: Sequence[Dict[str, Any]],
+    cwd: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 250,
+    progress_min_seconds: float = 10.0,
+) -> Dict[str, Any]:
     images: List[Dict[str, Any]] = []
     annotations: List[Dict[str, Any]] = []
     size_cache: Dict[str, Tuple[int, int]] = {}
     ann_id = 1
+    tracker = ProgressTracker(
+        "convert_sstk_detr_labels_to_coco:build_batch_coco",
+        total=len(records),
+        unit="records",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
     for image_entry_id, record in enumerate(records, start=1):
         width, height = load_image_size(record.get("image_path"), size_cache)
         image_row = build_common_image_entry(image_entry_id, record, width, height, cwd)
@@ -130,6 +167,8 @@ def build_batch_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, 
                 }
             )
             ann_id += 1
+        tracker.update(image_entry_id, extra=f"annotations={len(annotations)}")
+    tracker.finish(len(records), extra=f"images={len(images)} annotations={len(annotations)}")
     return {
         "images": images,
         "type": "instances",
@@ -149,11 +188,26 @@ def build_batch_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, 
     }
 
 
-def build_canonical_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[str, Any]:
+def build_canonical_coco(
+    records: Sequence[Dict[str, Any]],
+    cwd: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 250,
+    progress_min_seconds: float = 10.0,
+) -> Dict[str, Any]:
     images: List[Dict[str, Any]] = []
     annotations: List[Dict[str, Any]] = []
     size_cache: Dict[str, Tuple[int, int]] = {}
     ann_id = 1
+    tracker = ProgressTracker(
+        "convert_sstk_detr_labels_to_coco:build_canonical_coco",
+        total=len(records),
+        unit="records",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
     for image_entry_id, record in enumerate(records, start=1):
         width, height = load_image_size(record.get("image_path"), size_cache)
         image_row = build_common_image_entry(image_entry_id, record, width, height, cwd)
@@ -172,7 +226,12 @@ def build_canonical_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[s
                     "bbox": bbox,
                     "area": coco_area(bbox),
                     "iscrowd": 0,
-                    "score": safe_float(safe_dict(candidate.get("score_targets")).get("score_raw_rank", 0.0)),
+                    "score": safe_float(
+                        safe_dict(candidate.get("score_targets")).get(
+                            "crop_utility_raw",
+                            safe_dict(candidate.get("score_targets")).get("score_raw_rank", 0.0),
+                        )
+                    ),
                     "gt_flag": 1 if is_positive and not is_unsafe else 0,
                     "candidate_id": candidate.get("candidate_id"),
                     "label_type": candidate.get("label_type"),
@@ -194,6 +253,8 @@ def build_canonical_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[s
                 }
             )
             ann_id += 1
+        tracker.update(image_entry_id, extra=f"annotations={len(annotations)}")
+    tracker.finish(len(records), extra=f"images={len(images)} annotations={len(annotations)}")
     return {
         "images": images,
         "type": "instances",
@@ -213,7 +274,14 @@ def build_canonical_coco(records: Sequence[Dict[str, Any]], cwd: Path) -> Dict[s
     }
 
 
-def validate_coco(coco: Dict[str, Any], *, require_positive_gt: bool) -> Dict[str, Any]:
+def validate_coco(
+    coco: Dict[str, Any],
+    *,
+    require_positive_gt: bool,
+    progress: bool = False,
+    progress_every: int = 2000,
+    progress_min_seconds: float = 10.0,
+) -> Dict[str, Any]:
     images = safe_list(coco.get("images"))
     annotations = safe_list(coco.get("annotations"))
     image_ids = {safe_dict(image).get("id") for image in images}
@@ -222,7 +290,15 @@ def validate_coco(coco: Dict[str, Any], *, require_positive_gt: bool) -> Dict[st
     ann_ids: set[int] = set()
     gt_counter = 0
     label_type_counter: Counter[str] = Counter()
-    for annotation in annotations:
+    tracker = ProgressTracker(
+        "convert_sstk_detr_labels_to_coco:validate_coco",
+        total=len(annotations),
+        unit="annotations",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    for idx, annotation in enumerate(annotations, start=1):
         ann = safe_dict(annotation)
         ann_id = ann.get("id")
         image_id = ann.get("image_id")
@@ -246,8 +322,10 @@ def validate_coco(coco: Dict[str, Any], *, require_positive_gt: bool) -> Dict[st
         if safe_float(ann.get("gt_flag", 0.0)) > 0.0:
             gt_counter += 1
         label_type_counter[str(ann.get("label_type", ""))] += 1
+        tracker.update(idx)
     if require_positive_gt and gt_counter <= 0:
         errors.append("no positive gt_flag annotations found")
+    tracker.finish(len(annotations), extra=f"errors={len(errors)}")
     return {
         "status": "ok" if not errors else "failed",
         "image_count": len(images),
@@ -268,28 +346,72 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--canonical_jsonl", required=True)
     parser.add_argument("--batch_jsonl", required=True)
     parser.add_argument("--out_dir", required=True)
+    parser.add_argument("--progress", type=int, default=1)
+    parser.add_argument("--progress_every", type=int, default=250)
+    parser.add_argument("--progress_min_seconds", type=float, default=10.0)
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    progress_enabled = bool(int(args.progress))
+    progress_every = max(1, int(args.progress_every))
+    progress_min_seconds = max(0.0, float(args.progress_min_seconds))
     cwd = Path.cwd()
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    canonical_records = load_jsonl(Path(args.canonical_jsonl))
-    batch_records = load_jsonl(Path(args.batch_jsonl))
+    progress_log(
+        f"convert_sstk_detr_labels_to_coco: start | out_dir={out_dir}",
+        enabled=progress_enabled,
+    )
+    canonical_records = load_jsonl(
+        Path(args.canonical_jsonl),
+        progress=progress_enabled,
+        progress_every=max(500, progress_every),
+        progress_min_seconds=progress_min_seconds,
+    )
+    batch_records = load_jsonl(
+        Path(args.batch_jsonl),
+        progress=progress_enabled,
+        progress_every=max(500, progress_every),
+        progress_min_seconds=progress_min_seconds,
+    )
 
-    canonical_coco = build_canonical_coco(canonical_records, cwd)
-    batch_coco = build_batch_coco(batch_records, cwd)
+    canonical_coco = build_canonical_coco(
+        canonical_records,
+        cwd,
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
+    )
+    batch_coco = build_batch_coco(
+        batch_records,
+        cwd,
+        progress=progress_enabled,
+        progress_every=progress_every,
+        progress_min_seconds=progress_min_seconds,
+    )
 
     canonical_path = out_dir / "instances_conditional_detr_canonical.json"
     batch_path = out_dir / "instances_conditional_detr_batch.json"
     write_json(canonical_path, canonical_coco)
     write_json(batch_path, batch_coco)
 
-    canonical_validation = validate_coco(canonical_coco, require_positive_gt=True)
-    batch_validation = validate_coco(batch_coco, require_positive_gt=True)
+    canonical_validation = validate_coco(
+        canonical_coco,
+        require_positive_gt=True,
+        progress=progress_enabled,
+        progress_every=max(1000, progress_every * 4),
+        progress_min_seconds=progress_min_seconds,
+    )
+    batch_validation = validate_coco(
+        batch_coco,
+        require_positive_gt=True,
+        progress=progress_enabled,
+        progress_every=max(1000, progress_every * 4),
+        progress_min_seconds=progress_min_seconds,
+    )
     summary = {
         "canonical_json": str(canonical_path),
         "batch_json": str(batch_path),
@@ -297,6 +419,10 @@ def main() -> None:
         "batch_validation": batch_validation,
     }
     write_json(out_dir / "coco_conversion_summary.json", summary)
+    progress_log(
+        f"convert_sstk_detr_labels_to_coco: finished | canonical_annotations={canonical_validation['annotation_count']} | batch_annotations={batch_validation['annotation_count']}",
+        enabled=progress_enabled,
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if canonical_validation["status"] != "ok" or batch_validation["status"] != "ok":
         raise SystemExit(1)

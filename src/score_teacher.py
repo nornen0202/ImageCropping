@@ -1181,7 +1181,7 @@ class ExpensiveModels:
         self.batch_size = max(1, int(batch_size))
         req_workers = int(preprocess_workers)
         if req_workers <= 0:
-            req_workers = min(8, max(1, int(os.cpu_count() or 1)))
+            req_workers = max(1, int(os.cpu_count() or 1))
         self.preprocess_workers = max(1, req_workers)
         self.pin_memory = bool(pin_memory)
         self._preprocess_pool: Optional[ThreadPoolExecutor] = None
@@ -3367,18 +3367,15 @@ def composition_family_bundle(
         placement_best = str(valid_place[0][0])
         placement_margin = float(valid_place[0][1] - valid_place[1][1]) if len(valid_place) >= 2 else float(valid_place[0][1])
         placement_smax = smoothmax([value for _, value in valid_place], tau=float(cfg.comp_place_smax_tau))
-        placement_linear = float(sum(value for _, value in valid_place))
     else:
         placement_best = "na"
         placement_margin = 0.0
         placement_smax = 0.0
-        placement_linear = 0.0
 
     comp_score = float(place_total) * float(placement_smax) + float(weights.get("horizon", 0.0)) * float(horizon_reward)
     return {
         "comp_score": clamp(comp_score, 0.0, 1.0),
         "placement_score": clamp(float(placement_smax), 0.0, 1.0),
-        "placement_linear": clamp(float(placement_linear), 0.0, 1.0),
         "placement_best": placement_best,
         "placement_margin": clamp(float(placement_margin), 0.0, 1.0),
         "weights": {key: round(float(value), 9) for key, value in weights.items()},
@@ -4427,9 +4424,6 @@ def compute_macro_score_bundle(
     macro_components.update(s_components)
     macro_components.update(c_components)
     macro_components["T_teacher"] = T_macro
-    macro_components["C_comp_linear"] = (
-        None if comp_bundle.get("placement_linear") is None else round(float(comp_bundle.get("placement_linear")), 9)
-    )
     macro_components["C_place_margin"] = (
         None if comp_bundle.get("placement_margin") is None else round(float(comp_bundle.get("placement_margin")), 9)
     )
@@ -5206,7 +5200,6 @@ def compute_candidate_scores(
                 "support_centroid_y": float(support_centroid_xy[1]),
                 "r_comp": float(r_comp),
                 "r_place": float(comp_bundle["placement_score"]),
-                "r_comp_linear": float(comp_bundle["placement_linear"]),
                 "placement_family_margin": float(comp_bundle["placement_margin"]),
                 "placement_family_best": str(comp_bundle["placement_best"]),
                 "placement_weight_third": float(comp_bundle["weights"].get("third", 0.0)),
@@ -5463,6 +5456,17 @@ def normalize_final_scores(cands: Sequence[Dict[str, Any]]) -> None:
             c["scores"]["policy_norm_0_100"] = policy_norm
 
 
+def candidate_crop_utility_score(candidate: Dict[str, Any]) -> float:
+    scores = safe_dict(candidate.get("scores"))
+    if "policy_safe" in scores:
+        return safe_float(scores.get("policy_safe", 0.0), -1e9)
+    if "policy" in scores:
+        return safe_float(scores.get("policy", 0.0), -1e9)
+    if "final" in scores:
+        return safe_float(scores.get("final", 0.0), -1e9)
+    return safe_float(scores.get("rank", -1e9), -1e9)
+
+
 def decide_keep_vs_crop(best: Dict[str, Any], baseline: Dict[str, Any], tau_improve: float) -> Dict[str, Any]:
     b_best = safe_float(best["scores"].get("policy", best["scores"].get("final", -1e9)))
     b_base = safe_float(baseline["scores"].get("policy", baseline["scores"].get("final", -1e9)))
@@ -5556,8 +5560,8 @@ def select_topk_diverse(
 
 
 def select_hard_negatives(cands: Sequence[Dict[str, Any]], max_n: int = 5) -> List[Dict[str, Any]]:
-    mids = [c for c in cands if 40.0 <= safe_float(c["scores"].get("rank_norm_0_100", -1)) <= 60.0]
-    mids.sort(key=lambda x: safe_float(x["scores"].get("rank", x["scores"].get("final", 0.0))), reverse=True)
+    mids = [c for c in cands if 40.0 <= safe_float(c["scores"].get("policy_norm_0_100", c["scores"].get("final_norm_0_100", -1))) <= 60.0]
+    mids.sort(key=candidate_crop_utility_score, reverse=True)
     return mids[:max_n]
 
 
@@ -5579,6 +5583,7 @@ def candidate_brief(c: Dict[str, Any], rank: Optional[int] = None) -> Dict[str, 
             "policy_base": round(safe_float(c["scores"].get("policy_base", 0.0), 0.0), 9),
             "policy_safe": round(safe_float(c["scores"].get("policy_safe", c["scores"].get("policy", 0.0)), 0.0), 9),
             "policy": round(safe_float(c["scores"].get("policy", c["scores"].get("final", 0.0)), 0.0), 9),
+            "crop_utility_raw": round(candidate_crop_utility_score(c), 9),
             "final": round(safe_float(c["scores"].get("final", 0.0)), 9),
             "final_legacy": round(safe_float(c["scores"].get("final_legacy", 0.0)), 9),
             "final_norm_0_100": round(safe_float(c["scores"].get("final_norm_0_100", 0.0)), 3),
@@ -6179,16 +6184,16 @@ def process_one_image(
         is_freeform = bool(tmp.get("is_freeform", False))
 
         normalize_final_scores(cheap_top_m)
-        exp_sorted = sorted(cheap_top_m, key=lambda x: safe_float(x["scores"].get("rank", x["scores"].get("final", -1e9)), reverse=True))
+        exp_sorted = sorted(cheap_top_m, key=candidate_crop_utility_score, reverse=True)
         non_hard_sorted = [c for c in exp_sorted if not _has_training_severe_reject(c)]
-        rank_pool = non_hard_sorted if non_hard_sorted else exp_sorted
+        utility_pool = non_hard_sorted if non_hard_sorted else exp_sorted
 
-        if rank_pool:
-            best = rank_pool[0]
+        if utility_pool:
+            best = utility_pool[0]
         else:
             best = baseline if baseline is not None else scored[0]
             exp_sorted = [best]
-            rank_pool = exp_sorted
+            utility_pool = exp_sorted
             normalize_final_scores(exp_sorted)
 
         baseline_effective = baseline
@@ -6221,13 +6226,13 @@ def process_one_image(
 
         force_ids = [decision["chosen_candidate_id"], baseline_effective.get("candidate_id")]
         selected_topk = select_topk_diverse(
-            sorted_cands=rank_pool,
+            sorted_cands=utility_pool,
             k=cfg.top_k,
             tau_div=cfg.tau_div,
             force_ids=force_ids,
             ar_log_gap_thr=(cfg.free_topk_ar_log_gap if is_freeform else None),
         )
-        if len(selected_topk) < cfg.top_k and rank_pool is not exp_sorted:
+        if len(selected_topk) < cfg.top_k and utility_pool is not exp_sorted:
             already = {str(x.get("candidate_id", "")) for x in selected_topk}
             tail = [c for c in exp_sorted if str(c.get("candidate_id", "")) not in already]
             if tail:
@@ -6269,8 +6274,8 @@ def process_one_image(
                 "tau_improve": tau_effective,
                 "tau_improve_base": tau_base,
                 "w_area": route["w_area"],
-                "ranking_metric": "score_rank",
-                "decision_metric": "score_policy",
+                "ranking_metric": "crop_utility_raw",
+                "decision_metric": "crop_utility_raw",
                 "force_include_baseline_in_topm": True,
                 "is_freeform": bool(is_freeform),
                 "teacher_tau_boost": {
@@ -6284,6 +6289,8 @@ def process_one_image(
             "fallback": fallback_info,
             "decision": decision,
             "cheap_top_m": [candidate_brief(c) for c in cheap_top_m],
+            "utility_pool": [candidate_brief(c) for c in utility_pool],
+            "rank_pool": [candidate_brief(c) for c in utility_pool],
             "selected_topk": [candidate_brief(c, rank=i + 1) for i, c in enumerate(selected_topk)],
             "hard_negatives": [candidate_brief(c) for c in hard_negs],
             "also_considered_rejected": [candidate_brief(c) for c in rejected_sorted[:5]],
@@ -6355,8 +6362,15 @@ def process_one_image(
                     "tau_improve": float(decision.get("tau_improve", tau_effective)),
                     "best_score_rank": float(safe_float(best.get("scores", {}).get("rank", 0.0), 0.0)),
                     "best_score_policy": float(safe_float(best.get("scores", {}).get("policy", 0.0), 0.0)),
+                    "best_crop_utility_raw": float(candidate_crop_utility_score(best)),
                     "baseline_score_rank": float(safe_float(baseline_effective.get("scores", {}).get("rank", 0.0), 0.0)),
                     "baseline_score_policy": float(safe_float(baseline_effective.get("scores", {}).get("policy", 0.0), 0.0)),
+                    "baseline_crop_utility_raw": float(candidate_crop_utility_score(baseline_effective)),
+                    "chosen_crop_utility_raw": float(
+                        candidate_crop_utility_score(
+                            best if str(best.get("candidate_id", "")) == str(decision.get("chosen_candidate_id", "")) else baseline_effective
+                        )
+                    ),
                 },
                 "top1_explainability": {
                     "candidate_id": str(top1_selected.get("candidate_id", "")),

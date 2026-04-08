@@ -92,7 +92,18 @@ source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 - 이미지 루트: `data/Publics/GAIC/images`
 - 기본 출력 루트: `data/GAIC/All`
 
-### 3.1 로컬 Subject-Routing 검증 명령
+### 3.1 공용 병렬 옵션
+
+최신 [run_gaic_to_teacher_e2e.sh](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_gaic_to_teacher_e2e.sh) 는 준비 단계 CPU 병렬화와 후속 GPU shard 기본값을 wrapper 레벨에서 직접 받습니다.
+
+- `--prepare_num_workers`: flat image link/materialize + actual size probing용 CPU worker 수. `0`이면 사용 가능한 전체 코어를 사용합니다.
+- `--gpu_ids`: 공용 GPU CSV. 내부적으로 [run_phaseA_to_teacher_e2e.sh](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_phaseA_to_teacher_e2e.sh) 의 filter-tag-embed / precompute / public-teacher / teacher / VLM 기본 GPU 목록으로 전파되고, GAIC subject-region A/B에도 그대로 전달됩니다.
+- `--gpu_workers`: 공용 shard worker 수. `0`이면 `gpu_ids` 개수를 사용합니다.
+- `--gaic_caption_multi_gpu`, `--gaic_caption_gpu_ids`, `--gaic_caption_num_workers`: synthetic caption 단계만 별도 shard 정책을 줄 때 사용합니다. 비워 두면 wrapper 공용 GPU 설정을 상속합니다.
+
+즉, 예전처럼 `--extract_gpu_ids`, `--teacher_gpu_ids` 등을 개별 stage override로 넘길 수는 있지만, 현재 권장 방식은 wrapper 레벨에서 `--gpu_ids`, `--gpu_workers`를 한 번만 주는 것입니다.
+
+### 3.2 로컬 Subject-Routing 검증 명령
 
 GAIC subject routing 보강만 빠르게 재검증하려면 아래 명령을 사용합니다.
 
@@ -131,6 +142,7 @@ python3 src/scripts/enrich_subject_mode_jsonl.py \
 ```bash
 GPU_IDS=0,1,2
 N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+PREPARE_WORKERS=16
 DATANAME=All
 RUN_TAG=gaic_260324_r1
 ```
@@ -144,6 +156,7 @@ RUN_TAG=gaic_260324_r1
 
 GPU_IDS=0,1,2
 N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+PREPARE_WORKERS=16
 
 RUN_TAG=gaic_260324_r1
 DATANAME=All
@@ -154,6 +167,9 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --image_root data/Publics/GAIC/images \
   --run_tag ${RUN_TAG} \
   --skip_existing 0 \
+  --prepare_num_workers ${PREPARE_WORKERS} \
+  --gpu_ids ${GPU_IDS} \
+  --gpu_workers ${N_WORKERS} \
   --use_real_expensive 1 \
   --gaic_caption_preset server_quality \
   --gaic_generate_captions 0 \
@@ -176,10 +192,6 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --public_teacher_setup 1 \
   --public_teacher_download_weights 1 \
   --public_teachers gaic,cacnet,cgs \
-  --extract_gpu_ids ${GPU_IDS} \
-  --num_workers ${N_WORKERS} \
-  --teacher_gpu_ids ${GPU_IDS} \
-  --teacher_num_workers ${N_WORKERS} \
   --run_gaic_benchmark_eval 1 \
   --gaic_benchmark_sample_count 8 \
   --run_gaic_subject_region_ab 1 \
@@ -191,9 +203,10 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 위 명령의 실제 동작:
 
 - GAIC 전체 이미지를 curated pool로 준비
+- 준비 단계는 `--prepare_num_workers` 기준으로 CPU 병렬화되고, 이후 GPU 단계들은 `--gpu_ids`, `--gpu_workers` 기본값을 공유
 - `run_phaseA_to_teacher_e2e.sh` 를 `run_filter=0` 으로 호출
-- 품질우선(`quality_first`) precompute로 `C1/C2/C3/C5/C6` 수행
-- 필요 시 `--run_c7_saliency 1 --c7_saliency_priority quality_first` 로 BiRefNet 우선 saliency까지 추가 가능
+- 기존 precompute/caption lane이 있으면 그것을 재사용하고, 여기서는 `C7 saliency`를 추가로 켠 실무형 재실행 preset으로 동작한다
+- fresh precompute를 처음부터 다시 돌리면서 모든 옵션을 켜고 싶다면 아래 `4.1-max`를 사용한다
 - `C4`, `VLM teacher` 는 수행하지 않음
 - public teacher proposal injection을 켠 상태로 `candidates -> teacher` 를 수행
 - public teacher proposal 생성 뒤 `08d_reroute_subject_mode_with_public_teacher`가 자동 실행되며, caption/public teacher/perception 신호를 반영한 `..._routed_final.jsonl`이 downstream input으로 승격됩니다.
@@ -226,8 +239,84 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 
 중요:
 
-- 이 4.1 템플릿은 `run_c1=1`, `use_real_expensive=1` 이므로 wrapper가 synthetic caption을 먼저 만들고, teacher scorer는 real expensive path를 사용합니다.
-- 즉 report에는 `expensive_source=real` 이 기록되고, `A_macro` 가 실제 expensive signal을 반영합니다.
+- 이 4.1 템플릿은 `run_c1/c2/c3/c4/c5/c6/merge=0`을 명시한 재사용형 preset이다. 따라서 fresh full-run 설명으로 읽으면 안 된다.
+- fresh server full-run에서 `run_c1=1`, `use_real_expensive=1`, `gaic_generate_captions=1`까지 모두 켠 경로는 아래 `4.1-max`다.
+
+위 4.1은 현재 운영상 가장 무난한 권장 템플릿이다. 서버에서 가능한 boolean 옵션을 사실상 모두 켠 maximal full-run이 필요하면 아래 4.1-max를 사용한다.
+
+참고:
+
+- 아래 후속 예제들 중 일부는 기록 보존을 위해 예전처럼 `--extract_gpu_ids`, `--teacher_gpu_ids` 등 stage별 옵션을 직접 쓰고 있습니다.
+- 현재 운영에서는 wrapper 레벨 `--gpu_ids`, `--gpu_workers`를 우선 쓰고, 특정 단계만 다르게 돌릴 때만 stage별 override를 추가하는 방식을 권장합니다.
+
+### 4.1-max 서버 최대 옵션 full-run
+
+아래 명령은 wrapper에서 켤 수 있는 주요 옵션을 한 번에 모두 활성화한다. 즉 `C1~C7`, merge, subject routing, public teacher, VLM teacher, training labels, leftover variants, debug-viz, detailed report, benchmark, saliency A/B까지 한 번에 수행한다.
+
+```bash
+# source /your/server/venv/bin/activate
+
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+PREPARE_WORKERS=32
+
+RUN_TAG=gaic_full_260406_v1
+DATANAME=All
+
+bash src/scripts/run_gaic_to_teacher_e2e.sh \
+  --server_mode 1 \
+  --data_dir data/GAIC/${DATANAME} \
+  --image_root data/Publics/GAIC/images \
+  --run_tag ${RUN_TAG} \
+  --skip_existing 0 \
+  --prepare_num_workers ${PREPARE_WORKERS} \
+  --gpu_ids ${GPU_IDS} \
+  --gpu_workers ${N_WORKERS} \
+  --run_filter 0 \
+  --precompute_mode unified \
+  --use_real_expensive 1 \
+  --gaic_caption_preset server_quality \
+  --gaic_generate_captions 1 \
+  --run_c1 1 \
+  --run_c2 1 \
+  --run_c3 1 \
+  --run_c3_enrich 1 \
+  --run_c4 1 \
+  --run_c5 1 \
+  --run_c6 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --run_merge 1 \
+  --run_subject_routing 1 \
+  --run_candidates 1 \
+  --run_teacher 1 \
+  --run_vlm_teacher 0 \
+  --vlm_backend heuristic \
+  --vlm_fallback_backend none \
+  --run_training_labels 1 \
+  --safe_leftover_policy ignore \
+  --auto_leftover_variants 0 \
+  --run_training_label_debug_viz 1 \
+  --training_label_debug_viz_sample_size 50 \
+  --training_label_debug_viz_seed 42 \
+  --run_detailed_report 1 \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 1 \
+  --public_teacher_download_weights 1 \
+  --public_teachers gaic,cacnet,cgs \
+  --run_gaic_benchmark_eval 1 \
+  --gaic_benchmark_sample_count 16 \
+  --run_gaic_subject_region_ab 1 \
+  --gaic_subject_ab_run_tag gaic_eval_${RUN_TAG} \
+  --gaic_subject_ab_sample_count 16 \
+  | tee src/scripts/logs/run_gaic_to_teacher_e2e_${DATANAME}_${RUN_TAG}.log
+```
+
+주의:
+
+- 이 명령은 가장 느리며 서버 디스크/GPU 사용량도 가장 크다.
+- `run_vlm_teacher=1`은 별도 VLM을 강제하지 않으면 wrapper 기본값인 `heuristic` backend를 사용한다.
+- `run_c4=1`까지 켜므로 OCR/runtime 준비가 덜 된 서버에서는 실패할 수 있다. 그런 서버에서는 4.1 템플릿으로 먼저 재현하고 필요한 단계만 선택적으로 켜는 편이 낫다.
 
 ### 4.1a Public Teacher만 기존 결과에 재반영
 
@@ -474,7 +563,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_detailed_report 1 \
   --run_training_labels 1 \
   --safe_leftover_policy ignore \
-  --auto_leftover_variants 1 \
+  --auto_leftover_variants 0 \
   --run_gaic_benchmark_eval 1 \
   --run_gaic_subject_region_ab 1 \
   --run_viz 1 \
@@ -560,7 +649,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_detailed_report 0 \
   --run_training_labels 1 \
   --safe_leftover_policy ignore \
-  --auto_leftover_variants 1 \
+  --auto_leftover_variants 0 \
   --run_gaic_benchmark_eval 1 \
   --run_gaic_subject_region_ab 0 \
   --run_viz 0
@@ -614,7 +703,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_detailed_report 0 \
   --run_training_labels 1 \
   --safe_leftover_policy ignore \
-  --auto_leftover_variants 1 \
+  --auto_leftover_variants 0 \
   --run_gaic_benchmark_eval 0 \
   --run_gaic_subject_region_ab 0 \
   --run_viz 0 \
@@ -1173,6 +1262,8 @@ opt-in variant 실험을 위해 아래 분기를 만들 수 있습니다.
 
 우선순위 기반 scorer 실험은 아래 runner로 수행합니다.
 
+2026-04-06 기준의 권장 채택 scorer는 `single_stage2_utility` 입니다. `current_refined`는 regression / rollback safety를 위한 baseline으로만 유지하는 것을 권장합니다.
+
 - script: `src/scripts/run_crop_score_priority_experiments.py`
 - 핵심 입력:
   - `teacher_scores_ar_<RUN_TAG>.jsonl`
@@ -1193,19 +1284,29 @@ opt-in variant 실험을 위해 아래 분기를 만들 수 있습니다.
 source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
 
 python3 src/scripts/run_crop_score_priority_experiments.py \
-  --out_root data/GAIC/All/artifacts/reports/crop_score_priority_experiments_gaic_260402_reroute_v1_smoke \
-  --experiment_ids baseline_current_refined stage1_balanced stage2_balanced stage3_balanced stage4_balanced \
-  --teacher_max_images 4 \
-  --benchmark_max_images 2 \
-  --winner_benchmark_max_images 2 \
+  --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1.jsonl \
+  --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --image_root data/GAIC/All/images \
+  --c1_jsonl data/GAIC/All/artifacts/precompute/feats_c1.jsonl \
+  --out_root data/GAIC/All/artifacts/reports/single_scorer_stage2_smoke_gaic_260402_reroute_v1 \
+  --experiment_ids baseline_current_refined single_stage2_utility \
+  --teacher_max_images 16 \
+  --benchmark_max_images 16 \
+  --winner_benchmark_max_images 16 \
   --run_winner_refresh 0 \
-  --debug_sample_size 2 \
   --run_full_expensive 1 \
-  --benchmark_sample_count 0 \
-  --parallel_experiment_jobs 2 \
-  --worker_cpu_threads -1 \
-  --benchmark_num_workers 2 \
-  --gt_cache_num_workers 2
+  --build_debug_viz_for_all 1 \
+  --debug_sample_size 12 \
+  --debug_sample_size_all 12 \
+  --debug_skip_by_ar 1 \
+  --parallel_experiment_jobs 1 \
+  --worker_cpu_threads 2 \
+  --benchmark_num_workers 1 \
+  --gt_cache_num_workers 1 \
+  --force 1
 ```
 
 이 smoke는 아래를 확인하는 용도입니다.
@@ -1218,7 +1319,9 @@ python3 src/scripts/run_crop_score_priority_experiments.py \
 
 ### 서버 full-expensive 실험
 
-전체 GAIC overlap 대상으로 stage comparison을 하려면 서버에서 아래처럼 실행하는 편이 맞습니다.
+#### `single_stage2_utility` 채택 기준 full rerun
+
+전체 GAIC overlap 대상으로 채택 scorer를 검증하려면, `baseline_current_refined`와 `single_stage2_utility` 두 개만 full rerun 하는 편이 맞습니다. stage1~4 전체 sweep은 historical comparison 용도로만 두는 것을 권장합니다.
 
 ```bash
 #source /your/server/venv/bin/activate
@@ -1231,6 +1334,7 @@ CPU_THREADS_PER_JOB=-1
 export CUDA_VISIBLE_DEVICES=${GPU_IDS}
 
 RUN_TAG=gaic_260402_reroute_v1
+OUT_ROOT=data/GAIC/All/artifacts/reports/crop_score_priority_experiments_${RUN_TAG}_single_stage2_full
 
 python3 src/scripts/run_crop_score_priority_experiments.py \
   --teacher_jsonl data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl \
@@ -1240,32 +1344,123 @@ python3 src/scripts/run_crop_score_priority_experiments.py \
   --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
   --image_root data/GAIC/All/images \
   --c1_jsonl data/GAIC/All/artifacts/precompute/feats_c1.jsonl \
-  --out_root data/GAIC/All/artifacts/reports/crop_score_priority_experiments_${RUN_TAG} \
+  --out_root ${OUT_ROOT} \
+  --experiment_ids baseline_current_refined single_stage2_utility \
   --benchmark_max_images 0 \
   --winner_benchmark_max_images 0 \
   --run_winner_refresh 1 \
   --run_full_expensive 1 \
-  --debug_sample_size 50 \
-  --build_debug_viz_for_all 1 \
+  --skip_debug_viz 1 \
   --parallel_experiment_jobs ${PARALLEL_EXPERIMENT_JOBS} \
   --worker_cpu_threads ${CPU_THREADS_PER_JOB} \
   --benchmark_gpu_ids ${GPU_IDS} \
   --benchmark_num_workers ${N_WORKERS} \
   --gt_cache_gpu_ids ${GPU_IDS} \
   --gt_cache_num_workers ${N_WORKERS} \
-  | tee src/scripts/logs/run_crop_score_priority_experiments_${RUN_TAG}.log
+  --force 1 \
+  | tee src/scripts/logs/run_crop_score_priority_experiments_${RUN_TAG}_single_stage2_full.log
 ```
 
-이 full run은 기본적으로:
+이 1차 full run은 기본적으로:
 
 - baseline `current_refined`
-- stage1~4 기본형과 tuning variant
-- stage별 winner selection
-- baseline + stage winner debug viz
+- adopted scorer `single_stage2_utility`
+- full benchmark / winner refresh / experiment summary
 
 를 생성합니다.
 
-runner는 benchmark full-expensive cache와 GT expensive cache를 `<out_root>/shared_*cache*.jsonl` 로 공유하므로, tuning candidate가 많아도 동일 raw expensive signal을 실험 간 재사용합니다.
+#### 완전한 GT 패널 + by-AR debug viz 생성
+
+위 1차 full run만으로는 아래 현상이 남을 수 있습니다.
+
+- GT 우측 checklist panel의 `A_macro = NA`
+- `*_by_ar` 결과 디렉터리가 비어 있음
+
+원인:
+
+- GT `A_macro = NA`
+  - GT bbox에 대해 expensive stage를 다시 태운 `gaic_gt_score_cache_free.jsonl` 이 아직 없거나 cheap-only cache만 연결된 상태
+- `*_by_ar` 비어 있음
+  - `--debug_skip_by_ar 1` 로 렌더링했거나, debug viz 자체를 생략한 상태
+
+완전한 결과를 보려면, 각 experiment에 대해 GT expensive cache를 먼저 만들고 그 다음 `build_gaic_training_label_debug_viz.py` 를 `--skip_by_ar 0` 으로 다시 실행해야 합니다.
+
+```bash
+#source /your/server/venv/bin/activate
+
+RUN_TAG=gaic_260402_reroute_v1
+OUT_ROOT=data/GAIC/All/artifacts/reports/crop_score_priority_experiments_${RUN_TAG}_single_stage2_full
+
+python3 src/scripts/build_gaic_gt_score_cache.py \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
+  --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl \
+  --teacher_jsonl ${OUT_ROOT}/teacher_subset.jsonl \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --c1_jsonl data/GAIC/All/artifacts/precompute/feats_c1.jsonl \
+  --image_root data/GAIC/All/images \
+  --sample_expensive_cache_jsonl ${OUT_ROOT}/shared_gt_expensive_cache_free.jsonl \
+  --score_profile current_refined \
+  --score_profile_overrides_json ${OUT_ROOT}/baseline_current_refined/score_profile_overrides.json \
+  --out_jsonl ${OUT_ROOT}/baseline_current_refined/training_labels/gaic_gt_score_cache_free.jsonl
+
+python3 src/scripts/build_gaic_gt_score_cache.py \
+  --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
+  --features_jsonl data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl \
+  --teacher_jsonl ${OUT_ROOT}/teacher_subset.jsonl \
+  --gaic_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --c1_jsonl data/GAIC/All/artifacts/precompute/feats_c1.jsonl \
+  --image_root data/GAIC/All/images \
+  --sample_expensive_cache_jsonl ${OUT_ROOT}/shared_gt_expensive_cache_free.jsonl \
+  --score_profile single_stage2 \
+  --score_profile_overrides_json ${OUT_ROOT}/single_stage2_utility/score_profile_overrides.json \
+  --out_jsonl ${OUT_ROOT}/single_stage2_utility/training_labels/gaic_gt_score_cache_free.jsonl
+
+python3 src/scripts/build_gaic_training_label_debug_viz.py \
+  --coco_json ${OUT_ROOT}/baseline_current_refined/training_labels/coco/instances_conditional_detr_batch_gaic_like.json \
+  --batch_jsonl ${OUT_ROOT}/baseline_current_refined/training_labels/train_conditional_detr_batch.jsonl \
+  --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_gt_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --gt_score_cache_jsonl ${OUT_ROOT}/baseline_current_refined/training_labels/gaic_gt_score_cache_free.jsonl \
+  --teacher_jsonl ${OUT_ROOT}/teacher_subset.jsonl \
+  --image_root data/GAIC/All/images \
+  --subject_mode_vocab ${OUT_ROOT}/baseline_current_refined/training_labels/subject_mode_vocab.json \
+  --score_profile_json ${OUT_ROOT}/baseline_current_refined/training_labels/score_profile.json \
+  --sample_size 50 \
+  --seed 42 \
+  --skip_by_ar 0 \
+  --format jpg \
+  --jpg_quality 50 \
+  --out_dir ${OUT_ROOT}/baseline_current_refined/training_labels/debug_visualizations_balanced50_complete
+
+python3 src/scripts/build_gaic_training_label_debug_viz.py \
+  --coco_json ${OUT_ROOT}/single_stage2_utility/training_labels/coco/instances_conditional_detr_batch_gaic_like.json \
+  --batch_jsonl ${OUT_ROOT}/single_stage2_utility/training_labels/train_conditional_detr_batch.jsonl \
+  --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
+  --gaic_gt_test_json data/Publics/GAIC/annotations_json/instances_test.json \
+  --gt_score_cache_jsonl ${OUT_ROOT}/single_stage2_utility/training_labels/gaic_gt_score_cache_free.jsonl \
+  --teacher_jsonl ${OUT_ROOT}/teacher_subset.jsonl \
+  --image_root data/GAIC/All/images \
+  --subject_mode_vocab ${OUT_ROOT}/single_stage2_utility/training_labels/subject_mode_vocab.json \
+  --score_profile_json ${OUT_ROOT}/single_stage2_utility/training_labels/score_profile.json \
+  --sample_size 50 \
+  --seed 42 \
+  --skip_by_ar 0 \
+  --format jpg \
+  --jpg_quality 50 \
+  --out_dir ${OUT_ROOT}/single_stage2_utility/training_labels/debug_visualizations_balanced50_complete
+```
+
+최종적으로 확인할 핵심 파일:
+
+- `${OUT_ROOT}/experiment_summary.json`
+- `${OUT_ROOT}/baseline_current_refined/benchmark/benchmark_summary.json`
+- `${OUT_ROOT}/single_stage2_utility/benchmark/benchmark_summary.json`
+- `${OUT_ROOT}/single_stage2_utility/training_labels/gaic_gt_score_cache_free.jsonl`
+- `${OUT_ROOT}/single_stage2_utility/training_labels/debug_visualizations_balanced50_complete/summary/summary.json`
+
+runner와 GT cache 스크립트는 benchmark full-expensive cache와 GT expensive cache를 `<out_root>/shared_*cache*.jsonl` 로 공유하므로, baseline과 adopted scorer 간에도 동일 raw expensive signal을 재사용할 수 있습니다.
 
 GPU 사용 관련 메모:
 
@@ -1398,7 +1593,7 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
   --run_vlm_teacher 0 \
   --run_detailed_report 0 \
   --run_training_labels 1 \
-  --auto_leftover_variants 1 \
+  --auto_leftover_variants 0 \
   --leftover_variant_policies keep_negative,promote_soft_positive
 ```
 

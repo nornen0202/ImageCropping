@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
+from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
 
 
 def parse_args() -> argparse.Namespace:
@@ -23,6 +24,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--training_validation_json", default="")
     parser.add_argument("--training_gaic_like_summary_json", default="")
     parser.add_argument("--summary_json", required=True)
+    parser.add_argument("--progress", type=int, default=1)
+    parser.add_argument("--progress_every", type=int, default=1000)
+    parser.add_argument("--progress_min_seconds", type=float, default=10.0)
     return parser.parse_args()
 
 
@@ -31,14 +35,31 @@ def load_json(path: Path) -> Dict[str, Any]:
         return json.load(handle)
 
 
-def read_jsonl_rows(path: Path) -> List[Dict[str, Any]]:
+def read_jsonl_rows(
+    path: Path,
+    *,
+    progress: bool = False,
+    progress_every: int = 1000,
+    progress_min_seconds: float = 10.0,
+) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
+    total = count_nonempty_lines(path) if progress else None
+    tracker = ProgressTracker(
+        f"validate_gaic_e2e_outputs:read_jsonl:{path.name}",
+        total=total,
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
     with path.open("r", encoding="utf-8") as handle:
-        for line in handle:
+        for idx, line in enumerate(handle, start=1):
             line = line.strip()
             if not line:
                 continue
             rows.append(json.loads(line))
+            tracker.update(idx)
+    tracker.finish(len(rows), extra=f"path={path.name}")
     return rows
 
 
@@ -75,6 +96,9 @@ def validate_subset_ids(
 
 def main() -> None:
     args = parse_args()
+    progress_enabled = bool(int(args.progress))
+    progress_every = max(1, int(args.progress_every))
+    progress_min_seconds = max(0.0, float(args.progress_min_seconds))
 
     manifest_parquet = Path(args.manifest_parquet).resolve()
     summary_json = Path(args.summary_json).resolve()
@@ -83,6 +107,10 @@ def main() -> None:
     if not manifest_parquet.exists():
         raise FileNotFoundError(f"manifest parquet not found: {manifest_parquet}")
 
+    progress_log(
+        f"validate_gaic_e2e_outputs: start | manifest_parquet={manifest_parquet} | summary_json={summary_json}",
+        enabled=progress_enabled,
+    )
     df = pd.read_parquet(manifest_parquet)
     required_cols = {"image_id", "width", "height", "source_image_path", "flat_image_path"}
     missing_cols = sorted(required_cols - set(df.columns))
@@ -123,6 +151,7 @@ def main() -> None:
         if not prepare_path.exists():
             errors.append(f"prepare_summary_json missing: {prepare_path}")
         else:
+            progress_log(f"validate_gaic_e2e_outputs: load prepare summary {prepare_path.name}", enabled=progress_enabled)
             payload = load_json(prepare_path)
             prepared = int(payload.get("num_images_prepared", -1))
             if prepared != manifest_rows:
@@ -137,7 +166,12 @@ def main() -> None:
         if not path.exists():
             errors.append(f"precompute_jsonl missing: {path}")
         else:
-            rows = read_jsonl_rows(path)
+            rows = read_jsonl_rows(
+                path,
+                progress=progress_enabled,
+                progress_every=progress_every,
+                progress_min_seconds=progress_min_seconds,
+            )
             count, id_set = validate_subset_ids(
                 name="precompute_jsonl",
                 rows=rows,
@@ -162,7 +196,12 @@ def main() -> None:
         if not path.exists():
             errors.append(f"routed_jsonl missing: {path}")
         else:
-            rows = read_jsonl_rows(path)
+            rows = read_jsonl_rows(
+                path,
+                progress=progress_enabled,
+                progress_every=progress_every,
+                progress_min_seconds=progress_min_seconds,
+            )
             count, id_set = validate_subset_ids(
                 name="routed_jsonl",
                 rows=rows,
@@ -188,7 +227,12 @@ def main() -> None:
         if not path.exists():
             errors.append(f"candidates_jsonl missing: {path}")
         else:
-            candidate_rows = read_jsonl_rows(path)
+            candidate_rows = read_jsonl_rows(
+                path,
+                progress=progress_enabled,
+                progress_every=progress_every,
+                progress_min_seconds=progress_min_seconds,
+            )
             count, candidate_ids = validate_subset_ids(
                 name="candidates_jsonl",
                 rows=candidate_rows,
@@ -219,7 +263,12 @@ def main() -> None:
         if not path.exists():
             errors.append(f"teacher_jsonl missing: {path}")
         else:
-            teacher_rows = read_jsonl_rows(path)
+            teacher_rows = read_jsonl_rows(
+                path,
+                progress=progress_enabled,
+                progress_every=progress_every,
+                progress_min_seconds=progress_min_seconds,
+            )
             count, teacher_ids = validate_subset_ids(
                 name="teacher_jsonl",
                 rows=teacher_rows,
@@ -253,7 +302,12 @@ def main() -> None:
         if not path.exists():
             errors.append(f"vlm_meta_jsonl missing: {path}")
         else:
-            rows = read_jsonl_rows(path)
+            rows = read_jsonl_rows(
+                path,
+                progress=progress_enabled,
+                progress_every=progress_every,
+                progress_min_seconds=progress_min_seconds,
+            )
             count, meta_ids = validate_subset_ids(
                 name="vlm_meta_jsonl",
                 rows=rows,
@@ -273,7 +327,12 @@ def main() -> None:
         if not path.exists():
             errors.append(f"vlm_labels_jsonl missing: {path}")
         else:
-            rows = read_jsonl_rows(path)
+            rows = read_jsonl_rows(
+                path,
+                progress=progress_enabled,
+                progress_every=progress_every,
+                progress_min_seconds=progress_min_seconds,
+            )
             count = len(rows)
             bad_rows = 0
             label_ids: Set[str] = set()
@@ -346,6 +405,10 @@ def main() -> None:
         "sections": sections,
     }
     summary_json.write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
+    progress_log(
+        f"validate_gaic_e2e_outputs: finished | status={summary['status']} | errors={len(errors)} | warnings={len(warnings)}",
+        enabled=progress_enabled,
+    )
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     if errors:
         raise SystemExit(1)

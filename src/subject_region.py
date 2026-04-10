@@ -14,6 +14,12 @@ SCENE_LIKE_MODES = {
     "text_document",
 }
 
+TRUST_TIER_RANK = {
+    "low": 0,
+    "medium": 1,
+    "high": 2,
+}
+
 
 def _dedupe_keep_order(values: Sequence[str]) -> List[str]:
     out: List[str] = []
@@ -156,6 +162,58 @@ def _pick_norm_box(payload: Dict[str, Any], width: int, height: int, norm_key: s
     return None
 
 
+def _decode_support_occ_grid(payload: Dict[str, Any]) -> Optional[np.ndarray]:
+    if not isinstance(payload, dict):
+        return None
+    grid_size = int(safe_float(payload.get("support_grid_size", 0), 0.0))
+    occ_b64 = payload.get("support_occ_grid_u8_b64")
+    if grid_size <= 0 or not isinstance(occ_b64, str) or not occ_b64:
+        return None
+    try:
+        occ_grid = np.frombuffer(base64.b64decode(occ_b64.encode("ascii")), dtype=np.uint8)
+    except Exception:
+        return None
+    if occ_grid.size != grid_size * grid_size:
+        return None
+    return (occ_grid.reshape((grid_size, grid_size)) > 0).astype(np.uint8)
+
+
+def _grid_mask_to_bbox(mask: Optional[np.ndarray]) -> Optional[List[float]]:
+    if not isinstance(mask, np.ndarray) or mask.ndim != 2 or mask.size <= 0:
+        return None
+    ys, xs = np.where(mask > 0)
+    if ys.size == 0 or xs.size == 0:
+        return None
+    grid_h, grid_w = mask.shape
+    x1 = float(xs.min()) / float(grid_w)
+    y1 = float(ys.min()) / float(grid_h)
+    x2 = float(xs.max() + 1) / float(grid_w)
+    y2 = float(ys.max() + 1) / float(grid_h)
+    box = clip_box01([x1, y1, x2, y2])
+    return box if box_area(box) > 0.0 else None
+
+
+def _mass_grid_top_mass_bbox(payload: Dict[str, Any], target_mass: float) -> Optional[List[float]]:
+    mass_grid = _decode_support_mass_grid(payload)
+    if mass_grid is None:
+        return None
+    flat = mass_grid.reshape(-1)
+    if flat.size <= 0:
+        return None
+    order = np.argsort(flat)[::-1]
+    selected = np.zeros_like(flat, dtype=np.uint8)
+    cumulative = 0.0
+    for idx in order:
+        val = float(flat[idx])
+        if val <= 1e-8:
+            break
+        selected[int(idx)] = 1
+        cumulative += val
+        if cumulative >= float(target_mass):
+            break
+    return _grid_mask_to_bbox(selected.reshape(mass_grid.shape))
+
+
 def summarize_saliency_signal(c7_saliency: Optional[Dict[str, Any]], width: int, height: int) -> Dict[str, Any]:
     out: Dict[str, Any] = {
         "available": False,
@@ -185,6 +243,8 @@ def summarize_saliency_signal(c7_saliency: Optional[Dict[str, Any]], width: int,
         "support_grid_encoding": "",
         "support_mass_grid_f16_b64": None,
         "support_occ_grid_u8_b64": None,
+        "latent_support_bbox_norm_xyxy": None,
+        "latent_support_core_bbox_norm_xyxy": None,
     }
     if not isinstance(c7_saliency, dict):
         return out
@@ -241,6 +301,20 @@ def summarize_saliency_signal(c7_saliency: Optional[Dict[str, Any]], width: int,
         out["support_grid_encoding"] = str(c7_saliency.get("support_grid_encoding", "f16_base64") or "f16_base64")
         out["support_mass_grid_f16_b64"] = support_mass_grid
         out["support_occ_grid_u8_b64"] = support_occ_grid
+        occ_bbox = _grid_mask_to_bbox(_decode_support_occ_grid(out))
+        top_mass_bbox = _mass_grid_top_mass_bbox(out, target_mass=0.98)
+        core_bbox = _mass_grid_top_mass_bbox(out, target_mass=0.70)
+        out["latent_support_bbox_norm_xyxy"] = (
+            occ_bbox
+            or top_mass_bbox
+            or out["foreground_bbox_norm_xyxy"]
+            or out["support_bbox_norm_xyxy"]
+        )
+        out["latent_support_core_bbox_norm_xyxy"] = (
+            core_bbox
+            or out["top_component_bbox_norm_xyxy"]
+            or out["support_bbox_norm_xyxy"]
+        )
 
     out["dominant_subject_likely"] = bool(
         out["dominance_score"] >= 0.55
@@ -315,6 +389,10 @@ def summarize_saliency_signal(c7_saliency: Optional[Dict[str, Any]], width: int,
             if out["top_component_bbox_norm_xyxy"] is not None
             else ("top2_union" if out["top2_union_bbox_norm_xyxy"] is not None else "foreground_bbox")
         )
+    if out["latent_support_bbox_norm_xyxy"] is None:
+        out["latent_support_bbox_norm_xyxy"] = out["foreground_bbox_norm_xyxy"] or out["support_bbox_norm_xyxy"]
+    if out["latent_support_core_bbox_norm_xyxy"] is None:
+        out["latent_support_core_bbox_norm_xyxy"] = out["top_component_bbox_norm_xyxy"] or out["support_bbox_norm_xyxy"]
     return out
 
 
@@ -434,6 +512,25 @@ def build_crop_guidance_spec(
         "attention_layout": str(region.get("attention_layout", "none") or "none"),
         "subject_source": str(region.get("subject_source", "proxy") or "proxy"),
         "subject_reliability": round(float(clamp(safe_float(region.get("subject_reliability", 0.0), 0.0), 0.0, 1.0)), 6),
+        "support_trust_tier": str(region.get("support_trust_tier", "low") or "low"),
+        "hybrid_enabled": bool(region.get("support_hybrid_enabled", False)),
+        "core_bbox_norm_xyxy": region.get("latent_support_core_bbox_norm_xyxy") or region.get("guidance_core_bbox_norm_xyxy"),
+        "latent_support_bbox_norm_xyxy": region.get("latent_support_bbox_norm_xyxy"),
+        "latent_support_core_bbox_norm_xyxy": region.get("latent_support_core_bbox_norm_xyxy"),
+        "guidance_preserves_latent_support": bool(region.get("guidance_preserves_latent_support", False)),
+        "attributed_support_mass": round(float(clamp(safe_float(region.get("semantic_attributed_support_mass", 0.0), 0.0), 0.0, 1.0)), 6),
+        "residual_scene_mass": round(float(clamp(safe_float(region.get("semantic_residual_scene_mass", 0.0), 0.0), 0.0, 1.0)), 6),
+    }
+    semantic_spec = {
+        "subject_family": str(region.get("subject_semantic_family", "unknown") or "unknown"),
+        "subject_subtype": str(region.get("subject_semantic_subtype", "") or ""),
+        "layout_structure": str(region.get("layout_structure", "single") or "single"),
+        "support_trust_tier": str(region.get("support_trust_tier", "low") or "low"),
+    }
+    guidance_spec = {
+        "core_bbox_norm_xyxy": region.get("guidance_core_bbox_norm_xyxy"),
+        "envelope_bbox_norm_xyxy": region.get("guidance_envelope_bbox_norm_xyxy") or support_box,
+        "secondary_core_bbox_norm_xyxy": region.get("guidance_secondary_core_bbox_norm_xyxy"),
     }
     safety_payload = safety_spec if isinstance(safety_spec, dict) else {}
     safety_spec_out = {
@@ -450,10 +547,15 @@ def build_crop_guidance_spec(
         "detector_saliency_iou": round(float(clamp(safe_float(region.get("subject_agreement_iou", 0.0), 0.0), 0.0, 1.0)), 6),
         "detector_saliency_center_distance": round(float(max(0.0, safe_float(region.get("subject_center_distance", 0.0), 0.0))), 6),
         "fallback_reason": str(region.get("support_fallback_reason", "") or ""),
+        "latent_support_bbox_norm_xyxy": region.get("latent_support_bbox_norm_xyxy"),
+        "latent_support_core_bbox_norm_xyxy": region.get("latent_support_core_bbox_norm_xyxy"),
+        "guidance_preserves_latent_support": bool(region.get("guidance_preserves_latent_support", False)),
     }
     return {
         "schema_version": "crop_guidance_spec.v1",
         "support_spec": support_spec,
+        "semantic_spec": semantic_spec,
+        "guidance_spec": guidance_spec,
         "safety_spec": safety_spec_out,
         "layout_spec": _build_layout_spec(
             subject_mode=subject_mode,
@@ -488,6 +590,8 @@ def ensure_crop_guidance_spec(
     out = {
         "schema_version": str(current.get("schema_version", "crop_guidance_spec.v1") or "crop_guidance_spec.v1"),
         "support_spec": dict(current.get("support_spec", {})) if isinstance(current.get("support_spec"), dict) else {},
+        "semantic_spec": dict(current.get("semantic_spec", {})) if isinstance(current.get("semantic_spec"), dict) else {},
+        "guidance_spec": dict(current.get("guidance_spec", {})) if isinstance(current.get("guidance_spec"), dict) else {},
         "safety_spec": dict(current.get("safety_spec", {})) if isinstance(current.get("safety_spec"), dict) else {},
         "layout_spec": dict(current.get("layout_spec", {})) if isinstance(current.get("layout_spec"), dict) else {},
         "debug_spec": dict(current.get("debug_spec", {})) if isinstance(current.get("debug_spec"), dict) else {},
@@ -512,6 +616,22 @@ def ensure_crop_guidance_spec(
             }.items():
                 if key not in out["safety_spec"] or not isinstance(out["safety_spec"].get(key), list):
                     out["safety_spec"][key] = list(safety_spec.get(key, default)) if isinstance(safety_spec.get(key), list) else list(default)
+        if not out["semantic_spec"]:
+            out["semantic_spec"] = {
+                "subject_family": str(region.get("subject_semantic_family", "unknown") or "unknown"),
+                "subject_subtype": str(region.get("subject_semantic_subtype", "") or ""),
+                "layout_structure": str(region.get("layout_structure", "single") or "single"),
+                "support_trust_tier": str(region.get("support_trust_tier", "low") or "low"),
+            }
+        if not out["guidance_spec"]:
+            out["guidance_spec"] = {
+                "core_bbox_norm_xyxy": region.get("guidance_core_bbox_norm_xyxy"),
+                "envelope_bbox_norm_xyxy": region.get("guidance_envelope_bbox_norm_xyxy")
+                or region.get("support_bbox_norm_xyxy")
+                or region.get("effective_bbox_norm_xyxy")
+                or subject_box,
+                "secondary_core_bbox_norm_xyxy": region.get("guidance_secondary_core_bbox_norm_xyxy"),
+            }
         if not out["layout_spec"]:
             out["layout_spec"] = _build_layout_spec(
                 subject_mode=subject_mode,
@@ -645,14 +765,56 @@ def resolve_effective_subject_region(
     subject_set: Optional[Dict[str, Any]],
     raw_anchor_box: Optional[Sequence[float]],
     c7_saliency: Optional[Dict[str, Any]],
+    saliency_semantic_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     mode = str(subject_mode or "").strip().lower()
     subject_set = subject_set if isinstance(subject_set, dict) else {}
+    saliency_semantic_summary = saliency_semantic_summary if isinstance(saliency_semantic_summary, dict) else {}
     primary_idx = int(safe_float(subject_set.get("primary_idx", -1), -1.0))
     raw_anchor = norm_box_xyxy(raw_anchor_box, width, height) if isinstance(raw_anchor_box, (list, tuple)) and len(raw_anchor_box) == 4 else None
     raw_area = box_area(raw_anchor) if raw_anchor is not None else 0.0
     saliency = summarize_saliency_signal(c7_saliency, width=width, height=height)
     image_ar = max(1e-6, float(width) / max(1.0, float(height)))
+    semantic_family = str(saliency_semantic_summary.get("primary_family", "unknown") or "unknown")
+    semantic_subtype = str(saliency_semantic_summary.get("primary_subtype", "") or "")
+    layout_structure = str(saliency_semantic_summary.get("layout_structure", "single") or "single")
+    support_trust_tier = str(saliency_semantic_summary.get("support_trust_tier", "low") or "low")
+    semantic_trust_rank = TRUST_TIER_RANK.get(support_trust_tier, 0)
+    attributed_support_mass = clamp(safe_float(saliency_semantic_summary.get("attributed_support_mass", 0.0), 0.0), 0.0, 1.0)
+    residual_scene_mass = clamp(safe_float(saliency_semantic_summary.get("residual_scene_mass", 0.0), 0.0), 0.0, 1.0)
+    semantic_primary_box = (
+        clip_box01(saliency_semantic_summary.get("primary_cluster_bbox_norm_xyxy"))
+        if isinstance(saliency_semantic_summary.get("primary_cluster_bbox_norm_xyxy"), (list, tuple))
+        and len(saliency_semantic_summary.get("primary_cluster_bbox_norm_xyxy")) == 4
+        else None
+    )
+    semantic_union_box = (
+        clip_box01(saliency_semantic_summary.get("union_bbox_norm_xyxy"))
+        if isinstance(saliency_semantic_summary.get("union_bbox_norm_xyxy"), (list, tuple))
+        and len(saliency_semantic_summary.get("union_bbox_norm_xyxy")) == 4
+        else None
+    )
+    semantic_core_box = semantic_primary_box
+    semantic_envelope_box = semantic_union_box or semantic_primary_box
+    semantic_secondary_box = None
+    latent_support_box = (
+        clip_box01(saliency.get("latent_support_bbox_norm_xyxy"))
+        if isinstance(saliency.get("latent_support_bbox_norm_xyxy"), (list, tuple))
+        and len(saliency.get("latent_support_bbox_norm_xyxy")) == 4
+        else None
+    )
+    latent_support_core_box = (
+        clip_box01(saliency.get("latent_support_core_bbox_norm_xyxy"))
+        if isinstance(saliency.get("latent_support_core_bbox_norm_xyxy"), (list, tuple))
+        and len(saliency.get("latent_support_core_bbox_norm_xyxy")) == 4
+        else None
+    )
+    cluster_rows = saliency_semantic_summary.get("cluster_rows", []) if isinstance(saliency_semantic_summary.get("cluster_rows"), list) else []
+    if len(cluster_rows) >= 2 and isinstance(cluster_rows[1], dict):
+        row = cluster_rows[1]
+        sec_box = row.get("bbox_norm_xyxy")
+        if isinstance(sec_box, (list, tuple)) and len(sec_box) == 4:
+            semantic_secondary_box = clip_box01(sec_box)
 
     fallback_box = raw_anchor or centered_box(0.5, 0.5, 0.25, image_ar)
     candidate_anchor_box = fallback_box
@@ -668,6 +830,8 @@ def resolve_effective_subject_region(
     attention_layout = "dominant" if raw_anchor is not None else "none"
     support_kind = "raw_anchor" if raw_anchor is not None else "proxy"
     support_map_enabled = False
+    preserve_latent_support_guidance = False
+    semantic_envelope_support_mass = None
     reasons: List[str] = []
     suggested_subject_mode = mode
 
@@ -867,6 +1031,42 @@ def resolve_effective_subject_region(
             support_kind = sal_support_kind or "top1"
             reasons.append("tiny_raw_saliency_override")
 
+    support_hybrid_enabled = False
+    if semantic_envelope_box is not None:
+        semantic_envelope_support_mass = _support_map_mass_for_box(semantic_envelope_box, saliency)
+    if semantic_trust_rank >= TRUST_TIER_RANK["medium"] and (semantic_envelope_box is not None or latent_support_box is not None):
+        support_hybrid_enabled = True
+        preserve_latent_support_guidance = bool(
+            latent_support_box is not None
+            and (
+                residual_scene_mass > 0.15
+                or attributed_support_mass < 0.85
+                or (
+                    semantic_envelope_support_mass is not None
+                    and semantic_envelope_support_mass < 0.90
+                )
+            )
+        )
+        if preserve_latent_support_guidance:
+            support_box = latent_support_box
+            support_kind = "latent_support_bbox"
+            reasons.append("hybrid_guidance_preserves_latent_support")
+        elif semantic_envelope_box is not None:
+            support_box = semantic_envelope_box
+        if mode in SCENE_LIKE_MODES or mode == "other_ambiguous":
+            if semantic_envelope_box is not None:
+                candidate_anchor_box = union_boxes([candidate_anchor_box, semantic_envelope_box]) or candidate_anchor_box
+                effective_box = union_boxes([effective_box, semantic_envelope_box]) or effective_box
+            if semantic_family in {"human", "object", "animal"} and score_mode == "neutralized":
+                score_mode = "subject_preservation"
+                reasons.append("semantic_core_rescues_neutralized_subject")
+        elif (semantic_core_box or latent_support_core_box) is not None:
+            hybrid_core = semantic_core_box or latent_support_core_box
+            if hybrid_core is not None and iou_xyxy(effective_box, hybrid_core) < 0.15:
+                effective_box = union_boxes([effective_box, hybrid_core]) or effective_box
+        if (semantic_core_box or latent_support_core_box) is not None and support_kind in {"proxy", "candidate_proxy"}:
+            support_kind = "semantic_core_hybrid"
+
     candidate_support_mass = _support_map_mass_for_box(candidate_anchor_box, saliency)
     effective_support_mass = _support_map_mass_for_box(effective_box, saliency)
     support_area = box_area(support_box)
@@ -903,6 +1103,15 @@ def resolve_effective_subject_region(
     candidate_anchor_box = clip_box01(candidate_anchor_box)
     support_box = clip_box01(support_box)
     effective_box = clip_box01(effective_box)
+    if preserve_latent_support_guidance:
+        guidance_core_src = latent_support_core_box or semantic_core_box
+        guidance_env_src = latent_support_box or semantic_envelope_box or support_box
+    else:
+        guidance_core_src = semantic_core_box or latent_support_core_box
+        guidance_env_src = semantic_envelope_box or latent_support_box or support_box
+    guidance_core_box = clip_box01(guidance_core_src) if guidance_core_src is not None else effective_box
+    guidance_envelope_box = clip_box01(guidance_env_src) if guidance_env_src is not None else support_box
+    guidance_secondary_box = clip_box01(semantic_secondary_box) if semantic_secondary_box is not None else None
     anchor_cx, anchor_cy = box_center(candidate_anchor_box)
     anchor_w, anchor_h = box_wh(candidate_anchor_box)
     region_out = {
@@ -919,13 +1128,29 @@ def resolve_effective_subject_region(
         "support_bbox_norm_xyxy": support_box,
         "support_kind": support_kind,
         "support_map_enabled": bool(support_map_enabled),
+        "support_hybrid_enabled": bool(support_hybrid_enabled),
+        "support_trust_tier": support_trust_tier,
+        "latent_support_bbox_norm_xyxy": latent_support_box,
+        "latent_support_core_bbox_norm_xyxy": latent_support_core_box,
+        "guidance_preserves_latent_support": bool(preserve_latent_support_guidance),
+        "semantic_attributed_support_mass": round(float(attributed_support_mass), 6),
+        "semantic_residual_scene_mass": round(float(residual_scene_mass), 6),
+        "semantic_envelope_support_mass": (
+            None if semantic_envelope_support_mass is None else round(float(semantic_envelope_support_mass), 6)
+        ),
         "effective_bbox_norm_xyxy": effective_box,
         "scoring_bbox_norm_xyxy": effective_box,
         "subject_repr_type": repr_type,
         "placeholder_flag": bool(placeholder_flag),
         "subject_reliability": round(float(clamp(subject_reliability, 0.0, 1.0)), 6),
         "subject_source": subject_source,
+        "subject_semantic_family": semantic_family,
+        "subject_semantic_subtype": semantic_subtype,
+        "layout_structure": layout_structure,
         "attention_layout": attention_layout,
+        "guidance_core_bbox_norm_xyxy": guidance_core_box,
+        "guidance_envelope_bbox_norm_xyxy": guidance_envelope_box,
+        "guidance_secondary_core_bbox_norm_xyxy": guidance_secondary_box,
         "subject_agreement_iou": round(float(clamp(raw_sal_agreement, 0.0, 1.0)), 6),
         "subject_center_distance": round(float(max(0.0, raw_sal_distance)), 6),
         "subject_disagreement_severe": bool(severe_disagreement),
@@ -934,6 +1159,7 @@ def resolve_effective_subject_region(
         "effective_support_mass": None if effective_support_mass is None else round(float(effective_support_mass), 6),
         "support_fallback_reason": support_fallback_reason,
         "saliency_summary": saliency,
+        "saliency_semantic_summary": saliency_semantic_summary,
     }
     region_out["crop_guidance_spec"] = build_crop_guidance_spec(
         region_out,

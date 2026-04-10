@@ -2735,7 +2735,6 @@ def build_subject_support_context(
         else {}
     )
     score_mode = str(effective_subject_region.get("score_mode", route.get("flags", {}).get("subject_score_mode", "")) or "")
-    support_map_enabled = bool(effective_subject_region.get("support_map_enabled", False)) or score_mode == "support_map"
     crop_guidance_spec = ensure_crop_guidance_spec(
         effective_subject_region,
         subject_mode=str(route.get("subject_mode", "") or ""),
@@ -2745,6 +2744,27 @@ def build_subject_support_context(
         subject_box=subject_box,
     )
     support_spec = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
+    semantic_spec = crop_guidance_spec.get("semantic_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
+    guidance_spec = crop_guidance_spec.get("guidance_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
+    support_trust_tier = str(
+        support_spec.get(
+            "support_trust_tier",
+            semantic_spec.get("support_trust_tier", effective_subject_region.get("support_trust_tier", "low")),
+        )
+        or "low"
+    )
+    core_bbox = guidance_spec.get("core_bbox_norm_xyxy") if isinstance(guidance_spec, dict) else None
+    if not (isinstance(core_bbox, (list, tuple)) and len(core_bbox) == 4):
+        core_bbox = support_spec.get("core_bbox_norm_xyxy")
+    envelope_bbox = guidance_spec.get("envelope_bbox_norm_xyxy") if isinstance(guidance_spec, dict) else None
+    if not (isinstance(envelope_bbox, (list, tuple)) and len(envelope_bbox) == 4):
+        envelope_bbox = support_spec.get("envelope_norm_xyxy")
+    support_map_enabled = bool(effective_subject_region.get("support_map_enabled", False)) or score_mode == "support_map"
+    support_hybrid_enabled = bool(
+        effective_subject_region.get("support_hybrid_enabled", False)
+        or support_spec.get("hybrid_enabled", False)
+        or support_trust_tier in {"medium", "high"}
+    )
     payloads: List[Dict[str, Any]] = []
     if isinstance(support_spec, dict) and support_spec:
         payloads.append(support_spec)
@@ -2754,12 +2774,17 @@ def build_subject_support_context(
     c7_saliency = feat_rec.get("c7_saliency")
     if isinstance(c7_saliency, dict):
         payloads.append(c7_saliency)
-    if support_map_enabled:
+    if support_map_enabled or support_hybrid_enabled:
         for payload in payloads:
             decoded = _decode_subject_support_map(payload)
             if decoded is not None:
                 decoded["bbox_norm_xyxy"] = clip_box01(subject_box)
                 decoded["support_map_enabled"] = True
+                decoded["support_hybrid_enabled"] = bool(support_hybrid_enabled and not support_map_enabled)
+                decoded["support_trust_tier"] = support_trust_tier
+                decoded["core_bbox_norm_xyxy"] = clip_box01(core_bbox) if isinstance(core_bbox, (list, tuple)) and len(core_bbox) == 4 else None
+                decoded["envelope_bbox_norm_xyxy"] = clip_box01(envelope_bbox) if isinstance(envelope_bbox, (list, tuple)) and len(envelope_bbox) == 4 else None
+                decoded["guidance_preserves_latent_support"] = bool(support_spec.get("guidance_preserves_latent_support", False))
                 decoded["crop_guidance_spec"] = crop_guidance_spec
                 return decoded
     return {
@@ -2767,6 +2792,11 @@ def build_subject_support_context(
         "bbox_norm_xyxy": clip_box01(subject_box),
         "centroid_xy_norm": box_center(subject_box),
         "support_map_enabled": False,
+        "support_hybrid_enabled": False,
+        "support_trust_tier": support_trust_tier,
+        "core_bbox_norm_xyxy": clip_box01(core_bbox) if isinstance(core_bbox, (list, tuple)) and len(core_bbox) == 4 else None,
+        "envelope_bbox_norm_xyxy": clip_box01(envelope_bbox) if isinstance(envelope_bbox, (list, tuple)) and len(envelope_bbox) == 4 else None,
+        "guidance_preserves_latent_support": bool(support_spec.get("guidance_preserves_latent_support", False)),
         "crop_guidance_spec": crop_guidance_spec,
     }
 
@@ -2872,6 +2902,31 @@ def compute_support_component_metrics(subject_support: Dict[str, Any], crop: Seq
     }
 
 
+def compute_guidance_subject_score(
+    guidance_support_metrics: Dict[str, Any],
+    *,
+    support_trust_tier: str = "low",
+) -> Tuple[float, float]:
+    component_count_used = int(safe_float(guidance_support_metrics.get("component_count_used", 0), 0.0))
+    component_recall = clamp(safe_float(guidance_support_metrics.get("component_recall", 0.0), 0.0), 0.0, 1.0)
+    component_balance = clamp(safe_float(guidance_support_metrics.get("component_balance", 1.0), 1.0), 0.0, 1.0)
+    support_density = clamp(safe_float(guidance_support_metrics.get("support_density", 0.0), 0.0), 0.0, 1.0)
+    if component_count_used > 1:
+        guidance_score = clamp(
+            0.55 * component_recall + 0.25 * support_density + 0.20 * component_balance,
+            0.0,
+            1.0,
+        )
+    else:
+        guidance_score = clamp(0.70 * component_recall + 0.30 * support_density, 0.0, 1.0)
+    blend_weight = {
+        "low": 0.15,
+        "medium": 0.40,
+        "high": 0.65,
+    }.get(str(support_trust_tier or "low"), 0.15)
+    return guidance_score, float(blend_weight)
+
+
 def subject_support_centroid_xy(
     subject_support: Dict[str, Any],
     fallback_xy: Sequence[float],
@@ -2912,6 +2967,9 @@ def support_structure_score(guidance_support_metrics: Dict[str, Any]) -> float:
 
 
 def subject_border_touch_soft(subject_support: Dict[str, Any], crop: Sequence[float], margin_alpha: float = 0.03) -> bool:
+    core_bbox = subject_support.get("core_bbox_norm_xyxy")
+    if isinstance(core_bbox, (list, tuple)) and len(core_bbox) == 4 and box_area(core_bbox) > 1e-8:
+        return subject_border_touch(core_bbox, crop, margin_alpha=margin_alpha)
     mass_grid = subject_support.get("mass_grid")
     occ_grid = subject_support.get("occ_grid")
     if not isinstance(mass_grid, np.ndarray) or mass_grid.ndim != 2:
@@ -3982,7 +4040,13 @@ def apply_subject_policy_overrides(
     out["flags"]["subject_reliability"] = float(subject_reliability)
     out["flags"]["subject_placeholder_flag"] = bool(subject_placeholder_flag)
     out["flags"]["subject_terms_neutralized"] = bool(subject_terms_neutralized)
-    out["flags"]["subject_support_map_enabled"] = bool(effective_subject_region.get("support_map_enabled", False))
+    out["flags"]["subject_support_hybrid_enabled"] = bool(effective_subject_region.get("support_hybrid_enabled", False))
+    out["flags"]["subject_support_map_enabled"] = bool(
+        effective_subject_region.get("support_map_enabled", False)
+        or effective_subject_region.get("support_hybrid_enabled", False)
+    )
+    out["flags"]["subject_support_trust_tier"] = str(effective_subject_region.get("support_trust_tier", "low") or "low")
+    out["flags"]["guidance_preserves_latent_support"] = bool(effective_subject_region.get("guidance_preserves_latent_support", False))
     return out
 
 
@@ -4215,7 +4279,7 @@ def compute_macro_score_bundle(
     expensive_source = str(comps.get("expensive_source", "")).strip().lower()
     expensive_active = expensive_source == "real"
     subject_terms_neutralized = bool(flags.get("subject_terms_neutralized", False))
-    support_map_enabled = bool(flags.get("subject_support_map_enabled", False))
+    support_map_enabled = bool(flags.get("subject_support_map_enabled", False) or flags.get("subject_support_hybrid_enabled", False))
 
     align_value = clamp(0.5 * (safe_float(comps.get("cosine_img_text", 0.0), 0.0) + 1.0), 0.0, 1.0) if expensive_active else 0.0
     a_components = {
@@ -4584,6 +4648,8 @@ def compute_candidate_scores(
     subject_terms_neutralized = bool(route.get("flags", {}).get("subject_terms_neutralized", False))
     subject_support = subject_support if isinstance(subject_support, dict) else {"mode": "bbox", "bbox_norm_xyxy": clip_box01(subject_box)}
     subject_cov_mode = str(subject_support.get("mode", "bbox"))
+    support_trust_tier = str(subject_support.get("support_trust_tier", "low") or "low")
+    guidance_preserves_latent_support = bool(subject_support.get("guidance_preserves_latent_support", False))
     guidance_support_metrics = {
         "component_count_used": 0,
         "component_recall": 0.0,
@@ -4605,14 +4671,13 @@ def compute_candidate_scores(
             else "none"
         )
         if not subject_terms_neutralized:
-            if guidance_support_metrics["component_count_used"] > 1:
-                blend_w = 0.25 if attention_layout == "multi_subject" else 0.20
-            else:
-                blend_w = 0.10
-            guidance_cov = (
-                0.70 * float(guidance_support_metrics["component_recall"])
-                + 0.30 * float(guidance_support_metrics["component_balance"])
+            support_trust_tier = str(subject_support.get("support_trust_tier", "low") or "low")
+            guidance_cov, blend_w = compute_guidance_subject_score(
+                guidance_support_metrics,
+                support_trust_tier=support_trust_tier,
             )
+            if attention_layout == "multi_subject":
+                blend_w = min(0.75, blend_w + 0.05)
             cov = clamp((1.0 - blend_w) * cov + blend_w * guidance_cov, 0.0, 1.0)
         subj_touch_raw = subject_border_touch_soft(subject_support, crop)
     else:
@@ -5195,6 +5260,10 @@ def compute_candidate_scores(
                 "subject_cov_raw": float(cov),
                 "subject_area_raw": float(subj_area_ratio),
                 "subject_extent_area_full": float(subject_extent_area_full),
+                "support_mass_recall": (float(guidance_support_metrics["mass_recall"]) if subject_cov_mode == "support_map" else None),
+                "support_component_recall": (float(guidance_support_metrics["component_recall"]) if subject_cov_mode == "support_map" else None),
+                "support_component_balance": (float(guidance_support_metrics["component_balance"]) if subject_cov_mode == "support_map" else None),
+                "support_density": (float(guidance_support_metrics["support_density"]) if subject_cov_mode == "support_map" else None),
                 "support_structure_score": (None if support_structure is None else float(support_structure)),
                 "support_centroid_x": float(support_centroid_xy[0]),
                 "support_centroid_y": float(support_centroid_xy[1]),
@@ -5250,6 +5319,8 @@ def compute_candidate_scores(
             "subject_touch_border_raw": bool(subj_touch_raw),
             "subject_terms_neutralized": bool(subject_terms_neutralized),
             "subject_effective_state": str(route.get("flags", {}).get("subject_effective_state", "")),
+            "subject_support_trust_tier": support_trust_tier,
+            "guidance_preserves_latent_support": bool(guidance_preserves_latent_support),
             "subject_coverage": float(cov),
             "subject_area": float(subj_area_ratio),
             "subject_extent_area_full": float(subject_extent_area_full),
@@ -5465,6 +5536,82 @@ def candidate_crop_utility_score(candidate: Dict[str, Any]) -> float:
     if "final" in scores:
         return safe_float(scores.get("final", 0.0), -1e9)
     return safe_float(scores.get("rank", -1e9), -1e9)
+
+
+def apply_support_recall_gap_penalty(cands: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    eligible: List[Tuple[Dict[str, Any], float]] = []
+    for cand in cands:
+        flags = safe_dict(cand.get("flags"))
+        comps = safe_dict(safe_dict(cand.get("scores")).get("components"))
+        if _has_training_severe_reject(cand):
+            continue
+        if bool(flags.get("subject_terms_neutralized", False)):
+            continue
+        if not bool(flags.get("subject_support_hybrid_enabled", False)):
+            continue
+        if str(flags.get("subject_support_trust_tier", "low") or "low") != "high":
+            continue
+        if str(comps.get("subject_cov_mode", "bbox")) != "support_map":
+            continue
+        recall = safe_optional_float(comps.get("support_mass_recall"))
+        if recall is None:
+            continue
+        eligible.append((cand, clamp(float(recall), 0.0, 1.0)))
+
+    if not eligible:
+        return {
+            "applied": False,
+            "eligible_candidate_count": 0,
+            "best_support_mass_recall": None,
+            "penalized_candidate_count": 0,
+        }
+
+    best_recall = max(recall for _, recall in eligible)
+    if best_recall < 0.80:
+        for cand, recall in eligible:
+            comps = safe_dict(safe_dict(cand.get("scores")).get("components"))
+            comps["support_mass_recall_best_in_ar"] = float(best_recall)
+            comps["support_recall_gap_to_best_in_ar"] = float(max(0.0, best_recall - recall))
+            comps["support_recall_gap_penalty"] = 0.0
+        return {
+            "applied": False,
+            "eligible_candidate_count": len(eligible),
+            "best_support_mass_recall": float(best_recall),
+            "penalized_candidate_count": 0,
+        }
+
+    penalized = 0
+    for cand, recall in eligible:
+        gap = max(0.0, best_recall - recall)
+        penalty = 0.0
+        if gap > 0.12:
+            penalty = min(0.45, max(0.0, (gap - 0.12) * 0.95))
+        scores = safe_dict(cand.get("scores"))
+        comps = safe_dict(scores.get("components"))
+        comps["support_mass_recall_best_in_ar"] = float(best_recall)
+        comps["support_recall_gap_to_best_in_ar"] = float(gap)
+        comps["support_recall_gap_penalty"] = float(penalty)
+        if penalty > 0.0:
+            penalized += 1
+            orig_policy_base = safe_float(scores.get("policy_base", 0.0), 0.0)
+            orig_policy_safe = safe_float(scores.get("policy_safe", scores.get("policy", 0.0)), 0.0)
+            orig_policy = safe_float(scores.get("policy", scores.get("final", 0.0)), 0.0)
+            orig_final = safe_float(scores.get("final", scores.get("policy", 0.0)), 0.0)
+            scores["policy_base"] = orig_policy_base - float(penalty)
+            scores["policy_safe"] = orig_policy_safe - float(penalty)
+            scores["policy"] = orig_policy - float(penalty)
+            scores["final"] = orig_final - float(penalty)
+            policy_meta = cand.get("policy")
+            if isinstance(policy_meta, dict):
+                policy_meta["support_recall_gap_penalty"] = float(penalty)
+                policy_meta["policy_base"] = safe_float(policy_meta.get("policy_base", orig_policy_base), 0.0) - float(penalty)
+                policy_meta["policy_safe"] = safe_float(policy_meta.get("policy_safe", orig_policy_safe), 0.0) - float(penalty)
+    return {
+        "applied": bool(penalized > 0),
+        "eligible_candidate_count": len(eligible),
+        "best_support_mass_recall": float(best_recall),
+        "penalized_candidate_count": int(penalized),
+    }
 
 
 def decide_keep_vs_crop(best: Dict[str, Any], baseline: Dict[str, Any], tau_improve: float) -> Dict[str, Any]:
@@ -6183,6 +6330,7 @@ def process_one_image(
         target_ar = tmp.get("target_ar")
         is_freeform = bool(tmp.get("is_freeform", False))
 
+        support_recall_gap_debug = apply_support_recall_gap_penalty(cheap_top_m)
         normalize_final_scores(cheap_top_m)
         exp_sorted = sorted(cheap_top_m, key=candidate_crop_utility_score, reverse=True)
         non_hard_sorted = [c for c in exp_sorted if not _has_training_severe_reject(c)]
@@ -6347,6 +6495,7 @@ def process_one_image(
                 "cheap_stage": {
                     "num_cheap_kept": int(len(cheap_top_m)),
                     "cheap_top_m_ids": [str(c.get("candidate_id", "")) for c in cheap_top_m[:10]],
+                    "support_recall_gap_debug": support_recall_gap_debug,
                 },
                 "expensive_stage": {
                     "num_expensive_eval": int(len(expensive_eval_pool)),

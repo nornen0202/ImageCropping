@@ -186,6 +186,14 @@ Core options
 --report_dir PATH               detailed report 출력 경로 (default: <data_dir>/artifacts/reports/<run_tag>_detailed)
 --run_training_labels -1|0|1    finalscore training labels 생성 (-1=auto: run_tag가 있으면 on, default: -1)
 --training_labels_dir PATH      training labels 출력 경로 (default: <data_dir>/artifacts/training_labels/<run_tag>_leftover_ignore_monotonic)
+--run_multimode_training_labels 0|1 multimode training labels 생성 (default: 0)
+--multimode_training_labels_dir PATH multimode training labels 출력 경로 (default: <data_dir>/artifacts/training_labels_multimode/<run_tag>_multimode_v1)
+--multimode_target_ars CSV      multimode 대상 AR 목록 (default: FREE,1:1,9:16,16:9,3:4,4:3)
+--multimode_max_images INT      multimode builder에서만 사용할 이미지 상한 (0=all)
+--multimode_write_debug_viz 0|1 multimode debug viz 생성 여부 (default: 0)
+--multimode_debug_viz_limit INT multimode debug viz 저장 image-task 수 상한 (default: 16)
+--multimode_features_jsonl_override PATH multimode builder 전용 features jsonl override
+--multimode_candidates_jsonl_override PATH multimode builder 전용 candidates jsonl override
 --safe_leftover_policy NAME     keep_negative|ignore|promote_soft_positive (default: ignore)
 --score_profile NAME            build_finalscore_training_data.py scorer profile (default: single_stage2)
 --score_profile_overrides_json PATH  optional scorer override json passed to build_finalscore_training_data.py
@@ -258,6 +266,7 @@ BUCKET="sstk_100"
 DATA_DIR="data/SSTK/10K_local"
 SERVER_MODE=0
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
+PYTHON_BIN="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python"
 LOCAL_TAR_DIR="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"
 SERVER_TAR_DIR="/sstk/20230916/sstk_100"
 TAR_DIR=""
@@ -272,11 +281,19 @@ REPORT_DIR=""
 REPORT_EXAMPLES_PER_BUCKET=5
 REPORT_VIZ_STAGE_DIR=""
 RUN_TRAINING_LABELS=-1
+RUN_MULTIMODE_TRAINING_LABELS=0
 RUN_TRAINING_LABEL_DEBUG_VIZ=0
 TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE=50
 TRAINING_LABEL_DEBUG_VIZ_SEED=42
 TRAINING_LABEL_DEBUG_VIZ_OUT_DIR=""
 TRAINING_LABELS_DIR=""
+MULTIMODE_TRAINING_LABELS_DIR=""
+MULTIMODE_TARGET_ARS="FREE,1:1,9:16,16:9,3:4,4:3"
+MULTIMODE_MAX_IMAGES=0
+MULTIMODE_WRITE_DEBUG_VIZ=0
+MULTIMODE_DEBUG_VIZ_LIMIT=16
+MULTIMODE_FEATURES_JSONL_OVERRIDE=""
+MULTIMODE_CANDIDATES_JSONL_OVERRIDE=""
 SAFE_LEFTOVER_POLICY="ignore"
 SCORE_PROFILE="single_stage2"
 SCORE_PROFILE_OVERRIDES_JSON=""
@@ -592,6 +609,14 @@ while [ "$#" -gt 0 ]; do
     --report_dir) REPORT_DIR="$2"; shift 2 ;;
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
     --training_labels_dir) TRAINING_LABELS_DIR="$2"; shift 2 ;;
+    --run_multimode_training_labels) RUN_MULTIMODE_TRAINING_LABELS="$2"; shift 2 ;;
+    --multimode_training_labels_dir) MULTIMODE_TRAINING_LABELS_DIR="$2"; shift 2 ;;
+    --multimode_target_ars) MULTIMODE_TARGET_ARS="$2"; shift 2 ;;
+    --multimode_max_images) MULTIMODE_MAX_IMAGES="$2"; shift 2 ;;
+    --multimode_write_debug_viz) MULTIMODE_WRITE_DEBUG_VIZ="$2"; shift 2 ;;
+    --multimode_debug_viz_limit) MULTIMODE_DEBUG_VIZ_LIMIT="$2"; shift 2 ;;
+    --multimode_features_jsonl_override) MULTIMODE_FEATURES_JSONL_OVERRIDE="$2"; shift 2 ;;
+    --multimode_candidates_jsonl_override) MULTIMODE_CANDIDATES_JSONL_OVERRIDE="$2"; shift 2 ;;
     --safe_leftover_policy) SAFE_LEFTOVER_POLICY="$2"; shift 2 ;;
     --score_profile) SCORE_PROFILE="$2"; shift 2 ;;
     --score_profile_overrides_json) SCORE_PROFILE_OVERRIDES_JSON="$2"; shift 2 ;;
@@ -757,11 +782,15 @@ if [ "$RUN_C1" -lt 0 ]; then
 fi
 
 if [ "$RUN_DETAILED_REPORT" -lt 0 ]; then
-  if [ -n "$RUN_TAG" ]; then
+  if [ -n "$RUN_TAG" ] && [ "$RUN_TEACHER" -eq 1 ]; then
     RUN_DETAILED_REPORT=1
   else
     RUN_DETAILED_REPORT=0
   fi
+fi
+if [ "$RUN_DETAILED_REPORT" -eq 1 ] && [ "$RUN_TEACHER" -ne 1 ]; then
+  echo "[warn] disabling detailed report because run_teacher=0"
+  RUN_DETAILED_REPORT=0
 fi
 if [ "$RUN_TRAINING_LABELS" -lt 0 ]; then
   if [ -n "$RUN_TAG" ]; then
@@ -818,6 +847,10 @@ if [ -f "$VENV_PATH" ]; then
   # shellcheck disable=SC1090
   source "$VENV_PATH"
   echo "[info] activated venv: $VENV_PATH"
+  _derived_python_bin="$(dirname "$VENV_PATH")/python"
+  if [ -x "$_derived_python_bin" ]; then
+    PYTHON_BIN="$_derived_python_bin"
+  fi
 elif [ "$SERVER_MODE" -ne 1 ]; then
   echo "[warn] venv not found: $VENV_PATH (using current python)"
 else
@@ -855,6 +888,7 @@ VLM_DEBUG_BASE_DIR="${VLM_DIR}/debug"
 CACHE_DIR="${DATA_DIR}/cache"
 REPORTS_DIR="${ARTIFACTS_DIR}/reports"
 TRAINING_LABELS_BASE_DIR="${ARTIFACTS_DIR}/training_labels"
+MULTIMODE_TRAINING_LABELS_BASE_DIR="${ARTIFACTS_DIR}/training_labels_multimode"
 
 FEATS_C1_CANONICAL="${PRECOMPUTE_DIR}/feats_c1.jsonl"
 FEATS_C1="$FEATS_C1_CANONICAL"
@@ -937,6 +971,13 @@ if [ -z "$TRAINING_LABELS_DIR" ]; then
     TRAINING_LABELS_DIR="${TRAINING_LABELS_BASE_DIR}/latest_${_training_labels_suffix}"
   fi
 fi
+if [ -z "$MULTIMODE_TRAINING_LABELS_DIR" ]; then
+  if [ -n "$RUN_TAG" ]; then
+    MULTIMODE_TRAINING_LABELS_DIR="${MULTIMODE_TRAINING_LABELS_BASE_DIR}/${RUN_TAG}_multimode_v1"
+  else
+    MULTIMODE_TRAINING_LABELS_DIR="${MULTIMODE_TRAINING_LABELS_BASE_DIR}/latest_multimode_v1"
+  fi
+fi
 if [ -z "${GAIC_REFERENCE_JSON:-}" ]; then
   GAIC_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_train.json"
 fi
@@ -959,6 +1000,18 @@ TRAINING_LABELS_GAIC_LIKE_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditiona
 TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON="${TRAINING_LABELS_COCO_DIR}/gaic_like_conversion_summary.json"
 TRAINING_LABELS_GAIC_LIKE_GUIDE_MD="${TRAINING_LABELS_COCO_DIR}/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
 TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON="${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR}/summary/summary.json"
+MULTIMODE_FEATURES_JSONL="${DOWNSTREAM_FEATS}"
+MULTIMODE_CANDIDATES_JSONL="${CANDIDATES_JSONL}"
+if [ -n "$MULTIMODE_FEATURES_JSONL_OVERRIDE" ]; then
+  MULTIMODE_FEATURES_JSONL="$MULTIMODE_FEATURES_JSONL_OVERRIDE"
+fi
+if [ -n "$MULTIMODE_CANDIDATES_JSONL_OVERRIDE" ]; then
+  MULTIMODE_CANDIDATES_JSONL="$MULTIMODE_CANDIDATES_JSONL_OVERRIDE"
+fi
+MULTIMODE_SUMMARY_JSON="${MULTIMODE_TRAINING_LABELS_DIR}/summary.json"
+MULTIMODE_QUERY_STATUS_JSONL="${MULTIMODE_TRAINING_LABELS_DIR}/mode_query_status.jsonl"
+MULTIMODE_COCO_JSON="${MULTIMODE_TRAINING_LABELS_DIR}/coco/instances_multimode_training_labels.json"
+MULTIMODE_VALIDATION_JSON="${MULTIMODE_TRAINING_LABELS_DIR}/validation_summary.json"
 
 mkdir -p \
   "$PRECOMPUTE_DIR" \
@@ -976,7 +1029,8 @@ mkdir -p \
   "$VLM_DEBUG_BASE_DIR" \
   "$CACHE_DIR" \
   "$REPORTS_DIR" \
-  "$TRAINING_LABELS_BASE_DIR"
+  "$TRAINING_LABELS_BASE_DIR" \
+  "$MULTIMODE_TRAINING_LABELS_BASE_DIR"
 
 EFFECTIVE_IMAGE_DIR=""
 if [ "$PREFER_CURATED_IMAGES" -eq 1 ] && [ -d "$CURATED_IMAGE_DIR" ]; then
@@ -1102,7 +1156,7 @@ jsonl_has_c1_embeddings() {
   if [ ! -f "$f" ]; then
     return 1
   fi
-  python - "$f" <<'PY'
+  "$PYTHON_BIN" - "$f" <<'PY'
 import json
 import sys
 path = sys.argv[1]
@@ -1215,6 +1269,9 @@ echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
 echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR policy=$SAFE_LEFTOVER_POLICY)"
+echo " run_multimode_labels: $RUN_MULTIMODE_TRAINING_LABELS (dir=$MULTIMODE_TRAINING_LABELS_DIR)"
+echo " multimode target AR : $MULTIMODE_TARGET_ARS (max_images=$MULTIMODE_MAX_IMAGES debug_viz=$MULTIMODE_WRITE_DEBUG_VIZ limit=$MULTIMODE_DEBUG_VIZ_LIMIT)"
+echo " multimode inputs    : feats=${MULTIMODE_FEATURES_JSONL:-$DOWNSTREAM_FEATS} candidates=${MULTIMODE_CANDIDATES_JSONL:-$CANDIDATES_JSONL}"
 echo " score_profile       : $SCORE_PROFILE (overrides=${SCORE_PROFILE_OVERRIDES_JSON:-<none>})"
 echo " training_debug_viz  : $RUN_TRAINING_LABEL_DEBUG_VIZ (out=$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR sample_size=$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE seed=$TRAINING_LABEL_DEBUG_VIZ_SEED)"
 echo " gaic_reference_json : ${GAIC_REFERENCE_JSON:-<none>}"
@@ -1319,7 +1376,7 @@ if [ "$PRECOMPUTE_MODE" = "unified" ]; then
     fi
     if ! should_skip_file "$MERGED_FEATS"; then
       run_with_log "03_enrich_c3_unified" \
-        python3 src/scripts/enrich_c3_pose_jsonl.py \
+        "$PYTHON_BIN" src/scripts/enrich_c3_pose_jsonl.py \
           --input_c3_jsonl "$FEATS_C2C3C5_RAW" \
           --input_parquet "$FILTERED_PARQUET" \
           --use_actual_image_size "$USE_ACTUAL_IMAGE_SIZE" \
@@ -1414,7 +1471,7 @@ else
     fi
     if ! should_skip_file "$FEATS_C3_ENRICHED"; then
       run_with_log "06_enrich_c3" \
-        python3 src/scripts/enrich_c3_pose_jsonl.py \
+        "$PYTHON_BIN" src/scripts/enrich_c3_pose_jsonl.py \
           --input_c3_jsonl "$FEATS_C3" \
           --input_parquet "$FILTERED_PARQUET" \
           --use_actual_image_size "$USE_ACTUAL_IMAGE_SIZE" \
@@ -1474,7 +1531,7 @@ else
     fi
     if ! should_skip_file "$MERGED_FEATS"; then
       run_with_log "08_merge_features" \
-        python3 src/scripts/merge_feature_jsonl.py \
+        "$PYTHON_BIN" src/scripts/merge_feature_jsonl.py \
           --input_parquet "$FILTERED_PARQUET" \
           --inputs "${merge_inputs[@]}" \
           --progress 1 \
@@ -1496,7 +1553,7 @@ if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
   fi
   if ! should_skip_file "$MERGED_FEATS_ROUTED"; then
     run_with_log "07a_enrich_subject_mode" \
-      python3 src/scripts/enrich_subject_mode_jsonl.py \
+      "$PYTHON_BIN" src/scripts/enrich_subject_mode_jsonl.py \
         --input_feats_jsonl "$MERGED_FEATS" \
         --input_filtered_parquet "$FILTERED_PARQUET" \
         --output_jsonl "$MERGED_FEATS_ROUTED" \
@@ -1559,7 +1616,7 @@ if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
       c7_args+=(--weights_dir "$C7_SALIENCY_WEIGHTS_DIR")
     fi
     run_with_log "07aa_augment_c7_saliency" \
-      python3 src/scripts/augment_saliency_subject_features.py \
+      "$PYTHON_BIN" src/scripts/augment_saliency_subject_features.py \
         "${c7_args[@]}"
   fi
   if [ -f "$c7_output_jsonl" ]; then
@@ -1567,7 +1624,7 @@ if [ "$RUN_C7_SALIENCY" -eq 1 ]; then
     if [ "$RUN_SUBJECT_ROUTING" -eq 1 ]; then
       if ! should_skip_file "$MERGED_FEATS_ROUTED_C7"; then
         run_with_log "07ab_reroute_subject_mode_after_c7" \
-          python3 src/scripts/enrich_subject_mode_jsonl.py \
+          "$PYTHON_BIN" src/scripts/enrich_subject_mode_jsonl.py \
             --input_feats_jsonl "$c7_output_jsonl" \
             --input_filtered_parquet "$FILTERED_PARQUET" \
             --output_jsonl "$MERGED_FEATS_ROUTED_C7" \
@@ -1732,7 +1789,7 @@ fi
 if [ "$RUN_SUBJECT_ROUTING" -eq 1 ] && [ -n "$PUBLIC_TEACHER_PROPOSALS_JSONL" ] && [ -f "$PUBLIC_TEACHER_PROPOSALS_JSONL" ]; then
   if ! should_skip_file "$MERGED_FEATS_ROUTED_FINAL"; then
     run_with_log "08d_reroute_subject_mode_with_public_teacher" \
-      python3 src/scripts/enrich_subject_mode_jsonl.py \
+      "$PYTHON_BIN" src/scripts/enrich_subject_mode_jsonl.py \
         --input_feats_jsonl "$DOWNSTREAM_FEATS" \
         --input_filtered_parquet "$FILTERED_PARQUET" \
         --output_jsonl "$MERGED_FEATS_ROUTED_FINAL" \
@@ -1852,7 +1909,7 @@ if [ "$RUN_CANDIDATES" -eq 1 ]; then
 
   if [ "$ENABLE_PUBLIC_TEACHER_PROPOSALS" -eq 1 ] && [ "$PROPOSAL_INJECTION_GATE" -eq 1 ]; then
     run_with_log "09b_check_public_proposal_injection_gate" \
-      python3 src/scripts/check_candidate_injection_gate.py \
+      "$PYTHON_BIN" src/scripts/check_candidate_injection_gate.py \
         --candidate_overview_json "$CANDIDATES_OVERVIEW_JSON" \
         --expected_enabled 1 \
         --min_injected_rate "$PROPOSAL_INJECTION_MIN_RATE" \
@@ -1943,7 +2000,7 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
 
   if [ "$TEACHER_AUTO_REPAIR" -eq 1 ]; then
     run_with_log "10b_teacher_repair_outputs" \
-      python3 src/scripts/repair_teacher_outputs.py \
+      "$PYTHON_BIN" src/scripts/repair_teacher_outputs.py \
         --teacher_scores_jsonl "$TEACHER_JSONL" \
         --overview_json "$TEACHER_OVERVIEW_JSON" \
         --overview_csv "$TEACHER_OVERVIEW_CSV" \
@@ -2020,13 +2077,16 @@ build_training_label_debug_viz() {
     echo "[warn] GAIC official train/test references not found. continuing with pos/neg-only debug viz."
   fi
   run_with_log "13d_build_training_label_debug_viz" \
-    python3 src/scripts/build_gaic_training_label_debug_viz.py \
+    "$PYTHON_BIN" src/scripts/build_gaic_training_label_debug_viz.py \
       --coco_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
       --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
       --gaic_gt_train_json "$GAIC_TRAIN_REFERENCE_JSON" \
       --gaic_gt_test_json "$GAIC_TEST_REFERENCE_JSON" \
+      --teacher_jsonl "$TEACHER_JSONL" \
+      --candidates_jsonl "$CANDIDATES_JSONL" \
       --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
       --subject_mode_vocab "$TRAINING_LABELS_SUBJECT_MODE_VOCAB_JSON" \
+      --score_profile_json "${TRAINING_LABELS_DIR}/score_profile.json" \
       --sample_size "$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE" \
       --seed "$TRAINING_LABEL_DEBUG_VIZ_SEED" \
       --progress 1 \
@@ -2047,7 +2107,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
     fi
 
     run_with_log "12a_build_report_assets" \
-      python3 src/scripts/build_sstk_report_assets.py \
+      "$PYTHON_BIN" src/scripts/build_sstk_report_assets.py \
         --run_tag "$RUN_TAG" \
         --routed_feats_jsonl "$DOWNSTREAM_FEATS" \
         --teacher_scores_jsonl "$TEACHER_JSONL" \
@@ -2059,7 +2119,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
 
     REPORT_EXAMPLE_IDS_FILE="${REPORT_DIR}/assets/analytics/report_example_image_ids_${RUN_TAG}.txt"
     run_with_log "12b_build_detailed_report_seed" \
-      python3 src/scripts/build_sstk_detailed_report.py \
+      "$PYTHON_BIN" src/scripts/build_sstk_detailed_report.py \
         --run_tag "$RUN_TAG" \
         --data_root "$DATA_DIR" \
         --progress 1 \
@@ -2067,7 +2127,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
 
     if [ -f "$REPORT_EXAMPLE_IDS_FILE" ]; then
       run_with_log "12c_render_report_teacher_viz" \
-        python3 src/visualize_teacher_scores.py \
+        "$PYTHON_BIN" src/visualize_teacher_scores.py \
           --teacher_scores_jsonl "$TEACHER_JSONL" \
           --features_jsonl "$DOWNSTREAM_FEATS" \
           --parquet "$FILTERED_PARQUET" \
@@ -2080,7 +2140,7 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
           --image_ids_file "$REPORT_EXAMPLE_IDS_FILE"
 
       run_with_log "12d_build_detailed_report_final" \
-        python3 src/scripts/build_sstk_detailed_report.py \
+        "$PYTHON_BIN" src/scripts/build_sstk_detailed_report.py \
           --run_tag "$RUN_TAG" \
           --data_root "$DATA_DIR" \
           --report_dir "$REPORT_DIR" \
@@ -2103,7 +2163,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   fi
   if ! should_skip_file "$TRAINING_LABELS_VALIDATION_JSON"; then
     run_with_log "13_build_training_labels" \
-      python3 src/scripts/build_finalscore_training_data.py \
+      "$PYTHON_BIN" src/scripts/build_finalscore_training_data.py \
         --teacher_scores_jsonl "$TEACHER_JSONL" \
         --out_dir "$TRAINING_LABELS_DIR" \
         --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
@@ -2120,7 +2180,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   fi
   if ! should_skip_file "$TRAINING_LABELS_COCO_SUMMARY_JSON"; then
     run_with_log "13b_convert_training_labels_coco" \
-      python3 src/scripts/convert_sstk_detr_labels_to_coco.py \
+      "$PYTHON_BIN" src/scripts/convert_sstk_detr_labels_to_coco.py \
         --canonical_jsonl "$TRAINING_LABELS_DETR_CANONICAL_JSON" \
         --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
         --progress 1 \
@@ -2132,7 +2192,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   fi
   if ! should_skip_file "$TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON"; then
     run_with_log "13c_convert_training_labels_gaic_like" \
-      python3 src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
+      "$PYTHON_BIN" src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
         --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
         --gaic_reference_json "$GAIC_REFERENCE_JSON" \
         --out_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
@@ -2146,6 +2206,48 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
     else
       echo "[skip] training-label debug viz already exists: $TRAINING_LABEL_DEBUG_VIZ_OUT_DIR"
     fi
+  fi
+fi
+
+# ------------------------------------------------------------------------------
+# 9) Multimode Training Labels (optional)
+# ------------------------------------------------------------------------------
+if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
+  RESOLVED_MULTIMODE_FEATURES_JSONL="$DOWNSTREAM_FEATS"
+  RESOLVED_MULTIMODE_CANDIDATES_JSONL="$CANDIDATES_JSONL"
+  if [ -n "$MULTIMODE_FEATURES_JSONL_OVERRIDE" ]; then
+    RESOLVED_MULTIMODE_FEATURES_JSONL="$MULTIMODE_FEATURES_JSONL_OVERRIDE"
+  fi
+  if [ -n "$MULTIMODE_CANDIDATES_JSONL_OVERRIDE" ]; then
+    RESOLVED_MULTIMODE_CANDIDATES_JSONL="$MULTIMODE_CANDIDATES_JSONL_OVERRIDE"
+  fi
+  if [ ! -f "$RESOLVED_MULTIMODE_FEATURES_JSONL" ]; then
+    echo "[error] multimode labels require features jsonl: $RESOLVED_MULTIMODE_FEATURES_JSONL"
+    exit 1
+  fi
+  if [ ! -f "$RESOLVED_MULTIMODE_CANDIDATES_JSONL" ]; then
+    echo "[error] multimode labels require candidates jsonl: $RESOLVED_MULTIMODE_CANDIDATES_JSONL"
+    exit 1
+  fi
+  if ! should_skip_file "$MULTIMODE_VALIDATION_JSON"; then
+    run_with_log "14_build_multimode_training_labels" \
+      "$PYTHON_BIN" src/scripts/build_multimode_training_labels.py \
+        --features_jsonl "$RESOLVED_MULTIMODE_FEATURES_JSONL" \
+        --candidates_jsonl "$RESOLVED_MULTIMODE_CANDIDATES_JSONL" \
+        --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
+        --out_dir "$MULTIMODE_TRAINING_LABELS_DIR" \
+        --target_ars "$MULTIMODE_TARGET_ARS" \
+        --max_images "$MULTIMODE_MAX_IMAGES" \
+        --write_debug_viz "$MULTIMODE_WRITE_DEBUG_VIZ" \
+        --debug_viz_limit "$MULTIMODE_DEBUG_VIZ_LIMIT" \
+        --progress 1
+    run_with_log "14b_validate_multimode_training_labels" \
+      "$PYTHON_BIN" src/scripts/validate_multimode_training_labels.py \
+        --summary_json "$MULTIMODE_SUMMARY_JSON" \
+        --coco_json "$MULTIMODE_COCO_JSON" \
+        --query_status_jsonl "$MULTIMODE_QUERY_STATUS_JSONL" \
+        --out_json "$MULTIMODE_VALIDATION_JSON" \
+        --progress 1
   fi
 fi
 
@@ -2211,6 +2313,13 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   echo " training qa      : $TRAINING_LABELS_QA_JSON"
   echo " training validation: $TRAINING_LABELS_VALIDATION_JSON"
   echo " training report  : $TRAINING_LABELS_REPORT_MD"
+fi
+if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
+  echo " multimode labels : $MULTIMODE_TRAINING_LABELS_DIR"
+  echo " multimode summary: $MULTIMODE_SUMMARY_JSON"
+  echo " multimode status : $MULTIMODE_QUERY_STATUS_JSONL"
+  echo " multimode coco   : $MULTIMODE_COCO_JSON"
+  echo " multimode valid  : $MULTIMODE_VALIDATION_JSON"
 fi
 if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
   echo " vlm labels jsonl : $VLM_OUTPUT_JSONL"

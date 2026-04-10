@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
+from saliency_semantic import build_saliency_semantic_summary
 from subject_region import resolve_effective_subject_region, summarize_saliency_signal
 
 
@@ -200,6 +201,12 @@ SCENE_HORIZON_TARGETS: Dict[str, List[float]] = {
     "scene_structural_pattern": [],
     "scene_contextual_object": [],
     SCENE_SUBTYPE_UNKNOWN: [],
+}
+
+TRUST_TIER_RANK = {
+    "low": 0,
+    "medium": 1,
+    "high": 2,
 }
 
 
@@ -1335,6 +1342,7 @@ def route_subject_mode(
     caption_object_hint = bool(caption_semantics.get("object_hint", False))
     caption_copyspace_signal = bool(caption_semantics.get("copyspace_hint", False))
     caption_text_backed_evidence = bool(caption_semantics.get("text_backed_evidence", False))
+    text_boxes = max(0, int(_safe_float(ocr_text_boxes_count, 0.0)))
 
     has_text_hint = bool(_has_any_hint(tags_norm, TEXT_HINTS) or caption_semantics.get("text_hint", False))
     has_text_strong_hint = bool(
@@ -1344,22 +1352,6 @@ def route_subject_mode(
     has_copyspace_strong_tag = _has_any_hint(tags_norm, COPYSPACE_STRONG_HINTS)
     has_scene_hint = bool(_has_any_hint(tags_norm, SCENE_HINTS) or caption_scene_hint)
     has_object_hint = bool(_has_any_hint(tags_norm, OBJECT_HINTS) or caption_object_hint)
-    group_signal = bool(num_person >= 2 or _has_any_hint(tags_norm, GROUP_HINTS) or caption_group_hint)
-    portrait_signal = bool(
-        num_person == 1
-        or sc in PEOPLE_SUPER_CATS
-        or _has_any_hint(tags_norm, PORTRAIT_HINTS)
-        or caption_people_hint
-        or caption_portrait_hint
-    )
-    has_explicit_people_hint = bool(
-        sc in PEOPLE_SUPER_CATS
-        or _has_any_hint(tags_norm, PORTRAIT_HINTS)
-        or _has_any_hint(tags_norm, GROUP_HINTS)
-        or caption_people_hint
-        or caption_group_hint
-    )
-    text_boxes = max(0, int(_safe_float(ocr_text_boxes_count, 0.0)))
     text_overlay = bool(text_overlay_likely) if text_overlay_likely is not None else False
     ocr_method = str(ocr_backend_method or "").strip().lower()
     ocr_available = ocr_method not in {"", "unknown", "unavailable", "disabled"}
@@ -1380,11 +1372,50 @@ def route_subject_mode(
     largest_obj_area_ratio = _max_foreground_area_ratio(c2_instances)
     foreground_mass_ratio = _foreground_mass_ratio(union_box_seed, width, height)
     saliency_signal = summarize_saliency_signal(c7_saliency, width=width, height=height)
+    saliency_semantic_summary = build_saliency_semantic_summary(
+        width=width,
+        height=height,
+        c2_instances=c2_instances,
+        c3_pose=c3_list,
+        c7_saliency=c7_saliency,
+        ocr_text_boxes_count=text_boxes,
+        caption_text=caption_text,
+    )
+    semantic_primary_family = str(saliency_semantic_summary.get("primary_family", "unknown") or "unknown")
+    semantic_primary_subtype = str(saliency_semantic_summary.get("primary_subtype", "") or "")
+    semantic_layout_structure = str(saliency_semantic_summary.get("layout_structure", "single") or "single")
+    semantic_support_trust_tier = str(saliency_semantic_summary.get("support_trust_tier", "low") or "low")
+    semantic_human_cluster_count = int(_safe_float(saliency_semantic_summary.get("human_cluster_count", 0), 0.0))
+    semantic_primary_support_mass = _safe_float(saliency_semantic_summary.get("primary_support_mass", 0.0), 0.0)
+    semantic_attributed_support_mass = _safe_float(saliency_semantic_summary.get("attributed_support_mass", 0.0), 0.0)
+    semantic_trust_rank = TRUST_TIER_RANK.get(semantic_support_trust_tier, 0)
+    if semantic_human_cluster_count > 0 and semantic_human_cluster_count < num_person:
+        num_person = semantic_human_cluster_count
+        human_union = saliency_semantic_summary.get("human_union_bbox_norm_xyxy")
+        if isinstance(human_union, list) and len(human_union) == 4:
+            person_union_box = human_union
+            person_union_area_ratio = _box_area_ratio_xyxy(person_union_box, 1, 1)
     saliency_fg_ratio = float(saliency_signal.get("foreground_area_ratio", 0.0))
     saliency_blank_ratio = float(saliency_signal.get("blank_ratio_est", 1.0))
     if saliency_fg_ratio > 0.0:
         foreground_mass_ratio = max(foreground_mass_ratio, saliency_fg_ratio)
         blank_ratio = min(blank_ratio, saliency_blank_ratio)
+    group_signal = bool(num_person >= 2 or _has_any_hint(tags_norm, GROUP_HINTS) or caption_group_hint)
+    portrait_signal = bool(
+        num_person == 1
+        or sc in PEOPLE_SUPER_CATS
+        or _has_any_hint(tags_norm, PORTRAIT_HINTS)
+        or caption_people_hint
+        or caption_portrait_hint
+        or (semantic_primary_family == "human" and semantic_trust_rank >= TRUST_TIER_RANK["medium"])
+    )
+    has_explicit_people_hint = bool(
+        sc in PEOPLE_SUPER_CATS
+        or _has_any_hint(tags_norm, PORTRAIT_HINTS)
+        or _has_any_hint(tags_norm, GROUP_HINTS)
+        or caption_people_hint
+        or caption_group_hint
+    )
     scene_signal = bool(
         sc in SCENE_SUPER_CATS
         or has_scene_hint
@@ -1586,6 +1617,24 @@ def route_subject_mode(
         conf = max(float(conf), 0.68 if mode == "object_single" else 0.74)
         router_rule_id = f"{router_rule_id}|guard_contextual_person_object_focus"
 
+    semantic_object_override = bool(
+        semantic_trust_rank >= TRUST_TIER_RANK["medium"]
+        and semantic_primary_family in {"object", "animal"}
+        and semantic_primary_support_mass >= max(0.10, person_union_area_ratio * 0.90)
+        and (
+            not mode.startswith("portrait")
+            or not has_explicit_people_hint
+            or semantic_primary_support_mass >= max(0.14, person_union_area_ratio * 1.20)
+        )
+    )
+    if semantic_object_override and mode not in {"text_document", "background_texture_copyspace"}:
+        if mode != "scene_general" or semantic_primary_support_mass >= 0.14:
+            guard_reasons.append("guard_saliency_semantic_primary_object")
+            reasons.append("guard_saliency_semantic_primary_object")
+            mode = "object_multi" if semantic_layout_structure == "multi" else "object_single"
+            conf = max(float(conf), 0.70 if mode == "object_single" else 0.76)
+            router_rule_id = f"{router_rule_id}|guard_saliency_semantic_primary_object"
+
     contextual_tiny_human_scene = False
     if _should_fallback_tiny_human_to_scene(
         mode=mode,
@@ -1717,13 +1766,13 @@ def route_subject_mode(
             shot_type = "unknown"
 
     primary_subject_type = "other"
-    if mode.startswith("portrait"):
+    if semantic_primary_family == "human" or mode.startswith("portrait"):
         primary_subject_type = "person"
-    elif mode.startswith("object"):
+    elif semantic_primary_family in {"object", "animal"} or mode.startswith("object"):
         primary_subject_type = "object"
-    elif mode == "text_document":
+    elif semantic_primary_family == "text" or mode == "text_document":
         primary_subject_type = "text"
-    elif mode in {"scene_general", "background_texture_copyspace"}:
+    elif semantic_primary_family == "scene_region" or mode in {"scene_general", "background_texture_copyspace"}:
         primary_subject_type = "scene"
 
     mode_conflict = False
@@ -1810,6 +1859,13 @@ def route_subject_mode(
         "saliency_component_count": int(saliency_signal.get("component_count", 0)),
         "saliency_dispersion_score": round(float(saliency_signal.get("dispersion_score", 1.0)), 6),
         "saliency_entropy_norm": round(float(saliency_signal.get("entropy_norm", 1.0)), 6),
+        "semantic_primary_family": semantic_primary_family,
+        "semantic_primary_subtype": semantic_primary_subtype,
+        "semantic_layout_structure": semantic_layout_structure,
+        "semantic_support_trust_tier": semantic_support_trust_tier,
+        "semantic_primary_support_mass": round(float(semantic_primary_support_mass), 6),
+        "semantic_attributed_support_mass": round(float(semantic_attributed_support_mass), 6),
+        "semantic_human_cluster_count": int(semantic_human_cluster_count),
     }
     copyspace = {
         "tag_signal": bool(has_copyspace_tag),
@@ -1846,7 +1902,17 @@ def route_subject_mode(
     num_effective_subjects = int(
         num_person if num_person > 0 else (2 if multi_subject else (1 if primary_subject_exists else 0))
     )
-    raw_anchor_box = union_box
+    semantic_primary_box = saliency_semantic_summary.get("primary_cluster_bbox_norm_xyxy")
+    semantic_union_box = saliency_semantic_summary.get("union_bbox_norm_xyxy")
+    semantic_anchor_box: Optional[Sequence[float]] = None
+    if semantic_trust_rank >= TRUST_TIER_RANK["medium"]:
+        if mode.startswith("portrait") and semantic_primary_family == "human":
+            semantic_anchor_box = semantic_union_box or semantic_primary_box
+        elif mode.startswith("object") and semantic_primary_family in {"object", "animal"}:
+            semantic_anchor_box = semantic_union_box if semantic_layout_structure == "multi" else semantic_primary_box
+        elif mode in {"scene_general", "other_ambiguous"} and semantic_primary_family in {"human", "object", "animal"}:
+            semantic_anchor_box = semantic_union_box or semantic_primary_box
+    raw_anchor_box = semantic_anchor_box or union_box
     if raw_anchor_box is None and 0 <= primary_idx < len(c2_instances):
         raw_anchor_box = c2_instances[primary_idx].get("box")
     if raw_anchor_box is None:
@@ -1862,6 +1928,7 @@ def route_subject_mode(
         },
         raw_anchor_box=raw_anchor_box,
         c7_saliency=c7_saliency,
+        saliency_semantic_summary=saliency_semantic_summary,
     )
 
     return {
@@ -1869,6 +1936,10 @@ def route_subject_mode(
         "subject_mode_conf": round(float(conf), 6),
         "scene_subtype": scene_subtype,
         "scene_conf": round(float(scene_conf), 6),
+        "subject_family": semantic_primary_family,
+        "subject_subtype": semantic_primary_subtype,
+        "layout_structure": semantic_layout_structure,
+        "support_trust_tier": semantic_support_trust_tier,
         "subject_mode_reasons": reasons,
         "subject_mode_flags": flags,
         "subject_mode_conflict": bool(mode_conflict),
@@ -1886,11 +1957,12 @@ def route_subject_mode(
             "c2_primary_area_ratio": round(float(c2_primary_area_ratio), 6),
             "c2_primary_bg_like": bool(c2_primary_bg_like),
             "person_union_area_ratio": round(float(person_union_area_ratio), 6),
-            "multi_subject": bool(multi_subject or num_person >= 2),
+            "multi_subject": bool(multi_subject or num_person >= 2 or semantic_layout_structure == "multi"),
         },
         "policy_id": SUBJECT_MODE_TO_POLICY.get(mode, "generic_v1"),
         "router_rule_id": str(router_rule_id),
         "router_signals": router_signals,
         "copyspace": copyspace,
+        "saliency_semantic_summary": saliency_semantic_summary,
         "effective_subject_region": effective_subject_region,
     }

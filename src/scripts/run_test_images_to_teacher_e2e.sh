@@ -25,6 +25,7 @@ FLAT_IMAGE_DIR=""
 RUN_TAG="test_images_e2e"
 SERVER_MODE=0
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
+PYTHON_BIN="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python"
 
 PSEUDO_TAR_CHUNK_SIZE=256
 LINK_MODE="symlink"
@@ -40,6 +41,7 @@ RUN_VLM_TEACHER=0
 VLM_BACKEND="heuristic"
 VLM_FALLBACK_BACKEND="none"
 RUN_TRAINING_LABELS=1
+RUN_MULTIMODE_TRAINING_LABELS=0
 SAFE_LEFTOVER_POLICY="ignore"
 SCORE_PROFILE="single_stage2"
 SCORE_PROFILE_OVERRIDES_JSON=""
@@ -70,6 +72,13 @@ C7_SALIENCY_WEIGHTS_DIR=""
 C7_SALIENCY_DEVICE="auto"
 REFERENCE_JSON=""
 TRAINING_DIR_OVERRIDE=""
+MULTIMODE_TRAINING_DIR_OVERRIDE=""
+MULTIMODE_TARGET_ARS="FREE,1:1,9:16,16:9,3:4,4:3"
+MULTIMODE_MAX_IMAGES=0
+MULTIMODE_WRITE_DEBUG_VIZ=0
+MULTIMODE_DEBUG_VIZ_LIMIT=16
+MULTIMODE_FEATURES_JSONL_OVERRIDE=""
+MULTIMODE_CANDIDATES_JSONL_OVERRIDE=""
 GAIC_GENERATE_CAPTIONS=-1
 GAIC_CAPTION_PRESET=""
 GAIC_CAPTION_BACKEND=""
@@ -112,6 +121,7 @@ while [ "$#" -gt 0 ]; do
     --vlm_backend) VLM_BACKEND="$2"; shift 2 ;;
     --vlm_fallback_backend) VLM_FALLBACK_BACKEND="$2"; shift 2 ;;
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
+    --run_multimode_training_labels) RUN_MULTIMODE_TRAINING_LABELS="$2"; shift 2 ;;
     --safe_leftover_policy) SAFE_LEFTOVER_POLICY="$2"; shift 2 ;;
     --score_profile) SCORE_PROFILE="$2"; shift 2 ;;
     --score_profile_overrides_json) SCORE_PROFILE_OVERRIDES_JSON="$2"; shift 2 ;;
@@ -141,6 +151,13 @@ while [ "$#" -gt 0 ]; do
     --c7_saliency_device) C7_SALIENCY_DEVICE="$2"; shift 2 ;;
     --reference_json) REFERENCE_JSON="$2"; shift 2 ;;
     --training_labels_dir) TRAINING_DIR_OVERRIDE="$2"; shift 2 ;;
+    --multimode_training_labels_dir) MULTIMODE_TRAINING_DIR_OVERRIDE="$2"; shift 2 ;;
+    --multimode_target_ars) MULTIMODE_TARGET_ARS="$2"; shift 2 ;;
+    --multimode_max_images) MULTIMODE_MAX_IMAGES="$2"; shift 2 ;;
+    --multimode_write_debug_viz) MULTIMODE_WRITE_DEBUG_VIZ="$2"; shift 2 ;;
+    --multimode_debug_viz_limit) MULTIMODE_DEBUG_VIZ_LIMIT="$2"; shift 2 ;;
+    --multimode_features_jsonl_override) MULTIMODE_FEATURES_JSONL_OVERRIDE="$2"; shift 2 ;;
+    --multimode_candidates_jsonl_override) MULTIMODE_CANDIDATES_JSONL_OVERRIDE="$2"; shift 2 ;;
     --gaic_generate_captions) GAIC_GENERATE_CAPTIONS="$2"; shift 2 ;;
     --gaic_caption_preset) GAIC_CAPTION_PRESET="$2"; shift 2 ;;
     --gaic_caption_backend) GAIC_CAPTION_BACKEND="$2"; shift 2 ;;
@@ -253,6 +270,10 @@ fi
 if [ -z "$REFERENCE_JSON" ]; then
   REFERENCE_JSON="${DATA_DIR}/test_images_reference.json"
 fi
+if [ "$SERVER_MODE" -eq 1 ]; then
+  VENV_PATH=""
+  PYTHON_BIN="python3"
+fi
 if [ "$USE_REAL_EXPENSIVE" -eq 1 ] && [ "$RUN_C1_EXPLICIT" -eq 0 ] && [ "$RUN_C1" -ne 1 ]; then
   RUN_C1=1
 fi
@@ -321,6 +342,13 @@ if [ -n "$TRAINING_DIR_OVERRIDE" ]; then
 else
   TRAINING_DIR="${ARTIFACTS_DIR}/training_labels/${TRAINING_LABELS_SUBDIR}"
 fi
+if [ -n "$MULTIMODE_TRAINING_DIR_OVERRIDE" ]; then
+  MULTIMODE_TRAINING_DIR="$MULTIMODE_TRAINING_DIR_OVERRIDE"
+elif [ -n "$RUN_TAG" ]; then
+  MULTIMODE_TRAINING_DIR="${ARTIFACTS_DIR}/training_labels_multimode/${RUN_TAG}_multimode_v1"
+else
+  MULTIMODE_TRAINING_DIR="${ARTIFACTS_DIR}/training_labels_multimode/latest_multimode_v1"
+fi
 VALIDATION_DIR="${ARTIFACTS_DIR}/validation"
 METADATA_DIR="${ARTIFACTS_DIR}/metadata"
 VALIDATION_SUMMARY_JSON="${VALIDATION_DIR}/test_images_e2e_validation${SUFFIX}.json"
@@ -340,6 +368,10 @@ TRAINING_DETR_BATCH_JSON="${TRAINING_DIR}/train_conditional_detr_batch.jsonl"
 TRAINING_GAIC_LIKE_SUMMARY_JSON="${TRAINING_DIR}/coco/gaic_like_conversion_summary.json"
 TRAINING_LABEL_DEBUG_VIZ_OUT_DIR=${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR:-"${TRAINING_DIR}/debug_visualizations_balanced${TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE}_bottomneg"}
 TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON="${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR}/summary/summary.json"
+MULTIMODE_SUMMARY_JSON="${MULTIMODE_TRAINING_DIR}/summary.json"
+MULTIMODE_QUERY_STATUS_JSONL="${MULTIMODE_TRAINING_DIR}/mode_query_status.jsonl"
+MULTIMODE_COCO_JSON="${MULTIMODE_TRAINING_DIR}/coco/instances_multimode_training_labels.json"
+MULTIMODE_VALIDATION_JSON="${MULTIMODE_TRAINING_DIR}/validation_summary.json"
 if [ -z "$GAIC_CAPTION_JSONL" ]; then
   GAIC_CAPTION_JSONL="${METADATA_DIR}/test_images_captions${SUFFIX}.jsonl"
 fi
@@ -354,12 +386,18 @@ if [ -z "$GAIC_CAPTION_PRESET" ]; then
   fi
 fi
 
-if [ -f "$VENV_PATH" ]; then
+if [ -n "$VENV_PATH" ] && [ -f "$VENV_PATH" ]; then
   # shellcheck disable=SC1090
   source "$VENV_PATH"
   echo "[info] activated venv: $VENV_PATH"
+  _derived_python_bin="$(dirname "$VENV_PATH")/python"
+  if [ -x "$_derived_python_bin" ]; then
+    PYTHON_BIN="$_derived_python_bin"
+  fi
 elif [ "$SERVER_MODE" -ne 1 ]; then
   echo "[warn] venv not found: $VENV_PATH (using current python)"
+else
+  echo "[info] server_mode=1 -> using python3 without venv activation"
 fi
 
 echo "========================================================"
@@ -392,6 +430,8 @@ echo " run_c7_saliency       : $RUN_C7_SALIENCY (priority=$C7_SALIENCY_PRIORITY 
 echo " generate_captions     : $GAIC_GENERATE_CAPTIONS (preset=$GAIC_CAPTION_PRESET backend=${GAIC_CAPTION_BACKEND:-auto} multi_gpu=$GAIC_CAPTION_MULTI_GPU gpu_ids=${EFFECTIVE_CAPTION_GPU_IDS:-auto} workers=${EFFECTIVE_CAPTION_GPU_WORKERS:-auto})"
 echo " run_vlm_teacher       : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND)"
 echo " run_training_labels   : $RUN_TRAINING_LABELS (policy=$SAFE_LEFTOVER_POLICY)"
+echo " run_multimode_labels  : $RUN_MULTIMODE_TRAINING_LABELS (dir=$MULTIMODE_TRAINING_DIR)"
+echo " multimode target ARs  : $MULTIMODE_TARGET_ARS (max_images=$MULTIMODE_MAX_IMAGES debug_viz=$MULTIMODE_WRITE_DEBUG_VIZ limit=$MULTIMODE_DEBUG_VIZ_LIMIT)"
 echo " score_profile         : $SCORE_PROFILE (overrides=${SCORE_PROFILE_OVERRIDES_JSON:-<none>})"
 echo " training_debug_viz    : $RUN_TRAINING_LABEL_DEBUG_VIZ (out=$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR sample_size=$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE seed=$TRAINING_LABEL_DEBUG_VIZ_SEED)"
 echo " auto_leftover_variants: $AUTO_LEFTOVER_VARIANTS (policies=$LEFTOVER_VARIANT_POLICIES)"
@@ -426,7 +466,7 @@ build_test_images_like_export() {
   local out_json="${coco_dir}/instances_conditional_detr_batch_gaic_like.json"
   local out_summary_json="${coco_dir}/gaic_like_conversion_summary.json"
   local out_guide_md="${coco_dir}/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
-  python3 src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
+  "$PYTHON_BIN" src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
     --batch_jsonl "$batch_jsonl" \
     --gaic_reference_json "$REFERENCE_JSON" \
     --out_json "$out_json" \
@@ -456,7 +496,7 @@ validate_training_outputs() {
       --vlm_summary_json "$VLM_SUMMARY_JSON"
     )
   fi
-  python3 src/scripts/validate_gaic_e2e_outputs.py --progress 1 "${validate_args[@]}"
+  "$PYTHON_BIN" src/scripts/validate_gaic_e2e_outputs.py --progress 1 "${validate_args[@]}"
 }
 
 build_training_variant() {
@@ -477,7 +517,7 @@ build_training_variant() {
     return 0
   fi
   echo "[run] build leftover variant: policy=${policy} out_dir=${variant_dir}"
-  python3 src/scripts/build_finalscore_training_data.py \
+  "$PYTHON_BIN" src/scripts/build_finalscore_training_data.py \
     --teacher_scores_jsonl "$TEACHER_JSONL" \
     --out_dir "$variant_dir" \
     --image_root "$FLAT_IMAGE_DIR" \
@@ -487,7 +527,7 @@ build_training_variant() {
     --progress 1 \
     --strict_validation 1 \
     --report_examples 8
-  python3 src/scripts/convert_sstk_detr_labels_to_coco.py \
+  "$PYTHON_BIN" src/scripts/convert_sstk_detr_labels_to_coco.py \
     --canonical_jsonl "${variant_dir}/train_conditional_detr_canonical.jsonl" \
     --batch_jsonl "${variant_dir}/train_conditional_detr_batch.jsonl" \
     --progress 1 \
@@ -541,7 +581,7 @@ if [ "$GAIC_GENERATE_CAPTIONS" -eq 1 ]; then
   if [ -n "$GAIC_CAPTION_PROMPT" ]; then
     CAPTION_ARGS+=(--caption_prompt "$GAIC_CAPTION_PROMPT")
   fi
-  python3 src/scripts/generate_gaic_captions.py "${CAPTION_ARGS[@]}"
+  "$PYTHON_BIN" src/scripts/generate_gaic_captions.py "${CAPTION_ARGS[@]}"
 fi
 
 PREPARE_CAPTION_ARGS=()
@@ -549,7 +589,7 @@ if [ -f "$GAIC_CAPTION_JSONL" ]; then
   PREPARE_CAPTION_ARGS+=(--caption_jsonl "$GAIC_CAPTION_JSONL")
 fi
 
-python3 src/scripts/prepare_gaic_curated_dataset.py \
+"$PYTHON_BIN" src/scripts/prepare_gaic_curated_dataset.py \
   --image_root "$IMAGE_ROOT" \
   --output_parquet "$FILTERED_PARQUET" \
   --flat_image_dir "$FLAT_IMAGE_DIR" \
@@ -613,6 +653,14 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_fallback_backend "$VLM_FALLBACK_BACKEND" \
   --run_training_labels "$RUN_TRAINING_LABELS" \
   --training_labels_dir "$TRAINING_DIR" \
+  --run_multimode_training_labels "$RUN_MULTIMODE_TRAINING_LABELS" \
+  --multimode_training_labels_dir "$MULTIMODE_TRAINING_DIR" \
+  --multimode_target_ars "$MULTIMODE_TARGET_ARS" \
+  --multimode_max_images "$MULTIMODE_MAX_IMAGES" \
+  --multimode_write_debug_viz "$MULTIMODE_WRITE_DEBUG_VIZ" \
+  --multimode_debug_viz_limit "$MULTIMODE_DEBUG_VIZ_LIMIT" \
+  --multimode_features_jsonl_override "$MULTIMODE_FEATURES_JSONL_OVERRIDE" \
+  --multimode_candidates_jsonl_override "$MULTIMODE_CANDIDATES_JSONL_OVERRIDE" \
   --safe_leftover_policy "$SAFE_LEFTOVER_POLICY" \
   --score_profile "$SCORE_PROFILE" \
   --score_profile_overrides_json "$SCORE_PROFILE_OVERRIDES_JSON" \
@@ -626,6 +674,10 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   "${C7_EXTRA_ARGS[@]}" \
   "${PASSTHROUGH_ARGS[@]}"
 
+if [ -n "$MULTIMODE_FEATURES_JSONL_OVERRIDE" ] || [ -n "$MULTIMODE_CANDIDATES_JSONL_OVERRIDE" ]; then
+  echo "[info] multimode stage uses overrides: feats=${MULTIMODE_FEATURES_JSONL_OVERRIDE:-<default>} candidates=${MULTIMODE_CANDIDATES_JSONL_OVERRIDE:-<default>}"
+fi
+
 if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   if [ ! -f "$TRAINING_DETR_BATCH_JSON" ] || [ ! -f "$TRAINING_DETR_CANONICAL_JSON" ]; then
     echo "[error] expected training label jsonl missing: $TRAINING_DETR_BATCH_JSON | $TRAINING_DETR_CANONICAL_JSON"
@@ -635,6 +687,13 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   build_test_images_like_export "$TRAINING_DIR"
   if [ "$AUTO_LEFTOVER_VARIANTS" -eq 1 ] && [ -n "$RUN_TAG" ]; then
     build_all_leftover_variants
+  fi
+fi
+
+if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
+  if [ ! -f "$MULTIMODE_SUMMARY_JSON" ] || [ ! -f "$MULTIMODE_COCO_JSON" ] || [ ! -f "$MULTIMODE_VALIDATION_JSON" ]; then
+    echo "[error] expected multimode outputs missing: $MULTIMODE_SUMMARY_JSON | $MULTIMODE_COCO_JSON | $MULTIMODE_VALIDATION_JSON"
+    exit 1
   fi
 fi
 
@@ -668,7 +727,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   )
 fi
 
-python3 src/scripts/validate_gaic_e2e_outputs.py --progress 1 "${VALIDATE_ARGS[@]}"
+"$PYTHON_BIN" src/scripts/validate_gaic_e2e_outputs.py --progress 1 "${VALIDATE_ARGS[@]}"
 
 if [ "$RUN_TRAINING_LABELS" -eq 1 ] && [ "$AUTO_LEFTOVER_VARIANTS" -eq 1 ] && [ -n "$RUN_TAG" ]; then
   echo "[done] leftover variants:"
@@ -689,3 +748,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ] && [ "$RUN_TRAINING_LABEL_DEBUG_VIZ" -eq 1 ]
 fi
 
 echo "[done] validation summary: $VALIDATION_SUMMARY_JSON"
+if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
+  echo "[done] multimode labels: $MULTIMODE_TRAINING_DIR"
+  echo "       multimode validation: $MULTIMODE_VALIDATION_JSON"
+fi

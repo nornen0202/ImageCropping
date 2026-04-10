@@ -89,6 +89,12 @@ _WORKER_ACTUAL_SIZE_MAP: Optional[Dict[str, Tuple[int, int]]] = None
 _WORKER_STRICT_ACTUAL_SIZE: bool = True
 _WORKER_TEACHER_PROPOSALS_MAP: Optional[Dict[str, Dict[str, Dict[str, Any]]]] = None
 
+_GUIDANCE_TRUST_RANK = {
+    "low": 0,
+    "medium": 1,
+    "high": 2,
+}
+
 
 @dataclass
 class CandidateGenConfig:
@@ -132,6 +138,28 @@ class CandidateGenConfig:
     free_bucket_portrait_max: float = 0.90
     free_bucket_square_max: float = 1.10
     free_teacher_ar_jitter: Tuple[float, ...] = DEFAULT_FREE_TEACHER_AR_JITTER
+
+
+def _guidance_seed_gate(crop_guidance_spec: Optional[Dict[str, Any]], subject_repr_type: str) -> bool:
+    if not isinstance(crop_guidance_spec, dict):
+        return False
+    support_spec = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec.get("support_spec"), dict) else {}
+    semantic_spec = crop_guidance_spec.get("semantic_spec", {}) if isinstance(crop_guidance_spec.get("semantic_spec"), dict) else {}
+    guidance_spec = crop_guidance_spec.get("guidance_spec", {}) if isinstance(crop_guidance_spec.get("guidance_spec"), dict) else {}
+    attention_layout = str(support_spec.get("attention_layout", "") or "").strip().lower()
+    support_mode = str(support_spec.get("mode", "") or "").strip().lower()
+    trust_tier = str(support_spec.get("support_trust_tier", semantic_spec.get("support_trust_tier", "low")) or "low")
+    trust_rank = _GUIDANCE_TRUST_RANK.get(trust_tier, 0)
+    hybrid_enabled = bool(support_spec.get("hybrid_enabled", False))
+    has_guidance_box = bool(
+        isinstance(guidance_spec.get("core_bbox_norm_xyxy"), (list, tuple))
+        or isinstance(guidance_spec.get("envelope_bbox_norm_xyxy"), (list, tuple))
+    )
+    if str(subject_repr_type or "").startswith("detected_box"):
+        return False
+    if support_mode == "support_map" and attention_layout in {"distributed", "none", "multi_subject"}:
+        return True
+    return bool(has_guidance_box and hybrid_enabled and trust_rank >= _GUIDANCE_TRUST_RANK["medium"])
 
 
 def _init_build_worker(
@@ -2053,12 +2081,7 @@ def generate_freeform_candidates(
     subj_repr = str(subject_repr_type or "")
     guidance_support = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
     guidance_layout = str(guidance_support.get("attention_layout", "") or "").strip().lower()
-    use_guidance_layout_seeds = bool(
-        isinstance(crop_guidance_spec, dict)
-        and guidance_layout in {"distributed", "none", "multi_subject"}
-        and str(guidance_support.get("mode", "")) == "support_map"
-        and not subj_repr.startswith("detected_box")
-    )
+    use_guidance_layout_seeds = _guidance_seed_gate(crop_guidance_spec, subj_repr)
     allow_subject_templates = subj_rel >= 0.40 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
     allow_subject_jitter = subj_rel >= 0.35 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
     allow_saliency_jitter = subj_rel >= 0.45 or subj_repr == "saliency_box"
@@ -2373,12 +2396,7 @@ def generate_candidates_for_ar(
     subj_repr = str(subject_repr_type or "")
     guidance_support = crop_guidance_spec.get("support_spec", {}) if isinstance(crop_guidance_spec, dict) else {}
     guidance_layout = str(guidance_support.get("attention_layout", "") or "").strip().lower()
-    use_guidance_layout_seeds = bool(
-        isinstance(crop_guidance_spec, dict)
-        and guidance_layout in {"distributed", "none", "multi_subject"}
-        and str(guidance_support.get("mode", "")) == "support_map"
-        and not subj_repr.startswith("detected_box")
-    )
+    use_guidance_layout_seeds = _guidance_seed_gate(crop_guidance_spec, subj_repr)
     allow_subject_templates = subj_rel >= 0.40 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
     allow_subject_jitter = subj_rel >= 0.35 and subj_repr not in {"soft_scene_region", "guard_proxy", "none"}
     allow_saliency_jitter = subj_rel >= 0.45 or subj_repr == "saliency_box"

@@ -407,7 +407,12 @@ if [ -z "$GAIC_SUBJECT_AB_BASELINE_BENCHMARK_SUMMARY" ]; then
   GAIC_SUBJECT_AB_BASELINE_BENCHMARK_SUMMARY="${DATA_DIR}/artifacts/reports/gaic_benchmark_eval_gaic_260320_r0/benchmark_summary.json"
 fi
 
-if [ -f "$VENV_PATH" ]; then
+if [ "$SERVER_MODE" -eq 1 ]; then
+  VENV_PATH=""
+  PYTHON_BIN="python3"
+fi
+
+if [ -n "$VENV_PATH" ] && [ -f "$VENV_PATH" ]; then
   # shellcheck disable=SC1090
   source "$VENV_PATH"
   echo "[info] activated venv: $VENV_PATH"
@@ -417,6 +422,8 @@ if [ -f "$VENV_PATH" ]; then
   fi
 elif [ "$SERVER_MODE" -ne 1 ]; then
   echo "[warn] venv not found: $VENV_PATH (using current python)"
+else
+  echo "[info] server_mode=1 -> using python3 without venv activation"
 fi
 
 echo "========================================================"

@@ -257,7 +257,7 @@ set -euo pipefail
 
 PROJECT_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$PROJECT_ROOT"
-SCRIPT_VERSION="2026-03-05.1"
+SCRIPT_VERSION="2026-04-13.1"
 
 # ------------------------------------------------------------------------------
 # Defaults
@@ -467,6 +467,13 @@ VLM_SUMMARY_JSON=""
 # Option parse
 # ------------------------------------------------------------------------------
 while [ "$#" -gt 0 ]; do
+  if [[ "$1" == --* && "$1" != "--help" ]]; then
+    if [ "$#" -lt 2 ] || [[ "$2" == --* ]]; then
+      echo "[error] option requires a value: $1"
+      echo "        Check that shell variables used as option values are defined before running this script."
+      exit 1
+    fi
+  fi
   case "$1" in
     --bucket) BUCKET="$2"; shift 2 ;;
     --data_dir) DATA_DIR="$2"; shift 2 ;;
@@ -843,7 +850,12 @@ if [ -z "$LOG_DIR" ]; then
 fi
 mkdir -p "$LOG_DIR"
 
-if [ -f "$VENV_PATH" ]; then
+if [ "$SERVER_MODE" -eq 1 ]; then
+  VENV_PATH=""
+  PYTHON_BIN="python3"
+fi
+
+if [ -n "$VENV_PATH" ] && [ -f "$VENV_PATH" ]; then
   # shellcheck disable=SC1090
   source "$VENV_PATH"
   echo "[info] activated venv: $VENV_PATH"
@@ -854,7 +866,7 @@ if [ -f "$VENV_PATH" ]; then
 elif [ "$SERVER_MODE" -ne 1 ]; then
   echo "[warn] venv not found: $VENV_PATH (using current python)"
 else
-  echo "[info] server_mode=1 and venv not found: $VENV_PATH (using current python)"
+  echo "[info] server_mode=1 -> using python3 without venv activation"
 fi
 
 if [ -n "$RUN_TAG" ]; then

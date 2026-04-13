@@ -519,7 +519,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 ### 3.6a 서버 최대 옵션 full-run
 
-현재 [run_phaseA_to_teacher_e2e.sh](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_phaseA_to_teacher_e2e.sh) 가 직접 지원하는 주요 옵션을 사실상 전부 켜려면 아래 템플릿을 사용하세요. 즉 filter, `C1~C7`, public teacher proposals, candidate, teacher, VLM teacher, training labels, debug viz, detailed report까지 한 번에 수행합니다.
+현재 [run_phaseA_to_teacher_e2e.sh](/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/run_phaseA_to_teacher_e2e.sh) 가 직접 지원하는 주요 옵션을 사실상 전부 켜려면 아래 템플릿을 사용하세요. 즉 filter, `C1~C7`, public teacher proposals, candidate, teacher, VLM teacher, FinalScore training labels, multimode training labels, debug viz, detailed report까지 한 번에 수행합니다.
 
 ```bash
 GPU_IDS=0,1,2,3,4,5,6,7
@@ -605,11 +605,18 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --vlm_top_m 12 \
   --vlm_top_k 5 \
   --vlm_multi_gpu 1 \
+  --vlm_save_raw_response 1 \
+  --vlm_strict_backend_init 1 \
   --run_training_labels 1 \
   --safe_leftover_policy ignore \
   --run_training_label_debug_viz 1 \
   --training_label_debug_viz_sample_size 50 \
   --training_label_debug_viz_seed 42 \
+  --run_multimode_training_labels 1 \
+  --multimode_target_ars FREE,1:1,9:16,16:9,3:4,4:3 \
+  --multimode_max_images 0 \
+  --multimode_write_debug_viz 1 \
+  --multimode_debug_viz_limit 0 \
   --run_detailed_report 1 \
   --run_tag ${RUN_TAG} \
   | tee src/scripts/logs/run_phaseA_to_teacher_${DATANAME}_${RUN_TAG}.log
@@ -619,16 +626,16 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 - filter부터 시작하는 SSTK full E2E 수행
 - filter / precompute / public teacher / teacher / VLM 단계에 공용 `--gpu_ids`, `--gpu_workers` 기본값을 전파
-- `C7 saliency`, component viz, public teacher proposal reroute, VLM teacher, training labels, debug viz, detailed report까지 모두 수행
+- `C7 saliency`, component viz, public teacher proposal reroute, VLM teacher, FinalScore training labels, multimode training labels, debug viz, detailed report까지 모두 수행
 
 주의:
 
 - 이것이 현재 `run_phaseA_to_teacher_e2e.sh` 기준의 사실상 최대 옵션 실행입니다.
-- 문서의 3.6과 비교하면 가장 큰 차이는 `run_c7_saliency=1`, `run_vlm_teacher=1`, `run_training_label_debug_viz=1`, `run_training_labels=1`, `run_detailed_report=1`을 명시적으로 켠 점입니다.
+- 문서의 3.6과 비교하면 가장 큰 차이는 `run_c7_saliency=1`, `run_vlm_teacher=1`, `run_training_labels=1`, `run_training_label_debug_viz=1`, `run_multimode_training_labels=1`, `multimode_write_debug_viz=1`, `run_detailed_report=1`을 명시적으로 켠 점입니다.
 - 이 스크립트 자체에는 wrapper 계열처럼 `auto_leftover_variants` 옵션이 없습니다. 추가 leftover variant가 필요하면 `build_finalscore_training_data.py`를 정책별로 별도 재실행해야 합니다.
 - `run_c4=1`, `enable_public_teacher_proposals=1`, `run_vlm_teacher=1`까지 켜므로 GPU/디스크/런타임 비용이 가장 큽니다.
 
-처음부터 완전 신규 실행이면 위 명령에서 아래 한 줄만 바꿔서 시작하세요.
+기존 `Full_10000`의 filter/images를 재사용하려면 `3.6b` 또는 `3.6c`를 사용하세요. `3.6a`는 처음부터 완전 신규/갱신 실행을 전제로 하므로 아래 설정을 유지합니다.
 ```bash
   --run_filter 1 \
 ```
@@ -663,16 +670,184 @@ Conditional-DETR training label 해석:
 최소 확인 포인트:
 - teacher score jsonl: `data/SSTK/${DATANAME}/artifacts/teacher/scores/teacher_scores_ar_${RUN_TAG}.jsonl`
 - detailed report: `data/SSTK/${DATANAME}/artifacts/reports/${RUN_TAG}_detailed/REPORT_DRAFT_KO.md`
-- training label QA: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/qa_summary.json`
-- training label validation: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/validation_summary.json`
-- conditional detr canonical: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/train_conditional_detr_canonical.jsonl`
-- conditional detr batch: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/train_conditional_detr_batch.jsonl`
-- conditional detr skipped: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/train_conditional_detr_skipped.jsonl`
-- training label report: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/TRAINING_DATA_REPORT_KO.md`
-- coco conversion summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/coco/coco_conversion_summary.json`
-- gaic-like json: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/coco/instances_conditional_detr_batch_gaic_like.json`
-- gaic-like summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/coco/gaic_like_conversion_summary.json`
-- gaic-like guide: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md`
+- training label QA: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/qa_summary.json`
+- training label validation: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/validation_summary.json`
+- conditional detr canonical: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/train_conditional_detr_canonical.jsonl`
+- conditional detr batch: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl`
+- conditional detr skipped: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/train_conditional_detr_skipped.jsonl`
+- training label report: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/TRAINING_DATA_REPORT_KO.md`
+- coco conversion summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/coco/coco_conversion_summary.json`
+- gaic-like json: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json`
+- gaic-like summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/coco/gaic_like_conversion_summary.json`
+- gaic-like guide: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md`
+- multimode summary: `data/SSTK/${DATANAME}/artifacts/training_labels_multimode/${RUN_TAG}_multimode_v1/summary.json`
+- multimode COCO: `data/SSTK/${DATANAME}/artifacts/training_labels_multimode/${RUN_TAG}_multimode_v1/coco/instances_multimode_training_labels.json`
+- multimode debug viz: `data/SSTK/${DATANAME}/artifacts/training_labels_multimode/${RUN_TAG}_multimode_v1/debug_viz/`
+
+### 3.6b `data/SSTK/Full_10000` 기존 산출물 현황
+
+현재 `data/SSTK/Full_10000`에는 아래 산출물이 이미 준비되어 있습니다.
+
+- filter/cache/images: `filtered_sstk_100.parquet`, `images/`, `cache/actual_image_size_map.json`, `cache/filter/*`
+- precompute: `feats_c1.jsonl`, `feats_c2c3c5_v2_strict_raw.jsonl`, `feats_c2c3c5_v2_strict_enriched.jsonl`, `feats_c2c3c5_v2_strict_enriched_routed.jsonl`
+- candidates: `artifacts/candidates/candidates_ar_260316_r2.jsonl` 및 overview CSV/JSON, candidate viz
+- public teachers: `teacher_raw_public_260316_r2.jsonl`, `teacher_proposals_public_260316_r2.jsonl`
+- teacher: `teacher_scores_ar_260316_r2.jsonl`, QA/overview, `teacher_scorer_260316_r2` viz
+- report: `artifacts/reports/260316_r2_detailed/REPORT_DRAFT_KO.md`
+- legacy training labels: `artifacts/training_labels/260316_r2/{train_pairwise,train_listwise,train_decision,train_checklist,train_regression}.jsonl`
+
+따라서 가장 빠른 downstream completion은 filter/precompute/candidate/teacher를 다시 돌리지 않고, 기존 `260316_r2` teacher score와 candidate를 입력으로 FinalScore training labels, COCO/GAIC-like 변환, FinalScore debug-viz, multimode training labels, multimode debug-viz만 새 디렉토리에 생성하는 방식입니다.
+
+주의: 아래 변수 정의 줄까지 함께 실행하세요. `DATANAME=... BASE_TAG=... bash ... ${BASE_TAG}`처럼 같은 명령 앞에 inline assignment로 붙이면 shell 확장 시점에는 `${BASE_TAG}`가 비어 있어 `--run_tag` 값이 밀립니다.
+
+```bash
+DATANAME=Full_10000
+BASE_TAG=260316_r2
+RUN_TAG=${BASE_TAG}
+TRAINING_OUT=data/SSTK/${DATANAME}/artifacts/training_labels/${BASE_TAG}_reuse_single_stage2_debug
+MULTIMODE_OUT=data/SSTK/${DATANAME}/artifacts/training_labels_multimode/${BASE_TAG}_reuse_multimode_v1
+
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --bucket sstk_100 \
+  --data_dir data/SSTK/${DATANAME} \
+  --server_mode 1 \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --run_filter 0 \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --skip_existing 0 \
+  --precompute_mode unified \
+  --run_c1 0 \
+  --run_c2 0 \
+  --run_c3 0 \
+  --run_c3_enrich 0 \
+  --run_c4 0 \
+  --run_c5 0 \
+  --run_c6 0 \
+  --run_merge 0 \
+  --run_subject_routing 0 \
+  --run_c7_saliency 0 \
+  --run_component_viz 0 \
+  --enable_public_teacher_proposals 0 \
+  --run_candidates 0 \
+  --run_teacher 0 \
+  --run_vlm_teacher 0 \
+  --run_detailed_report 0 \
+  --run_training_labels 1 \
+  --training_labels_dir ${TRAINING_OUT} \
+  --safe_leftover_policy ignore \
+  --score_profile single_stage2 \
+  --run_training_label_debug_viz 1 \
+  --training_label_debug_viz_sample_size 50 \
+  --training_label_debug_viz_seed 42 \
+  --run_multimode_training_labels 1 \
+  --multimode_training_labels_dir ${MULTIMODE_OUT} \
+  --multimode_features_jsonl_override data/SSTK/${DATANAME}/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl \
+  --multimode_candidates_jsonl_override data/SSTK/${DATANAME}/artifacts/candidates/candidates_ar_${BASE_TAG}.jsonl \
+  --multimode_target_ars FREE,1:1,9:16,16:9,3:4,4:3 \
+  --multimode_max_images 0 \
+  --multimode_write_debug_viz 1 \
+  --multimode_debug_viz_limit 0 \
+  --run_tag ${RUN_TAG} \
+  | tee src/scripts/logs/run_phaseA_to_teacher_${DATANAME}_${BASE_TAG}_reuse_downstream.log
+```
+
+이 명령은 기존 `teacher_scores_ar_260316_r2.jsonl`을 그대로 쓰므로 scorer를 재계산하지 않습니다. 기존 `artifacts/training_labels/260316_r2`는 유지하고, 새 FinalScore 라벨은 `${TRAINING_OUT}`, 새 multimode 라벨은 `${MULTIMODE_OUT}`에 생성합니다.
+
+### 3.6c `Full_10000` 최대 재사용 + 누락 stage 활성화
+
+기존 filter/images/precompute/public-teacher raw/proposals는 재사용하되, `C7 saliency`부터 candidate, teacher, VLM, FinalScore labels, multimode labels, debug-viz, detailed report까지 새 run tag로 다시 만들려면 아래 명령을 사용하세요. 이 경로는 `3.6a`보다 빠르지만, downstream stage의 핵심 옵션은 모두 켭니다.
+
+```bash
+DATANAME=Full_10000
+BASE_TAG=260316_r2
+RUN_TAG=${BASE_TAG}_reuse_c7_vlm_multimode_debug
+GPU_IDS=0,1,2,3,4,5,6,7
+N_WORKERS=$(awk -F',' '{print NF}' <<< "${GPU_IDS}")
+
+bash src/scripts/run_phaseA_to_teacher_e2e.sh \
+  --bucket sstk_100 \
+  --data_dir data/SSTK/${DATANAME} \
+  --server_mode 1 \
+  --tar_dir /sstk/20230916/sstk_100 \
+  --run_filter 0 \
+  --prefer_curated_images 1 \
+  --curated_image_dir data/SSTK/${DATANAME}/images \
+  --skip_existing 1 \
+  --precompute_mode unified \
+  --run_c1 0 \
+  --run_c2 0 \
+  --run_c3 0 \
+  --run_c3_enrich 0 \
+  --run_c4 0 \
+  --run_c5 0 \
+  --run_c6 0 \
+  --run_merge 0 \
+  --run_subject_routing 1 \
+  --subject_routing_top_n 5 \
+  --subject_routing_union_top_m 3 \
+  --subject_routing_allow_det_proxy 1 \
+  --run_c7_saliency 1 \
+  --c7_saliency_priority quality_first \
+  --extract_mode auto \
+  --extract_multi_gpu 1 \
+  --gpu_ids ${GPU_IDS} \
+  --gpu_workers ${N_WORKERS} \
+  --run_component_viz 1 \
+  --component_viz_num_samples 120 \
+  --component_viz_out_dir data/SSTK/${DATANAME}/artifacts/precompute/visualizations/components_${RUN_TAG} \
+  --enable_public_teacher_proposals 1 \
+  --public_teacher_setup 0 \
+  --public_teacher_download_weights 0 \
+  --public_teacher_raw_jsonl data/SSTK/${DATANAME}/artifacts/public_teachers/raw/teacher_raw_public_${BASE_TAG}.jsonl \
+  --public_teacher_proposals_jsonl data/SSTK/${DATANAME}/artifacts/public_teachers/proposals/teacher_proposals_public_${BASE_TAG}.jsonl \
+  --public_teachers gaic,cacnet,cgs \
+  --public_teacher_max_images -1 \
+  --public_teacher_device auto \
+  --public_infer_multi_gpu 1 \
+  --run_candidates 1 \
+  --cand_ar_list FREE,1:1,9:16,16:9,3:4,4:3 \
+  --use_actual_image_size 1 \
+  --strict_actual_size 1 \
+  --run_teacher 1 \
+  --use_real_expensive 1 \
+  --teacher_multi_gpu 1 \
+  --cheap_top_m 30 \
+  --top_k 5 \
+  --tau_div 0.75 \
+  --align_device cuda \
+  --aesthetic_device cuda \
+  --exp_batch_size 512 \
+  --run_qa 1 \
+  --run_viz 1 \
+  --num_viz 120 \
+  --run_vlm_teacher 1 \
+  --vlm_backend qwen25_vl \
+  --vlm_fallback_backend heuristic \
+  --vlm_model_id Qwen/Qwen3-VL-4B-Instruct \
+  --vlm_device auto \
+  --vlm_top_m 12 \
+  --vlm_top_k 5 \
+  --vlm_multi_gpu 1 \
+  --vlm_save_raw_response 1 \
+  --vlm_strict_backend_init 1 \
+  --run_training_labels 1 \
+  --safe_leftover_policy ignore \
+  --score_profile single_stage2 \
+  --run_training_label_debug_viz 1 \
+  --training_label_debug_viz_sample_size 50 \
+  --training_label_debug_viz_seed 42 \
+  --run_multimode_training_labels 1 \
+  --multimode_target_ars FREE,1:1,9:16,16:9,3:4,4:3 \
+  --multimode_max_images 0 \
+  --multimode_write_debug_viz 1 \
+  --multimode_debug_viz_limit 0 \
+  --run_detailed_report 1 \
+  --run_tag ${RUN_TAG} \
+  | tee src/scripts/logs/run_phaseA_to_teacher_${DATANAME}_${RUN_TAG}.log
+```
+
+Qwen3-VL 전용 런타임이 준비되지 않은 환경에서는 위 명령의 `--run_vlm_teacher 1` 구간에서 실패할 수 있습니다. 이 경우 같은 run tag로 `--run_vlm_teacher 0`을 두고 먼저 teacher/training/multimode까지 만들고, `3.8.0 Qwen3 전용 환경 래퍼 실행(권장)` 방식으로 Stage 10만 분리 실행하세요.
 
 권장 재실행 명령 기존 산출물을 덮어쓰는 가장 짧은 재실행입니다. 영향 범위는 subject routing -> teacher -> QA -> viz만입니다.
 ```bash

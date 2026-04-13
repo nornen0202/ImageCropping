@@ -37,6 +37,11 @@ import pandas as pd
 from PIL import Image
 from tqdm import tqdm
 
+from portrait_composition import (
+    build_group_portrait_spec,
+    build_single_portrait_spec,
+    portrait_seed_layouts,
+)
 from subject_region import box_area as subject_box_area
 from subject_region import box_center as subject_box_center
 from subject_region import box_wh as subject_box_wh
@@ -571,6 +576,168 @@ def union_boxes(boxes: Sequence[Sequence[float]]) -> Optional[List[float]]:
     ]
 
 
+def _normalize_keypoints_for_pose(keypoints: Any, width: int, height: int) -> List[List[float]]:
+    out: List[List[float]] = []
+    if not isinstance(keypoints, list):
+        return out
+    for kp in keypoints:
+        if not isinstance(kp, (list, tuple)) or len(kp) < 3:
+            continue
+        out.append(
+            [
+                clamp(safe_float(kp[0]) / max(1.0, float(width)), 0.0, 1.0),
+                clamp(safe_float(kp[1]) / max(1.0, float(height)), 0.0, 1.0),
+                safe_float(kp[2], 0.0),
+            ]
+        )
+    return out
+
+
+def _face_box_for_pose(pose: Dict[str, Any], width: int, height: int) -> Optional[List[float]]:
+    face = pose.get("face") if isinstance(pose.get("face"), dict) else {}
+    face_box = face.get("bbox_norm")
+    if isinstance(face_box, (list, tuple)) and len(face_box) == 4:
+        clipped = subject_clip_box01(face_box)
+        if box_area(clipped) > 0.0:
+            return [float(v) for v in clipped]
+    face_box = face.get("bbox")
+    if isinstance(face_box, (list, tuple)) and len(face_box) == 4:
+        norm = norm_box_xyxy(face_box, float(width), float(height))
+        if box_area(norm) > 0.0:
+            return [float(v) for v in norm]
+    return None
+
+
+def _gaze_entries_for_pose(pose: Dict[str, Any], bbox_norm_xyxy: Sequence[float], width: int, height: int) -> List[Dict[str, Any]]:
+    headpose = pose.get("headpose_gaze") if isinstance(pose.get("headpose_gaze"), dict) else {}
+    if not headpose:
+        return []
+    face_box = _face_box_for_pose(pose, width, height)
+    if face_box is not None:
+        anchor_x, anchor_y = box_center(face_box)
+    else:
+        anchor_x, anchor_y = box_center(bbox_norm_xyxy)
+    return [
+        {
+            "gaze_dir": str(headpose.get("gaze_dir", "unknown")),
+            "conf": safe_float(headpose.get("conf", 0.0), 0.0),
+            "anchor_x": anchor_x,
+            "anchor_y": anchor_y,
+            "yaw_proxy": safe_float(headpose.get("yaw_proxy", 0.0), 0.0),
+        }
+    ]
+
+
+def _select_primary_pose_box(
+    *,
+    c3_pose: Sequence[Dict[str, Any]],
+    target_box: Sequence[float],
+    width: int,
+    height: int,
+) -> Optional[Dict[str, Any]]:
+    best_pose = None
+    best_score = -1.0
+    for idx, pose in enumerate(c3_pose):
+        if not isinstance(pose, dict):
+            continue
+        bbox = pose.get("bbox")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            continue
+        bbox_norm = norm_box_xyxy(bbox, float(width), float(height))
+        if box_area(bbox_norm) <= 0.0:
+            continue
+        overlap = iou_xyxy(bbox_norm, target_box)
+        containment = inter_area(bbox_norm, target_box) / max(1e-8, box_area(bbox_norm))
+        area = box_area(bbox_norm)
+        score = 0.65 * overlap + 0.25 * containment + 0.10 * area
+        if score > best_score:
+            best_score = score
+            best_pose = pose
+    return best_pose
+
+
+def _build_portrait_composition_spec_for_subject(
+    *,
+    mode: str,
+    c3_pose: Sequence[Dict[str, Any]],
+    target_box: Sequence[float],
+    width: int,
+    height: int,
+) -> Optional[Dict[str, Any]]:
+    mode_norm = str(mode or "").strip().lower()
+    if mode_norm == "portrait_single":
+        pose = _select_primary_pose_box(
+            c3_pose=c3_pose,
+            target_box=target_box,
+            width=width,
+            height=height,
+        )
+        if pose is None:
+            return None
+        bbox = pose.get("bbox")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            return None
+        bbox_norm = norm_box_xyxy(bbox, float(width), float(height))
+        return build_single_portrait_spec(
+            bbox_norm_xyxy=bbox_norm,
+            face_bbox_norm_xyxy=_face_box_for_pose(pose, width, height),
+            keypoints_norm=_normalize_keypoints_for_pose(pose.get("keypoints"), width, height),
+            gaze_entries=_gaze_entries_for_pose(pose, bbox_norm, width, height),
+        )
+    if mode_norm == "portrait_group":
+        member_boxes: List[List[float]] = []
+        member_faces: List[List[float]] = []
+        member_keypoints: List[List[List[float]]] = []
+        gaze_entries: List[Dict[str, Any]] = []
+        for pose in c3_pose:
+            if not isinstance(pose, dict):
+                continue
+            bbox = pose.get("bbox")
+            if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+                continue
+            bbox_norm = norm_box_xyxy(bbox, float(width), float(height))
+            if box_area(bbox_norm) <= 0.0:
+                continue
+            member_boxes.append(bbox_norm)
+            face_box = _face_box_for_pose(pose, width, height)
+            if face_box is not None:
+                member_faces.append(face_box)
+            keypoints_norm = _normalize_keypoints_for_pose(pose.get("keypoints"), width, height)
+            if keypoints_norm:
+                member_keypoints.append(keypoints_norm)
+            gaze_entries.extend(_gaze_entries_for_pose(pose, bbox_norm, width, height))
+        if not member_boxes:
+            return None
+        return build_group_portrait_spec(
+            member_boxes_norm_xyxy=member_boxes,
+            member_face_boxes_norm_xyxy=member_faces,
+            member_keypoints_norm=member_keypoints,
+            gaze_entries=gaze_entries,
+        )
+    return None
+
+
+def _shift_box_inside_unit(box: Sequence[float]) -> List[float]:
+    x1, y1, x2, y2 = [float(v) for v in box]
+    w = max(1e-6, x2 - x1)
+    h = max(1e-6, y2 - y1)
+    if x1 < 0.0:
+        x2 -= x1
+        x1 = 0.0
+    if y1 < 0.0:
+        y2 -= y1
+        y1 = 0.0
+    if x2 > 1.0:
+        x1 -= (x2 - 1.0)
+        x2 = 1.0
+    if y2 > 1.0:
+        y1 -= (y2 - 1.0)
+        y2 = 1.0
+    x1 = clamp(x1, 0.0, max(0.0, 1.0 - w))
+    y1 = clamp(y1, 0.0, max(0.0, 1.0 - h))
+    return subject_clip_box01([x1, y1, x1 + w, y1 + h])
+
+
 def actual_ar(box: Sequence[float], image_ar: float) -> float:
     w, h = box_wh(box)
     if h <= 0:
@@ -578,16 +745,18 @@ def actual_ar(box: Sequence[float], image_ar: float) -> float:
     return (w * image_ar) / h
 
 
-def iou_xyxy(a: Sequence[float], b: Sequence[float]) -> float:
+def inter_area(a: Sequence[float], b: Sequence[float]) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
     ix1 = max(ax1, bx1)
     iy1 = max(ay1, by1)
     ix2 = min(ax2, bx2)
     iy2 = min(ay2, by2)
-    iw = max(0.0, ix2 - ix1)
-    ih = max(0.0, iy2 - iy1)
-    inter = iw * ih
+    return max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+
+
+def iou_xyxy(a: Sequence[float], b: Sequence[float]) -> float:
+    inter = inter_area(a, b)
     if inter <= 0:
         return 0.0
     ua = box_area(a) + box_area(b) - inter
@@ -1311,6 +1480,18 @@ def resolve_subject_prior(
         source = "_".join(source_parts) if source_parts else "unknown"
 
     cx, cy = subject_box_center(anchor_box)
+    portrait_composition_spec = _build_portrait_composition_spec_for_subject(
+        mode=mode,
+        c3_pose=c3_pose,
+        target_box=anchor_box,
+        width=width,
+        height=height,
+    )
+    if isinstance(portrait_composition_spec, dict):
+        placement_anchor = portrait_composition_spec.get("placement_anchor_norm_xy")
+        if isinstance(placement_anchor, (list, tuple)) and len(placement_anchor) == 2:
+            cx = clamp(safe_float(placement_anchor[0], cx), 0.0, 1.0)
+            cy = clamp(safe_float(placement_anchor[1], cy), 0.0, 1.0)
     ws, hs = subject_box_wh(anchor_box)
     ws = max(ws, cfg.min_subject_size)
     hs = max(hs, cfg.min_subject_size)
@@ -1353,6 +1534,7 @@ def resolve_subject_prior(
         "multi_subject": bool(subject_set.get("multi_subject", False)),
         "effective_subject_region": effective_subject_region,
         "crop_guidance_spec": crop_guidance_spec,
+        "portrait_composition_spec": portrait_composition_spec,
     }
 
 
@@ -1434,6 +1616,116 @@ def add_center_area_box(
         must_keep=must_keep,
         priority=priority,
     )
+
+
+def add_anchor_area_box(
+    out: List[Dict[str, Any]],
+    *,
+    anchor_xy: Sequence[float],
+    placement_xy: Sequence[float],
+    area_t: float,
+    image_ar: float,
+    target_ar: float,
+    cfg: CandidateGenConfig,
+    source: str,
+    scale_idx: str,
+    must_keep: bool = False,
+    priority: float = 0.0,
+) -> Optional[Dict[str, Any]]:
+    w_norm = math.sqrt(max(area_t, 1e-12) * target_ar / image_ar)
+    h_norm = math.sqrt(max(area_t, 1e-12) * image_ar / target_ar)
+    ax = clamp(safe_float(anchor_xy[0], 0.5), 0.0, 1.0)
+    ay = clamp(safe_float(anchor_xy[1], 0.5), 0.0, 1.0)
+    px = clamp(safe_float(placement_xy[0], 0.5), 0.05, 0.95)
+    py = clamp(safe_float(placement_xy[1], 0.5), 0.05, 0.95)
+    box = _shift_box_inside_unit(
+        [
+            ax - px * w_norm,
+            ay - py * h_norm,
+            ax + (1.0 - px) * w_norm,
+            ay + (1.0 - py) * h_norm,
+        ]
+    )
+    return add_candidate(
+        out=out,
+        box=box,
+        image_ar=image_ar,
+        target_ar=target_ar,
+        ar_tol=cfg.ar_tol,
+        a_min=cfg.a_min,
+        a_max=cfg.a_max,
+        source=source,
+        scale_idx=scale_idx,
+        must_keep=must_keep,
+        priority=priority,
+    )
+
+
+def add_portrait_seed_candidates(
+    out: List[Dict[str, Any]],
+    *,
+    subject_mode: str,
+    portrait_composition_spec: Optional[Dict[str, Any]],
+    subject_size: Tuple[float, float],
+    image_ar: float,
+    target_ar: float,
+    cfg: CandidateGenConfig,
+    scale_prefix: str,
+    priority_bias: float = 6.6,
+) -> int:
+    mode_norm = str(subject_mode or "").strip().lower()
+    if mode_norm not in {"portrait_single", "portrait_group"}:
+        return 0
+    mode_name = "single_person_center" if mode_norm == "portrait_single" else "group_center"
+    layout_rows = portrait_seed_layouts(portrait_composition_spec, mode_name)
+    if not layout_rows:
+        return 0
+    ws, hs = subject_size
+    subj_area = max(cfg.a_min, min(cfg.a_max, float(ws) * float(hs)))
+    shot_type = str((portrait_composition_spec or {}).get("shot_type", "unknown") or "unknown")
+    if shot_type == "headshot":
+        scale_mults = (1.12, 1.28, 1.44)
+    elif shot_type == "half":
+        scale_mults = (1.18, 1.36, 1.56)
+    elif shot_type == "three_quarter":
+        scale_mults = (1.24, 1.46, 1.72)
+    elif shot_type == "full":
+        scale_mults = (1.32, 1.58, 1.86)
+    else:
+        scale_mults = tuple(float(x) for x in cfg.object_template_scales)
+    added = 0
+    for family_idx, layout in enumerate(layout_rows, start=1):
+        anchor_xy = layout.get("anchor_xy")
+        if not isinstance(anchor_xy, (list, tuple)) or len(anchor_xy) != 2:
+            continue
+        family = str(layout.get("family", f"portrait_{family_idx}") or f"portrait_{family_idx}")
+        placement_x_values = layout.get("placement_x_values")
+        if not isinstance(placement_x_values, list) or not placement_x_values:
+            placement_x_values = [0.5]
+        placement_y_values = layout.get("placement_y_values")
+        if not isinstance(placement_y_values, list) or not placement_y_values:
+            placement_y_values = [0.5]
+        layout_priority = safe_float(layout.get("priority", 0.0), 0.0)
+        for sx_idx, scale_mult in enumerate(scale_mults, start=1):
+            area_t = max(cfg.a_min, min(cfg.a_max, subj_area * (float(scale_mult) ** 2)))
+            for px_idx, placement_x in enumerate(placement_x_values, start=1):
+                for py_idx, placement_y in enumerate(placement_y_values, start=1):
+                    cand = add_anchor_area_box(
+                        out=out,
+                        anchor_xy=anchor_xy,
+                        placement_xy=(float(placement_x), float(placement_y)),
+                        area_t=area_t,
+                        image_ar=image_ar,
+                        target_ar=target_ar,
+                        cfg=cfg,
+                        source=f"portrait_seed_{family}",
+                        scale_idx=f"{scale_prefix}{family_idx}_{sx_idx}_{px_idx}_{py_idx}",
+                        must_keep=False,
+                        priority=priority_bias + 0.20 * layout_priority - 0.04 * sx_idx,
+                    )
+                    if cand is not None:
+                        added += 1
+    return added
 
 
 def add_guidance_seed_candidates(
@@ -2069,6 +2361,8 @@ def generate_freeform_candidates(
     saliency_size: Optional[Tuple[float, float]],
     has_copy_hint: bool,
     cfg: CandidateGenConfig,
+    subject_mode: str = "",
+    portrait_composition_spec: Optional[Dict[str, Any]] = None,
     subject_reliability: float = 1.0,
     subject_repr_type: str = "",
     crop_guidance_spec: Optional[Dict[str, Any]] = None,
@@ -2126,6 +2420,17 @@ def generate_freeform_candidates(
             scale_prefix=f"fguide{i}_",
             priority_bias=6.25,
             max_per_family=2 if guidance_layout == "multi_subject" else 1,
+        )
+        add_portrait_seed_candidates(
+            out=all_cands,
+            subject_mode=subject_mode,
+            portrait_composition_spec=portrait_composition_spec,
+            subject_size=subject_size,
+            image_ar=image_ar,
+            target_ar=float(ar_t),
+            cfg=cfg,
+            scale_prefix=f"fport{i}_",
+            priority_bias=6.55,
         )
 
     # (B) Grid + multi-scale over sampled ARs.
@@ -2381,6 +2686,8 @@ def generate_candidates_for_ar(
     saliency_size: Optional[Tuple[float, float]],
     has_copy_hint: bool,
     cfg: CandidateGenConfig,
+    subject_mode: str = "",
+    portrait_composition_spec: Optional[Dict[str, Any]] = None,
     subject_reliability: float = 1.0,
     subject_repr_type: str = "",
     crop_guidance_spec: Optional[Dict[str, Any]] = None,
@@ -2423,6 +2730,17 @@ def generate_candidates_for_ar(
         scale_prefix="guide",
         priority_bias=6.25,
         max_per_family=2 if guidance_layout == "multi_subject" else 1,
+    )
+    add_portrait_seed_candidates(
+        out=all_cands,
+        subject_mode=subject_mode,
+        portrait_composition_spec=portrait_composition_spec,
+        subject_size=subject_size,
+        image_ar=image_ar,
+        target_ar=target_ar,
+        cfg=cfg,
+        scale_prefix="port",
+        priority_bias=6.55,
     )
 
     xs = [i / cfg.grid_m for i in range(cfg.grid_m + 1)]
@@ -2767,6 +3085,8 @@ def build_output_record(
                 subject_size=(ws, hs),
                 saliency_centroid=tuple(subj["saliency_centroid"]) if isinstance(subj.get("saliency_centroid"), list) else None,
                 saliency_size=tuple(subj["saliency_size"]) if isinstance(subj.get("saliency_size"), list) else None,
+                subject_mode=str(subj.get("subject_mode", "") or ""),
+                portrait_composition_spec=subj.get("portrait_composition_spec") if isinstance(subj.get("portrait_composition_spec"), dict) else None,
                 subject_reliability=safe_float(subj.get("subject_reliability", 1.0), 1.0),
                 subject_repr_type=str(subj.get("subject_repr_type", "") or ""),
                 crop_guidance_spec=subj.get("crop_guidance_spec") if isinstance(subj.get("crop_guidance_spec"), dict) else None,
@@ -2786,6 +3106,8 @@ def build_output_record(
                 subject_size=(ws, hs),
                 saliency_centroid=tuple(subj["saliency_centroid"]) if isinstance(subj.get("saliency_centroid"), list) else None,
                 saliency_size=tuple(subj["saliency_size"]) if isinstance(subj.get("saliency_size"), list) else None,
+                subject_mode=str(subj.get("subject_mode", "") or ""),
+                portrait_composition_spec=subj.get("portrait_composition_spec") if isinstance(subj.get("portrait_composition_spec"), dict) else None,
                 subject_reliability=safe_float(subj.get("subject_reliability", 1.0), 1.0),
                 subject_repr_type=str(subj.get("subject_repr_type", "") or ""),
                 crop_guidance_spec=subj.get("crop_guidance_spec") if isinstance(subj.get("crop_guidance_spec"), dict) else None,

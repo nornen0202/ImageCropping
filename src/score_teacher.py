@@ -32,6 +32,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tupl
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
+from portrait_composition import build_group_portrait_spec, build_single_portrait_spec
 from scripts.safety_score_utils import SafetyPenaltyConfig, compute_safety_penalty_bundle
 from subject_region import ensure_crop_guidance_spec
 
@@ -2180,9 +2181,13 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
     head_guard_margin_norm: List[float] = []
     gaze_entries: List[Dict[str, Any]] = []
     keypoints_norm: List[List[List[float]]] = []
+    people: List[Dict[str, Any]] = []
 
     for idx, human in enumerate(c3):
         human_face_box: Optional[List[float]] = None
+        human_keypoints_norm: List[List[float]] = []
+        human_bbox_norm: Optional[List[float]] = None
+        kn: List[List[float]] = []
 
         # Face boxes
         face = human.get("face") if isinstance(human.get("face"), dict) else None
@@ -2215,7 +2220,6 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
         # Keypoints
         kps = human.get("keypoints")
         if isinstance(kps, list) and kps:
-            kn: List[List[float]] = []
             for kp in kps:
                 if not isinstance(kp, (list, tuple)) or len(kp) < 3:
                     continue
@@ -2227,9 +2231,9 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
                 keypoints_norm.append(kn)
                 # Fallback head y from top facial keypoints if face not available.
                 top_candidates: List[float] = []
-                for idx in (KP_NOSE, KP_LEFT_EYE, KP_RIGHT_EYE):
-                    if idx < len(kn) and kn[idx][2] >= 0.05:
-                        top_candidates.append(kn[idx][1])
+                for kp_idx in (KP_NOSE, KP_LEFT_EYE, KP_RIGHT_EYE):
+                    if kp_idx < len(kn) and kn[kp_idx][2] >= 0.05:
+                        top_candidates.append(kn[kp_idx][1])
                 if top_candidates:
                     head_y_kp = clamp(min(top_candidates) - float(cfg.head_top_kp_expand), 0.0, 1.0)
                     head_y_norm.append(head_y_kp)
@@ -2268,6 +2272,7 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
             hb = human.get("bbox")
             if isinstance(hb, (list, tuple)) and len(hb) == 4:
                 hb_n = norm_box_xyxy(hb, width, height)
+                human_bbox_norm = [float(v) for v in hb_n]
                 anchor_x, anchor_y = box_center(hb_n)
             else:
                 c6_head = c6_person.get("head_bbox_norm_xyxy") if isinstance(c6_person, dict) else None
@@ -2287,6 +2292,51 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
                 }
             )
 
+        if human_bbox_norm is None:
+            hb = human.get("bbox")
+            if isinstance(hb, (list, tuple)) and len(hb) == 4:
+                hb_n = norm_box_xyxy(hb, width, height)
+                human_bbox_norm = [float(v) for v in hb_n]
+        if kn:
+            human_keypoints_norm = [list(kp) for kp in kn]
+        human_gaze_entries: List[Dict[str, Any]] = []
+        if anchor_x is not None and anchor_y is not None:
+            human_gaze_entries.append(
+                {
+                    "gaze_dir": gaze_dir,
+                    "conf": conf,
+                    "anchor_x": clamp(anchor_x, 0.0, 1.0),
+                    "anchor_y": clamp(anchor_y, 0.0, 1.0),
+                    "yaw_proxy": safe_float(hp.get("yaw_proxy", 0.0)),
+                }
+            )
+        if human_bbox_norm is not None:
+            people.append(
+                {
+                    "person_index": idx,
+                    "bbox_norm_xyxy": list(human_bbox_norm),
+                    "face_bbox_norm_xyxy": (list(human_face_box) if human_face_box is not None else None),
+                    "keypoints_norm": [list(kp) for kp in human_keypoints_norm],
+                    "gaze_entries": human_gaze_entries,
+                    "portrait_comp": build_single_portrait_spec(
+                        bbox_norm_xyxy=human_bbox_norm,
+                        face_bbox_norm_xyxy=human_face_box,
+                        keypoints_norm=human_keypoints_norm,
+                        gaze_entries=human_gaze_entries,
+                    ),
+                }
+            )
+
+    group_portrait_comp = build_group_portrait_spec(
+        member_boxes_norm_xyxy=[person["bbox_norm_xyxy"] for person in people],
+        member_face_boxes_norm_xyxy=[
+            person["face_bbox_norm_xyxy"]
+            for person in people
+            if isinstance(person.get("face_bbox_norm_xyxy"), list)
+        ],
+        member_keypoints_norm=[person["keypoints_norm"] for person in people if person.get("keypoints_norm")],
+        gaze_entries=[entry for person in people for entry in person.get("gaze_entries", [])],
+    )
     return {
         "face_boxes": face_boxes,
         "head_y_norm": head_y_norm,
@@ -2294,8 +2344,30 @@ def collect_c3_info(feat_rec: Dict[str, Any], width: int, height: int, cfg: Teac
         "head_guard_margin_norm": head_guard_margin_norm,
         "gaze_entries": gaze_entries,
         "keypoints_norm": keypoints_norm,
+        "people": people,
+        "group_portrait_comp": group_portrait_comp,
         "num_people": max(len(c3), len(c6_by_index)),
     }
+
+
+def _pick_primary_portrait_person(c3_info: Dict[str, Any], subject_box: Sequence[float]) -> Optional[Dict[str, Any]]:
+    people = c3_info.get("people", []) if isinstance(c3_info.get("people"), list) else []
+    best_person = None
+    best_score = -1.0
+    for person in people:
+        if not isinstance(person, dict):
+            continue
+        bbox = person.get("bbox_norm_xyxy")
+        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+            continue
+        overlap = iou_xyxy(bbox, subject_box)
+        containment = inter_area(bbox, subject_box) / max(1e-8, box_area(bbox))
+        area = box_area(bbox)
+        score = 0.65 * overlap + 0.25 * containment + 0.10 * area
+        if score > best_score:
+            best_score = score
+            best_person = person
+    return best_person
 
 
 def collect_c5_info(feat_rec: Dict[str, Any]) -> Dict[str, Any]:
@@ -4616,7 +4688,16 @@ def compute_candidate_scores(
     if (target_ar is not None) and (abs(ar - target_ar) > cfg.ar_hard_eps):
         hard_reject_tags.append("ar_violation")
 
-    is_portrait_mode = str(route.get("subject_mode", "")).startswith("portrait")
+    route_mode_norm = str(route.get("subject_mode", "")).strip().lower()
+    is_portrait_mode = route_mode_norm.startswith("portrait")
+    portrait_spec: Optional[Dict[str, Any]] = None
+    if route_mode_norm == "portrait_single":
+        primary_person = _pick_primary_portrait_person(c3_info, subject_box)
+        if isinstance(primary_person, dict) and isinstance(primary_person.get("portrait_comp"), dict):
+            portrait_spec = dict(primary_person.get("portrait_comp"))
+    elif route_mode_norm == "portrait_group":
+        if isinstance(c3_info.get("group_portrait_comp"), dict):
+            portrait_spec = dict(c3_info.get("group_portrait_comp"))
     f_cut, f_kept, f_total = face_cut_flags(c3_info["face_boxes"], crop)
     if cfg.hard_face_rule and f_total > 0 and f_cut and ((not is_baseline_full) or is_portrait_mode):
         hard_reject_tags.append("face_cut")
@@ -4661,10 +4742,20 @@ def compute_candidate_scores(
         clamp(safe_float(subject_centroid[0], 0.5), 0.0, 1.0),
         clamp(safe_float(subject_centroid[1], 0.5), 0.0, 1.0),
     )
+    portrait_anchor_xy = None
+    if isinstance(portrait_spec, dict):
+        placement_anchor = portrait_spec.get("placement_anchor_norm_xy")
+        if isinstance(placement_anchor, (list, tuple)) and len(placement_anchor) == 2:
+            portrait_anchor_xy = (
+                clamp(safe_float(placement_anchor[0], support_centroid_xy[0]), 0.0, 1.0),
+                clamp(safe_float(placement_anchor[1], support_centroid_xy[1]), 0.0, 1.0),
+            )
+            support_centroid_xy = portrait_anchor_xy
     if subject_cov_mode == "support_map":
         cov, subj_area_ratio = subject_coverage_soft(subject_support, crop)
         guidance_support_metrics = compute_support_component_metrics(subject_support, crop)
-        support_centroid_xy = subject_support_centroid_xy(subject_support, support_centroid_xy)
+        if portrait_anchor_xy is None:
+            support_centroid_xy = subject_support_centroid_xy(subject_support, support_centroid_xy)
         attention_layout = str(
             subject_support.get("crop_guidance_spec", {}).get("support_spec", {}).get("attention_layout", "none")
             if isinstance(subject_support.get("crop_guidance_spec"), dict)
@@ -5236,6 +5327,7 @@ def compute_candidate_scores(
             "portrait_category": str(route.get("portrait_category", "generic")),
             "flags": copy.deepcopy(safe_dict(route.get("flags"))),
             "subject_mode": str(route.get("subject_mode", "other_ambiguous")),
+            "portrait_comp": copy.deepcopy(portrait_spec) if isinstance(portrait_spec, dict) else None,
         },
         "source_types": candidate.get("source_types", []),
         "must_keep": bool(candidate.get("must_keep", False)),
@@ -5267,6 +5359,18 @@ def compute_candidate_scores(
                 "support_structure_score": (None if support_structure is None else float(support_structure)),
                 "support_centroid_x": float(support_centroid_xy[0]),
                 "support_centroid_y": float(support_centroid_xy[1]),
+                "portrait_anchor_x": (
+                    None
+                    if not isinstance(portrait_spec, dict) or not isinstance(portrait_spec.get("placement_anchor_norm_xy"), (list, tuple))
+                    else float(portrait_spec["placement_anchor_norm_xy"][0])
+                ),
+                "portrait_anchor_y": (
+                    None
+                    if not isinstance(portrait_spec, dict) or not isinstance(portrait_spec.get("placement_anchor_norm_xy"), (list, tuple))
+                    else float(portrait_spec["placement_anchor_norm_xy"][1])
+                ),
+                "portrait_shot_type_v2": (None if not isinstance(portrait_spec, dict) else str(portrait_spec.get("shot_type", "unknown"))),
+                "portrait_direction_hint": (None if not isinstance(portrait_spec, dict) else str(portrait_spec.get("direction_hint", "unknown"))),
                 "r_comp": float(r_comp),
                 "r_place": float(comp_bundle["placement_score"]),
                 "placement_family_margin": float(comp_bundle["placement_margin"]),

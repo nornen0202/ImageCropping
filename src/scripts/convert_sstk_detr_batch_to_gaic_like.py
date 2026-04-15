@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from PIL import Image
-from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+try:
+    from progress_utils import ProgressTracker, progress_log
+except ModuleNotFoundError:
+    from scripts.progress_utils import ProgressTracker, progress_log
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -45,10 +48,8 @@ def load_jsonl(
     progress_every: int = 1000,
     progress_min_seconds: float = 10.0,
 ) -> List[Dict[str, Any]]:
-    total = count_nonempty_lines(path) if progress else None
     tracker = ProgressTracker(
         f"convert_sstk_detr_batch_to_gaic_like:load_jsonl:{path.name}",
-        total=total,
         unit="rows",
         every=progress_every,
         min_seconds=progress_min_seconds,
@@ -69,7 +70,7 @@ def load_json(path: Path) -> Dict[str, Any]:
 
 
 def write_json(path: Path, payload: Dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
 def default_split_output_path(out_json: Path, split_name: str) -> Path:
@@ -122,6 +123,35 @@ def merge_reference_image_meta(paths: Iterable[Optional[Path]]) -> Dict[str, Dic
     return merged
 
 
+def image_target_ar_key(image_id: Any, target_ar: Any) -> str:
+    return f"{str(image_id or '').strip()}\t{str(target_ar or '').strip()}"
+
+
+def load_size_reference_coco_image_meta(path: Optional[Path]) -> Dict[str, Dict[str, Any]]:
+    if path is None or not path.exists():
+        return {}
+    payload = load_json(path)
+    out: Dict[str, Dict[str, Any]] = {}
+    for image in safe_list(payload.get("images")):
+        row = safe_dict(image)
+        image_id = str(row.get("orig_image_id") or row.get("sstk_image_id") or row.get("image_id") or "").strip()
+        target_ar = str(row.get("target_ar") or "").strip()
+        if not image_id or not target_ar:
+            continue
+        width = safe_int(row.get("width"), 0)
+        height = safe_int(row.get("height"), 0)
+        if width <= 0 or height <= 0:
+            continue
+        file_name = str(row.get("file_name") or f"{image_id}.jpg").strip() or f"{image_id}.jpg"
+        out[image_target_ar_key(image_id, target_ar)] = {
+            "file_name": basename_only(file_name),
+            "width": width,
+            "height": height,
+            "source_path": str(path),
+        }
+    return out
+
+
 def split_name_for_image(image_id: str, split_lookup: Optional[Dict[str, str]]) -> str:
     if not split_lookup:
         return "unknown"
@@ -129,13 +159,21 @@ def split_name_for_image(image_id: str, split_lookup: Optional[Dict[str, str]]) 
 
 
 def norm_xyxy_to_coco_bbox(bbox_norm_xyxy: Sequence[Any], width: int, height: int) -> List[float]:
-    x1 = safe_float(bbox_norm_xyxy[0]) * width
-    y1 = safe_float(bbox_norm_xyxy[1]) * height
-    x2 = safe_float(bbox_norm_xyxy[2]) * width
-    y2 = safe_float(bbox_norm_xyxy[3]) * height
-    bbox_w = max(0.0, x2 - x1)
-    bbox_h = max(0.0, y2 - y1)
-    return [round(x1, 3), round(y1, 3), round(bbox_w, 3), round(bbox_h, 3)]
+    x1 = min(max(safe_float(bbox_norm_xyxy[0]) * width, 0.0), float(width))
+    y1 = min(max(safe_float(bbox_norm_xyxy[1]) * height, 0.0), float(height))
+    x2 = min(max(safe_float(bbox_norm_xyxy[2]) * width, 0.0), float(width))
+    y2 = min(max(safe_float(bbox_norm_xyxy[3]) * height, 0.0), float(height))
+    if x2 < x1:
+        x1, x2 = x2, x1
+    if y2 < y1:
+        y1, y2 = y2, y1
+    rx1 = min(max(round(x1, 3), 0.0), float(width))
+    ry1 = min(max(round(y1, 3), 0.0), float(height))
+    rx2 = min(max(round(x2, 3), 0.0), float(width))
+    ry2 = min(max(round(y2, 3), 0.0), float(height))
+    bbox_w = min(max(0.0, round(rx2 - rx1, 3)), max(0.0, round(float(width) - rx1, 3)))
+    bbox_h = min(max(0.0, round(ry2 - ry1, 3)), max(0.0, round(float(height) - ry1, 3)))
+    return [rx1, ry1, bbox_w, bbox_h]
 
 
 def coco_area(bbox_xywh: Sequence[Any]) -> float:
@@ -289,16 +327,25 @@ def resolve_record_image_info(
     image_root: Optional[Path],
     *,
     size_cache: Dict[str, Tuple[int, int]],
+    size_reference_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     reference_image_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     size_sidecar_meta: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Tuple[str, int, int, str]:
+    image_id = str(record.get("image_id") or "").strip()
+    target_ar = str(record.get("target_ar") or "").strip()
+    size_ref_meta = safe_dict(safe_dict(size_reference_meta).get(image_target_ar_key(image_id, target_ar)))
+    if size_ref_meta:
+        width = safe_int(size_ref_meta.get("width"), 0)
+        height = safe_int(size_ref_meta.get("height"), 0)
+        file_name = str(size_ref_meta.get("file_name") or f"{image_id}.jpg").strip() or f"{image_id}.jpg"
+        if width > 0 and height > 0:
+            return str(record.get("image_path") or file_name), width, height, basename_only(file_name)
     image_path_text = str(record.get("image_path") or "").strip()
     if image_path_text:
         path = Path(image_path_text)
         if path.exists() and path.is_file():
             width, height = load_image_size(str(path), size_cache)
             return str(path), width, height, basename_only(str(path))
-    image_id = str(record.get("image_id") or "").strip()
     fallback = resolve_image_path_from_root(image_root, image_id)
     if fallback is not None:
         width, height = load_image_size(str(fallback), size_cache)
@@ -325,6 +372,7 @@ def build_gaic_like_instances(
     *,
     image_root: Optional[Path] = None,
     split_lookup: Optional[Dict[str, str]] = None,
+    size_reference_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     reference_image_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     size_sidecar_meta: Optional[Dict[str, Dict[str, Any]]] = None,
     progress: bool = False,
@@ -351,6 +399,7 @@ def build_gaic_like_instances(
             record,
             image_root,
             size_cache=size_cache,
+            size_reference_meta=size_reference_meta,
             reference_image_meta=reference_image_meta,
             size_sidecar_meta=size_sidecar_meta,
         )
@@ -822,6 +871,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out_summary_json", required=True)
     parser.add_argument("--out_guide_md", required=True)
     parser.add_argument("--image_root", default="")
+    parser.add_argument("--size_reference_coco_json", default="")
     parser.add_argument("--gaic_train_reference_json", default="")
     parser.add_argument("--gaic_test_reference_json", default="")
     parser.add_argument("--out_train_json", default="")
@@ -844,6 +894,7 @@ def main() -> None:
     out_summary_json = Path(args.out_summary_json)
     out_guide_md = Path(args.out_guide_md)
     image_root = resolve_cli_path(args.image_root) if str(args.image_root).strip() else None
+    size_reference_coco_json = resolve_cli_path(args.size_reference_coco_json) if str(args.size_reference_coco_json).strip() else None
     gaic_train_reference_json = resolve_cli_path(args.gaic_train_reference_json) if str(args.gaic_train_reference_json).strip() else None
     gaic_test_reference_json = resolve_cli_path(args.gaic_test_reference_json) if str(args.gaic_test_reference_json).strip() else None
     out_train_json = Path(args.out_train_json) if str(args.out_train_json).strip() else default_split_output_path(out_json, "train")
@@ -867,17 +918,26 @@ def main() -> None:
         progress_min_seconds=progress_min_seconds,
     )
     split_lookup = build_split_lookup(gaic_train_reference_json, gaic_test_reference_json)
+    size_reference_meta = load_size_reference_coco_image_meta(size_reference_coco_json)
     reference_image_meta = merge_reference_image_meta([gaic_reference_json, gaic_train_reference_json, gaic_test_reference_json])
+    resolved_size_ref_image_ids = {
+        str(key).split("\t", 1)[0]
+        for key in size_reference_meta
+        if str(key).split("\t", 1)[0]
+    }
     unresolved_image_ids = {
         str(safe_dict(record).get("image_id", "")).strip()
         for record in batch_records
-        if str(safe_dict(record).get("image_id", "")).strip() and str(safe_dict(record).get("image_id", "")).strip() not in reference_image_meta
+        if str(safe_dict(record).get("image_id", "")).strip()
+        and str(safe_dict(record).get("image_id", "")).strip() not in reference_image_meta
+        and str(safe_dict(record).get("image_id", "")).strip() not in resolved_size_ref_image_ids
     }
     size_sidecar_meta = load_size_sidecar_meta(unresolved_image_ids)
     payload = build_gaic_like_instances(
         batch_records,
         image_root=image_root,
         split_lookup=split_lookup or None,
+        size_reference_meta=size_reference_meta,
         reference_image_meta=reference_image_meta,
         size_sidecar_meta=size_sidecar_meta,
         progress=progress_enabled,

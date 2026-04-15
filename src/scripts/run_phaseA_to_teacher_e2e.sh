@@ -184,6 +184,11 @@ Core options
 --run_vlm_teacher 0|1           section10 VLM teacher 라벨 생성 실행 여부 (default: 0)
 --run_detailed_report -1|0|1    detailed report 패키지 생성 (-1=auto: run_tag가 있으면 on, default: -1)
 --report_dir PATH               detailed report 출력 경로 (default: <data_dir>/artifacts/reports/<run_tag>_detailed)
+--build_teacher_compact 0|1     CPU downstream 전용 compact teacher JSONL 생성/사용 (default: 1)
+--teacher_compact_jsonl PATH    compact teacher JSONL 출력 경로
+--teacher_compact_summary_json PATH compact teacher summary JSON 출력 경로
+--teacher_compact_max_cheap_top_m INT compact teacher에서 AR별 cheap_top_m 보존 상한 (default: 1, 0=all)
+--teacher_compact_max_also_considered INT compact teacher에서 AR별 also_considered_rejected 보존 상한 (default: 1, 0=all)
 --run_training_labels -1|0|1    finalscore training labels 생성 (-1=auto: run_tag가 있으면 on, default: -1)
 --training_labels_dir PATH      training labels 출력 경로 (default: <data_dir>/artifacts/training_labels/<run_tag>_leftover_ignore_monotonic)
 --run_multimode_training_labels 0|1 multimode training labels 생성 (default: 0)
@@ -280,6 +285,11 @@ RUN_DETAILED_REPORT=-1
 REPORT_DIR=""
 REPORT_EXAMPLES_PER_BUCKET=5
 REPORT_VIZ_STAGE_DIR=""
+BUILD_TEACHER_COMPACT=1
+TEACHER_COMPACT_JSONL=""
+TEACHER_COMPACT_SUMMARY_JSON=""
+TEACHER_COMPACT_MAX_CHEAP_TOP_M=1
+TEACHER_COMPACT_MAX_ALSO_CONSIDERED=1
 RUN_TRAINING_LABELS=-1
 RUN_MULTIMODE_TRAINING_LABELS=0
 RUN_TRAINING_LABEL_DEBUG_VIZ=0
@@ -614,6 +624,11 @@ while [ "$#" -gt 0 ]; do
     --run_vlm_teacher) RUN_VLM_TEACHER="$2"; shift 2 ;;
     --run_detailed_report) RUN_DETAILED_REPORT="$2"; shift 2 ;;
     --report_dir) REPORT_DIR="$2"; shift 2 ;;
+    --build_teacher_compact) BUILD_TEACHER_COMPACT="$2"; shift 2 ;;
+    --teacher_compact_jsonl) TEACHER_COMPACT_JSONL="$2"; shift 2 ;;
+    --teacher_compact_summary_json) TEACHER_COMPACT_SUMMARY_JSON="$2"; shift 2 ;;
+    --teacher_compact_max_cheap_top_m) TEACHER_COMPACT_MAX_CHEAP_TOP_M="$2"; shift 2 ;;
+    --teacher_compact_max_also_considered) TEACHER_COMPACT_MAX_ALSO_CONSIDERED="$2"; shift 2 ;;
     --run_training_labels) RUN_TRAINING_LABELS="$2"; shift 2 ;;
     --training_labels_dir) TRAINING_LABELS_DIR="$2"; shift 2 ;;
     --run_multimode_training_labels) RUN_MULTIMODE_TRAINING_LABELS="$2"; shift 2 ;;
@@ -789,15 +804,11 @@ if [ "$RUN_C1" -lt 0 ]; then
 fi
 
 if [ "$RUN_DETAILED_REPORT" -lt 0 ]; then
-  if [ -n "$RUN_TAG" ] && [ "$RUN_TEACHER" -eq 1 ]; then
+  if [ -n "$RUN_TAG" ]; then
     RUN_DETAILED_REPORT=1
   else
     RUN_DETAILED_REPORT=0
   fi
-fi
-if [ "$RUN_DETAILED_REPORT" -eq 1 ] && [ "$RUN_TEACHER" -ne 1 ]; then
-  echo "[warn] disabling detailed report because run_teacher=0"
-  RUN_DETAILED_REPORT=0
 fi
 if [ "$RUN_TRAINING_LABELS" -lt 0 ]; then
   if [ -n "$RUN_TAG" ]; then
@@ -922,6 +933,16 @@ DOWNSTREAM_FEATS="$MERGED_FEATS"
 CANDIDATES_JSONL="${CANDIDATES_DIR}/candidates_ar${SUFFIX}.jsonl"
 CANDIDATES_OVERVIEW_JSON="${CANDIDATES_DIR}/candidates_ar${SUFFIX}_overview.json"
 TEACHER_JSONL="${TEACHER_SCORES_DIR}/teacher_scores_ar${SUFFIX}.jsonl"
+if [ -z "$TEACHER_COMPACT_JSONL" ]; then
+  TEACHER_COMPACT_JSONL="${TEACHER_SCORES_DIR}/teacher_scores_ar${SUFFIX}_downstream_compact.jsonl"
+fi
+if [ -z "$TEACHER_COMPACT_SUMMARY_JSON" ]; then
+  TEACHER_COMPACT_SUMMARY_JSON="${TEACHER_OVERVIEW_DIR}/teacher_scores_downstream_compact${SUFFIX}.json"
+fi
+DOWNSTREAM_TEACHER_JSONL="$TEACHER_JSONL"
+if [ "$BUILD_TEACHER_COMPACT" -eq 1 ] && [ -f "$TEACHER_COMPACT_JSONL" ]; then
+  DOWNSTREAM_TEACHER_JSONL="$TEACHER_COMPACT_JSONL"
+fi
 TEACHER_OVERVIEW_JSON="${TEACHER_OVERVIEW_DIR}/teacher_scores_overview${SUFFIX}.json"
 TEACHER_OVERVIEW_CSV="${TEACHER_OVERVIEW_DIR}/teacher_scores_overview_by_ar${SUFFIX}.csv"
 TEACHER_QA_JSON="${TEACHER_QA_DIR}/teacher_scores_qa_report${SUFFIX}.json"
@@ -1279,6 +1300,7 @@ echo " teacher_accel       : exp_batch=$EXP_BATCH_SIZE exp_eval_top_m=$EXPENSIVE
 echo " teacher_public_ref  : save_public_teacher_ref_eval=$SAVE_PUBLIC_TEACHER_REF_EVAL"
 echo " teacher_aesthetic   : backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC_PRIOR_LAION_WEIGHT nima_ckpt=$NIMA_MODEL_PATH require_ckpt=$NIMA_REQUIRE_CKPT"
 echo " teacher_safety      : hard_head_top=$TEACHER_HARD_HEAD_TOP_RULE face_expand=$TEACHER_HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$TEACHER_HEAD_TOP_KP_EXPAND min_margin=$TEACHER_HEAD_TOP_MIN_MARGIN face_margin_alpha=$TEACHER_HEAD_TOP_FACE_MARGIN_ALPHA"
+echo " teacher_compact     : build=$BUILD_TEACHER_COMPACT compact=$TEACHER_COMPACT_JSONL downstream=$DOWNSTREAM_TEACHER_JSONL max_cheap_top_m=$TEACHER_COMPACT_MAX_CHEAP_TOP_M max_also=$TEACHER_COMPACT_MAX_ALSO_CONSIDERED"
 echo " run_vlm_teacher     : $RUN_VLM_TEACHER (backend=$VLM_BACKEND fallback=$VLM_FALLBACK_BACKEND model=$VLM_MODEL_ID)"
 echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR policy=$SAFE_LEFTOVER_POLICY)"
 echo " run_multimode_labels: $RUN_MULTIMODE_TRAINING_LABELS (dir=$MULTIMODE_TRAINING_LABELS_DIR)"
@@ -2019,6 +2041,7 @@ if [ "$RUN_TEACHER" -eq 1 ]; then
         --qa_json "$TEACHER_QA_JSON" \
         --qa_csv "$TEACHER_QA_CSV" \
         --candidates_jsonl "$CANDIDATES_JSONL" \
+        --candidates_overview_json "$CANDIDATES_OVERVIEW_JSON" \
         --max_images "$MAX_IMAGES" \
         --prefer_real_expensive "$USE_REAL_EXPENSIVE" \
         --strict_expected_match "$TEACHER_AUTO_REPAIR_STRICT" \
@@ -2073,6 +2096,43 @@ if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
   fi
 fi
 
+build_teacher_compact_if_needed() {
+  if [ "$BUILD_TEACHER_COMPACT" -ne 1 ]; then
+    DOWNSTREAM_TEACHER_JSONL="$TEACHER_JSONL"
+    return 0
+  fi
+  local needs_compact=0
+  if [ "$RUN_DETAILED_REPORT" -eq 1 ] || [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
+    needs_compact=1
+  fi
+  if [ "$needs_compact" -ne 1 ]; then
+    return 0
+  fi
+  if [ ! -f "$TEACHER_JSONL" ]; then
+    echo "[error] teacher compact requires teacher scores jsonl: $TEACHER_JSONL"
+    exit 1
+  fi
+  if ! should_skip_file "$TEACHER_COMPACT_JSONL"; then
+    run_with_log "11b_build_teacher_downstream_compact" \
+      "$PYTHON_BIN" src/scripts/build_teacher_downstream_compact.py \
+        --teacher_scores_jsonl "$TEACHER_JSONL" \
+        --output_jsonl "$TEACHER_COMPACT_JSONL" \
+        --summary_json "$TEACHER_COMPACT_SUMMARY_JSON" \
+        --max_cheap_top_m "$TEACHER_COMPACT_MAX_CHEAP_TOP_M" \
+        --max_also_considered "$TEACHER_COMPACT_MAX_ALSO_CONSIDERED" \
+        --progress 1
+  fi
+  if [ -f "$TEACHER_COMPACT_JSONL" ]; then
+    DOWNSTREAM_TEACHER_JSONL="$TEACHER_COMPACT_JSONL"
+  else
+    echo "[warn] compact teacher jsonl missing after build; using full teacher jsonl: $TEACHER_JSONL"
+    DOWNSTREAM_TEACHER_JSONL="$TEACHER_JSONL"
+  fi
+  echo "[info] downstream teacher jsonl: $DOWNSTREAM_TEACHER_JSONL"
+}
+
+build_teacher_compact_if_needed
+
 # ------------------------------------------------------------------------------
 # 7) Detailed Report Package (optional)
 # ------------------------------------------------------------------------------
@@ -2094,7 +2154,7 @@ build_training_label_debug_viz() {
       --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
       --gaic_gt_train_json "$GAIC_TRAIN_REFERENCE_JSON" \
       --gaic_gt_test_json "$GAIC_TEST_REFERENCE_JSON" \
-      --teacher_jsonl "$TEACHER_JSONL" \
+      --teacher_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
       --candidates_jsonl "$CANDIDATES_JSONL" \
       --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
       --subject_mode_vocab "$TRAINING_LABELS_SUBJECT_MODE_VOCAB_JSON" \
@@ -2105,7 +2165,7 @@ build_training_label_debug_viz() {
       --out_dir "$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR"
 }
 
-if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
+if [ "$RUN_DETAILED_REPORT" -eq 1 ] && [ "$RUN_TRAINING_LABELS" -eq 0 ] && [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 0 ]; then
   if [ -z "$RUN_TAG" ]; then
     echo "[warn] run_detailed_report=1 but run_tag is empty. skipping detailed report package."
   else
@@ -2117,12 +2177,16 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
       echo "[error] detailed report requires teacher outputs: $TEACHER_JSONL | $TEACHER_QA_JSON | $TEACHER_OVERVIEW_JSON"
       exit 1
     fi
+    if [ ! -f "$DOWNSTREAM_TEACHER_JSONL" ]; then
+      echo "[error] detailed report requires downstream teacher jsonl: $DOWNSTREAM_TEACHER_JSONL"
+      exit 1
+    fi
 
     run_with_log "12a_build_report_assets" \
       "$PYTHON_BIN" src/scripts/build_sstk_report_assets.py \
         --run_tag "$RUN_TAG" \
         --routed_feats_jsonl "$DOWNSTREAM_FEATS" \
-        --teacher_scores_jsonl "$TEACHER_JSONL" \
+        --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
         --teacher_qa_json "$TEACHER_QA_JSON" \
         --components_viz_dir "$COMPONENT_VIZ_OUT_DIR" \
         --output_report_dir "$REPORT_DIR" \
@@ -2134,13 +2198,17 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
       "$PYTHON_BIN" src/scripts/build_sstk_detailed_report.py \
         --run_tag "$RUN_TAG" \
         --data_root "$DATA_DIR" \
+        --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
+        --routed_feats_jsonl "$DOWNSTREAM_FEATS" \
+        --candidates_jsonl "$CANDIDATES_JSONL" \
+        --training_labels_dir "$TRAINING_LABELS_DIR" \
         --progress 1 \
         --report_dir "$REPORT_DIR"
 
     if [ -f "$REPORT_EXAMPLE_IDS_FILE" ]; then
       run_with_log "12c_render_report_teacher_viz" \
         "$PYTHON_BIN" src/visualize_teacher_scores.py \
-          --teacher_scores_jsonl "$TEACHER_JSONL" \
+          --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
           --features_jsonl "$DOWNSTREAM_FEATS" \
           --parquet "$FILTERED_PARQUET" \
           --tar_dir "$TAR_DIR" \
@@ -2155,6 +2223,10 @@ if [ "$RUN_DETAILED_REPORT" -eq 1 ]; then
         "$PYTHON_BIN" src/scripts/build_sstk_detailed_report.py \
           --run_tag "$RUN_TAG" \
           --data_root "$DATA_DIR" \
+          --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
+          --routed_feats_jsonl "$DOWNSTREAM_FEATS" \
+          --candidates_jsonl "$CANDIDATES_JSONL" \
+          --training_labels_dir "$TRAINING_LABELS_DIR" \
           --report_dir "$REPORT_DIR" \
           --progress 1 \
           --teacher_viz_fallback_dir "$REPORT_VIZ_STAGE_DIR"
@@ -2169,14 +2241,14 @@ fi
 # 8) FinalScore Training Labels (optional)
 # ------------------------------------------------------------------------------
 if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
-  if [ ! -f "$TEACHER_JSONL" ]; then
-    echo "[error] training labels require teacher scores jsonl: $TEACHER_JSONL"
+  if [ ! -f "$DOWNSTREAM_TEACHER_JSONL" ]; then
+    echo "[error] training labels require downstream teacher jsonl: $DOWNSTREAM_TEACHER_JSONL"
     exit 1
   fi
   if ! should_skip_file "$TRAINING_LABELS_VALIDATION_JSON"; then
     run_with_log "13_build_training_labels" \
       "$PYTHON_BIN" src/scripts/build_finalscore_training_data.py \
-        --teacher_scores_jsonl "$TEACHER_JSONL" \
+        --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
         --out_dir "$TRAINING_LABELS_DIR" \
         --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}" \
         --safe_leftover_policy "$SAFE_LEFTOVER_POLICY" \
@@ -2207,6 +2279,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
       "$PYTHON_BIN" src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
         --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
         --gaic_reference_json "$GAIC_REFERENCE_JSON" \
+        --size_reference_coco_json "$TRAINING_LABELS_COCO_BATCH_JSON" \
         --out_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
         --out_summary_json "$TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON" \
         --progress 1 \
@@ -2263,6 +2336,78 @@ if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
   fi
 fi
 
+if [ "$RUN_DETAILED_REPORT" -eq 1 ] && { [ "$RUN_TRAINING_LABELS" -eq 1 ] || [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; }; then
+  if [ -z "$RUN_TAG" ]; then
+    echo "[warn] run_detailed_report=1 but run_tag is empty. skipping detailed report package."
+  else
+    if [ ! -f "$DOWNSTREAM_FEATS" ]; then
+      echo "[error] detailed report requires downstream feats jsonl: $DOWNSTREAM_FEATS"
+      exit 1
+    fi
+    if [ ! -f "$TEACHER_JSONL" ] || [ ! -f "$TEACHER_QA_JSON" ] || [ ! -f "$TEACHER_OVERVIEW_JSON" ]; then
+      echo "[error] detailed report requires teacher outputs: $TEACHER_JSONL | $TEACHER_QA_JSON | $TEACHER_OVERVIEW_JSON"
+      exit 1
+    fi
+    if [ ! -f "$DOWNSTREAM_TEACHER_JSONL" ]; then
+      echo "[error] detailed report requires downstream teacher jsonl: $DOWNSTREAM_TEACHER_JSONL"
+      exit 1
+    fi
+
+    run_with_log "15a_build_report_assets" \
+      "$PYTHON_BIN" src/scripts/build_sstk_report_assets.py \
+        --run_tag "$RUN_TAG" \
+        --routed_feats_jsonl "$DOWNSTREAM_FEATS" \
+        --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
+        --teacher_qa_json "$TEACHER_QA_JSON" \
+        --components_viz_dir "$COMPONENT_VIZ_OUT_DIR" \
+        --output_report_dir "$REPORT_DIR" \
+        --progress 1 \
+        --examples_per_bucket "$REPORT_EXAMPLES_PER_BUCKET"
+
+    REPORT_EXAMPLE_IDS_FILE="${REPORT_DIR}/assets/analytics/report_example_image_ids_${RUN_TAG}.txt"
+    run_with_log "15b_build_detailed_report_seed" \
+      "$PYTHON_BIN" src/scripts/build_sstk_detailed_report.py \
+        --run_tag "$RUN_TAG" \
+        --data_root "$DATA_DIR" \
+        --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
+        --routed_feats_jsonl "$DOWNSTREAM_FEATS" \
+        --candidates_jsonl "$CANDIDATES_JSONL" \
+        --training_labels_dir "$TRAINING_LABELS_DIR" \
+        --progress 1 \
+        --report_dir "$REPORT_DIR"
+
+    if [ -f "$REPORT_EXAMPLE_IDS_FILE" ]; then
+      run_with_log "15c_render_report_teacher_viz" \
+        "$PYTHON_BIN" src/visualize_teacher_scores.py \
+          --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
+          --features_jsonl "$DOWNSTREAM_FEATS" \
+          --parquet "$FILTERED_PARQUET" \
+          --tar_dir "$TAR_DIR" \
+          "${image_dir_args[@]}" \
+          --out_dir "$REPORT_VIZ_STAGE_DIR" \
+          --target_ar all \
+          --decision_filter all \
+          --num_samples 0 \
+          --image_ids_file "$REPORT_EXAMPLE_IDS_FILE"
+
+      run_with_log "15d_build_detailed_report_final" \
+        "$PYTHON_BIN" src/scripts/build_sstk_detailed_report.py \
+          --run_tag "$RUN_TAG" \
+          --data_root "$DATA_DIR" \
+          --teacher_scores_jsonl "$DOWNSTREAM_TEACHER_JSONL" \
+          --routed_feats_jsonl "$DOWNSTREAM_FEATS" \
+          --candidates_jsonl "$CANDIDATES_JSONL" \
+          --training_labels_dir "$TRAINING_LABELS_DIR" \
+          --report_dir "$REPORT_DIR" \
+          --progress 1 \
+          --teacher_viz_fallback_dir "$REPORT_VIZ_STAGE_DIR"
+    else
+      echo "[warn] report example id list not found: $REPORT_EXAMPLE_IDS_FILE"
+      echo "       detailed report generated without report-specific teacher viz staging."
+    fi
+  fi
+fi
+
 echo "========================================================"
 echo " Done"
 echo "========================================================"
@@ -2295,6 +2440,10 @@ fi
 echo " candidates       : $CANDIDATES_JSONL"
 echo " cand overview    : $CANDIDATES_OVERVIEW_JSON"
 echo " teacher jsonl    : $TEACHER_JSONL"
+if [ "$BUILD_TEACHER_COMPACT" -eq 1 ]; then
+  echo " teacher compact  : $TEACHER_COMPACT_JSONL"
+  echo " downstream teacher: $DOWNSTREAM_TEACHER_JSONL"
+fi
 echo " teacher overview : $TEACHER_OVERVIEW_JSON"
 echo " teacher QA       : $TEACHER_QA_JSON"
 echo " teacher viz dir  : $TEACHER_VIZ_DIR"

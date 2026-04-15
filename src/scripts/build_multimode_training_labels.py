@@ -21,13 +21,20 @@ except ImportError:  # pragma: no cover - optional at runtime
     ImageFont = None
 
 from multimode.candidate_bank import build_global_candidate_bank, expand_query_candidates
-from multimode.coco_writer import build_annotation_entry, build_coco_dataset, build_image_entry, write_json, write_jsonl
+from multimode.coco_writer import (
+    build_annotation_entry,
+    build_coco_dataset,
+    build_image_entry,
+    build_target_ar_only_coco_dataset,
+    write_json,
+    write_jsonl,
+)
 from multimode.entity_atoms import build_entity_atoms
 from multimode.mode_catalog import BASE_CATEGORIES
 from multimode.mode_scorer import score_query_candidates, select_query_results
 from multimode.query_builder import ModeQuery, build_mode_queries
 from multimode.query_guidance import build_query_guidance
-from scripts.progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+from scripts.progress_utils import ProgressTracker, progress_log
 
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".bmp")
@@ -71,8 +78,7 @@ def _load_jsonl(path: Path, *, key_field: Optional[str] = None, max_rows: int = 
     else:
         rows = []
     invalid_rows = 0
-    total = count_nonempty_lines(path) if progress else None
-    tracker = ProgressTracker(f"load:{path.name}", total=total, unit="rows", every=500, min_seconds=5.0, enabled=progress)
+    tracker = ProgressTracker(f"load:{path.name}", unit="rows", every=500, min_seconds=5.0, enabled=progress)
     with path.open("r", encoding="utf-8") as handle:
         for idx, line in enumerate(handle, start=1):
             line = line.strip()
@@ -739,6 +745,8 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
         image_ar = _safe_float(candidate_row.get("image_ar"), float(width) / max(1.0, float(height)))
         atoms = build_entity_atoms(feat_row, width=width, height=height)
         routing = feat_row.get("routing") if isinstance(feat_row.get("routing"), dict) else {}
+        image_row_written = False
+        current_image_entry_id = image_entry_id
 
         for target_ar in target_ars:
             base_candidates = build_global_candidate_bank(candidate_row, target_ar)
@@ -747,16 +755,17 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
             queries = [build_query_guidance(query) for query in build_mode_queries(image_id=image_id, target_ar=target_ar, atoms=atoms, routing=routing)]
             if not queries:
                 continue
-            image_rows.append(
-                build_image_entry(
-                    image_entry_id=image_entry_id,
-                    source_image_id=image_id,
-                    file_name=relative_file_name,
-                    width=width,
-                    height=height,
-                    target_ar=target_ar,
+            if not image_row_written:
+                image_rows.append(
+                    build_image_entry(
+                        image_entry_id=current_image_entry_id,
+                        source_image_id=image_id,
+                        file_name=relative_file_name,
+                        width=width,
+                        height=height,
+                    )
                 )
-            )
+                image_row_written = True
             image_task_count += 1
             for query in queries:
                 candidates = expand_query_candidates(base_candidates=base_candidates, query=query, image_ar=image_ar)
@@ -783,7 +792,7 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
                 annotation_rows.append(
                     build_annotation_entry(
                         annotation_id=annotation_id,
-                        image_entry_id=image_entry_id,
+                        image_entry_id=current_image_entry_id,
                         width=width,
                         height=height,
                         query_id=query.query_id,
@@ -812,7 +821,7 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
                         annotation_rows.append(
                             build_annotation_entry(
                                 annotation_id=annotation_id,
-                                image_entry_id=image_entry_id,
+                                image_entry_id=current_image_entry_id,
                                 width=width,
                                 height=height,
                                 query_id=query.query_id,
@@ -840,6 +849,7 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
                     image_task_debug[(image_id, target_ar)].append({"query": query, "selection": selection})
             if int(args.write_debug_viz) == 1 and (image_id, target_ar) not in image_task_debug:
                 image_task_debug[(image_id, target_ar)] = []
+        if image_row_written:
             image_entry_id += 1
         tracker.update(idx)
     tracker.finish(len(selected_image_ids))
@@ -865,6 +875,10 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
     write_json(out_dir / "summary.json", summary)
     write_jsonl(out_dir / "mode_query_status.jsonl", query_status_rows)
     write_json(out_dir / "coco" / "instances_multimode_training_labels.json", coco_dataset)
+    write_json(
+        out_dir / "coco" / "instances_multimode_training_labels_target_ar_only.json",
+        build_target_ar_only_coco_dataset(coco_dataset),
+    )
     write_json(out_dir / "categories.json", {"categories": BASE_CATEGORIES})
 
     if int(args.write_debug_viz) == 1 and image_task_debug:

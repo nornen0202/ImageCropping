@@ -682,6 +682,10 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
         score = 0
         if "selected_topk" in keys:
             score += 120
+        if isinstance(o.get("selected_candidate_ids"), list):
+            score += 118
+        if isinstance(o.get("selected_ids"), list):
+            score += 116
         if "selected_crops" in keys:
             score += 110
         if "selected_candidates" in keys:
@@ -707,6 +711,13 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
         # Explicit schema template block inside input payload.
         if "required_output_schema" in keys:
             score -= 260
+        if {"task", "candidate_id_list", "candidates", "allowed_tags", "top_k"}.issubset(keys):
+            score -= 220
+        if (
+            "selected_candidate_ids" in keys
+            and not isinstance(o.get("selected_candidate_ids"), list)
+        ):
+            score -= 180
         # Typical echoed sub-object of input meta_norm.
         if {"category", "main_subject", "intent", "special_flags"}.issubset(keys):
             score -= 80
@@ -715,7 +726,12 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
         if {"copy_space", "copy_space_side", "portrait", "isolated", "panoramic", "close_up", "text_overlay_likely"}.issubset(keys):
             score -= 120
         # Typical echoed candidate object.
-        if {"candidate_id", "bbox_norm_xyxy"}.issubset(keys) and "selected_topk" not in keys and "selected_crops" not in keys:
+        if (
+            {"candidate_id", "bbox_norm_xyxy"}.issubset(keys)
+            and "selected_topk" not in keys
+            and "selected_candidate_ids" not in keys
+            and "selected_crops" not in keys
+        ):
             score -= 40
         # Composition-only object can still be useful when no picks are returned.
         if keys.issubset({"composition_checks", "checks", "scores"}):
@@ -738,6 +754,71 @@ def _extract_first_json_object(text: str) -> Optional[Dict[str, Any]]:
     # Tie-breaker: prefer later position (assistant output is usually later).
     best_obj, _ = max(objs, key=lambda item: (_score_obj(item[0]), item[1]))
     return best_obj
+
+
+def _has_model_selection_keys(obj: Any) -> bool:
+    if not isinstance(obj, dict):
+        return False
+    if isinstance(obj.get("selected_candidate_ids"), list):
+        return True
+    if isinstance(obj.get("selected_ids"), list):
+        return True
+    if isinstance(obj.get("selected_topk"), list):
+        return True
+    if isinstance(obj.get("selected_crops"), list):
+        return True
+    if isinstance(obj.get("selected_candidates"), list):
+        return True
+    return False
+
+
+def _extract_compact_selection_from_text(text: str) -> Optional[Dict[str, Any]]:
+    """Recover compact v2 selection when generation truncates after the ID list."""
+    if not text:
+        return None
+    tail = text
+    assistant_marks = list(re.finditer(r"(?im)^assistant\s*$", text))
+    if assistant_marks:
+        tail = text[assistant_marks[-1].end() :]
+
+    def _extract_json_array(key: str) -> Optional[List[Any]]:
+        pat = rf'"{re.escape(key)}"\s*:\s*(\[[^\]]*\])'
+        m = re.search(pat, tail, flags=re.DOTALL)
+        if not m:
+            return None
+        try:
+            arr = json.loads(m.group(1))
+        except Exception:
+            return None
+        return arr if isinstance(arr, list) else None
+
+    selected_ids = _extract_json_array("selected_candidate_ids")
+    if not selected_ids:
+        selected_ids = _extract_json_array("selected_ids")
+    clean_ids = [as_non_template_str(x) for x in selected_ids or []]
+    clean_ids = [x for x in clean_ids if x]
+    if not clean_ids:
+        return None
+
+    decision_type = "crop"
+    m_dec = re.search(r'"decision_type"\s*:\s*"([^"]+)"', tail)
+    if m_dec and m_dec.group(1) in {"crop", "minimal_crop", "keep_full"}:
+        decision_type = m_dec.group(1)
+
+    out: Dict[str, Any] = {
+        "decision_type": decision_type,
+        "selected_candidate_ids": clean_ids,
+    }
+    also_considered = _extract_json_array("also_considered_ids")
+    if also_considered is not None:
+        out["also_considered_ids"] = [as_non_template_str(x) for x in also_considered if as_non_template_str(x)]
+
+    # Keep this intentionally shallow. Full JSON parsing handles why tags when
+    # the generation completes; truncated recovery only needs candidate IDs.
+    m_expl = re.search(r'"explanation"\s*:\s*"([^"]{1,240})', tail, flags=re.DOTALL)
+    if m_expl:
+        out["explanation"] = m_expl.group(1).strip()
+    return out
 
 
 def _bbox_iou_xyxy(a: Sequence[float], b: Sequence[float]) -> float:
@@ -792,7 +873,22 @@ def _extract_model_selected_items(
 ) -> Tuple[List[Dict[str, Any]], str]:
     raw_sel = as_list(parsed.get("selected_topk"))
     mode = "selected_topk"
+    selected_id_items: List[Any] = []
     if not raw_sel:
+        selected_id_items = as_list(parsed.get("selected_candidate_ids"))
+        if not selected_id_items:
+            selected_id_items = as_list(parsed.get("selected_ids"))
+        if not selected_id_items:
+            selected_id_items = as_list(parsed.get("candidate_ids"))
+        if not selected_id_items:
+            one_id = as_non_template_str(parsed.get("selected_candidate_id"))
+            if one_id:
+                selected_id_items = [one_id]
+        if selected_id_items:
+            mode = "selected_candidate_ids"
+        else:
+            alt = []
+    if not raw_sel and not selected_id_items:
         alt = as_list(parsed.get("selected_crops"))
         if alt:
             raw_sel = alt
@@ -820,26 +916,69 @@ def _extract_model_selected_items(
 
     out: List[Dict[str, Any]] = []
     used: set[str] = set()
+    why_by_candidate = parsed.get("why_by_candidate")
+    if not isinstance(why_by_candidate, dict):
+        why_by_candidate = parsed.get("rationale_by_candidate")
+    if not isinstance(why_by_candidate, dict):
+        why_by_candidate = parsed.get("selected_why_tags")
+    if not isinstance(why_by_candidate, dict):
+        why_by_candidate = {}
+
+    def append_candidate(cid: str, why_tags: Any = None, why_text: Any = None) -> None:
+        cid = as_non_template_str(cid)
+        if not cid or cid in used or cid not in cand_map:
+            return
+        why_entry = why_by_candidate.get(cid)
+        if isinstance(why_entry, dict):
+            if why_tags is None:
+                why_tags = why_entry.get("why_tags")
+            if why_text is None:
+                why_text = why_entry.get("why_text") or why_entry.get("rationale")
+        elif isinstance(why_entry, list) and why_tags is None:
+            why_tags = why_entry
+        elif isinstance(why_entry, str) and why_text is None:
+            why_text = why_entry
+        out.append(
+            {
+                "candidate_id": cid,
+                "why_tags": as_list(why_tags),
+                "why_text": why_text,
+            }
+        )
+        used.add(cid)
+
+    for it in selected_id_items:
+        if isinstance(it, dict):
+            cid = (
+                as_non_template_str(it.get("candidate_id"))
+                or as_non_template_str(it.get("id"))
+                or as_non_template_str(it.get("candidate"))
+            )
+            append_candidate(
+                cid,
+                why_tags=it.get("why_tags"),
+                why_text=it.get("why_text") or it.get("rationale"),
+            )
+        else:
+            append_candidate(str(it))
+        if len(out) >= max(1, int(k)):
+            return out, mode
+
     for it in raw_sel:
         if not isinstance(it, dict):
             continue
         cid = as_non_template_str(it.get("candidate_id"))
         if (not cid) or (cid not in cand_map):
             cid = _match_candidate_id_by_bbox(it.get("bbox_norm_xyxy"), cand_map, used, min_iou=0.75) or ""
-        if not cid or cid in used or cid not in cand_map:
-            continue
-        out.append(
-            {
-                "candidate_id": cid,
-                "why_tags": (
-                    as_list(it.get("why_tags"))
-                    if as_list(it.get("why_tags"))
-                    else ([as_non_template_str(it.get("label"))] if as_non_template_str(it.get("label")) else [])
-                ),
-                "why_text": it.get("why_text"),
-            }
+        append_candidate(
+            cid,
+            why_tags=(
+                as_list(it.get("why_tags"))
+                if as_list(it.get("why_tags"))
+                else ([as_non_template_str(it.get("label"))] if as_non_template_str(it.get("label")) else [])
+            ),
+            why_text=it.get("why_text"),
         )
-        used.add(cid)
         if len(out) >= max(1, int(k)):
             break
     return out, mode
@@ -894,6 +1033,10 @@ def _classify_parsed_object(parsed: Dict[str, Any]) -> str:
     keys = set(parsed.keys())
     if "selected_topk" in keys:
         return "selected_topk"
+    if isinstance(parsed.get("selected_candidate_ids"), list):
+        return "selected_candidate_ids"
+    if isinstance(parsed.get("selected_ids"), list):
+        return "selected_ids"
     if "selected_crops" in keys:
         return "selected_crops"
     if "selected_candidates" in keys:
@@ -969,19 +1112,32 @@ def normalize_backend_output(
 
     # also_considered
     raw_cons = as_list(parsed.get("also_considered"))
+    if not raw_cons:
+        raw_cons = as_list(parsed.get("also_considered_ids"))
+    if not raw_cons:
+        raw_cons = as_list(parsed.get("rejected_candidate_ids"))
     also_considered: List[Dict[str, Any]] = []
     selected_ids = {x["candidate_id"] for x in selected}
     for it in raw_cons:
-        if not isinstance(it, dict):
-            continue
-        cid = str(it.get("candidate_id", "")).strip()
+        if isinstance(it, dict):
+            cid = (
+                as_non_template_str(it.get("candidate_id"))
+                or as_non_template_str(it.get("id"))
+                or as_non_template_str(it.get("candidate"))
+            )
+            reject_tags = it.get("reject_tags")
+            reject_text = it.get("reject_text")
+        else:
+            cid = as_non_template_str(it)
+            reject_tags = None
+            reject_text = None
         if not cid or cid in selected_ids or cid not in cand_map:
             continue
         also_considered.append(
             {
                 "candidate_id": cid,
-                "reject_tags": sanitize_tags(it.get("reject_tags"), fallback=["context_lost"]),
-                "reject_text": as_non_template_str(it.get("reject_text")) or "Top-K 대비 우선순위가 낮아 제외되었습니다.",
+                "reject_tags": sanitize_tags(reject_tags, fallback=["context_lost"]),
+                "reject_text": as_non_template_str(reject_text) or "Top-K 대비 우선순위가 낮아 제외되었습니다.",
             }
         )
         if len(also_considered) >= 3:
@@ -1027,6 +1183,11 @@ def normalize_backend_output(
     parsed_expl = parsed.get("explanations", {}) if isinstance(parsed.get("explanations"), dict) else {}
     out_short = as_non_template_str(parsed_expl.get("short"))
     out_long = as_non_template_str(parsed_expl.get("long"))
+    single_expl = as_non_template_str(parsed.get("explanation"))
+    if single_expl and not out_short:
+        out_short = single_expl
+    if single_expl and not out_long:
+        out_long = single_expl
     if (not out_short) or (not out_long):
         auto_expl = _build_auto_explanations(
             task,
@@ -1077,6 +1238,8 @@ def normalize_backend_output(
             "schema_ok": True,
             "numeric_consistency_ok": True,
             "notes": "",
+            "model_selected_count": int(selected_from_model),
+            "selected_mode": str(selected_mode),
         },
     }
 
@@ -1121,6 +1284,62 @@ def build_prompt(task: Dict[str, Any]) -> str:
     numeric_topk = as_list(task.get("numeric_topk"))
     numeric_topk_ids = [str(x.get("candidate_id", "")) for x in numeric_topk if isinstance(x, dict) and str(x.get("candidate_id", "")).strip()]
     candidate_id_list = [str(x.get("candidate_id", "")) for x in compact_candidates if str(x.get("candidate_id", "")).strip()]
+    prompt_version = str(policy.get("prompt_version", "")).strip().lower()
+
+    if "candidate_ids" in prompt_version or "compact" in prompt_version:
+        compact_numeric = []
+        for c in numeric_topk:
+            if not isinstance(c, dict):
+                continue
+            feats = c.get("features", {}) if isinstance(c.get("features"), dict) else {}
+            compact_numeric.append(
+                {
+                    "candidate_id": c.get("candidate_id"),
+                    "final": round(safe_float(feats.get("final", 0.0), 0.0), 4),
+                    "subj_coverage": round(safe_float(feats.get("subj_coverage", 0.0), 0.0), 4),
+                    "face_cut": bool(feats.get("face_cut", False)),
+                    "why_tags": c.get("why_tags", []),
+                }
+            )
+
+        payload_v2 = {
+            "task": "choose_crop_candidate_ids",
+            "image_id": task.get("image_id"),
+            "target_ar": task.get("target_ar"),
+            "top_k": topk,
+            "decision_hint": task.get("decision", {}),
+            "meta": {
+                "category": meta.get("category"),
+                "main_subject": meta.get("main_subject", {}).get("label") if isinstance(meta.get("main_subject"), dict) else "",
+                "intent": meta.get("intent", []),
+                "shot_type_prior": route.get("shot_type", "unknown"),
+                "portrait_category": route.get("portrait_category", "unknown"),
+            },
+            "candidate_id_list": candidate_id_list,
+            "numeric_topk_ids": numeric_topk_ids,
+            "numeric_topk_features": compact_numeric,
+            "candidates": compact_candidates,
+            "allowed_tags": sorted(ALLOWED_WHY_TAGS),
+        }
+        return (
+            "You are a crop-selection judge. Return ONLY one valid JSON object.\n"
+            "Do not include markdown, comments, or copied input JSON.\n"
+            "Your main job is candidate ID selection, not schema assembly.\n"
+            "Rules:\n"
+            "1) selected_candidate_ids must contain only exact strings from candidate_id_list.\n"
+            "2) Preserve order from best to worse. Return at most top_k IDs.\n"
+            "3) Prefer candidates that preserve the main subject, avoid face/person/object cuts, and fit target_ar.\n"
+            "4) Use numeric_topk_ids as a strong prior, but override when visual evidence or checklist features indicate a better crop.\n"
+            "5) Use only allowed_tags. Use at most 3 tags per selected candidate.\n"
+            "6) Do not output bbox fields.\n"
+            "Required JSON shape:\n"
+            '{"decision_type":"crop|minimal_crop|keep_full",'
+            '"selected_candidate_ids":["exact_id"],'
+            '"selected_why_tags":{"exact_id":["allowed_tag"]},'
+            '"also_considered_ids":["exact_id"],'
+            '"explanation":"one short sentence"}\n\n'
+            f"Input JSON:\n{json.dumps(payload_v2, ensure_ascii=False)}"
+        )
 
     payload = {
         "target_ar": task.get("target_ar"),
@@ -1456,6 +1675,9 @@ class Qwen25VLHFBackend(BaseVLMBackend):
             raise BackendInferenceError(f"decode failed: {exc}") from exc
 
         parsed = _extract_first_json_object(raw_text)
+        compact_recovered = _extract_compact_selection_from_text(raw_text)
+        if compact_recovered is not None and not _has_model_selection_keys(parsed):
+            parsed = compact_recovered
         if parsed is None:
             raise BackendInferenceError("failed to parse json from model output")
         return parsed, raw_text
@@ -1513,7 +1735,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--top_k", type=int, default=5)
     p.add_argument("--max_images", type=int, default=0)
     p.add_argument("--max_retries", type=int, default=2)
-    p.add_argument("--prompt_version", default="crop_label_candidate_pick_v1")
+    p.add_argument("--prompt_version", default="crop_label_candidate_ids_v2")
     p.add_argument("--seed", type=int, default=42)
 
     p.add_argument("--save_raw_response", type=int, default=0)
@@ -1771,6 +1993,10 @@ def main() -> None:
                         summary_counter[f"parsed_profile_{parsed_profile}"] += 1
                         if isinstance(parsed_obj.get("selected_topk"), list):
                             summary_counter["parsed_has_selected_topk"] += 1
+                        if isinstance(parsed_obj.get("selected_candidate_ids"), list):
+                            summary_counter["parsed_has_selected_candidate_ids"] += 1
+                        if isinstance(parsed_obj.get("selected_ids"), list):
+                            summary_counter["parsed_has_selected_ids"] += 1
                         if isinstance(parsed_obj.get("selected_crops"), list):
                             summary_counter["parsed_has_selected_crops"] += 1
                         pexp = parsed_obj.get("explanations")

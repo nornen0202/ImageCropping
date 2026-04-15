@@ -37,6 +37,9 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--teacher_scores_jsonl", default="")
     p.add_argument("--candidates_jsonl", default="")
     p.add_argument("--features_jsonl", default="")
+    p.add_argument("--teacher_row_json", default="")
+    p.add_argument("--candidate_row_json", default="")
+    p.add_argument("--feature_row_json", default="")
     return p.parse_args()
 
 
@@ -50,6 +53,14 @@ def read_jsonl_one(path: Path, image_id: str) -> Dict[str, Any]:
             if str(rec.get("image_id", "")) == image_id:
                 return rec
     raise FileNotFoundError(f"image_id={image_id} not found in {path}")
+
+
+def read_json_row_or_jsonl(row_json: str, jsonl_path: Path, image_id: str) -> Dict[str, Any]:
+    if str(row_json).strip():
+        path = Path(row_json)
+        if path.exists():
+            return json.loads(path.read_text(encoding="utf-8"))
+    return read_jsonl_one(jsonl_path, image_id)
 
 
 def ensure_dir(path: Path) -> None:
@@ -1138,9 +1149,9 @@ def make_report(args: argparse.Namespace) -> None:
     candidates_jsonl = Path(args.candidates_jsonl) if str(args.candidates_jsonl).strip() else artifacts / "candidates" / f"candidates_ar_{run_tag}.jsonl"
     features_jsonl = Path(args.features_jsonl) if str(args.features_jsonl).strip() else artifacts / "precompute" / "feats_c2c3c5_v2_strict_enriched_routed.jsonl"
 
-    teacher_row = read_jsonl_one(teacher_scores_jsonl, image_id)
-    candidate_row = read_jsonl_one(candidates_jsonl, image_id)
-    feature_row = read_jsonl_one(features_jsonl, image_id)
+    teacher_row = read_json_row_or_jsonl(args.teacher_row_json, teacher_scores_jsonl, image_id)
+    candidate_row = read_json_row_or_jsonl(args.candidate_row_json, candidates_jsonl, image_id)
+    feature_row = read_json_row_or_jsonl(args.feature_row_json, features_jsonl, image_id)
     image_path = data_root / "images" / f"{image_id}.jpg"
     image = Image.open(image_path).convert("RGB")
     width, height = image.size

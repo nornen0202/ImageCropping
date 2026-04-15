@@ -758,7 +758,7 @@ def write_jsonl(
     )
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
+            handle.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
             count += 1
             tracker.update(count, extra=f"path={path.name}")
     tracker.finish(count, extra=f"path={path.name}")
@@ -771,9 +771,10 @@ def load_teacher_records(
     progress: bool = False,
     progress_every: int = 1000,
     progress_min_seconds: float = 10.0,
+    count_total: bool = False,
 ) -> List[Dict[str, Any]]:
     records: List[Dict[str, Any]] = []
-    total = count_nonempty_lines(path) if progress else None
+    total = count_nonempty_lines(path) if progress and count_total else None
     tracker = ProgressTracker(
         f"load_teacher_records:{path.name}",
         total=total,
@@ -2550,6 +2551,8 @@ def build_training_datasets(
                     f"pairwise={len(pairwise_rows)} | batch={len(batch_rows)} | skipped={len(skipped_rows)}"
                 ),
             )
+        if isinstance(rec, dict):
+            rec.clear()
 
     tracker.finish(
         groups_done,

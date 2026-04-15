@@ -11,7 +11,7 @@ PROJECT_SRC = Path(__file__).resolve().parents[1]
 if str(PROJECT_SRC) not in sys.path:
     sys.path.insert(0, str(PROJECT_SRC))
 
-from scripts.progress_utils import count_nonempty_lines, progress_log
+from scripts.progress_utils import progress_log
 
 
 def _load_json(path: Path) -> Dict[str, Any]:
@@ -21,11 +21,13 @@ def _load_json(path: Path) -> Dict[str, Any]:
 def _validate_mode_rows(summary: Dict[str, Any], query_status_jsonl: Path) -> Dict[str, Any]:
     mode_counter = Counter()
     positive_counter = Counter()
+    row_count = 0
     with query_status_jsonl.open("r", encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
             if not line:
                 continue
+            row_count += 1
             row = json.loads(line)
             mode_name = str(row.get("mode_name", ""))
             mode_counter[mode_name] += 1
@@ -43,6 +45,7 @@ def _validate_mode_rows(summary: Dict[str, Any], query_status_jsonl: Path) -> Di
         if positive_counter.get(mode_name, 0) != expected_positives:
             mismatches.append(f"{mode_name}:positive_query_count")
     return {
+        "row_count": row_count,
         "mode_query_counts": dict(mode_counter),
         "mode_positive_counts": dict(positive_counter),
         "mismatches": mismatches,
@@ -69,7 +72,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             raise FileNotFoundError(f"required file missing: {path}")
     summary = _load_json(summary_json)
     coco = _load_json(coco_json)
-    query_row_count = count_nonempty_lines(query_status_jsonl)
+    mode_validation = _validate_mode_rows(summary, query_status_jsonl)
+    query_row_count = int(mode_validation["row_count"])
     if int(summary.get("query_count", -1)) != query_row_count:
         raise ValueError(
             f"query_count mismatch summary={summary.get('query_count')} query_status_rows={query_row_count}"
@@ -83,7 +87,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         raise ValueError("annotation count mismatch")
     if len(categories) <= 0:
         raise ValueError("categories is empty")
-    mode_validation = _validate_mode_rows(summary, query_status_jsonl)
     if mode_validation["mismatches"]:
         raise ValueError("mode summary mismatch: " + ",".join(mode_validation["mismatches"]))
     payload = {

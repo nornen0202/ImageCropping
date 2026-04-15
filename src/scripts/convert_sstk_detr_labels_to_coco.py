@@ -8,7 +8,10 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from PIL import Image
 
-from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+try:
+    from progress_utils import ProgressTracker, progress_log
+except ModuleNotFoundError:
+    from scripts.progress_utils import ProgressTracker, progress_log
 
 
 def safe_dict(value: Any) -> Dict[str, Any]:
@@ -35,10 +38,8 @@ def load_jsonl(
     progress_every: int = 1000,
     progress_min_seconds: float = 10.0,
 ) -> List[Dict[str, Any]]:
-    total = count_nonempty_lines(path) if progress else None
     tracker = ProgressTracker(
         f"convert_sstk_detr_labels_to_coco:load_jsonl:{path.name}",
-        total=total,
         unit="rows",
         every=progress_every,
         min_seconds=progress_min_seconds,
@@ -77,13 +78,21 @@ def load_image_size(path_str: Optional[str], cache: Dict[str, Tuple[int, int]]) 
 
 
 def norm_xyxy_to_coco_bbox(bbox_norm_xyxy: Sequence[Any], width: int, height: int) -> List[float]:
-    x1 = safe_float(bbox_norm_xyxy[0]) * width
-    y1 = safe_float(bbox_norm_xyxy[1]) * height
-    x2 = safe_float(bbox_norm_xyxy[2]) * width
-    y2 = safe_float(bbox_norm_xyxy[3]) * height
-    w = max(0.0, x2 - x1)
-    h = max(0.0, y2 - y1)
-    return [round(x1, 3), round(y1, 3), round(w, 3), round(h, 3)]
+    x1 = min(max(safe_float(bbox_norm_xyxy[0]) * width, 0.0), float(width))
+    y1 = min(max(safe_float(bbox_norm_xyxy[1]) * height, 0.0), float(height))
+    x2 = min(max(safe_float(bbox_norm_xyxy[2]) * width, 0.0), float(width))
+    y2 = min(max(safe_float(bbox_norm_xyxy[3]) * height, 0.0), float(height))
+    if x2 < x1:
+        x1, x2 = x2, x1
+    if y2 < y1:
+        y1, y2 = y2, y1
+    rx1 = min(max(round(x1, 3), 0.0), float(width))
+    ry1 = min(max(round(y1, 3), 0.0), float(height))
+    rx2 = min(max(round(x2, 3), 0.0), float(width))
+    ry2 = min(max(round(y2, 3), 0.0), float(height))
+    w = min(max(0.0, round(rx2 - rx1, 3)), max(0.0, round(float(width) - rx1, 3)))
+    h = min(max(0.0, round(ry2 - ry1, 3)), max(0.0, round(float(height) - ry1, 3)))
+    return [rx1, ry1, w, h]
 
 
 def coco_area(bbox_xywh: Sequence[Any]) -> float:
@@ -338,7 +347,7 @@ def validate_coco(
 
 
 def write_json(path: Path, payload: Dict[str, Any]) -> None:
-    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(json.dumps(payload, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
 
 
 def parse_args() -> argparse.Namespace:

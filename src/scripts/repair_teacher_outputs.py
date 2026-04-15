@@ -23,7 +23,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
-from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+try:
+    from progress_utils import ProgressTracker, progress_log
+except ModuleNotFoundError:
+    from scripts.progress_utils import ProgressTracker, progress_log
 
 
 @dataclass
@@ -53,6 +56,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--qa_json", required=True)
     p.add_argument("--qa_csv", required=True)
     p.add_argument("--candidates_jsonl", default="")
+    p.add_argument("--candidates_overview_json", default="", help="optional candidates overview with num_images; avoids counting large candidates JSONL")
     p.add_argument("--max_images", type=int, default=0, help="same max_images used in teacher run (0=all)")
     p.add_argument("--prefer_real_expensive", type=int, default=1, help="1=prefer expensive_real_applied rows")
     p.add_argument("--strict_expected_match", type=int, default=1, help="1=if expected rows known, require exact match")
@@ -93,10 +97,8 @@ def analyze_jsonl(
     exp_rows = 0
     parse_error_rows = 0
     if path.exists():
-        total = count_nonempty_lines(path) if progress else None
         tracker = ProgressTracker(
             f"repair_teacher_outputs:analyze_jsonl:{path.name}",
-            total=total,
             unit="rows",
             every=progress_every,
             min_seconds=progress_min_seconds,
@@ -127,6 +129,12 @@ def analyze_jsonl(
         parse_error_rows=parse_error_rows,
         mtime=mtime,
     )
+
+
+def infer_candidates_overview_path(candidates_jsonl: Path) -> Path:
+    if candidates_jsonl.suffix == ".jsonl":
+        return candidates_jsonl.with_name(candidates_jsonl.stem + "_overview.json")
+    return candidates_jsonl.with_name(candidates_jsonl.name + "_overview.json")
 
 
 def shard_index_from_name(name: str) -> int:
@@ -184,10 +192,34 @@ def analyze_shard_dir(
     )
 
 
-def expected_rows_from_candidates(candidates_jsonl: Path, max_images: int) -> Optional[int]:
+def expected_rows_from_candidates(
+    candidates_jsonl: Path,
+    max_images: int,
+    *,
+    candidates_overview_json: Optional[Path] = None,
+) -> Optional[int]:
     if not candidates_jsonl.exists():
         return None
-    n = count_lines(candidates_jsonl)
+    overview_candidates = [
+        candidates_overview_json,
+        infer_candidates_overview_path(candidates_jsonl),
+    ]
+    n: Optional[int] = None
+    for overview_path in overview_candidates:
+        if overview_path is None or not overview_path.exists():
+            continue
+        try:
+            overview = json.loads(overview_path.read_text(encoding="utf-8"))
+            for key in ("num_images", "row_count", "rows"):
+                if key in overview:
+                    n = int(overview[key])
+                    break
+        except Exception:
+            n = None
+        if n is not None:
+            break
+    if n is None:
+        n = count_lines(candidates_jsonl)
     if max_images > 0:
         n = min(n, int(max_images))
     return n
@@ -351,6 +383,7 @@ def main() -> None:
     qa_json = Path(args.qa_json)
     qa_csv = Path(args.qa_csv)
     candidates_jsonl = Path(args.candidates_jsonl) if str(args.candidates_jsonl).strip() else Path("")
+    candidates_overview_json = Path(args.candidates_overview_json) if str(args.candidates_overview_json).strip() else None
 
     progress_log(
         f"repair_teacher_outputs: start | teacher_scores_jsonl={out_jsonl}",
@@ -364,7 +397,11 @@ def main() -> None:
     )
     expected_rows = None
     if candidates_jsonl:
-        expected_rows = expected_rows_from_candidates(candidates_jsonl, int(args.max_images))
+        expected_rows = expected_rows_from_candidates(
+            candidates_jsonl,
+            int(args.max_images),
+            candidates_overview_json=candidates_overview_json,
+        )
 
     shard_dirs = sorted(
         [p for p in out_jsonl.parent.glob(f"{out_jsonl.name}.shards.*") if p.is_dir()],

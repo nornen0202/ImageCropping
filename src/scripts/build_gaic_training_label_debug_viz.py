@@ -359,7 +359,10 @@ def load_subject_overlay_index(
         return {}
     by_image: Dict[str, Dict[str, Any]] = {}
 
-    if candidates_jsonl.exists():
+    # Prefer the compact batch labels when available. They already carry the
+    # routing/subject overlay needed for selected images, while the candidates
+    # JSONL can be much larger than the debug sample.
+    if candidates_jsonl.exists() and not batch_jsonl.exists():
         with candidates_jsonl.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if len(by_image) >= len(wanted):
@@ -2347,9 +2350,14 @@ def build_image_index_from_coco(
     return image_rows, inconsistencies
 
 
-def build_batch_candidate_detail_index(batch_jsonl: Path) -> Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]:
+def build_batch_candidate_detail_index(
+    batch_jsonl: Path,
+    *,
+    image_ids: Optional[Sequence[str]] = None,
+) -> Dict[str, Dict[str, Dict[str, Dict[str, Any]]]]:
     if not batch_jsonl.exists():
         return {}
+    wanted = {str(image_id).strip() for image_id in safe_list(image_ids) if str(image_id).strip()}
     by_image: Dict[str, Dict[str, Dict[str, Dict[str, Any]]]] = {}
     with batch_jsonl.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -2360,6 +2368,8 @@ def build_batch_candidate_detail_index(batch_jsonl: Path) -> Dict[str, Dict[str,
             image_id = str(row.get("image_id", "")).strip()
             target_ar = str(row.get("target_ar", "")).strip()
             if not image_id or not target_ar:
+                continue
+            if wanted and image_id not in wanted:
                 continue
             target_map = by_image.setdefault(image_id, {}).setdefault(target_ar, {})
             for bucket_key, default_bucket in (
@@ -2519,9 +2529,15 @@ def attach_gt_training_scores(
     return stats
 
 
-def merge_ignored_candidate_counts(batch_jsonl: Path, image_rows: Sequence[Dict[str, Any]]) -> None:
+def merge_ignored_candidate_counts(
+    batch_jsonl: Path,
+    image_rows: Sequence[Dict[str, Any]],
+    *,
+    image_ids: Optional[Sequence[str]] = None,
+) -> None:
     if not batch_jsonl.exists():
         return
+    wanted = {str(image_id).strip() for image_id in safe_list(image_ids) if str(image_id).strip()}
     ignored_by_image: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
     with batch_jsonl.open("r", encoding="utf-8") as handle:
         for line in handle:
@@ -2530,6 +2546,8 @@ def merge_ignored_candidate_counts(batch_jsonl: Path, image_rows: Sequence[Dict[
                 continue
             row = json.loads(line)
             image_id = str(row.get("image_id", ""))
+            if wanted and image_id not in wanted:
+                continue
             for cand in safe_list(row.get("ignored_candidates")):
                 ignored_by_image[image_id].append(
                     {
@@ -2621,9 +2639,6 @@ def main() -> None:
     )
 
     image_rows, mode_inconsistencies = build_image_index_from_coco(coco_json, image_root, mode_names)
-    batch_detail_index = build_batch_candidate_detail_index(batch_jsonl)
-    enrich_image_rows_with_batch_details(image_rows, batch_detail_index)
-    merge_ignored_candidate_counts(batch_jsonl, image_rows)
     gt_index = load_gaic_gt_index(gaic_gt_paths)
     gt_score_cache_stats = {"images_with_cache": 0, "gt_boxes_with_score": 0, "gt_boxes_without_score": 0}
     if gt_index and gt_score_cache_path.exists():
@@ -2683,6 +2698,11 @@ def main() -> None:
     else:
         selected_images = select_balanced_images(selection_rows, sample_size=args.sample_size, seed=args.seed)
     selected_image_ids = [str(row.get("image_id", "")) for row in selected_images]
+    batch_detail_index = build_batch_candidate_detail_index(batch_jsonl, image_ids=selected_image_ids)
+    enrich_image_rows_with_batch_details(selected_images, batch_detail_index)
+    merge_ignored_candidate_counts(batch_jsonl, selected_images, image_ids=selected_image_ids)
+    eligible_positive_by_mode, eligible_negative_by_mode = collect_mode_score_distributions(selection_rows)
+    selected_positive_by_mode, selected_negative_by_mode = collect_mode_score_distributions(selected_images)
     teacher_detail_index = (
         build_teacher_detail_index(teacher_jsonl, image_ids=selected_image_ids)
         if teacher_jsonl.exists()
@@ -2693,8 +2713,6 @@ def main() -> None:
         batch_jsonl=batch_jsonl,
         image_ids=selected_image_ids,
     )
-    eligible_positive_by_mode, eligible_negative_by_mode = collect_mode_score_distributions(selection_rows)
-    selected_positive_by_mode, selected_negative_by_mode = collect_mode_score_distributions(selected_images)
     render_workers = resolve_num_workers(int(args.num_workers), len(selected_images))
     distribution_plot_lock = threading.Lock()
     progress_log(

@@ -7,7 +7,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from typing import Any, Dict, List
 
-from progress_utils import ProgressTracker, progress_log
+try:
+    from progress_utils import ProgressTracker, progress_log
+except ModuleNotFoundError:
+    from scripts.progress_utils import ProgressTracker, progress_log
 
 
 def parse_args() -> argparse.Namespace:
@@ -51,6 +54,19 @@ def load_teacher_decision_counts(path: Path) -> Counter:
                     continue
                 counts[str(decision.get("decision_type", "unknown"))] += 1
     return counts
+
+
+def decision_counts_from_qa(qa: Dict[str, Any]) -> Counter:
+    counts = qa.get("global", {}).get("decision_counts", {})
+    if not isinstance(counts, dict):
+        return Counter()
+    out: Counter[str] = Counter()
+    for key, value in counts.items():
+        try:
+            out[str(key)] = int(float(value))
+        except Exception:
+            continue
+    return out
 
 
 def build_paths(image_id: str, routed_feats_jsonl: str, components_viz_dir: str) -> Dict[str, str]:
@@ -109,7 +125,18 @@ def main() -> None:
         enabled=progress_enabled,
     )
     qa = json.loads(teacher_qa_json.read_text(encoding="utf-8"))
-    decision_counts = load_teacher_decision_counts(teacher_scores_jsonl)
+    decision_counts = decision_counts_from_qa(qa)
+    if decision_counts:
+        progress_log(
+            "build_sstk_report_assets: using decision_counts from teacher QA; skipped teacher JSONL full scan",
+            enabled=progress_enabled,
+        )
+    else:
+        progress_log(
+            "build_sstk_report_assets: teacher QA has no decision_counts; scanning teacher JSONL fallback",
+            enabled=progress_enabled,
+        )
+        decision_counts = load_teacher_decision_counts(teacher_scores_jsonl)
 
     mode_counter: Counter[str] = Counter()
     person_bucket_counter: Counter[str] = Counter()

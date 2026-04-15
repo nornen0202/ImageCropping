@@ -7,7 +7,10 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import pandas as pd
-from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+try:
+    from progress_utils import ProgressTracker, progress_log
+except ModuleNotFoundError:
+    from scripts.progress_utils import ProgressTracker, progress_log
 
 
 def parse_args() -> argparse.Namespace:
@@ -43,10 +46,8 @@ def read_jsonl_rows(
     progress_min_seconds: float = 10.0,
 ) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
-    total = count_nonempty_lines(path) if progress else None
     tracker = ProgressTracker(
         f"validate_gaic_e2e_outputs:read_jsonl:{path.name}",
-        total=total,
         unit="rows",
         every=progress_every,
         min_seconds=progress_min_seconds,

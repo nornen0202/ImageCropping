@@ -13,7 +13,10 @@ from pathlib import Path
 from typing import Dict, List
 
 import pandas as pd
-from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+try:
+    from progress_utils import ProgressTracker, progress_log
+except ModuleNotFoundError:
+    from scripts.progress_utils import ProgressTracker, progress_log
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,10 +38,8 @@ def load_jsonl(
     progress_min_seconds: float = 10.0,
 ) -> Dict[str, dict]:
     out: Dict[str, dict] = {}
-    total = count_nonempty_lines(path) if progress else None
     tracker = ProgressTracker(
         f"merge_feature_jsonl:load_jsonl:{path.name}",
-        total=total,
         unit="rows",
         every=progress_every,
         min_seconds=progress_min_seconds,

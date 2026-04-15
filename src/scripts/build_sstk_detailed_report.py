@@ -16,7 +16,10 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from PIL import Image
-from progress_utils import ProgressTracker, count_nonempty_lines, progress_log
+try:
+    from progress_utils import ProgressTracker, progress_log
+except ModuleNotFoundError:
+    from scripts.progress_utils import ProgressTracker, progress_log
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,6 +28,10 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--data_root", required=True, help="e.g. data/SSTK/Test_100")
     p.add_argument("--report_dir", required=True)
     p.add_argument("--teacher_viz_fallback_dir", default="", help="optional staging dir with by_ar/<ar_tok>/<image_id>.jpg")
+    p.add_argument("--teacher_scores_jsonl", default="", help="override teacher JSONL; compact downstream JSONL is preferred when present")
+    p.add_argument("--routed_feats_jsonl", default="", help="override routed features JSONL")
+    p.add_argument("--candidates_jsonl", default="", help="override candidates JSONL used by drill-down reports")
+    p.add_argument("--training_labels_dir", default="", help="override FinalScore training labels directory")
     p.add_argument("--num_workers", type=int, default=0, help="CPU workers for drill-down report generation (0=all cores, 1=single).")
     p.add_argument("--progress", type=int, default=1)
     p.add_argument("--progress_every", type=int, default=250)
@@ -128,10 +135,8 @@ def load_teacher_rows(
     progress_min_seconds: float = 10.0,
 ) -> List[Dict[str, Any]]:
     rows: List[Dict[str, Any]] = []
-    total = count_nonempty_lines(path) if progress else None
     tracker = ProgressTracker(
         f"build_sstk_detailed_report:load_teacher_rows:{path.name}",
-        total=total,
         unit="rows",
         every=progress_every,
         min_seconds=progress_min_seconds,
@@ -158,10 +163,8 @@ def build_routed_map(
     progress_min_seconds: float = 10.0,
 ) -> Dict[str, Dict[str, Any]]:
     out: Dict[str, Dict[str, Any]] = {}
-    total = count_nonempty_lines(path) if progress else None
     tracker = ProgressTracker(
         f"build_sstk_detailed_report:build_routed_map:{path.name}",
-        total=total,
         unit="rows",
         every=progress_every,
         min_seconds=progress_min_seconds,
@@ -178,6 +181,90 @@ def build_routed_map(
             out[image_id] = rec
             tracker.update(idx, extra=f"mapped={len(out)}")
     tracker.finish(len(out), extra=f"path={path.name}")
+    return out
+
+
+def first_existing_path(paths: Sequence[Path]) -> Path:
+    for path in paths:
+        if path.exists():
+            return path
+    return paths[0]
+
+
+def resolve_teacher_jsonl(args: argparse.Namespace, artifacts: Path, run_tag: str) -> Path:
+    if str(args.teacher_scores_jsonl).strip():
+        return Path(args.teacher_scores_jsonl)
+    compact = artifacts / "teacher" / "scores" / f"teacher_scores_ar_{run_tag}_downstream_compact.jsonl"
+    full = artifacts / "teacher" / "scores" / f"teacher_scores_ar_{run_tag}.jsonl"
+    return compact if compact.exists() else full
+
+
+def resolve_routed_feats_jsonl(args: argparse.Namespace, artifacts: Path) -> Path:
+    if str(args.routed_feats_jsonl).strip():
+        return Path(args.routed_feats_jsonl)
+    precompute = artifacts / "precompute"
+    return first_existing_path(
+        [
+            precompute / "feats_c2c3c5_v2_strict_enriched_routed_final.jsonl",
+            precompute / "feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl",
+            precompute / "feats_c2c3c5_v2_strict_enriched_routed.jsonl",
+        ]
+    )
+
+
+def resolve_candidates_jsonl(args: argparse.Namespace, artifacts: Path, run_tag: str) -> Path:
+    if str(args.candidates_jsonl).strip():
+        return Path(args.candidates_jsonl)
+    return artifacts / "candidates" / f"candidates_ar_{run_tag}.jsonl"
+
+
+def resolve_training_labels_dir(args: argparse.Namespace, artifacts: Path, run_tag: str) -> Path:
+    if str(args.training_labels_dir).strip():
+        return Path(args.training_labels_dir)
+    base = artifacts / "training_labels"
+    return first_existing_path(
+        [
+            base / f"{run_tag}_leftover_ignore_monotonic",
+            base / run_tag,
+        ]
+    )
+
+
+def load_jsonl_map_for_ids(
+    path: Path,
+    image_ids: Sequence[str],
+    *,
+    progress: bool = False,
+    progress_every: int = 500,
+    progress_min_seconds: float = 10.0,
+) -> Dict[str, Dict[str, Any]]:
+    wanted = {str(image_id) for image_id in image_ids if str(image_id)}
+    out: Dict[str, Dict[str, Any]] = {}
+    if not wanted:
+        return out
+    tracker = ProgressTracker(
+        f"build_sstk_detailed_report:load_jsonl_map_for_ids:{path.name}",
+        unit="rows",
+        every=progress_every,
+        min_seconds=progress_min_seconds,
+        enabled=progress,
+    )
+    scanned = 0
+    with path.open("r", encoding="utf-8") as f:
+        for idx, line in enumerate(f, start=1):
+            scanned = idx
+            line = line.strip()
+            if not line:
+                continue
+            rec = json.loads(line)
+            image_id = str(rec.get("image_id", ""))
+            if image_id in wanted:
+                out[image_id] = rec
+            if len(out) >= len(wanted):
+                tracker.update(idx, extra=f"matched={len(out)}/{len(wanted)}")
+                break
+            tracker.update(idx, extra=f"matched={len(out)}/{len(wanted)}")
+    tracker.finish(scanned, extra=f"matched={len(out)}/{len(wanted)} path={path.name}")
     return out
 
 
@@ -810,6 +897,16 @@ def load_jsonl(path: Path) -> List[Dict[str, Any]]:
     return rows
 
 
+def iter_jsonl(path: Path) -> Iterable[Dict[str, Any]]:
+    if not path.exists():
+        return
+    with path.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
 def summarize_training_labels(
     training_dir: Path,
     run_tag: str,
@@ -825,7 +922,6 @@ def summarize_training_labels(
     if not qa_path.exists():
         return None, [], []
     qa = read_json(qa_path)
-    listwise_rows = load_jsonl(listwise_path)
     decision_rows = load_jsonl(decision_path)
     decision_map = {
         (str(row.get("image_id", "")), str(row.get("target_ar", ""))): row
@@ -838,13 +934,14 @@ def summarize_training_labels(
     extra_ids: List[str] = []
     tracker = ProgressTracker(
         "build_sstk_detailed_report:summarize_training_labels",
-        total=len(listwise_rows),
         unit="rows",
         every=progress_every,
         min_seconds=progress_min_seconds,
         enabled=progress,
     )
-    for idx, row in enumerate(listwise_rows, start=1):
+    task_total = 0
+    for idx, row in enumerate(iter_jsonl(listwise_path), start=1):
+        task_total = idx
         cands = row.get("candidates", [])
         if not isinstance(cands, list) or not cands:
             tracker.update(idx)
@@ -900,20 +997,20 @@ def summarize_training_labels(
     write_json(report_dir / "assets" / "analytics" / f"training_label_examples_{run_tag}.json", example_rows)
     summary = {
         "qa": qa,
-        "task_total": len(listwise_rows),
+        "task_total": task_total,
         "rank_vs_policy_count": rank_vs_policy,
-        "rank_vs_policy_rate": (rank_vs_policy / len(listwise_rows)) if listwise_rows else 0.0,
+        "rank_vs_policy_rate": (rank_vs_policy / task_total) if task_total else 0.0,
         "rank_vs_legacy_count": rank_vs_legacy,
-        "rank_vs_legacy_rate": (rank_vs_legacy / len(listwise_rows)) if listwise_rows else 0.0,
+        "rank_vs_legacy_rate": (rank_vs_legacy / task_total) if task_total else 0.0,
         "chosen_vs_best_rank_count": chosen_vs_best_rank,
-        "chosen_vs_best_rank_rate": (chosen_vs_best_rank / len(listwise_rows)) if listwise_rows else 0.0,
+        "chosen_vs_best_rank_rate": (chosen_vs_best_rank / task_total) if task_total else 0.0,
         "paths": {
             "qa_summary": str(qa_path).replace("\\", "/"),
             "training_report": str((training_dir / "TRAINING_DATA_REPORT_KO.md")).replace("\\", "/"),
             "implementation_report": str((training_dir / "FINALSCORE_TRAINING_DATA_IMPLEMENTATION_REPORT_KO.md")).replace("\\", "/"),
         },
     }
-    tracker.finish(len(listwise_rows), extra=f"examples={len(example_rows)}")
+    tracker.finish(task_total, extra=f"examples={len(example_rows)}")
     return summary, example_rows, extra_ids
 
 
@@ -962,6 +1059,9 @@ def generate_drilldown_reports(
     image_ids: Sequence[str],
     routed_map: Dict[str, Dict[str, Any]],
     teacher_rows: Sequence[Dict[str, Any]],
+    teacher_jsonl: Path,
+    candidates_jsonl: Path,
+    features_jsonl: Path,
     ars: str = "FREE,1:1,16:9",
     num_workers: int = 1,
     progress: bool = False,
@@ -969,6 +1069,32 @@ def generate_drilldown_reports(
     progress_min_seconds: float = 10.0,
 ) -> Dict[str, Any]:
     teacher_map = {str(row.get("image_id", "")): row for row in teacher_rows}
+    candidate_map = load_jsonl_map_for_ids(
+        candidates_jsonl,
+        image_ids,
+        progress=progress,
+        progress_every=max(1, progress_every),
+        progress_min_seconds=progress_min_seconds,
+    )
+    cache_dir = report_dir / "assets" / "_drilldown_input_rows"
+    ensure_dir(cache_dir)
+    cached_teacher_rows: Dict[str, Path] = {}
+    cached_candidate_rows: Dict[str, Path] = {}
+    cached_feature_rows: Dict[str, Path] = {}
+    for image_id in image_ids:
+        image_id_str = str(image_id)
+        if image_id_str in teacher_map:
+            path = cache_dir / "teacher" / f"{image_id_str}.json"
+            write_json(path, teacher_map[image_id_str])
+            cached_teacher_rows[image_id_str] = path
+        if image_id_str in candidate_map:
+            path = cache_dir / "candidates" / f"{image_id_str}.json"
+            write_json(path, candidate_map[image_id_str])
+            cached_candidate_rows[image_id_str] = path
+        if image_id_str in routed_map:
+            path = cache_dir / "features" / f"{image_id_str}.json"
+            write_json(path, routed_map[image_id_str])
+            cached_feature_rows[image_id_str] = path
     index_lines = ["# Drill-down Report Index", ""]
 
     def build_one_report(image_id: str) -> Tuple[str, Dict[str, Any], str]:
@@ -976,21 +1102,34 @@ def generate_drilldown_reports(
         attempts = 0
         last_qa: Optional[Dict[str, Any]] = None
         while attempts < 2:
+            cmd = [
+                sys.executable,
+                "src/scripts/build_single_image_crop_report.py",
+                "--run_tag",
+                run_tag,
+                "--data_root",
+                str(data_root),
+                "--image_id",
+                image_id,
+                "--out_dir",
+                str(out_dir),
+                "--ars",
+                ars,
+                "--teacher_scores_jsonl",
+                str(teacher_jsonl),
+                "--candidates_jsonl",
+                str(candidates_jsonl),
+                "--features_jsonl",
+                str(features_jsonl),
+            ]
+            if image_id in cached_teacher_rows:
+                cmd.extend(["--teacher_row_json", str(cached_teacher_rows[image_id])])
+            if image_id in cached_candidate_rows:
+                cmd.extend(["--candidate_row_json", str(cached_candidate_rows[image_id])])
+            if image_id in cached_feature_rows:
+                cmd.extend(["--feature_row_json", str(cached_feature_rows[image_id])])
             subprocess.run(
-                [
-                    sys.executable,
-                    "src/scripts/build_single_image_crop_report.py",
-                    "--run_tag",
-                    run_tag,
-                    "--data_root",
-                    str(data_root),
-                    "--image_id",
-                    image_id,
-                    "--out_dir",
-                    str(out_dir),
-                    "--ars",
-                    ars,
-                ],
+                cmd,
                 check=True,
             )
             analysis_path = out_dir / "assets" / "analysis.json"
@@ -1601,12 +1740,20 @@ def main() -> None:
 
     run_tag = str(args.run_tag)
     artifacts = data_root / "artifacts"
-    teacher_jsonl = artifacts / "teacher" / "scores" / f"teacher_scores_ar_{run_tag}.jsonl"
+    teacher_jsonl = resolve_teacher_jsonl(args, artifacts, run_tag)
     qa_json = artifacts / "teacher" / "qa" / f"teacher_scores_qa_report_{run_tag}.json"
     overview_json = artifacts / "teacher" / "overview" / f"teacher_scores_overview_{run_tag}.json"
+    candidates_jsonl = resolve_candidates_jsonl(args, artifacts, run_tag)
     cand_overview_json = artifacts / "candidates" / f"candidates_ar_{run_tag}_overview.json"
     viz_overview_json = artifacts / "teacher" / "visualizations" / f"teacher_scorer_{run_tag}" / "viz_overview.json"
-    routed_feats = artifacts / "precompute" / "feats_c2c3c5_v2_strict_enriched_routed.jsonl"
+    routed_feats = resolve_routed_feats_jsonl(args, artifacts)
+    training_labels_dir = resolve_training_labels_dir(args, artifacts, run_tag)
+    progress_log(
+        "build_sstk_detailed_report: inputs | "
+        f"teacher_jsonl={teacher_jsonl} | routed_feats={routed_feats} | candidates_jsonl={candidates_jsonl} | "
+        f"training_labels_dir={training_labels_dir}",
+        enabled=progress_enabled,
+    )
 
     summary_json = report_dir / "assets" / "analytics" / f"summary_{run_tag}.json"
     subject_count_json = report_dir / "assets" / "evidence" / f"subject_count_examples_{run_tag}.json"
@@ -1658,7 +1805,7 @@ def main() -> None:
         data_root=str(data_root).replace("\\", "/"),
     )
     training_labels_summary, training_label_examples, training_extra_ids = summarize_training_labels(
-        artifacts / "training_labels" / run_tag,
+        training_labels_dir,
         run_tag,
         report_dir,
         progress=progress_enabled,
@@ -1685,6 +1832,9 @@ def main() -> None:
         image_ids=example_ids,
         routed_map=routed_map,
         teacher_rows=teacher_rows,
+        teacher_jsonl=teacher_jsonl,
+        candidates_jsonl=candidates_jsonl,
+        features_jsonl=routed_feats,
         num_workers=resolve_num_workers(int(args.num_workers), len(example_ids)),
         progress=progress_enabled,
         progress_every=max(1, progress_every // 10),

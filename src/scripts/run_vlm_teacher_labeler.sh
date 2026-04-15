@@ -29,7 +29,7 @@ TOP_M=12
 TOP_K=5
 MAX_IMAGES=0
 MAX_RETRIES=2
-PROMPT_VERSION="crop_label_candidate_pick_v1"
+PROMPT_VERSION="crop_label_candidate_ids_v2"
 SEED=42
 
 SAVE_RAW_RESPONSE=0
@@ -45,6 +45,7 @@ GPU_IDS=""
 NUM_WORKERS=""
 AUTOFIX_QWEN3_RUNTIME=1
 QWEN3_ALLOW_GITHUB_FALLBACK=0
+SKIP_QWEN3_RUNTIME_CHECK="${SKIP_QWEN3_RUNTIME_CHECK:-0}"
 
 SERVER_MODE=0
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
@@ -171,7 +172,7 @@ sys.exit(0 if has_q3 else 2)
 PY
 }
 
-if [[ "$BACKEND" == "qwen25_vl" || "$BACKEND" == "qwen25_vl_hf" ]]; then
+if [[ "$BACKEND" == "qwen25_vl" || "$BACKEND" == "qwen25_vl_hf" ]] && [ "$SKIP_QWEN3_RUNTIME_CHECK" -ne 1 ]; then
   "$PYTHON_BIN" - <<'PY'
 import sys
 print(f"[env] python={sys.executable}")

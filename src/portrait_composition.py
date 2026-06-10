@@ -105,6 +105,32 @@ def _single_or_midpoint(
     return None, 0.0
 
 
+def _robust_support_point(
+    *,
+    bbox_box: Sequence[float],
+    keypoints_norm: Sequence[Sequence[float]],
+    support_point: Optional[Sequence[float]],
+) -> Tuple[Optional[List[float]], str, Optional[float]]:
+    if support_point is None:
+        return None, "none", None
+    bbox_bottom = _safe_float(bbox_box[3], 1.0)
+    bbox_h = max(1e-6, _safe_float(bbox_box[3], 1.0) - _safe_float(bbox_box[1], 0.0))
+    lower_indices = (KP_LEFT_HIP, KP_RIGHT_HIP, KP_LEFT_KNEE, KP_RIGHT_KNEE, KP_LEFT_ANKLE, KP_RIGHT_ANKLE)
+    lower_y_values = [
+        _safe_float(keypoints_norm[idx][1], _safe_float(support_point[1], 0.9))
+        for idx in lower_indices
+        if idx < len(keypoints_norm) and len(keypoints_norm[idx]) >= 3 and _safe_float(keypoints_norm[idx][2], 0.0) >= 0.15
+    ]
+    lower_max_y = max(lower_y_values, default=_safe_float(support_point[1], 0.9))
+    original_y = _safe_float(support_point[1], lower_max_y)
+    support_y = max(original_y, lower_max_y)
+    gap_to_bbox_bottom = bbox_bottom - support_y
+    if gap_to_bbox_bottom >= max(0.045, 0.14 * bbox_h):
+        return [float(support_point[0]), float(_clamp(bbox_bottom))], "bbox_bottom_adjusted", round(float(gap_to_bbox_bottom), 6)
+    source = "lower_body_keypoint" if lower_max_y > original_y + 0.015 else "keypoint"
+    return [float(support_point[0]), float(_clamp(support_y))], source, round(float(gap_to_bbox_bottom), 6)
+
+
 def _best_gaze_direction(gaze_entries: Sequence[Dict[str, Any]]) -> str:
     best_entry: Optional[Dict[str, Any]] = None
     best_conf = -1.0
@@ -268,7 +294,12 @@ def build_single_portrait_spec(
         torso_point = list(bbox_center_xy)
 
     pelvis_point = list(hip_mid) if hip_mid is not None else list(torso_point)
-    support_point, support_conf = _single_or_midpoint(keypoints, KP_LEFT_ANKLE, KP_RIGHT_ANKLE)
+    support_point_raw, support_conf = _single_or_midpoint(keypoints, KP_LEFT_ANKLE, KP_RIGHT_ANKLE)
+    support_point, support_point_source, support_y_adjustment = _robust_support_point(
+        bbox_box=bbox_box,
+        keypoints_norm=keypoints,
+        support_point=support_point_raw,
+    )
 
     shot_type = _infer_single_shot_type(bbox_box=bbox_box, face_box=face_box, keypoints_norm=keypoints)
     direction_hint = _best_gaze_direction(gaze_entries)
@@ -300,6 +331,7 @@ def build_single_portrait_spec(
     support_target_y = _support_target_y(shot_type)
     return {
         "kind": "single",
+        "bbox_norm_xyxy": [round(float(v), 6) for v in bbox_box],
         "shot_type": shot_type,
         "direction_hint": direction_hint,
         "bbox_center_norm_xy": [round(float(bbox_center_xy[0]), 6), round(float(bbox_center_xy[1]), 6)],
@@ -308,6 +340,9 @@ def build_single_portrait_spec(
         "torso_point_norm_xy": None if torso_point is None else [round(float(torso_point[0]), 6), round(float(torso_point[1]), 6)],
         "pelvis_point_norm_xy": None if pelvis_point is None else [round(float(pelvis_point[0]), 6), round(float(pelvis_point[1]), 6)],
         "support_point_norm_xy": None if support_point is None else [round(float(support_point[0]), 6), round(float(support_point[1]), 6)],
+        "support_point_raw_norm_xy": None if support_point_raw is None else [round(float(support_point_raw[0]), 6), round(float(support_point_raw[1]), 6)],
+        "support_point_source": support_point_source,
+        "support_y_adjustment": support_y_adjustment,
         "support_conf": round(float(support_conf), 6),
         "control_point_norm_xy": [round(float(control_x), 6), round(float(control_y), 6)],
         "placement_anchor_norm_xy": [round(float(placement_anchor_xy[0]), 6), round(float(placement_anchor_xy[1]), 6)],
@@ -377,6 +412,7 @@ def portrait_seed_layouts(spec: Optional[Dict[str, Any]], mode_name: str) -> Lis
     eye_point = spec.get("eye_point_norm_xy")
     torso_point = spec.get("torso_point_norm_xy")
     support_point = spec.get("support_point_norm_xy")
+    bbox_box = _normalized_box(spec.get("bbox_norm_xyxy"))
     shot_type = str(spec.get("shot_type", "unknown") or "unknown")
     direction_hint = str(spec.get("direction_hint", "unknown") or "unknown")
     support_active = bool(spec.get("support_active", False))
@@ -419,6 +455,17 @@ def portrait_seed_layouts(spec: Optional[Dict[str, Any]], mode_name: str) -> Lis
                 "placement_x_values": list(x_targets),
                 "placement_y_values": [max(0.75, float(support_target_y) - 0.03), float(support_target_y)],
                 "priority": 0.96,
+            }
+        )
+    if bbox_box is not None and shot_type in {"three_quarter", "full"} and support_target_y is not None:
+        bottom_anchor = [float(spec.get("control_point_norm_xy", [box_center(bbox_box)[0], 0.5])[0]), float(bbox_box[3])]
+        layouts.append(
+            {
+                "family": "portrait_bbox_bottom",
+                "anchor_xy": bottom_anchor,
+                "placement_x_values": list(x_targets),
+                "placement_y_values": [max(0.82, float(support_target_y) - 0.05), min(0.98, float(support_target_y))],
+                "priority": 0.90,
             }
         )
     elif torso_point is not None and str(spec.get("kind", "")) == "group":
@@ -528,5 +575,6 @@ def portrait_place_components(crop: Sequence[float], spec: Optional[Dict[str, An
         "direction_hint": direction_hint,
         "shot_type": shot_type,
         "support_active": bool(support_active),
+        "support_point_source": spec.get("support_point_source"),
+        "support_y_adjustment": spec.get("support_y_adjustment"),
     }
-

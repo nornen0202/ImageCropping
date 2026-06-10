@@ -1,0 +1,36 @@
+{
+  "multimode_json": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/label_json/multimode_labels_full.json",
+  "label_jsonl": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/routing_v2_v17_precompute_native_full.jsonl",
+  "feature_jsonl": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl",
+  "panel_dir": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/crop_review_routing_v2_v17_precompute_native/panels_unified_220",
+  "selected_panel_image_count": 220,
+  "selected_panel_annotation_count": 1704,
+  "selected_panel_full_body_annotation_count": 259,
+  "selected_panel_full_body_mismatch_count": 0,
+  "selected_panel_full_body_mismatch_rate": 0.0,
+  "full_positive_annotation_count": 47415,
+  "full_positive_full_body_annotation_count": 1859,
+  "full_positive_full_body_mismatch_count": 0,
+  "full_positive_full_body_mismatch_rate": 0.0,
+  "image_route_counts": {
+    "person_group": 761,
+    "person_single_face_headshot": 473,
+    "person_single_full_body": 223,
+    "person_single_upper_half_body": 2136,
+    "pet_dogcat": 323,
+    "scene": 6084
+  },
+  "image_group_single_person_suspicious_count": 640,
+  "image_group_single_person_suspicious_selected_count": 57,
+  "image_face_headshot_fullbody_pose_suspicious_count": 195,
+  "image_face_headshot_fullbody_pose_suspicious_selected_count": 5,
+  "user_marked_issue_rows": 5,
+  "outputs": {
+    "user_marked_issue_reproduction_csv": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/crop_review_routing_v2_v17_precompute_native/panels_unified_220/audit_jy_260609_v17/user_marked_issue_reproduction.csv",
+    "crop_full_body_mismatch_selected_csv": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/crop_review_routing_v2_v17_precompute_native/panels_unified_220/audit_jy_260609_v17/crop_full_body_mismatch_selected_220.csv",
+    "crop_full_body_mismatch_full_csv": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/crop_review_routing_v2_v17_precompute_native/panels_unified_220/audit_jy_260609_v17/crop_full_body_mismatch_full_annotations.csv",
+    "image_group_single_person_suspicious_csv": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/crop_review_routing_v2_v17_precompute_native/panels_unified_220/audit_jy_260609_v17/image_group_single_person_suspicious.csv",
+    "image_face_headshot_fullbody_pose_suspicious_csv": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/crop_review_routing_v2_v17_precompute_native/panels_unified_220/audit_jy_260609_v17/image_face_headshot_fullbody_pose_suspicious.csv",
+    "contact_sheets": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/crop_review_routing_v2_v17_precompute_native/panels_unified_220/audit_jy_260609_v17/contact_sheets"
+  }
+}

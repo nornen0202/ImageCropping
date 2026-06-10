@@ -130,6 +130,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--teacher_jsonl", required=True)
     parser.add_argument("--training_label_dir", required=True)
     parser.add_argument("--gaic_train_json", required=True)
+    parser.add_argument("--gaic_val_json", default="")
     parser.add_argument("--gaic_test_json", required=True)
     parser.add_argument("--image_dir", required=True)
     parser.add_argument("--output_dir", required=True)
@@ -786,6 +787,8 @@ def stable_shard_index(text: str, num_shards: int) -> int:
 
 
 def assign_calibration_split(official_split: str, image_id: str) -> str:
+    if str(official_split) == "val":
+        return "val"
     if str(official_split) == "test":
         return "test"
     return "train" if stable_fraction(str(image_id)) < 0.8 else "val"
@@ -1000,6 +1003,18 @@ def make_output_row(
     row: Dict[str, Any],
     ann: Dict[str, Any],
 ) -> Dict[str, Any]:
+    scores = row.get("scores", {}) if isinstance(row.get("scores"), dict) else {}
+    components = scores.get("components", {}) if isinstance(scores.get("components"), dict) else {}
+    macro_scores = row.get("macro_scores", {}) if isinstance(row.get("macro_scores"), dict) else {}
+    macro_masks = row.get("macro_masks", {}) if isinstance(row.get("macro_masks"), dict) else {}
+    bbox = row.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])
+    if isinstance(bbox, (list, tuple)) and len(bbox) >= 4:
+        x1, y1, x2, y2 = [safe_float(v, 0.0) for v in bbox[:4]]
+        bbox_w = max(1e-6, x2 - x1)
+        bbox_h = max(1e-6, y2 - y1)
+    else:
+        bbox_w, bbox_h = 1.0, 1.0
+    bbox_area = max(1e-6, bbox_w * bbox_h)
     return {
         "image_id": image_id,
         "protocol": protocol,
@@ -1029,8 +1044,36 @@ def make_output_row(
         "pseudo_prob_policy_local": round(safe_float(row.get("pseudo_prob_policy_local", 0.0), 0.0), 6),
         "crop_utility_prob": round(safe_float(row.get("pseudo_prob_policy_local", 0.0), 0.0), 6),
         "policy_pseudo_mos_1to5": round(safe_float(row.get("policy_pseudo_mos_1to5", 0.0), 0.0), 6),
-        "raw_score_rank": round(safe_float(row.get("scores", {}).get("rank", 0.0), 0.0), 6),
-        "raw_score_policy": round(safe_float(row.get("scores", {}).get("policy", 0.0), 0.0), 6),
+        "raw_score_rank": round(safe_float(scores.get("rank", 0.0), 0.0), 6),
+        "raw_score_policy": round(safe_float(scores.get("policy", 0.0), 0.0), 6),
+        "profile_A_macro": round(safe_float(macro_scores.get("A_macro"), 0.0), 6),
+        "profile_S_macro": round(safe_float(macro_scores.get("S_macro"), 0.0), 6),
+        "profile_C_macro": round(safe_float(macro_scores.get("C_macro"), 0.0), 6),
+        "profile_T_macro": round(safe_float(macro_scores.get("T_macro"), 0.0), 6),
+        "profile_A_active": safe_int(macro_masks.get("A_active", int(macro_scores.get("A_macro") is not None))),
+        "profile_S_active": safe_int(macro_masks.get("S_active", int(macro_scores.get("S_macro") is not None))),
+        "profile_C_active": safe_int(macro_masks.get("C_active", int(macro_scores.get("C_macro") is not None))),
+        "profile_T_active": safe_int(macro_masks.get("T_active", int(macro_scores.get("T_macro") is not None))),
+        "profile_area_log_prior": round(safe_float(scores.get("area_log_prior", 0.0), 0.0), 6),
+        "profile_safety_penalty_total": round(safe_float(scores.get("safety_penalty_total", 0.0), 0.0), 6),
+        "profile_safety_penalty_soft": round(safe_float(scores.get("safety_penalty_soft", 0.0), 0.0), 6),
+        "profile_safety_penalty_hard": round(safe_float(scores.get("safety_penalty_hard", 0.0), 0.0), 6),
+        "profile_bbox_area": round(bbox_area, 6),
+        "profile_bbox_log_area": round(math.log(max(bbox_area, 1e-6)), 6),
+        "profile_bbox_ar": round(bbox_w / max(bbox_h, 1e-6), 6),
+        "profile_component_aesthetic_norm": round(safe_float(components.get("aesthetic_norm", 0.0), 0.0), 6),
+        "profile_component_cosine_img_text": round(safe_float(components.get("cosine_img_text", 0.0), 0.0), 6),
+        "profile_component_cov": round(safe_float(components.get("cov", 0.0), 0.0), 6),
+        "profile_component_p_cut": round(safe_float(components.get("p_cut", 0.0), 0.0), 6),
+        "profile_component_p_text": round(safe_float(components.get("p_text", 0.0), 0.0), 6),
+        "profile_component_p_ar_free": round(safe_float(components.get("p_ar_free", 0.0), 0.0), 6),
+        "profile_component_r_comp": round(safe_float(components.get("r_comp", 0.0), 0.0), 6),
+        "profile_component_r_headroom": round(safe_float(components.get("r_headroom", 0.0), 0.0), 6),
+        "profile_component_r_lookroom": round(safe_float(components.get("r_lookroom", 0.0), 0.0), 6),
+        "profile_component_r_horizon": round(safe_float(components.get("r_horizon", 0.0), 0.0), 6),
+        "profile_component_r_sym": round(safe_float(components.get("r_sym", 0.0), 0.0), 6),
+        "profile_component_r_context": round(safe_float(components.get("r_context", 0.0), 0.0), 6),
+        "profile_component_r_teach": round(safe_float(components.get("r_teach", 0.0), 0.0), 6),
     }
 
 
@@ -1077,10 +1120,18 @@ def load_training_regression_groups(path: Path) -> Dict[str, List[Dict[str, Any]
     return grouped
 
 
-def load_gaic_annotations(train_json: Path, test_json: Path) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
+def load_gaic_annotations(
+    train_json: Path,
+    test_json: Path,
+    val_json: Optional[Path] = None,
+) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, List[Dict[str, Any]]]]:
     images: Dict[str, Dict[str, Any]] = {}
     anns_by_image: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
-    for split, path in (("train", train_json), ("test", test_json)):
+    split_paths: List[Tuple[str, Path]] = [("train", train_json)]
+    if val_json is not None and Path(val_json).exists():
+        split_paths.append(("val", Path(val_json)))
+    split_paths.append(("test", test_json))
+    for split, path in split_paths:
         payload = load_json(path)
         for image in payload.get("images", []):
             image_id = str(image.get("id"))
@@ -3727,6 +3778,7 @@ def main() -> None:
     teacher_jsonl = Path(args.teacher_jsonl).resolve()
     training_label_dir = Path(args.training_label_dir).resolve()
     gaic_train_json = Path(args.gaic_train_json).resolve()
+    gaic_val_json = Path(args.gaic_val_json).resolve() if str(args.gaic_val_json).strip() else None
     gaic_test_json = Path(args.gaic_test_json).resolve()
     image_dir = Path(args.image_dir).resolve()
     output_dir = Path(args.output_dir).resolve()
@@ -3781,7 +3833,7 @@ def main() -> None:
     qa_summary = load_json(qa_summary_path) if qa_summary_path.exists() else {}
     validation_summary = load_json(validation_summary_path) if validation_summary_path.exists() else {}
 
-    gt_images, gt_anns = load_gaic_annotations(gaic_train_json, gaic_test_json)
+    gt_images, gt_anns = load_gaic_annotations(gaic_train_json, gaic_test_json, val_json=gaic_val_json)
 
     overlap_ids = sorted(set(candidate_map.keys()).intersection(feature_map.keys()).intersection(gt_images.keys()).intersection(gt_anns.keys()))
     requested_image_ids: List[str] = []
@@ -3854,7 +3906,15 @@ def main() -> None:
     training_free_counts: List[int] = []
     coverage_rows: List[Dict[str, Any]] = []
 
-    for image_id in overlap_ids:
+    benchmark_start = time.time()
+    benchmark_last_progress = benchmark_start
+    benchmark_total = len(overlap_ids)
+    print(
+        f"[progress] run_gaic_benchmark_eval: start | images={benchmark_total} | "
+        f"run_full_expensive={int(args.run_full_expensive)} | output_dir={output_dir}",
+        flush=True,
+    )
+    for image_index, image_id in enumerate(overlap_ids, start=1):
         cand_rec = candidate_map[image_id]
         feat_rec = feature_map[image_id]
         image_meta = gt_images[image_id]
@@ -4137,6 +4197,18 @@ def main() -> None:
                 },
             }
         )
+        now = time.time()
+        if image_index == 1 or image_index == benchmark_total or (now - benchmark_last_progress) >= 30.0:
+            elapsed = max(0.0, now - benchmark_start)
+            rate = image_index / elapsed if elapsed > 0 else 0.0
+            remaining = (benchmark_total - image_index) / rate if rate > 0 else 0.0
+            print(
+                f"[progress] run_gaic_benchmark_eval: {image_index}/{benchmark_total} "
+                f"({image_index / max(1, benchmark_total) * 100:.1f}%) | "
+                f"elapsed={elapsed:.1f}s | eta={remaining:.1f}s | image_id={image_id}",
+                flush=True,
+            )
+            benchmark_last_progress = now
 
     candidate_eval_path = output_dir / "candidate_eval_rows.jsonl"
     write_jsonl(candidate_eval_path, candidate_eval_rows)
@@ -4178,6 +4250,7 @@ def main() -> None:
             "qa_summary_json": str(qa_summary_path),
             "validation_summary_json": str(validation_summary_path),
             "gaic_train_json": str(gaic_train_json),
+            "gaic_val_json": str(gaic_val_json) if gaic_val_json is not None else "",
             "gaic_test_json": str(gaic_test_json),
             "image_dir": str(image_dir),
         },
@@ -4188,10 +4261,11 @@ def main() -> None:
             "requested_image_count": len(requested_image_ids),
             "overlap_image_count": len(overlap_ids),
             "overlap_train_count": sum(1 for row in image_records if row["official_split"] == "train"),
+            "overlap_val_count": sum(1 for row in image_records if row["official_split"] == "val"),
             "overlap_test_count": sum(1 for row in image_records if row["official_split"] == "test"),
             "raw_free_candidate_count_mean": mean(raw_free_counts),
             "training_label_free_candidate_count_mean": mean(training_free_counts),
-            "benchmark_scope_note": "run_image_count는 local GAIC/All 실행 이미지 수이고, gt_total_image_count는 data/Publics/GAIC/annotations_json 의 merged train/test catalog 수입니다. 따라서 본 리포트는 official leaderboard 재현이 아니라 local overlap benchmark입니다.",
+            "benchmark_scope_note": "run_image_count는 local 실행 이미지 수이고, gt_total_image_count는 data/Publics/GAIC 계열 annotations_json 의 merged train/val/test catalog 수입니다. 따라서 본 리포트는 official leaderboard 재현이 아니라 local overlap benchmark입니다.",
         },
         "coverage": {
             "top1_oracle_iou_mean": mean([row["top1_oracle_iou"] for row in coverage_rows]),
@@ -4226,7 +4300,7 @@ def main() -> None:
                 "mean_hit_at_1": mean([row["hit_at_1"] for row in rows]),
             }
 
-        for split_name in ("train", "test"):
+        for split_name in ("train", "val", "test"):
             split_rows = [record[protocol]["metrics_by_field"][PRIMARY_PROTOCOL_FIELD] for record in image_records if record["official_split"] == split_name]
             summary[protocol]["split_breakdown"][split_name] = {
                 "image_count": len(split_rows),

@@ -106,11 +106,14 @@ def load_reference_image_meta(path: Optional[Path]) -> Dict[str, Dict[str, Any]]
 
 def build_split_lookup(
     train_reference_path: Optional[Path],
+    val_reference_path: Optional[Path],
     test_reference_path: Optional[Path],
 ) -> Dict[str, str]:
     lookup: Dict[str, str] = {}
     for image_id in load_split_image_ids(train_reference_path):
         lookup[image_id] = "train"
+    for image_id in load_split_image_ids(val_reference_path):
+        lookup[image_id] = "val"
     for image_id in load_split_image_ids(test_reference_path):
         lookup[image_id] = "test"
     return lookup
@@ -745,7 +748,7 @@ def build_format_guide(
         "| annotations[] | `bbox` | `[x, y, w, h]` 형식의 픽셀 bbox |",
         "| annotations[] | `score` | crop quality score |",
         "| annotations[] | `gt_flag` | positive 여부. GAIC에는 0/1이 함께 존재 |",
-        "| annotations[] | `iscrowd` | COCO 호환 필드, 일반적으로 0 |",
+        "| annotations[] | `iscrowd` | annotation-format 호환 필드, 일반적으로 0 |",
         "| annotations[] | `category_id` | `categories[]`의 `crop`를 참조 |",
         "",
         "- 즉 GAIC 포맷의 핵심은 `이미지 1행 + 그 이미지에 속한 복수 crop annotation` 구조다.",
@@ -871,10 +874,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--out_summary_json", required=True)
     parser.add_argument("--out_guide_md", required=True)
     parser.add_argument("--image_root", default="")
-    parser.add_argument("--size_reference_coco_json", default="")
+    parser.add_argument("--size_reference_label_json", default="")
     parser.add_argument("--gaic_train_reference_json", default="")
+    parser.add_argument("--gaic_val_reference_json", default="")
     parser.add_argument("--gaic_test_reference_json", default="")
     parser.add_argument("--out_train_json", default="")
+    parser.add_argument("--out_val_json", default="")
     parser.add_argument("--out_test_json", default="")
     parser.add_argument("--out_unassigned_json", default="")
     parser.add_argument("--progress", type=int, default=1)
@@ -894,16 +899,21 @@ def main() -> None:
     out_summary_json = Path(args.out_summary_json)
     out_guide_md = Path(args.out_guide_md)
     image_root = resolve_cli_path(args.image_root) if str(args.image_root).strip() else None
-    size_reference_coco_json = resolve_cli_path(args.size_reference_coco_json) if str(args.size_reference_coco_json).strip() else None
+    size_reference_label_json = (
+        resolve_cli_path(args.size_reference_label_json) if str(args.size_reference_label_json).strip() else None
+    )
     gaic_train_reference_json = resolve_cli_path(args.gaic_train_reference_json) if str(args.gaic_train_reference_json).strip() else None
+    gaic_val_reference_json = resolve_cli_path(args.gaic_val_reference_json) if str(args.gaic_val_reference_json).strip() else None
     gaic_test_reference_json = resolve_cli_path(args.gaic_test_reference_json) if str(args.gaic_test_reference_json).strip() else None
     out_train_json = Path(args.out_train_json) if str(args.out_train_json).strip() else default_split_output_path(out_json, "train")
+    out_val_json = Path(args.out_val_json) if str(args.out_val_json).strip() else default_split_output_path(out_json, "val")
     out_test_json = Path(args.out_test_json) if str(args.out_test_json).strip() else default_split_output_path(out_json, "test")
     out_unassigned_json = Path(args.out_unassigned_json) if str(args.out_unassigned_json).strip() else default_split_output_path(out_json, "unassigned")
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_summary_json.parent.mkdir(parents=True, exist_ok=True)
     out_guide_md.parent.mkdir(parents=True, exist_ok=True)
     out_train_json.parent.mkdir(parents=True, exist_ok=True)
+    out_val_json.parent.mkdir(parents=True, exist_ok=True)
     out_test_json.parent.mkdir(parents=True, exist_ok=True)
     out_unassigned_json.parent.mkdir(parents=True, exist_ok=True)
 
@@ -917,9 +927,11 @@ def main() -> None:
         progress_every=max(500, progress_every),
         progress_min_seconds=progress_min_seconds,
     )
-    split_lookup = build_split_lookup(gaic_train_reference_json, gaic_test_reference_json)
-    size_reference_meta = load_size_reference_coco_image_meta(size_reference_coco_json)
-    reference_image_meta = merge_reference_image_meta([gaic_reference_json, gaic_train_reference_json, gaic_test_reference_json])
+    split_lookup = build_split_lookup(gaic_train_reference_json, gaic_val_reference_json, gaic_test_reference_json)
+    size_reference_meta = load_size_reference_coco_image_meta(size_reference_label_json)
+    reference_image_meta = merge_reference_image_meta(
+        [gaic_reference_json, gaic_train_reference_json, gaic_val_reference_json, gaic_test_reference_json]
+    )
     resolved_size_ref_image_ids = {
         str(key).split("\t", 1)[0]
         for key in size_reference_meta
@@ -962,11 +974,13 @@ def main() -> None:
     if split_lookup:
         split_payloads = {
             "train": filter_payload_by_split(payload, "train"),
+            "val": filter_payload_by_split(payload, "val"),
             "test": filter_payload_by_split(payload, "test"),
             "unassigned": filter_payload_by_split(payload, "unassigned"),
         }
         split_output_paths = {
             "train": out_train_json,
+            "val": out_val_json,
             "test": out_test_json,
             "unassigned": out_unassigned_json,
         }
@@ -993,6 +1007,7 @@ def main() -> None:
             "validation": split_validation,
             "reference_paths": {
                 "train": str(gaic_train_reference_json) if gaic_train_reference_json else "",
+                "val": str(gaic_val_reference_json) if gaic_val_reference_json else "",
                 "test": str(gaic_test_reference_json) if gaic_test_reference_json else "",
             },
         }

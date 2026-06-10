@@ -92,6 +92,7 @@ TAR_DIR=""
 IMAGE_DIR=""
 SERVER_MODE=0
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
+PYTHON_BIN="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python"
 LOCAL_TAR_DIR="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"
 SERVER_TAR_DIR="/sstk/20230916/sstk_100"
 
@@ -112,6 +113,7 @@ CHEAP_TOP_M=30
 TOP_K=5
 TAU_DIV=0.75
 USE_REAL_EXPENSIVE=1
+TARGET_AR_FILTER_MODE="none"
 HARD_HEAD_TOP_RULE=1
 HEAD_TOP_FACE_EXPAND_ALPHA=0.35
 HEAD_TOP_KP_EXPAND=0.06
@@ -154,6 +156,7 @@ while [ "$#" -gt 0 ]; do
     --image_dir) IMAGE_DIR="$2"; shift 2 ;;
     --server_mode) SERVER_MODE="$2"; shift 2 ;;
     --venv_path) VENV_PATH="$2"; shift 2 ;;
+    --python_bin) PYTHON_BIN="$2"; shift 2 ;;
 
     --output_jsonl) OUTPUT_JSONL="$2"; shift 2 ;;
     --output_overview_json) OUTPUT_OVERVIEW_JSON="$2"; shift 2 ;;
@@ -172,6 +175,7 @@ while [ "$#" -gt 0 ]; do
     --top_k) TOP_K="$2"; shift 2 ;;
     --tau_div) TAU_DIV="$2"; shift 2 ;;
     --use_real_expensive) USE_REAL_EXPENSIVE="$2"; shift 2 ;;
+    --target_ar_filter_mode) TARGET_AR_FILTER_MODE="$2"; shift 2 ;;
     --hard_head_top_rule) HARD_HEAD_TOP_RULE="$2"; shift 2 ;;
     --head_top_face_expand_alpha) HEAD_TOP_FACE_EXPAND_ALPHA="$2"; shift 2 ;;
     --head_top_kp_expand) HEAD_TOP_KP_EXPAND="$2"; shift 2 ;;
@@ -214,6 +218,10 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
+if [ "$SERVER_MODE" -eq 1 ]; then
+  PYTHON_BIN="/usr/local/bin/python3"
+fi
+
 pick_latest_match() {
   local pattern="$1"
   local found
@@ -243,7 +251,7 @@ jsonl_has_c1_embeddings() {
   if [ ! -f "$f" ]; then
     return 1
   fi
-  python3 - "$f" <<'PY'
+  "$PYTHON_BIN" - "$f" <<'PY'
 import json
 import sys
 path = sys.argv[1]
@@ -318,6 +326,8 @@ if [ "$SERVER_MODE" -ne 1 ]; then
   else
     echo "[warn] venv not found: $VENV_PATH (using current python)"
   fi
+else
+  PYTHON_BIN="/usr/local/bin/python3"
 fi
 
 mkdir -p "$(dirname "$OUTPUT_JSONL")"
@@ -377,6 +387,7 @@ echo "[config] c1=$C1_JSONL"
 echo "[config] parquet=$PARQUET"
 echo "[config] output_jsonl=$OUTPUT_JSONL"
 echo "[config] expensive_accel: batch=$EXP_BATCH_SIZE eval_top_m=$EXPENSIVE_EVAL_TOP_M preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
+echo "[config] target_ar_filter_mode=$TARGET_AR_FILTER_MODE"
 echo "[config] public_teacher_ref_eval: save=$SAVE_PUBLIC_TEACHER_REF_EVAL"
 echo "[config] aesthetic: backend=$AESTHETIC_BACKEND prior_laion_w=$AESTHETIC_PRIOR_LAION_WEIGHT nima_ckpt=$NIMA_MODEL_PATH require_ckpt=$NIMA_REQUIRE_CKPT"
 echo "[config] portrait_safety: hard_head_top=$HARD_HEAD_TOP_RULE face_expand=$HEAD_TOP_FACE_EXPAND_ALPHA kp_expand=$HEAD_TOP_KP_EXPAND min_margin=$HEAD_TOP_MIN_MARGIN face_margin_alpha=$HEAD_TOP_FACE_MARGIN_ALPHA"
@@ -392,7 +403,7 @@ run_teacher_one() {
   local progress="$6"
   local preprocess_workers="$7"
 
-  python3 src/score_teacher.py \
+  "$PYTHON_BIN" src/score_teacher.py \
     --candidates_jsonl "$CANDIDATES_JSONL" \
     --features_jsonl "$FEATURES_JSONL" \
     --c1_jsonl "$C1_JSONL" \
@@ -406,6 +417,7 @@ run_teacher_one() {
     --top_k "$TOP_K" \
     --tau_div "$TAU_DIV" \
     --use_real_expensive "$USE_REAL_EXPENSIVE" \
+    --target_ar_filter_mode "$TARGET_AR_FILTER_MODE" \
     --hard_head_top_rule "$HARD_HEAD_TOP_RULE" \
     --head_top_face_expand_alpha "$HEAD_TOP_FACE_EXPAND_ALPHA" \
     --head_top_kp_expand "$HEAD_TOP_KP_EXPAND" \
@@ -523,7 +535,7 @@ if [ "$MULTI_GPU" -ne 0 ]; then
     done
     echo "[multi] merged teacher jsonl -> $OUTPUT_JSONL"
 
-    python3 src/scripts/rebuild_teacher_overview.py \
+    "$PYTHON_BIN" src/scripts/rebuild_teacher_overview.py \
       --teacher_scores_jsonl "$OUTPUT_JSONL" \
       --output_json "$OUTPUT_OVERVIEW_JSON" \
       --output_by_ar_csv "$OUTPUT_OVERVIEW_CSV"
@@ -537,7 +549,7 @@ fi
 
 if [ "$RUN_QA" -eq 1 ]; then
   echo "[2/3] Building QA report..."
-  python3 src/scripts/qa_teacher_report.py \
+  "$PYTHON_BIN" src/scripts/qa_teacher_report.py \
     --teacher_scores_jsonl "$OUTPUT_JSONL" \
     --output_json "$QA_OUT_JSON" \
     --output_by_ar_csv "$QA_OUT_CSV"
@@ -557,7 +569,7 @@ if [ "$RUN_VIZ" -eq 1 ]; then
   if [ -n "$VIZ_IMAGE_IDS_FILE" ]; then
     viz_args+=(--image_ids_file "$VIZ_IMAGE_IDS_FILE")
   fi
-  python3 src/visualize_teacher_scores.py \
+  "$PYTHON_BIN" src/visualize_teacher_scores.py \
     --teacher_scores_jsonl "$OUTPUT_JSONL" \
     --features_jsonl "$FEATURES_JSONL" \
     --parquet "$PARQUET" \

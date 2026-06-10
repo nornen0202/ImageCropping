@@ -53,7 +53,7 @@ def _select_candidate(candidates: Sequence[dict[str, Any]], method: str) -> dict
     if method == "positive_oracle":
         positives = [c for c in candidates if safe_float(c.get("positive_target")) > 0]
         return max(positives, key=lambda c: safe_float(c.get("score_target")), default=max(candidates, key=lambda c: safe_float(c.get("score_target"))))
-    if method == "proposal_top1":
+    if method in {"proposal_top1", "proposal_top1_target_ar"}:
         return None
     raise ValueError(f"unknown method: {method}")
 
@@ -62,14 +62,16 @@ def _method_metrics(row: dict[str, Any], method: str) -> dict[str, float]:
     best = _best_positive(row)
     best_box = best.get("bbox_norm_xyxy") if isinstance(best, dict) else None
     candidates = row.get("candidates") or []
-    if method == "proposal_top1":
-        proposal = (row.get("proposals") or [{}])[0]
+    if method in {"proposal_top1", "proposal_top1_target_ar"}:
+        proposal = row.get("proposal_top1_target_ar") if method == "proposal_top1_target_ar" else (row.get("proposals") or [{}])[0]
         box = proposal.get("bbox_norm_xyxy") if isinstance(proposal, dict) else None
         return {
             "top1_iou_to_best_positive": box_iou_xyxy(box, best_box) if isinstance(box, list) and isinstance(best_box, list) else 0.0,
             "candidate_top1_hit": 0.0,
             "candidate_top1_exact_best": 0.0,
             "utility_regret": 0.0,
+            "target_ar_log_error": safe_float(proposal.get("target_ar_log_error"), 0.0) if isinstance(proposal, dict) else 0.0,
+            "target_ar_compatible": float(bool(proposal.get("target_ar_compatible", True))) if isinstance(proposal, dict) else 0.0,
         }
     chosen = _select_candidate(candidates, method)
     if chosen is None:
@@ -105,7 +107,8 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
             "",
             "- `baseline_candidate` is the current label pipeline baseline crop, usually the full/max-area crop.",
             "- `teacher_score_oracle` is an upper bound within the replay candidate set, not a deployable cropper.",
-            "- `proposal_top1` evaluates the learned proposal head without candidate replay ranking.",
+            "- `proposal_top1` evaluates the learned proposal head raw top-1 without candidate replay ranking.",
+            "- `proposal_top1_target_ar` evaluates the proposal selected after target-AR compatibility filtering.",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -115,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     rows = _read_jsonl(args.predictions_jsonl)
-    methods = ["v4_model", "baseline_candidate", "teacher_score_oracle", "positive_oracle", "proposal_top1"]
+    methods = ["v4_model", "baseline_candidate", "teacher_score_oracle", "positive_oracle", "proposal_top1", "proposal_top1_target_ar"]
     detail_rows = []
     summary_methods = {}
     for method in methods:

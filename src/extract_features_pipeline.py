@@ -51,7 +51,7 @@ def parse_args():
         description="Feature Extraction Pipeline — Multi-GPU / Ray mode"
     )
     parser.add_argument("--input_parquet", required=True)
-    parser.add_argument("--tar_dir",       required=True)
+    parser.add_argument("--tar_dir",       default="")
     parser.add_argument("--bucket",        default="sstk_100")
     parser.add_argument("--output_jsonl",  required=True)
     parser.add_argument(
@@ -119,9 +119,14 @@ def main():
     # ── 메타데이터 로드 ───────────────────────────────────────────────────────
     print(f"[Ray] Loading metadata: {args.input_parquet}")
     df = pd.read_parquet(args.input_parquet)
-    required = {"image_id", "tar_name"}
+    required = {"image_id"}
     if not required.issubset(df.columns):
         raise ValueError(f"Input parquet missing columns: {required - set(df.columns)}")
+    if "tar_name" not in df.columns:
+        if not str(args.image_dir).strip():
+            raise ValueError("Input parquet missing tar_name; provide --image_dir for local-image extraction.")
+        df = df.copy()
+        df["tar_name"] = "__local_images__"
     print(f"[Ray] Total images: {len(df)}")
 
     # ── 처리 ─────────────────────────────────────────────────────────────────
@@ -148,7 +153,7 @@ def main():
                 id_to_img = dict(iter_local_images(str(args.image_dir), wanted_ids))
 
             missing_ids = [iid for iid in wanted_ids if iid not in id_to_img]
-            if missing_ids:
+            if missing_ids and str(args.tar_dir).strip():
                 tar_path = resolve_tar_path(args.tar_dir, args.bucket, tar_name)
                 if tar_path is None:
                     if not id_to_img:
@@ -156,6 +161,8 @@ def main():
                         continue
                 else:
                     id_to_img.update(dict(iter_tar_images(tar_path, missing_ids)))
+            elif missing_ids:
+                print(f"  [WARN] local images missing for {len(missing_ids)} ids under {args.image_dir}")
 
             batch_all = []
             for img_id, img in id_to_img.items():

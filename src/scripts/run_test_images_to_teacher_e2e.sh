@@ -365,12 +365,12 @@ VLM_SUMMARY_JSON="${VLM_DIR}/summary/vlm_teacher_summary${SUFFIX}.json"
 TRAINING_VALIDATION_JSON="${TRAINING_DIR}/validation_summary.json"
 TRAINING_DETR_CANONICAL_JSON="${TRAINING_DIR}/train_conditional_detr_canonical.jsonl"
 TRAINING_DETR_BATCH_JSON="${TRAINING_DIR}/train_conditional_detr_batch.jsonl"
-TRAINING_GAIC_LIKE_SUMMARY_JSON="${TRAINING_DIR}/coco/gaic_like_conversion_summary.json"
+TRAINING_GAIC_LIKE_SUMMARY_JSON="${TRAINING_DIR}/label_json/gaic_like_conversion_summary.json"
 TRAINING_LABEL_DEBUG_VIZ_OUT_DIR=${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR:-"${TRAINING_DIR}/debug_visualizations_balanced${TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE}_bottomneg"}
 TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON="${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR}/summary/summary.json"
 MULTIMODE_SUMMARY_JSON="${MULTIMODE_TRAINING_DIR}/summary.json"
 MULTIMODE_QUERY_STATUS_JSONL="${MULTIMODE_TRAINING_DIR}/mode_query_status.jsonl"
-MULTIMODE_COCO_JSON="${MULTIMODE_TRAINING_DIR}/coco/instances_multimode_training_labels.json"
+MULTIMODE_LABEL_JSON="${MULTIMODE_TRAINING_DIR}/label_json/multimode_labels_full.json"
 MULTIMODE_VALIDATION_JSON="${MULTIMODE_TRAINING_DIR}/validation_summary.json"
 if [ -z "$GAIC_CAPTION_JSONL" ]; then
   GAIC_CAPTION_JSONL="${METADATA_DIR}/test_images_captions${SUFFIX}.jsonl"
@@ -462,10 +462,10 @@ current_routed_jsonl() {
 build_test_images_like_export() {
   local training_dir="$1"
   local batch_jsonl="${training_dir}/train_conditional_detr_batch.jsonl"
-  local coco_dir="${training_dir}/coco"
-  local out_json="${coco_dir}/instances_conditional_detr_batch_gaic_like.json"
-  local out_summary_json="${coco_dir}/gaic_like_conversion_summary.json"
-  local out_guide_md="${coco_dir}/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
+  local label_json_dir="${training_dir}/label_json"
+  local out_json="${label_json_dir}/gaic_like_labels_full.json"
+  local out_summary_json="${label_json_dir}/gaic_like_conversion_summary.json"
+  local out_guide_md="${label_json_dir}/GAIC_LIKE_LABEL_FORMAT_KO.md"
   "$PYTHON_BIN" src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
     --batch_jsonl "$batch_jsonl" \
     --gaic_reference_json "$REFERENCE_JSON" \
@@ -486,7 +486,7 @@ validate_training_outputs() {
     --candidates_jsonl "$CANDIDATES_JSONL"
     --teacher_jsonl "$TEACHER_JSONL"
     --training_validation_json "${training_dir}/validation_summary.json"
-    --training_gaic_like_summary_json "${training_dir}/coco/gaic_like_conversion_summary.json"
+    --training_gaic_like_summary_json "${training_dir}/label_json/gaic_like_conversion_summary.json"
     --summary_json "$validation_json"
   )
   if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
@@ -511,7 +511,7 @@ build_training_variant() {
   local variant_validation_json="${VALIDATION_DIR}/test_images_e2e_validation_${RUN_TAG}_leftover_${suffix}_monotonic.json"
   if [ "$SKIP_EXISTING" -eq 1 ] \
     && [ -f "${variant_dir}/validation_summary.json" ] \
-    && [ -f "${variant_dir}/coco/gaic_like_conversion_summary.json" ] \
+    && [ -f "${variant_dir}/label_json/gaic_like_conversion_summary.json" ] \
     && [ -f "$variant_validation_json" ]; then
     echo "[skip] leftover variant already complete: ${variant_dir}"
     return 0
@@ -527,11 +527,11 @@ build_training_variant() {
     --progress 1 \
     --strict_validation 1 \
     --report_examples 8
-  "$PYTHON_BIN" src/scripts/convert_sstk_detr_labels_to_coco.py \
+  "$PYTHON_BIN" src/scripts/export_sstk_detr_labels_to_annotation_json.py \
     --canonical_jsonl "${variant_dir}/train_conditional_detr_canonical.jsonl" \
     --batch_jsonl "${variant_dir}/train_conditional_detr_batch.jsonl" \
     --progress 1 \
-    --out_dir "${variant_dir}/coco"
+    --out_dir "${variant_dir}/label_json"
   build_test_images_like_export "$variant_dir"
   validate_training_outputs "$variant_dir" "$variant_validation_json"
 }
@@ -691,8 +691,8 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
 fi
 
 if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
-  if [ ! -f "$MULTIMODE_SUMMARY_JSON" ] || [ ! -f "$MULTIMODE_COCO_JSON" ] || [ ! -f "$MULTIMODE_VALIDATION_JSON" ]; then
-    echo "[error] expected multimode outputs missing: $MULTIMODE_SUMMARY_JSON | $MULTIMODE_COCO_JSON | $MULTIMODE_VALIDATION_JSON"
+  if [ ! -f "$MULTIMODE_SUMMARY_JSON" ] || [ ! -f "$MULTIMODE_LABEL_JSON" ] || [ ! -f "$MULTIMODE_VALIDATION_JSON" ]; then
+    echo "[error] expected multimode outputs missing: $MULTIMODE_SUMMARY_JSON | $MULTIMODE_LABEL_JSON | $MULTIMODE_VALIDATION_JSON"
     exit 1
   fi
 fi

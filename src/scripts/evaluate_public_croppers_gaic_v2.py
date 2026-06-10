@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
         ],
     )
     parser.add_argument("--output_dir", type=Path, required=True)
-    parser.add_argument("--methods", nargs="*", default=["cacnet", "cgs", "gaic"], choices=["cacnet", "cgs", "gaic"])
+    parser.add_argument("--methods", nargs="*", default=["cacnet", "cgs", "gaic"], choices=["cacnet", "cgs", "gaic", "s2cnet"])
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
     parser.add_argument("--max_images", type=int, default=None)
     parser.add_argument("--save_per_image", action="store_true")
@@ -134,29 +134,24 @@ def _score_cacnet(records: Sequence[dict[str, Any]], *, device: torch.device) ->
         raise FileNotFoundError(weight_path)
     _append_paths([model_dir])
     from CACNet import CACNet  # type: ignore
+    import cv2
 
     model = CACNet(loadweights=False)
     model.load_state_dict(_load_state_dict(weight_path, map_location="cpu"))
     model.to(device).eval()
-    image_transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize(mean=IMAGENET_MEAN, std=IMAGENET_STD)])
     scores_by_image: dict[str, list[float]] = {}
     coverage_by_image: dict[str, dict[str, float]] = {}
     skipped: list[dict[str, str]] = []
     elapsed_start = time.time()
-    with torch.no_grad():
-        for record in records:
-            image_id = str(record["image_id"])
-            image_path = Path(str(record.get("image_path", "")))
-            candidates = list(record.get("candidates") or [])
-            if not image_path.exists() or not candidates:
-                skipped.append({"image_id": image_id, "reason": "missing_image_or_candidates"})
-                continue
-            image = Image.open(image_path).convert("RGB")
-            width, height = image.size
-            resized = image.resize((224, 224), _resample_lanczos())
-            tensor = image_transform(resized).unsqueeze(0).to(device)
-            _, _, crop = model(tensor, only_classify=False)
-            pred = crop.squeeze(0).detach().cpu().float().tolist()
+
+    def flush_batch(batch: list[tuple[str, int, int, list[dict[str, Any]], torch.Tensor]]) -> None:
+        if not batch:
+            return
+        tensors = torch.cat([item[4] for item in batch], dim=0).to(device)
+        _, _, crops = model(tensors, only_classify=False)
+        crops_list = crops.detach().cpu().float().tolist()
+        for (image_id, width, height, candidates, _tensor), pred in zip(batch, crops_list):
+            pred = list(pred)
             pred[0] = max(0.0, min(224.0, float(pred[0]))) / 224.0 * float(width)
             pred[1] = max(0.0, min(224.0, float(pred[1]))) / 224.0 * float(height)
             pred[2] = max(0.0, min(224.0, float(pred[2]))) / 224.0 * float(width)
@@ -173,11 +168,40 @@ def _score_cacnet(records: Sequence[dict[str, Any]], *, device: torch.device) ->
                 "predicted_crop_candidate_iou_mean": float(mean(ious)),
                 "candidate_count": float(len(candidates)),
             }
+
+    batch_size = 64 if device.type == "cuda" else 1
+    batch: list[tuple[str, int, int, list[dict[str, Any]], torch.Tensor]] = []
+    with torch.no_grad():
+        for record in records:
+            image_id = str(record["image_id"])
+            image_path = Path(str(record.get("image_path", "")))
+            candidates = list(record.get("candidates") or [])
+            if not image_path.exists() or not candidates:
+                skipped.append({"image_id": image_id, "reason": "missing_image_or_candidates"})
+                continue
+            bgr = cv2.imread(str(image_path), cv2.IMREAD_COLOR)
+            if bgr is None:
+                skipped.append({"image_id": image_id, "reason": "cv2_read_failed"})
+                continue
+            height, width = int(bgr.shape[0]), int(bgr.shape[1])
+            rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+            resized = cv2.resize(rgb, (224, 224), interpolation=cv2.INTER_AREA)
+            resized = resized.astype(np.float32) / 255.0
+            resized -= np.array(IMAGENET_MEAN, dtype=np.float32)
+            resized /= np.array(IMAGENET_STD, dtype=np.float32)
+            tensor = torch.from_numpy(resized.transpose((2, 0, 1))).unsqueeze(0)
+            batch.append((image_id, width, height, candidates, tensor))
+            if len(batch) >= batch_size:
+                flush_batch(batch)
+                batch = []
+        flush_batch(batch)
     return scores_by_image, coverage_by_image, {
         "model_kind": "single_crop_regressor_projected_by_iou",
         "code_dir": str(model_dir),
         "weight_path": str(weight_path),
         "device": str(device),
+        "batch_size": batch_size,
+        "preprocess": "cv2.imread + cv2.INTER_AREA resize to 224x224 + ImageNet normalization",
         "elapsed_sec": round(time.time() - elapsed_start, 3),
         "skipped_count": len(skipped),
         "skipped": skipped[:50],
@@ -309,6 +333,152 @@ def _score_gaic(records: Sequence[dict[str, Any]], *, device: torch.device) -> t
     }
 
 
+def _s2cnet_graph_node_boxes(candidates: Sequence[dict[str, Any]]) -> list[list[float]]:
+    def area(box: Sequence[float]) -> float:
+        return max(0.0, float(box[2]) - float(box[0])) * max(0.0, float(box[3]) - float(box[1]))
+
+    def iou(a: Sequence[float], b: Sequence[float]) -> float:
+        ax1, ay1, ax2, ay2 = [float(v) for v in a]
+        bx1, by1, bx2, by2 = [float(v) for v in b]
+        ix1 = max(ax1, bx1)
+        iy1 = max(ay1, by1)
+        ix2 = min(ax2, bx2)
+        iy2 = min(ay2, by2)
+        inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+        denom = area(a) + area(b) - inter
+        return float(inter / denom) if denom > 0.0 else 0.0
+
+    boxes: list[list[float]] = []
+    raw_boxes: list[list[float]] = []
+    for candidate in candidates:
+        box = candidate.get("bbox_norm_xyxy", candidate.get("bbox_xyxy_norm"))
+        if not isinstance(box, (list, tuple)) or len(box) != 4:
+            continue
+        try:
+            x1, y1, x2, y2 = [float(v) for v in box]
+        except (TypeError, ValueError):
+            continue
+        if x2 <= x1 or y2 <= y1:
+            continue
+        raw_boxes.append([max(0.0, min(1.0, x1)), max(0.0, min(1.0, y1)), max(0.0, min(1.0, x2)), max(0.0, min(1.0, y2))])
+
+    for box in sorted(raw_boxes, key=area, reverse=True):
+        if len(boxes) >= 5:
+            break
+        if area(box) > 0.985:
+            continue
+        if all(iou(box, prev) < 0.85 for prev in boxes):
+            boxes.append(box)
+
+    fallback = [
+        [0.0, 0.0, 1.0, 1.0],
+        [0.2, 0.2, 0.8, 0.8],
+        [0.0, 0.15, 0.62, 0.85],
+        [0.38, 0.15, 1.0, 0.85],
+        [0.15, 0.0, 0.85, 0.62],
+    ]
+    for box in fallback:
+        if len(boxes) >= 5:
+            break
+        if all(iou(box, prev) < 0.85 for prev in boxes):
+            boxes.append(box)
+    while len(boxes) < 5:
+        boxes.append(fallback[len(boxes) % len(fallback)])
+    return boxes[:5]
+
+
+def _score_s2cnet(records: Sequence[dict[str, Any]], *, device: torch.device) -> tuple[dict[str, list[float]], dict[str, dict[str, float]], dict[str, Any]]:
+    if device.type != "cuda":
+        raise RuntimeError("S2CNet evaluation requires CUDA because the RoI/RoD Align extensions are CUDA ops.")
+    import argparse
+    import cv2
+
+    model_dir = PUBLIC_TEACHER_ROOT / "s2cnet"
+    cgs_dir = PUBLIC_TEACHER_ROOT / "cgs"
+    weight_path = PUBLIC_WEIGHT_ROOT / "s2cnet/s2cnet_gaicv2.pth"
+    for path in (model_dir, cgs_dir, weight_path):
+        if not path.exists():
+            raise FileNotFoundError(path)
+
+    # S2CNet uses the same roi_align/rod_align package names. Reuse the already built CGS Py3.10 extensions.
+    _append_paths([cgs_dir, cgs_dir / "roi_align", cgs_dir / "rod_align", model_dir])
+    from model.ssc import SSC  # type: ignore
+
+    cfg = argparse.Namespace(
+        base_model="mobilenetv2",
+        loadweight=False,
+        downsample=4,
+        align_size=15,
+        reduced_dim=8,
+        num_feature_node=256,
+        num_features_relation=256,
+        num_depth=2,
+        num_heads=4,
+        mlp_dim=1024,
+        only_crop=False,
+        bbox_num=5,
+    )
+    model = SSC(cfg)
+    model.load_state_dict(_load_state_dict(weight_path, map_location="cpu"))
+    model.to(device).eval()
+
+    scores_by_image: dict[str, list[float]] = {}
+    coverage_by_image: dict[str, dict[str, float]] = {}
+    skipped: list[dict[str, str]] = []
+    elapsed_start = time.time()
+    with torch.no_grad():
+        for record in records:
+            image_id = str(record["image_id"])
+            image_path = Path(str(record.get("image_path", "")))
+            candidates = list(record.get("candidates") or [])
+            if not image_path.exists() or not candidates:
+                skipped.append({"image_id": image_id, "reason": "missing_image_or_candidates"})
+                continue
+            bgr = cv2.imread(str(image_path))
+            if bgr is None:
+                skipped.append({"image_id": image_id, "reason": "cv2_read_failed"})
+                continue
+            rgb = bgr[:, :, (2, 1, 0)]
+            height, width = int(rgb.shape[0]), int(rgb.shape[1])
+            resized_w, resized_h = _resize_keep_min_side(width, height, 256.0)
+            resized = cv2.resize(rgb, (resized_w, resized_h)) / 256.0
+            resized = resized.astype(np.float32)
+            resized -= np.array(IMAGENET_MEAN, dtype=np.float32)
+            resized /= np.array(IMAGENET_STD, dtype=np.float32)
+            tensor = torch.from_numpy(resized.transpose((2, 0, 1))).unsqueeze(0).float().to(device)
+            ratio_w = float(resized_w) / float(width)
+            ratio_h = float(resized_h) / float(height)
+
+            rois = []
+            for candidate in candidates:
+                x1, y1, x2, y2 = _norm_box_to_pixel_xyxy(candidate["bbox_norm_xyxy"], width=width, height=height)
+                rois.append([0.0, math.floor(x1 * ratio_w), math.floor(y1 * ratio_h), math.ceil(x2 * ratio_w), math.ceil(y2 * ratio_h)])
+            graph_nodes = []
+            for box in _s2cnet_graph_node_boxes(candidates):
+                x1, y1, x2, y2 = _norm_box_to_pixel_xyxy(box, width=width, height=height)
+                graph_nodes.append([0.0, math.floor(x1 * ratio_w), math.floor(y1 * ratio_h), math.ceil(x2 * ratio_w), math.ceil(y2 * ratio_h)])
+            roi_tensor = torch.tensor(rois, dtype=torch.float32, device=device)
+            graph_tensor = torch.tensor(graph_nodes, dtype=torch.float32, device=device)
+            scores = model(tensor, roi_tensor, graph_tensor)
+            scores_by_image[image_id] = [float(v) for v in scores.reshape(-1).detach().cpu().tolist()]
+            coverage_by_image[image_id] = {
+                "candidate_count": float(len(candidates)),
+                "scored_candidate_rate": 1.0,
+                "s2cnet_graph_node_count": float(len(graph_nodes)),
+            }
+    return scores_by_image, coverage_by_image, {
+        "model_kind": "candidate_ranker_with_heuristic_graph_nodes",
+        "code_dir": str(model_dir),
+        "weight_path": str(weight_path),
+        "replacement_extension_source": str(cgs_dir),
+        "device": str(device),
+        "elapsed_sec": round(time.time() - elapsed_start, 3),
+        "skipped_count": len(skipped),
+        "skipped": skipped[:50],
+        "compatibility_note": "S2CNet's original evaluation uses 5 Faster-RCNN object boxes per image. This project benchmark manifest does not include those object boxes, so scoring uses 5 deterministic candidate-derived graph nodes. Treat the row as a public-weight diagnostic, not an exact reproduction of the paper protocol.",
+    }
+
+
 def _oracle_scores(records: Sequence[dict[str, Any]]) -> dict[str, list[float]]:
     return {str(record["image_id"]): [float(c.get("mos", 0.0)) for c in record.get("candidates", [])] for record in records}
 
@@ -323,6 +493,7 @@ def _evaluate_method(
         "cacnet": _score_cacnet,
         "cgs": _score_cgs,
         "gaic": _score_gaic,
+        "s2cnet": _score_s2cnet,
     }[method]
     scores, coverage, metadata = scorer(records, device=device)
     evaluated = evaluate_scored_records(
@@ -401,16 +572,16 @@ def _metric_cell(metrics: dict[str, Any], key: str) -> str:
 
 def _write_report(path: Path, summary: dict[str, Any]) -> None:
     lines = [
-        "# Public Cropper GAIC v2 Benchmark Evaluation",
+        "# Public Cropper GAIC v2 벤치마크 평가 보고서",
         "",
         f"- annotations_json: `{summary['annotations_json']}`",
-        f"- image_count: {summary['image_count']}",
-        f"- candidate_count: {summary['candidate_count']}",
-        f"- device: `{summary['device']}`",
+        f"- 이미지 수: {summary['image_count']}",
+        f"- 후보 수: {summary['candidate_count']}",
+        f"- 실행 장치: `{summary['device']}`",
         "",
-        "## Availability",
+        "## 사용 가능성",
         "",
-        "| method | status | reason / note |",
+        "| 방법 | 상태 | 사유 / 메모 |",
         "| --- | --- | --- |",
     ]
     for method in summary["method_order"]:
@@ -421,7 +592,7 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
     lines.extend(
         [
             "",
-            "## Metric Definitions",
+            "## 지표 정의",
             "",
             "- `PCC`, `SRCC`: official GAIC MOS and predicted candidate scores의 이미지별 상관계수를 평균한 값이며 높을수록 좋다.",
             "- `AccK/N`: 모델이 반환한 상위 K개 후보 중 official MOS 상위 N개에 포함되는 비율이며 높을수록 좋다.",
@@ -431,7 +602,7 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
             "- `top1 rank pct`: top-1 crop의 official rank percentile이며 1.0에 가까울수록 좋다.",
             "- `-`: 모델 출력 형식상 해당 GAIC candidate-ranking 지표를 원 방식으로 계산할 수 없음을 뜻한다.",
             "",
-            "## Method Comparison",
+            "## 방법별 비교",
             "",
             "| method | images | PCC | SRCC | Acc1/5 | Acc1/10 | Acc4/5 | Accw4/5 | top1 MOS | top1 rank pct | MOS regret |",
             "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -462,7 +633,7 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
         lines.extend(
             [
                 "",
-                "## CACNet Projection Diagnostics",
+                "## CACNet 투영 진단",
                 "",
                 "CACNet은 단일 crop만 출력하므로 위 GAIC candidate-ranking 표에서는 해당 지표를 `-`로 표시했다. 아래 값은 예측 crop과 official candidate 간 IoU 투영으로 계산한 참고 진단값이며, 원 GAIC 평가 지표로 해석하면 안 된다.",
                 "",
@@ -481,11 +652,11 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
     lines.extend(
         [
             "",
-            "## Notes",
+            "## 해석 메모",
             "",
-            "- `gaic_mos_oracle` is an upper bound that sorts candidates by the official MOS itself.",
-            "- CACNet is a single-crop regressor, so native GAIC candidate-ranking metrics are marked as not applicable in the primary comparison table.",
-            "- CGS and GAIC are candidate rankers and are scored directly on the official GAIC annotation candidates.",
+            "- `gaic_mos_oracle`은 공식 MOS 자체로 후보를 정렬한 상한선이며 배포 가능한 모델이 아니다.",
+            "- CACNet은 단일 crop regressor이므로 기본 비교표에서 native GAIC candidate-ranking 지표는 적용 불가로 표시한다.",
+            "- CGS와 GAIC는 candidate ranker이므로 공식 GAIC annotation 후보에서 직접 평가한다.",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")

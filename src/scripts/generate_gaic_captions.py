@@ -250,7 +250,12 @@ class BlipCaptioner(BaseCaptioner):
         from transformers import BlipForConditionalGeneration, BlipProcessor
 
         self.processor = BlipProcessor.from_pretrained(model_id)
-        self.model = BlipForConditionalGeneration.from_pretrained(model_id, torch_dtype=dtype, use_safetensors=True).to(device)
+        model_path = Path(model_id) if str(model_id).strip() else Path("")
+        has_safetensors = bool(model_path.is_dir() and any(model_path.glob("*.safetensors")))
+        load_kwargs = {"torch_dtype": dtype}
+        if has_safetensors:
+            load_kwargs["use_safetensors"] = True
+        self.model = BlipForConditionalGeneration.from_pretrained(model_id, **load_kwargs).to(device)
         self.model.eval()
 
     @torch.no_grad()

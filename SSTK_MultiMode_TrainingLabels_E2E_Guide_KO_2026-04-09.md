@@ -40,7 +40,7 @@
 - `summary.json`
 - `mode_query_status.jsonl`
 - `validation_summary.json`
-- `coco/instances_multimode_training_labels.json`
+- `label_json/multimode_labels_full.json`
 - `debug_viz/` (`--multimode_write_debug_viz 1`일 때만)
 
 정책상 `positive`가 없는 query는 `mode_query_status.jsonl`에는 남지만 COCO `annotations[]`에는 직렬화하지 않는다.  
@@ -214,7 +214,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 
 - `data/SSTK/Full_10000/artifacts/training_labels_multimode/260316_r2_multimode_reuse_multimode_v1/summary.json`
 - `data/SSTK/Full_10000/artifacts/training_labels_multimode/260316_r2_multimode_reuse_multimode_v1/mode_query_status.jsonl`
-- `data/SSTK/Full_10000/artifacts/training_labels_multimode/260316_r2_multimode_reuse_multimode_v1/coco/instances_multimode_training_labels.json`
+- `data/SSTK/Full_10000/artifacts/training_labels_multimode/260316_r2_multimode_reuse_multimode_v1/label_json/multimode_labels_full.json`
 - `data/SSTK/Full_10000/artifacts/training_labels_multimode/260316_r2_multimode_reuse_multimode_v1/debug_viz/`
 - `data/SSTK/Full_10000/artifacts/training_labels_multimode/260316_r2_multimode_reuse_multimode_v1/validation_summary.json`
 
@@ -390,7 +390,7 @@ ${PY} src/scripts/build_multimode_training_labels.py \
 
 ${PY} src/scripts/validate_multimode_training_labels.py \
   --summary_json ${OUT_DIR}/summary.json \
-  --coco_json ${OUT_DIR}/coco/instances_multimode_training_labels.json \
+  --label_json ${OUT_DIR}/label_json/multimode_labels_full.json \
   --query_status_jsonl ${OUT_DIR}/mode_query_status.jsonl \
   --out_json ${OUT_DIR}/validation_summary.json \
   --progress 1
@@ -415,7 +415,7 @@ GAIC smoke:
 /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python \
   src/scripts/validate_multimode_training_labels.py \
   --summary_json tmp/multimode_gaic_smoke/summary.json \
-  --coco_json tmp/multimode_gaic_smoke/coco/instances_multimode_training_labels.json \
+  --label_json tmp/multimode_gaic_smoke/label_json/multimode_labels_full.json \
   --query_status_jsonl tmp/multimode_gaic_smoke/mode_query_status.jsonl \
   --progress 1
 ```

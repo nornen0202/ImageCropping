@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -22,7 +23,14 @@ from mobilecropnet_v4.data import (
     target_ar_id,
     xyxy_to_cxcywh,
 )
-from mobilecropnet_v4.eval_utils import infer_input_size, load_mobilecropnet_v4_checkpoint, write_jsonl
+from mobilecropnet_v4.eval_utils import (
+    SCORE_SURFACES,
+    infer_image_norm,
+    infer_input_size,
+    load_mobilecropnet_v4_checkpoint,
+    select_score_logits,
+    write_jsonl,
+)
 from mobilecropnet_v4.gaic_benchmark import (
     DEFAULT_RETURN_K,
     DEFAULT_TOP_N,
@@ -51,6 +59,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--model_name", default="mobilecropnet_v4")
     parser.add_argument("--target_ar", default="FREE", help="Conditioning AR used by the target-aware model for official GAIC scoring.")
     parser.add_argument("--input_size", type=int, default=None)
+    parser.add_argument("--image_mean", default=None, help="Comma-separated RGB mean. Defaults to checkpoint train_config/backbone pretrained_cfg.")
+    parser.add_argument("--image_std", default=None, help="Comma-separated RGB std. Defaults to checkpoint train_config/backbone pretrained_cfg.")
+    parser.add_argument(
+        "--score_surface",
+        choices=SCORE_SURFACES,
+        default="deployment",
+        help="Score surface for GAIC ranking. deployment matches runtime inference/direct evaluation.",
+    )
     parser.add_argument("--max_images", type=int, default=None)
     parser.add_argument("--save_per_image", action="store_true")
     parser.add_argument("--teacher_jsonl", type=Path, default=None)
@@ -72,7 +88,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="When exact teacher rows cover only a subset, add a model row on the same image subset for fair comparison.",
     )
     parser.add_argument("--device", default="cuda" if torch.cuda.is_available() else "cpu")
+    parser.add_argument("--progress_json", type=Path, default=None)
+    parser.add_argument("--progress_every", type=int, default=25)
     return parser
+
+
+def _write_progress(path: Path | None, payload: dict[str, Any]) -> None:
+    if path is None:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _box_meta(box: Sequence[float], *, is_base: float = 0.0) -> list[float]:
@@ -88,24 +113,76 @@ def _score_model_records(
     records: list[dict[str, Any]],
     target_ar: str,
     input_size: int | None,
+    image_mean: Sequence[float] | None,
+    image_std: Sequence[float] | None,
+    score_surface: str,
     device: torch.device,
+    progress_path: Path | None = None,
+    progress_every: int = 25,
 ) -> tuple[dict[str, list[float]], dict[str, Any]]:
     model, ckpt = load_mobilecropnet_v4_checkpoint(checkpoint, device=device)
     size = infer_input_size(ckpt, input_size)
+    norm_mean, norm_std = infer_image_norm(ckpt, explicit_mean=image_mean, explicit_std=image_std)
     model.eval()
     scores_by_image: dict[str, list[float]] = {}
     skipped: list[dict[str, str]] = []
+    started_at = time.time()
+    total = len(records)
+    _write_progress(
+        progress_path,
+        {
+            "state": "running",
+            "phase": "model_scoring",
+            "checkpoint": str(checkpoint),
+            "processed_images": 0,
+            "total_images": total,
+            "scored_images": 0,
+            "skipped_count": 0,
+            "started_at_unix": started_at,
+            "updated_at_unix": started_at,
+        },
+    )
     with torch.no_grad():
-        for record in records:
+        for index, record in enumerate(records, start=1):
             image_path = Path(str(record.get("image_path", "")))
             if not image_path.exists():
                 skipped.append({"image_id": str(record.get("image_id", "")), "reason": "missing_image"})
+                if index % max(1, progress_every) == 0 or index == total:
+                    _write_progress(
+                        progress_path,
+                        {
+                            "state": "running",
+                            "phase": "model_scoring",
+                            "checkpoint": str(checkpoint),
+                            "processed_images": index,
+                            "total_images": total,
+                            "scored_images": len(scores_by_image),
+                            "skipped_count": len(skipped),
+                            "elapsed_sec": time.time() - started_at,
+                            "updated_at_unix": time.time(),
+                        },
+                    )
                 continue
             candidates = list(record.get("candidates") or [])
             if not candidates:
                 skipped.append({"image_id": str(record.get("image_id", "")), "reason": "no_candidates"})
+                if index % max(1, progress_every) == 0 or index == total:
+                    _write_progress(
+                        progress_path,
+                        {
+                            "state": "running",
+                            "phase": "model_scoring",
+                            "checkpoint": str(checkpoint),
+                            "processed_images": index,
+                            "total_images": total,
+                            "scored_images": len(scores_by_image),
+                            "skipped_count": len(skipped),
+                            "elapsed_sec": time.time() - started_at,
+                            "updated_at_unix": time.time(),
+                        },
+                    )
                 continue
-            image, transform = load_image_tensor_letterbox(image_path, size)
+            image, transform = load_image_tensor_letterbox(image_path, size, image_mean=norm_mean, image_std=norm_std)
             boxes_orig = [list(c["bbox_norm_xyxy"]) for c in candidates]
             boxes = [original_to_letterbox_box(box, transform) for box in boxes_orig]
             box_meta = [_box_meta(box) for box in boxes]
@@ -120,12 +197,31 @@ def _score_model_records(
                 torch.tensor([candidate_is_base], dtype=torch.float32, device=device),
                 torch.tensor([box_meta], dtype=torch.float32, device=device),
             )
-            scores = torch.sigmoid(outputs["utility_logits"]).squeeze(0).detach().cpu().tolist()
+            score_logits = select_score_logits(outputs, score_surface=score_surface)
+            scores = torch.sigmoid(score_logits).squeeze(0).detach().cpu().tolist()
             scores_by_image[str(record["image_id"])] = [float(v) for v in scores]
+            if index % max(1, progress_every) == 0 or index == total:
+                _write_progress(
+                    progress_path,
+                    {
+                        "state": "running",
+                        "phase": "model_scoring",
+                        "checkpoint": str(checkpoint),
+                        "processed_images": index,
+                        "total_images": total,
+                        "scored_images": len(scores_by_image),
+                        "skipped_count": len(skipped),
+                        "elapsed_sec": time.time() - started_at,
+                        "updated_at_unix": time.time(),
+                    },
+                )
     metadata = {
         "checkpoint": str(checkpoint),
         "input_size": int(size),
         "target_ar": str(target_ar),
+        "image_mean": norm_mean,
+        "image_std": norm_std,
+        "score_surface": str(score_surface),
         "device": str(device),
         "skipped_count": len(skipped),
         "skipped": skipped[:50],
@@ -148,26 +244,27 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
         return float(row.get("image_count", 0)) / float(max(1, int(summary["image_count"])))
 
     lines = [
-        "# MobileCropNet v4 Official GAIC Benchmark Evaluation",
+        "# MobileCropNet v4 GAIC 공식 벤치마크 평가 보고서",
         "",
         f"- annotations_json: `{summary['annotations_json']}`",
-        f"- image_count: {summary['image_count']}",
-        f"- candidate_count: {summary['candidate_count']}",
-        f"- model_name: `{summary['model_name']}`",
-        f"- target_ar_conditioning: `{summary['model_metadata'].get('target_ar')}`",
+        f"- 이미지 수: {summary['image_count']}",
+        f"- 후보 수: {summary['candidate_count']}",
+        f"- 모델명: `{summary['model_name']}`",
+        f"- target AR 조건: `{summary['model_metadata'].get('target_ar')}`",
+        f"- score surface: `{summary['model_metadata'].get('score_surface', 'deployment')}`",
         f"- teacher_candidate_eval_jsonl: `{summary.get('teacher_candidate_eval_jsonl') or ''}`",
-        f"- teacher_protocol: `{summary.get('teacher_protocol') or ''}`",
+        f"- teacher protocol: `{summary.get('teacher_protocol') or ''}`",
         "",
-        "## Metric Definitions",
+        "## 지표 정의",
         "",
-        "- `pcc` and `srcc`: per-image correlation between official GAIC MOS and predicted crop scores, averaged over images.",
-        "- `accK_of_topN`: return-K-of-top-N accuracy from the GAIC paper. Higher means more returned crops fall inside the MOS top-N set.",
-        "- `accwK_of_topN`: rank-weighted return-K-of-top-N accuracy. It rewards returning better-ranked top-N crops earlier.",
-        "- `top1_mos`: official MOS of the first returned crop. Higher is better.",
-        "- `top1_mos_regret`: best official MOS minus returned top-1 MOS. Lower is better.",
-        "- `top1_rank_percentile`: official MOS rank percentile of top-1 crop, where 1.0 is best.",
+        "- `pcc`와 `srcc`: 이미지별 공식 GAIC MOS와 예측 crop score의 상관을 평균한 값이다.",
+        "- `accK_of_topN`: GAIC 논문의 return-K-of-top-N 정확도이며, 반환 crop이 MOS top-N 안에 많이 들어갈수록 높다.",
+        "- `accwK_of_topN`: rank-weighted return-K-of-top-N 정확도이며, 더 좋은 순위의 top-N crop을 앞에 반환할수록 높다.",
+        "- `top1_mos`: 첫 번째 반환 crop의 공식 MOS이며 높을수록 좋다.",
+        "- `top1_mos_regret`: 이미지 내 최고 공식 MOS와 top-1 반환 crop MOS의 차이며 낮을수록 좋다.",
+        "- `top1_rank_percentile`: top-1 crop의 공식 MOS 순위 백분위이며 1.0이 최상위다.",
         "",
-        "## Method Comparison",
+        "## 방법별 비교",
         "",
         "| method | images | PCC | SRCC | Acc1/5 | Acc1/10 | Acc4/5 | Accw4/5 | top1 MOS | top1 rank pct | MOS regret | eval/score coverage |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -194,12 +291,12 @@ def _write_report(path: Path, summary: dict[str, Any]) -> None:
     lines.extend(
         [
             "",
-            "## Notes",
+            "## 해석 메모",
             "",
-            "- `gaic_mos_oracle` is not deployable; it is the upper bound that ranks crops by the official MOS itself.",
-            "- When `teacher_candidate_eval_jsonl` is used, teacher scores are read from exact official GAIC crop candidates. Otherwise teacher scores are projected to official GAIC annotation crops by nearest-IoU matching.",
-            "- The coverage column should be considered when interpreting subset or projected teacher metrics.",
-            "- This report intentionally does not use SSTK teacher labels as ground truth.",
+            "- `gaic_mos_oracle`은 배포 가능 모델이 아니며, 공식 MOS 자체로 crop을 정렬한 상한이다.",
+            "- `teacher_candidate_eval_jsonl`을 쓰면 teacher score는 공식 GAIC crop 후보에서 직접 읽는다. 그 외에는 nearest-IoU matching으로 teacher score를 공식 GAIC annotation crop에 투영한다.",
+            "- subset 또는 투영 teacher 지표를 해석할 때는 coverage 열을 함께 봐야 한다.",
+            "- 이 보고서는 SSTK teacher label을 ground truth로 사용하지 않는다.",
         ]
     )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -218,7 +315,12 @@ def main(argv: list[str] | None = None) -> int:
         records=records_with_images,
         target_ar=args.target_ar,
         input_size=args.input_size,
+        image_mean=args.image_mean,
+        image_std=args.image_std,
+        score_surface=str(args.score_surface),
         device=device,
+        progress_path=args.progress_json or args.output_dir / "progress.json",
+        progress_every=args.progress_every,
     )
     methods: dict[str, Any] = {}
     method_order = [args.model_name]
@@ -315,6 +417,18 @@ def main(argv: list[str] | None = None) -> int:
             safe_name = "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in name)
             write_jsonl(args.output_dir / f"{safe_name}_per_image.jsonl", row.get("per_image", []))
     _write_report(args.output_dir / "GAIC_BENCHMARK_EVAL_REPORT.md", summary)
+    _write_progress(
+        args.progress_json or args.output_dir / "progress.json",
+        {
+            "state": "completed",
+            "phase": "completed",
+            "checkpoint": str(args.checkpoint),
+            "processed_images": len(records_with_images),
+            "total_images": len(records_with_images),
+            "metrics_json": str(args.output_dir / "metrics.json"),
+            "updated_at_unix": time.time(),
+        },
+    )
     print(json.dumps(summary["methods"], ensure_ascii=False, indent=2))
     return 0
 

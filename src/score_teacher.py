@@ -150,6 +150,7 @@ class TeacherScorerConfig:
     top_k: int = 5
     tau_div: float = 0.75
     use_real_expensive: bool = True
+    target_ar_filter_mode: str = "none"
 
     # Structural hard checks
     area_min: float = 0.15
@@ -370,11 +371,23 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output_jsonl", required=True)
     p.add_argument("--output_overview_json", required=True)
     p.add_argument("--output_overview_by_ar_csv", default="")
+    p.add_argument(
+        "--compact_output",
+        type=int,
+        default=0,
+        help="1=write only fields required for downstream prediction export instead of full debug payloads",
+    )
 
     p.add_argument("--cheap_top_m", type=int, default=30)
     p.add_argument("--top_k", type=int, default=5)
     p.add_argument("--tau_div", type=float, default=0.75)
     p.add_argument("--use_real_expensive", type=int, default=1, help="1=real A(I_b)/cos(E_I,E_T), 0=proxy fallback")
+    p.add_argument(
+        "--target_ar_filter_mode",
+        choices=["none", "hard"],
+        default="none",
+        help="hard=exclude target-AR-violating candidates from final target-AR selection when possible",
+    )
     p.add_argument("--enable_r_teach", type=int, default=1, help="1=enable teacher-consensus prior R_teach")
     p.add_argument("--teach_rho_tau", type=float, default=0.75)
     p.add_argument("--teach_rho_beta", type=float, default=0.05)
@@ -489,6 +502,80 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--shard_index", type=int, default=0, help="Current shard index [0, num_shards)")
     p.add_argument("--progress", type=int, default=1)
     return p.parse_args()
+
+
+def compact_candidate_for_export(candidate: Dict[str, Any]) -> Dict[str, Any]:
+    scores = candidate.get("scores", {})
+    if not isinstance(scores, dict):
+        scores = {}
+    kept_scores = {
+        key: scores.get(key)
+        for key in (
+            "crop_utility_raw",
+            "final",
+            "policy",
+            "policy_safe",
+            "rank",
+            "rank_macro",
+            "cheap",
+            "expensive",
+        )
+        if key in scores
+    }
+    out = {
+        "candidate_id": str(candidate.get("candidate_id", "")),
+        "bbox_norm_xyxy": candidate.get("bbox_norm_xyxy", candidate.get("bbox_xyxy_norm", [0.0, 0.0, 1.0, 1.0])),
+        "bbox_xyxy_norm": candidate.get("bbox_xyxy_norm", candidate.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0])),
+        "source": str(candidate.get("source", "")),
+        "label": str(candidate.get("label", "")),
+        "scores": kept_scores,
+    }
+    if "score" in candidate:
+        out["score"] = candidate.get("score")
+    if "hard_reject" in candidate:
+        out["hard_reject"] = bool(candidate.get("hard_reject", False))
+    return out
+
+
+def compact_teacher_output_for_export(row: Dict[str, Any]) -> Dict[str, Any]:
+    teacher = row.get("teacher_scorer", {}) if isinstance(row.get("teacher_scorer"), dict) else {}
+    results_by_ar = teacher.get("results_by_ar", {}) if isinstance(teacher.get("results_by_ar"), dict) else {}
+    compact_results: Dict[str, Any] = {}
+    for ar_text, ar_result in results_by_ar.items():
+        if not isinstance(ar_result, dict):
+            continue
+        compact_ar: Dict[str, Any] = {}
+        for key in (
+            "target_ar",
+            "target_ar_value",
+            "is_freeform",
+            "num_input_candidates",
+            "num_valid_candidates",
+            "num_effective_candidates",
+            "num_cheap_kept",
+            "num_expensive_eval",
+        ):
+            if key in ar_result:
+                compact_ar[key] = ar_result.get(key)
+        for key in ("best_candidate", "baseline_candidate"):
+            value = ar_result.get(key)
+            if isinstance(value, dict):
+                compact_ar[key] = compact_candidate_for_export(value)
+        for key in ("utility_pool", "rank_pool", "cheap_top_m", "selected_topk"):
+            value = ar_result.get(key)
+            if isinstance(value, list):
+                compact_ar[key] = [compact_candidate_for_export(item) for item in value if isinstance(item, dict)]
+        compact_results[str(ar_text)] = compact_ar
+    return {
+        "image_id": row.get("image_id"),
+        "width": row.get("width"),
+        "height": row.get("height"),
+        "image_ar": row.get("image_ar"),
+        "teacher_scorer": {
+            "expensive_real_applied": bool(teacher.get("expensive_real_applied", False)),
+            "results_by_ar": compact_results,
+        },
+    }
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -1024,8 +1111,10 @@ class HybridImageLoader:
 
 def load_tar_mapping(parquet_path: Path) -> Dict[str, Dict[str, Any]]:
     df = pd.read_parquet(parquet_path)
-    if "image_id" not in df.columns or "tar_name" not in df.columns:
-        raise ValueError(f"parquet missing required columns image_id/tar_name: {parquet_path}")
+    if "image_id" not in df.columns:
+        raise ValueError(f"parquet missing required column image_id: {parquet_path}")
+    if "tar_name" not in df.columns:
+        return {}
     if "bucket" in df.columns:
         return df.set_index("image_id")[["tar_name", "bucket"]].to_dict("index")
     return df.set_index("image_id")[["tar_name"]].to_dict("index")
@@ -4611,6 +4700,52 @@ def _is_structural_valid(candidate: Dict[str, Any]) -> bool:
     return (not _has_hard_tag(candidate, "area_violation")) and (not _has_hard_tag(candidate, "ar_violation"))
 
 
+def _candidate_target_ar_error(candidate: Dict[str, Any], target_ar: Optional[float], image_ar: float) -> Optional[float]:
+    if target_ar is None:
+        return None
+    crop = clip_box01(candidate.get("bbox_norm_xyxy", [0.0, 0.0, 1.0, 1.0]))
+    w, h = box_wh(crop)
+    if h <= 0:
+        return float("inf")
+    actual_ar = (float(w) * float(image_ar)) / max(1e-8, float(h))
+    return abs(actual_ar - float(target_ar))
+
+
+def _filter_target_ar_candidates(
+    candidates: List[Dict[str, Any]],
+    *,
+    target_ar: Optional[float],
+    image_ar: float,
+    cfg: TeacherScorerConfig,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    mode = str(cfg.target_ar_filter_mode or "none").strip().lower()
+    info = {
+        "mode": mode,
+        "enabled": bool(mode == "hard" and target_ar is not None),
+        "input_count": int(len(candidates)),
+        "kept_count": int(len(candidates)),
+        "dropped_count": 0,
+        "empty_after_filter": False,
+    }
+    if mode in {"", "none", "off", "0"} or target_ar is None:
+        info["mode"] = "none"
+        return candidates, info
+    if mode != "hard":
+        raise ValueError(f"Unsupported target_ar_filter_mode: {cfg.target_ar_filter_mode}")
+
+    kept = [
+        c
+        for c in candidates
+        if (_candidate_target_ar_error(c, target_ar=target_ar, image_ar=image_ar) or 0.0) <= float(cfg.ar_hard_eps)
+    ]
+    info["kept_count"] = int(len(kept))
+    info["dropped_count"] = int(len(candidates) - len(kept))
+    info["empty_after_filter"] = bool(not kept and candidates)
+    if kept:
+        return kept, info
+    return candidates, info
+
+
 def _is_face_safe(candidate: Dict[str, Any]) -> bool:
     return not any(
         _has_hard_tag(candidate, tag)
@@ -4870,6 +5005,7 @@ def compute_candidate_scores(
     if lookroom_cut:
         hard_reject_tags.append("lookroom_cut")
 
+    lookroom_active = bool(lr.get("gaze_dir") in {"left", "right"} and lr.get("value") is not None)
     sym = c5_info["symmetry"]
 
     scale_lo, scale_hi = route.get("subject_scale_range", route.get("legacy_context_range", route["context_range"]))
@@ -5387,7 +5523,7 @@ def compute_candidate_scores(
                 "placement_reward_center": comp_bundle["raw_rewards"].get("center"),
                 "r_horizon": float(horizon["reward"]),
                 "r_headroom": float(hr["score"]),
-                "r_lookroom": float(lr["score"]),
+                "r_lookroom": (float(lr["score"]) if lookroom_active else None),
                 "r_sym": float(sym),
                 "r_context": float(r_context),
                 "context_value": float(context_value),
@@ -6288,9 +6424,16 @@ def process_one_image(
                 )
             )
 
-        baseline, ref_center = pick_baseline_candidates(scored)
+        selection_scored, target_ar_filter_info = _filter_target_ar_candidates(
+            scored,
+            target_ar=target_ar,
+            image_ar=image_ar,
+            cfg=cfg,
+        )
 
-        strict_valid = [c for c in scored if not _has_training_severe_reject(c)]
+        baseline, ref_center = pick_baseline_candidates(selection_scored)
+
+        strict_valid = [c for c in selection_scored if not _has_training_severe_reject(c)]
         fallback_info: Dict[str, Any] = {
             "activated": False,
             "mode": "none",
@@ -6298,11 +6441,19 @@ def process_one_image(
             "effective_valid_count": int(len(strict_valid)),
             "joint_relaxed_count": 0,
         }
+        if bool(target_ar_filter_info.get("empty_after_filter", False)):
+            fallback_info.update(
+                {
+                    "activated": True,
+                    "mode": "target_ar_filter_empty",
+                    "effective_valid_count": int(len(selection_scored)),
+                }
+            )
 
         valid_effective: List[Dict[str, Any]] = list(strict_valid)
         if not valid_effective:
             relaxed_joint: List[Dict[str, Any]] = []
-            for c in scored:
+            for c in selection_scored:
                 if (not _is_structural_valid(c)) or (not _is_face_safe(c)):
                     continue
                 cc = _relax_joint_only_hard_reject(c)
@@ -6321,7 +6472,7 @@ def process_one_image(
                 )
             else:
                 face_safe_non_struct = [
-                    c for c in scored if _is_structural_valid(c) and _is_face_safe(c)
+                    c for c in selection_scored if _is_structural_valid(c) and _is_face_safe(c)
                 ]
                 if face_safe_non_struct:
                     valid_effective = face_safe_non_struct
@@ -6333,7 +6484,7 @@ def process_one_image(
                         }
                     )
                 else:
-                    non_struct = [c for c in scored if _is_structural_valid(c)]
+                    non_struct = [c for c in selection_scored if _is_structural_valid(c)]
                     if non_struct:
                         valid_effective = non_struct
                         fallback_info.update(
@@ -6344,12 +6495,12 @@ def process_one_image(
                             }
                         )
                     else:
-                        valid_effective = list(scored)
+                        valid_effective = list(selection_scored)
                         fallback_info.update(
                             {
                                 "activated": True,
                                 "mode": "all_structural_invalid",
-                                "effective_valid_count": int(len(scored)),
+                                "effective_valid_count": int(len(selection_scored)),
                             }
                         )
 
@@ -6388,6 +6539,7 @@ def process_one_image(
             "cheap_top_m": cheap_top_m,
             "expensive_eval_pool": expensive_eval_pool,
             "fallback_info": fallback_info,
+            "target_ar_filter_info": target_ar_filter_info,
             "teacher_ctx": teacher_ctx,
             "public_teacher_ref_eval": public_teacher_ref_eval,
         }
@@ -6395,29 +6547,30 @@ def process_one_image(
     # Real expensive stage on union(M candidates across AR), if resources are ready.
     expensive_real_applied = False
     if expensive_models is not None and image_pil is not None and c1_text_embed is not None:
-        union: Dict[str, Dict[str, Any]] = {}
+        union: Dict[str, Tuple[Dict[str, Any], Optional[float]]] = {}
         for tmp in per_ar_tmp.values():
+            tmp_target_ar = tmp.get("target_ar")
             for c in tmp.get("expensive_eval_pool", tmp["cheap_top_m"]):
                 cid = str(c.get("candidate_id", ""))
                 if cid:
-                    union[cid] = c
+                    union[cid] = (c, tmp_target_ar)
             for c in tmp.get("public_teacher_ref_eval", []):
                 cid = str(c.get("candidate_id", ""))
                 if cid:
-                    union[cid] = c
+                    union[cid] = (c, tmp_target_ar)
         signals = expensive_models.predict_for_candidates(
             image=image_pil,
-            candidates=list(union.values()),
+            candidates=[item[0] for item in union.values()],
             text_embed=c1_text_embed,
             cfg=cfg,
         )
-        for cid, cand in union.items():
+        for cid, (cand, cand_target_ar) in union.items():
             apply_expensive_score(
                 candidate=cand,
                 cfg=cfg,
                 w_area=float(route["w_area"]),
                 expensive_signal=signals.get(cid),
-                target_ar_value=tmp.get("target_ar"),
+                target_ar_value=cand_target_ar,
             )
         expensive_real_applied = True
 
@@ -6429,6 +6582,7 @@ def process_one_image(
         cheap_top_m = tmp["cheap_top_m"]
         expensive_eval_pool = tmp.get("expensive_eval_pool", cheap_top_m)
         fallback_info = tmp["fallback_info"]
+        target_ar_filter_info = tmp.get("target_ar_filter_info", {})
         teacher_ctx = tmp.get("teacher_ctx", {}) if isinstance(tmp.get("teacher_ctx"), dict) else {}
         public_teacher_ref_eval = tmp.get("public_teacher_ref_eval", [])
         target_ar = tmp.get("target_ar")
@@ -6539,6 +6693,7 @@ def process_one_image(
                 },
             },
             "fallback": fallback_info,
+            "target_ar_filter": target_ar_filter_info,
             "decision": decision,
             "cheap_top_m": [candidate_brief(c) for c in cheap_top_m],
             "utility_pool": [candidate_brief(c) for c in utility_pool],
@@ -6737,6 +6892,7 @@ def run(args: argparse.Namespace) -> None:
         top_k=max(1, int(args.top_k)),
         tau_div=float(args.tau_div),
         use_real_expensive=bool(int(args.use_real_expensive)),
+        target_ar_filter_mode=str(args.target_ar_filter_mode),
         enable_r_teach=bool(int(args.enable_r_teach)),
         teach_rho_tau=float(args.teach_rho_tau),
         teach_rho_beta=float(args.teach_rho_beta),
@@ -6834,7 +6990,10 @@ def run(args: argparse.Namespace) -> None:
             local_loader = LocalImageLoader(image_dir=str(args.image_dir))
         if str(args.tar_dir).strip() and parquet_path is not None and parquet_path.exists():
             tar_mapping = load_tar_mapping(parquet_path)
-            tar_loader = TarImageLoader(mapping=tar_mapping, tar_dir=str(args.tar_dir))
+            if tar_mapping:
+                tar_loader = TarImageLoader(mapping=tar_mapping, tar_dir=str(args.tar_dir))
+            elif local_loader is None:
+                raise ValueError(f"tar mode requires parquet tar_name column: {parquet_path}")
 
         if local_loader is not None and tar_loader is not None:
             image_loader = HybridImageLoader(local_loader=local_loader, tar_loader=tar_loader)
@@ -6968,7 +7127,11 @@ def run(args: argparse.Namespace) -> None:
                         cfg=cfg,
                     )
 
-                fout.write(json.dumps(one, ensure_ascii=False) + "\n")
+                if int(args.compact_output) > 0:
+                    one_to_write = compact_teacher_output_for_export(one)
+                else:
+                    one_to_write = one
+                fout.write(json.dumps(one_to_write, ensure_ascii=False) + "\n")
                 written += 1
     finally:
         if image_loader is not None:

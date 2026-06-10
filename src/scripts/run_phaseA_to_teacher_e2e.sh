@@ -115,10 +115,24 @@ Core options
 --filter_category_map_workers INT  filter category mapping CPU workers (-1=all, 0=auto, default: 0)
 --filter_category_map_chunk_size INT filter category mapping chunk size (default: 4096)
 --filter_sample_extract_workers INT filter sample extraction thread workers (-1=all, 0=auto, default: 0)
+--filter_media_type_presampling_gate 0|1 metadata-only media-type gate를 Phase A sampling 전에 적용 (default: 0)
+--filter_media_type_presampling_keep_decisions CSV presampling gate에서 유지할 decision (default: keep_photo_primary)
+--filter_media_type_presampling_report PATH presampling gate summary JSON 경로
 --export_curated_images 0|1     filter 후 curated 이미지를 로컬 dir로 추출 (default: 0)
 --curated_image_dir PATH        curated 이미지 디렉토리 (default: <data_dir>/images)
 --curated_image_skip_existing 0|1  이미지 추출 시 기존 파일 skip (default: 1)
 --prefer_curated_images 0|1     후속 단계에서 curated image dir 우선 사용 (default: 1)
+--run_media_type_audit 0|1      curated pool의 photo/render/packshot media type 감사 실행 (default: 0)
+--media_type_audit_dir PATH     media type audit 출력 경로 (default: <data_dir>/artifacts/media_type_audit<run_tag>)
+--media_type_audit_mapped_cache_parquet PATH  super_cat 보강용 mapped cache parquet
+--media_type_audit_use_photo_primary 0|1  audit 후 downstream parquet를 photo_primary split으로 전환 (default: 0)
+--media_type_audit_contact_sheets 0|1     decision별 contact sheet 생성 (default: 1)
+--media_type_audit_prompt_classifier none|siglip2|clip|auto optional prompt classifier (default: none)
+--media_type_audit_prompt_model MODEL_ID  default: siglip2=google/siglip2-base-patch16-224, clip=openai/clip-vit-base-patch32
+--media_type_audit_prompt_device STR      auto|cpu|cuda|cuda:0 (default: auto)
+--media_type_audit_prompt_batch_size INT  prompt classifier batch size (default: 16)
+--media_type_audit_prompt_min_score FLOAT keep->review demotion min score (default: 0.28)
+--media_type_audit_prompt_margin FLOAT    top non-photo vs camera-photo margin (default: 0.03)
 --skip_existing 0|1             output 파일이 있으면 단계 skip (default: 1)
 --run_tag TAG                   candidates/teacher 출력 suffix (default: "")
 --max_images INT                0=all, >0=앞에서 n장(candidate/teacher) (default: 0)
@@ -155,7 +169,7 @@ Core options
 --public_infer_num_workers INT 공개 teacher shard worker 수 (default: gpu 개수)
 --precompute_mode MODE          unified|split (default: unified)
 --run_c7_saliency 0|1           merged/routed feats에 c7_saliency 추가 (default: 0)
---c7_saliency_priority NAME     quality_first|high_efficiency (default: quality_first)
+--c7_saliency_priority NAME     quality_first|high_efficiency|opencv (default: quality_first)
 --c7_saliency_weights_dir PATH  c7 saliency weights/cache 경로
 --c7_saliency_device STR        auto|cuda|cuda:0|cpu (default: auto)
                                multi-gpu 실행은 별도 c7 전용 옵션 없이 extract_gpu_ids/num_workers 설정을 재사용
@@ -199,6 +213,14 @@ Core options
 --multimode_debug_viz_limit INT multimode debug viz 저장 image-task 수 상한 (default: 16)
 --multimode_features_jsonl_override PATH multimode builder 전용 features jsonl override
 --multimode_candidates_jsonl_override PATH multimode builder 전용 candidates jsonl override
+--multimode_include_optional_negatives 0|1 optional negative crop annotation 포함 여부 (default: 1)
+--multimode_write_split_outputs 0|1 train/val split JSON 생성 여부 (default: 1)
+--multimode_train_ratio FLOAT multimode train split ratio (default: 0.9)
+--multimode_split_seed INT multimode deterministic split seed (default: 20260506)
+--multimode_landscape_candidate_policy NAME build_multimode landscape candidate policy (default: all)
+--multimode_landscape_score_policy NAME build_multimode landscape score policy (default: composition)
+--multimode_landscape_teacher_score_scope NAME build_multimode landscape teacher score scope (default: all)
+--multimode_mode_intent_policy NAME build_multimode intent gate policy (default: legacy)
 --safe_leftover_policy NAME     keep_negative|ignore|promote_soft_positive (default: ignore)
 --score_profile NAME            build_finalscore_training_data.py scorer profile (default: single_stage2)
 --score_profile_overrides_json PATH  optional scorer override json passed to build_finalscore_training_data.py
@@ -208,7 +230,8 @@ Core options
 --training_label_debug_viz_out_dir PATH debug viz 출력 경로 (default: <training_labels_dir>/debug_visualizations_balanced50_bottomneg)
 --gaic_reference_json PATH      GAIC-like 변환 기준 json (default: data/Publics/GAIC/annotations_json/instances_train.json)
 --gaic_train_reference_json PATH debug viz / split export용 official GAIC train json
---gaic_test_reference_json PATH debug viz / split export용 official GAIC test json
+--gaic_val_reference_json PATH   split export용 official GAIC val json
+--gaic_test_reference_json PATH  debug viz / split export용 official GAIC test json
 --report_examples_per_bucket N  subject count/mode evidence 샘플 수 (default: 5)
 --report_viz_stage_dir PATH     report 전용 teacher viz staging 경로
 --vlm_backend NAME              qwen25_vl|heuristic (default: qwen25_vl)
@@ -304,11 +327,20 @@ MULTIMODE_WRITE_DEBUG_VIZ=0
 MULTIMODE_DEBUG_VIZ_LIMIT=16
 MULTIMODE_FEATURES_JSONL_OVERRIDE=""
 MULTIMODE_CANDIDATES_JSONL_OVERRIDE=""
+MULTIMODE_INCLUDE_OPTIONAL_NEGATIVES=1
+MULTIMODE_WRITE_SPLIT_OUTPUTS=1
+MULTIMODE_TRAIN_RATIO=0.9
+MULTIMODE_SPLIT_SEED=20260506
+MULTIMODE_LANDSCAPE_CANDIDATE_POLICY="all"
+MULTIMODE_LANDSCAPE_SCORE_POLICY="composition"
+MULTIMODE_LANDSCAPE_TEACHER_SCORE_SCOPE="all"
+MULTIMODE_MODE_INTENT_POLICY="legacy"
 SAFE_LEFTOVER_POLICY="ignore"
 SCORE_PROFILE="single_stage2"
 SCORE_PROFILE_OVERRIDES_JSON=""
 GAIC_REFERENCE_JSON=""
 GAIC_TRAIN_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_train.json"
+GAIC_VAL_REFERENCE_JSON=""
 GAIC_TEST_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_test.json"
 SHARED_GPU_IDS=""
 SHARED_GPU_WORKERS=0
@@ -326,10 +358,25 @@ FILTER_TAG_EMBED_DEVICE="auto"
 FILTER_CATEGORY_MAP_WORKERS=0
 FILTER_CATEGORY_MAP_CHUNK_SIZE=4096
 FILTER_SAMPLE_EXTRACT_WORKERS=0
+FILTER_MEDIA_TYPE_PRESAMPLING_GATE=0
+FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS="keep_photo_primary"
+FILTER_MEDIA_TYPE_PRESAMPLING_REPORT=""
 EXPORT_CURATED_IMAGES=0
 CURATED_IMAGE_DIR=""
 CURATED_IMAGE_SKIP_EXISTING=1
 PREFER_CURATED_IMAGES=1
+RUN_MEDIA_TYPE_AUDIT=0
+MEDIA_TYPE_AUDIT_DIR=""
+MEDIA_TYPE_AUDIT_MAPPED_CACHE_PARQUET=""
+MEDIA_TYPE_AUDIT_USE_PHOTO_PRIMARY=0
+MEDIA_TYPE_AUDIT_CONTACT_SHEETS=1
+MEDIA_TYPE_AUDIT_PROMPT_CLASSIFIER="none"
+MEDIA_TYPE_AUDIT_PROMPT_MODEL=""
+MEDIA_TYPE_AUDIT_PROMPT_DEVICE="auto"
+MEDIA_TYPE_AUDIT_PROMPT_BATCH_SIZE=16
+MEDIA_TYPE_AUDIT_PROMPT_MIN_SCORE=0.28
+MEDIA_TYPE_AUDIT_PROMPT_MARGIN=0.03
+MEDIA_TYPE_AUDIT_PROMPT_FAIL_ON_ERROR=0
 
 # Extract/merge
 RUN_C1=-1
@@ -512,10 +559,25 @@ while [ "$#" -gt 0 ]; do
     --filter_category_map_workers) FILTER_CATEGORY_MAP_WORKERS="$2"; shift 2 ;;
     --filter_category_map_chunk_size) FILTER_CATEGORY_MAP_CHUNK_SIZE="$2"; shift 2 ;;
     --filter_sample_extract_workers) FILTER_SAMPLE_EXTRACT_WORKERS="$2"; shift 2 ;;
+    --filter_media_type_presampling_gate) FILTER_MEDIA_TYPE_PRESAMPLING_GATE="$2"; shift 2 ;;
+    --filter_media_type_presampling_keep_decisions) FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS="$2"; shift 2 ;;
+    --filter_media_type_presampling_report) FILTER_MEDIA_TYPE_PRESAMPLING_REPORT="$2"; shift 2 ;;
     --export_curated_images) EXPORT_CURATED_IMAGES="$2"; shift 2 ;;
     --curated_image_dir) CURATED_IMAGE_DIR="$2"; shift 2 ;;
     --curated_image_skip_existing) CURATED_IMAGE_SKIP_EXISTING="$2"; shift 2 ;;
     --prefer_curated_images) PREFER_CURATED_IMAGES="$2"; shift 2 ;;
+    --run_media_type_audit) RUN_MEDIA_TYPE_AUDIT="$2"; shift 2 ;;
+    --media_type_audit_dir) MEDIA_TYPE_AUDIT_DIR="$2"; shift 2 ;;
+    --media_type_audit_mapped_cache_parquet) MEDIA_TYPE_AUDIT_MAPPED_CACHE_PARQUET="$2"; shift 2 ;;
+    --media_type_audit_use_photo_primary) MEDIA_TYPE_AUDIT_USE_PHOTO_PRIMARY="$2"; shift 2 ;;
+    --media_type_audit_contact_sheets) MEDIA_TYPE_AUDIT_CONTACT_SHEETS="$2"; shift 2 ;;
+    --media_type_audit_prompt_classifier) MEDIA_TYPE_AUDIT_PROMPT_CLASSIFIER="$2"; shift 2 ;;
+    --media_type_audit_prompt_model) MEDIA_TYPE_AUDIT_PROMPT_MODEL="$2"; shift 2 ;;
+    --media_type_audit_prompt_device) MEDIA_TYPE_AUDIT_PROMPT_DEVICE="$2"; shift 2 ;;
+    --media_type_audit_prompt_batch_size) MEDIA_TYPE_AUDIT_PROMPT_BATCH_SIZE="$2"; shift 2 ;;
+    --media_type_audit_prompt_min_score) MEDIA_TYPE_AUDIT_PROMPT_MIN_SCORE="$2"; shift 2 ;;
+    --media_type_audit_prompt_margin) MEDIA_TYPE_AUDIT_PROMPT_MARGIN="$2"; shift 2 ;;
+    --media_type_audit_prompt_fail_on_error) MEDIA_TYPE_AUDIT_PROMPT_FAIL_ON_ERROR="$2"; shift 2 ;;
 
     --run_c1) RUN_C1="$2"; shift 2 ;;
     --run_c2) RUN_C2="$2"; shift 2 ;;
@@ -639,6 +701,14 @@ while [ "$#" -gt 0 ]; do
     --multimode_debug_viz_limit) MULTIMODE_DEBUG_VIZ_LIMIT="$2"; shift 2 ;;
     --multimode_features_jsonl_override) MULTIMODE_FEATURES_JSONL_OVERRIDE="$2"; shift 2 ;;
     --multimode_candidates_jsonl_override) MULTIMODE_CANDIDATES_JSONL_OVERRIDE="$2"; shift 2 ;;
+    --multimode_include_optional_negatives) MULTIMODE_INCLUDE_OPTIONAL_NEGATIVES="$2"; shift 2 ;;
+    --multimode_write_split_outputs) MULTIMODE_WRITE_SPLIT_OUTPUTS="$2"; shift 2 ;;
+    --multimode_train_ratio) MULTIMODE_TRAIN_RATIO="$2"; shift 2 ;;
+    --multimode_split_seed) MULTIMODE_SPLIT_SEED="$2"; shift 2 ;;
+    --multimode_landscape_candidate_policy) MULTIMODE_LANDSCAPE_CANDIDATE_POLICY="$2"; shift 2 ;;
+    --multimode_landscape_score_policy) MULTIMODE_LANDSCAPE_SCORE_POLICY="$2"; shift 2 ;;
+    --multimode_landscape_teacher_score_scope) MULTIMODE_LANDSCAPE_TEACHER_SCORE_SCOPE="$2"; shift 2 ;;
+    --multimode_mode_intent_policy) MULTIMODE_MODE_INTENT_POLICY="$2"; shift 2 ;;
     --safe_leftover_policy) SAFE_LEFTOVER_POLICY="$2"; shift 2 ;;
     --score_profile) SCORE_PROFILE="$2"; shift 2 ;;
     --score_profile_overrides_json) SCORE_PROFILE_OVERRIDES_JSON="$2"; shift 2 ;;
@@ -648,6 +718,7 @@ while [ "$#" -gt 0 ]; do
     --training_label_debug_viz_out_dir) TRAINING_LABEL_DEBUG_VIZ_OUT_DIR="$2"; shift 2 ;;
     --gaic_reference_json) GAIC_REFERENCE_JSON="$2"; shift 2 ;;
     --gaic_train_reference_json) GAIC_TRAIN_REFERENCE_JSON="$2"; shift 2 ;;
+    --gaic_val_reference_json) GAIC_VAL_REFERENCE_JSON="$2"; shift 2 ;;
     --gaic_test_reference_json) GAIC_TEST_REFERENCE_JSON="$2"; shift 2 ;;
     --report_examples_per_bucket) REPORT_EXAMPLES_PER_BUCKET="$2"; shift 2 ;;
     --report_viz_stage_dir) REPORT_VIZ_STAGE_DIR="$2"; shift 2 ;;
@@ -892,6 +963,15 @@ fi
 
 FILTERED_PARQUET="${DATA_DIR}/filtered_${BUCKET}.parquet"
 ARTIFACTS_DIR="${DATA_DIR}/artifacts"
+CACHE_DIR="${DATA_DIR}/cache"
+if [ -z "$MEDIA_TYPE_AUDIT_DIR" ]; then
+  MEDIA_TYPE_AUDIT_DIR="${ARTIFACTS_DIR}/media_type_audit${SUFFIX}"
+fi
+if [ -z "$MEDIA_TYPE_AUDIT_MAPPED_CACHE_PARQUET" ]; then
+  MEDIA_TYPE_AUDIT_MAPPED_CACHE_PARQUET="${CACHE_DIR}/filter/df_mapped_cache_${BUCKET}.parquet"
+fi
+MEDIA_TYPE_AUDIT_SUMMARY_JSON="${MEDIA_TYPE_AUDIT_DIR}/media_type_audit_summary.json"
+MEDIA_TYPE_AUDIT_PHOTO_PARQUET="${MEDIA_TYPE_AUDIT_DIR}/filtered_sstk_photo_primary.parquet"
 PRECOMPUTE_DIR="${ARTIFACTS_DIR}/precompute"
 PRECOMPUTE_VIZ_BASE_DIR="${PRECOMPUTE_DIR}/visualizations"
 CANDIDATES_DIR="${ARTIFACTS_DIR}/candidates"
@@ -908,7 +988,6 @@ VLM_LABELS_DIR="${VLM_DIR}/labels"
 VLM_META_DIR="${VLM_DIR}/meta"
 VLM_SUMMARY_DIR="${VLM_DIR}/summary"
 VLM_DEBUG_BASE_DIR="${VLM_DIR}/debug"
-CACHE_DIR="${DATA_DIR}/cache"
 REPORTS_DIR="${ARTIFACTS_DIR}/reports"
 TRAINING_LABELS_BASE_DIR="${ARTIFACTS_DIR}/training_labels"
 MULTIMODE_TRAINING_LABELS_BASE_DIR="${ARTIFACTS_DIR}/training_labels_multimode"
@@ -1025,13 +1104,13 @@ TRAINING_LABELS_QA_JSON="${TRAINING_LABELS_DIR}/qa_summary.json"
 TRAINING_LABELS_VALIDATION_JSON="${TRAINING_LABELS_DIR}/validation_summary.json"
 TRAINING_LABELS_REPORT_MD="${TRAINING_LABELS_DIR}/TRAINING_DATA_REPORT_KO.md"
 TRAINING_LABELS_SUBJECT_MODE_VOCAB_JSON="${TRAINING_LABELS_DIR}/subject_mode_vocab.json"
-TRAINING_LABELS_COCO_DIR="${TRAINING_LABELS_DIR}/coco"
-TRAINING_LABELS_COCO_CANONICAL_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_canonical.json"
-TRAINING_LABELS_COCO_BATCH_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_batch.json"
-TRAINING_LABELS_COCO_SUMMARY_JSON="${TRAINING_LABELS_COCO_DIR}/coco_conversion_summary.json"
-TRAINING_LABELS_GAIC_LIKE_JSON="${TRAINING_LABELS_COCO_DIR}/instances_conditional_detr_batch_gaic_like.json"
-TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON="${TRAINING_LABELS_COCO_DIR}/gaic_like_conversion_summary.json"
-TRAINING_LABELS_GAIC_LIKE_GUIDE_MD="${TRAINING_LABELS_COCO_DIR}/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
+TRAINING_LABELS_LABEL_JSON_DIR="${TRAINING_LABELS_DIR}/label_json"
+TRAINING_LABELS_LABEL_CANONICAL_JSON="${TRAINING_LABELS_LABEL_JSON_DIR}/conditional_detr_labels_canonical.json"
+TRAINING_LABELS_LABEL_BATCH_JSON="${TRAINING_LABELS_LABEL_JSON_DIR}/conditional_detr_labels_batch.json"
+TRAINING_LABELS_LABEL_SUMMARY_JSON="${TRAINING_LABELS_LABEL_JSON_DIR}/annotation_format_conversion_summary.json"
+TRAINING_LABELS_GAIC_LIKE_JSON="${TRAINING_LABELS_LABEL_JSON_DIR}/gaic_like_labels_full.json"
+TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON="${TRAINING_LABELS_LABEL_JSON_DIR}/gaic_like_conversion_summary.json"
+TRAINING_LABELS_GAIC_LIKE_GUIDE_MD="${TRAINING_LABELS_LABEL_JSON_DIR}/GAIC_LIKE_LABEL_FORMAT_KO.md"
 TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON="${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR}/summary/summary.json"
 MULTIMODE_FEATURES_JSONL="${DOWNSTREAM_FEATS}"
 MULTIMODE_CANDIDATES_JSONL="${CANDIDATES_JSONL}"
@@ -1043,7 +1122,7 @@ if [ -n "$MULTIMODE_CANDIDATES_JSONL_OVERRIDE" ]; then
 fi
 MULTIMODE_SUMMARY_JSON="${MULTIMODE_TRAINING_LABELS_DIR}/summary.json"
 MULTIMODE_QUERY_STATUS_JSONL="${MULTIMODE_TRAINING_LABELS_DIR}/mode_query_status.jsonl"
-MULTIMODE_COCO_JSON="${MULTIMODE_TRAINING_LABELS_DIR}/coco/instances_multimode_training_labels.json"
+MULTIMODE_LABEL_JSON="${MULTIMODE_TRAINING_LABELS_DIR}/label_json/multimode_labels_full.json"
 MULTIMODE_VALIDATION_JSON="${MULTIMODE_TRAINING_LABELS_DIR}/validation_summary.json"
 
 mkdir -p \
@@ -1275,8 +1354,11 @@ echo " run_filter          : $RUN_FILTER"
 echo " filter_train_match  : $FILTER_REQUIRE_TRAIN_MATCH"
 echo " filter_tag_embed    : mgpu=$FILTER_TAG_EMBED_MULTI_GPU gpu_ids=${FILTER_TAG_EMBED_GPU_IDS:-auto} bs=$FILTER_TAG_EMBED_BATCH_SIZE chunk=$FILTER_TAG_EMBED_CHUNK_SIZE device=$FILTER_TAG_EMBED_DEVICE"
 echo " filter_cpu_map      : workers=$FILTER_CATEGORY_MAP_WORKERS chunk=$FILTER_CATEGORY_MAP_CHUNK_SIZE sample_extract_workers=$FILTER_SAMPLE_EXTRACT_WORKERS"
+echo " filter_media_gate   : $FILTER_MEDIA_TYPE_PRESAMPLING_GATE keep=$FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS"
 echo " export_curated_img  : $EXPORT_CURATED_IMAGES (dir=$CURATED_IMAGE_DIR, skip_existing=$CURATED_IMAGE_SKIP_EXISTING)"
 echo " prefer_curated_img  : $PREFER_CURATED_IMAGES (effective=${EFFECTIVE_IMAGE_DIR:-<none>})"
+echo " media_type_audit    : run=$RUN_MEDIA_TYPE_AUDIT use_photo_primary=$MEDIA_TYPE_AUDIT_USE_PHOTO_PRIMARY out=$MEDIA_TYPE_AUDIT_DIR"
+echo " media_prompt_cls    : $MEDIA_TYPE_AUDIT_PROMPT_CLASSIFIER model=${MEDIA_TYPE_AUDIT_PROMPT_MODEL:-auto} device=$MEDIA_TYPE_AUDIT_PROMPT_DEVICE bs=$MEDIA_TYPE_AUDIT_PROMPT_BATCH_SIZE"
 echo " extract_mode        : $EXTRACT_MODE (extract_multi_gpu=${EXTRACT_MULTI_GPU}, gpu_ids=${EXTRACT_GPU_IDS:-auto}, workers=${NUM_WORKERS:-auto})"
 echo " run_c1/c2/c3/c4/c5/c6 : $RUN_C1/$RUN_C2/$RUN_C3/$RUN_C4/$RUN_C5/$RUN_C6"
 echo " run_c3_enrich/merge : $RUN_C3_ENRICH/$RUN_MERGE"
@@ -1306,10 +1388,12 @@ echo " run_training_labels : $RUN_TRAINING_LABELS (dir=$TRAINING_LABELS_DIR poli
 echo " run_multimode_labels: $RUN_MULTIMODE_TRAINING_LABELS (dir=$MULTIMODE_TRAINING_LABELS_DIR)"
 echo " multimode target AR : $MULTIMODE_TARGET_ARS (max_images=$MULTIMODE_MAX_IMAGES debug_viz=$MULTIMODE_WRITE_DEBUG_VIZ limit=$MULTIMODE_DEBUG_VIZ_LIMIT)"
 echo " multimode inputs    : feats=${MULTIMODE_FEATURES_JSONL:-$DOWNSTREAM_FEATS} candidates=${MULTIMODE_CANDIDATES_JSONL:-$CANDIDATES_JSONL}"
+echo " multimode policy    : opt_negs=$MULTIMODE_INCLUDE_OPTIONAL_NEGATIVES split=$MULTIMODE_WRITE_SPLIT_OUTPUTS train_ratio=$MULTIMODE_TRAIN_RATIO split_seed=$MULTIMODE_SPLIT_SEED landscape=${MULTIMODE_LANDSCAPE_CANDIDATE_POLICY}/${MULTIMODE_LANDSCAPE_SCORE_POLICY}/${MULTIMODE_LANDSCAPE_TEACHER_SCORE_SCOPE} intent=$MULTIMODE_MODE_INTENT_POLICY"
 echo " score_profile       : $SCORE_PROFILE (overrides=${SCORE_PROFILE_OVERRIDES_JSON:-<none>})"
 echo " training_debug_viz  : $RUN_TRAINING_LABEL_DEBUG_VIZ (out=$TRAINING_LABEL_DEBUG_VIZ_OUT_DIR sample_size=$TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE seed=$TRAINING_LABEL_DEBUG_VIZ_SEED)"
 echo " gaic_reference_json : ${GAIC_REFERENCE_JSON:-<none>}"
 echo " gaic_train_ref_json : ${GAIC_TRAIN_REFERENCE_JSON:-<none>}"
+echo " gaic_val_ref_json   : ${GAIC_VAL_REFERENCE_JSON:-<none>}"
 echo " gaic_test_ref_json  : ${GAIC_TEST_REFERENCE_JSON:-<none>}"
 echo " run_detailed_report : $RUN_DETAILED_REPORT (dir=$REPORT_DIR examples_per_bucket=$REPORT_EXAMPLES_PER_BUCKET)"
 echo " vlm target/topm/k   : target_ar=$VLM_TARGET_AR top_m=$VLM_TOP_M top_k=$VLM_TOP_K max_images=$VLM_MAX_IMAGES retries=$VLM_MAX_RETRIES"
@@ -1337,6 +1421,9 @@ if [ "$RUN_FILTER" -eq 1 ]; then
       FILTER_CATEGORY_MAP_WORKERS="$FILTER_CATEGORY_MAP_WORKERS" \
       FILTER_CATEGORY_MAP_CHUNK_SIZE="$FILTER_CATEGORY_MAP_CHUNK_SIZE" \
       FILTER_SAMPLE_EXTRACT_WORKERS="$FILTER_SAMPLE_EXTRACT_WORKERS" \
+      FILTER_MEDIA_TYPE_PRESAMPLING_GATE="$FILTER_MEDIA_TYPE_PRESAMPLING_GATE" \
+      FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS="$FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS" \
+      FILTER_MEDIA_TYPE_PRESAMPLING_REPORT="$FILTER_MEDIA_TYPE_PRESAMPLING_REPORT" \
       bash src/scripts/run_filter.sh \
         "$BUCKET" \
         "$FILTERED_PARQUET" \
@@ -1350,6 +1437,51 @@ fi
 if [ ! -f "$FILTERED_PARQUET" ]; then
   echo "[error] filtered parquet not found: $FILTERED_PARQUET"
   exit 1
+fi
+
+if [ "$RUN_MEDIA_TYPE_AUDIT" -eq 1 ]; then
+  if [ ! -d "$CURATED_IMAGE_DIR" ]; then
+    echo "[error] media type audit requires a flat curated image dir: $CURATED_IMAGE_DIR"
+    echo "        Use --export_curated_images 1 or provide --curated_image_dir."
+    exit 1
+  fi
+  if ! should_skip_file "$MEDIA_TYPE_AUDIT_SUMMARY_JSON"; then
+    media_type_audit_args=(
+      --input_parquet "$FILTERED_PARQUET"
+      --image_dir "$CURATED_IMAGE_DIR"
+      --output_dir "$MEDIA_TYPE_AUDIT_DIR"
+      --write_contact_sheets "$MEDIA_TYPE_AUDIT_CONTACT_SHEETS"
+    )
+    if [ "$MEDIA_TYPE_AUDIT_PROMPT_CLASSIFIER" != "none" ]; then
+      media_type_audit_args+=(
+        --prompt_classifier "$MEDIA_TYPE_AUDIT_PROMPT_CLASSIFIER"
+        --prompt_classifier_device "$MEDIA_TYPE_AUDIT_PROMPT_DEVICE"
+        --prompt_classifier_batch_size "$MEDIA_TYPE_AUDIT_PROMPT_BATCH_SIZE"
+        --prompt_classifier_demote_min_score "$MEDIA_TYPE_AUDIT_PROMPT_MIN_SCORE"
+        --prompt_classifier_demote_margin "$MEDIA_TYPE_AUDIT_PROMPT_MARGIN"
+        --prompt_classifier_fail_on_error "$MEDIA_TYPE_AUDIT_PROMPT_FAIL_ON_ERROR"
+      )
+      if [ -n "$MEDIA_TYPE_AUDIT_PROMPT_MODEL" ]; then
+        media_type_audit_args+=(--prompt_classifier_model "$MEDIA_TYPE_AUDIT_PROMPT_MODEL")
+      fi
+    fi
+    if [ -f "$MEDIA_TYPE_AUDIT_MAPPED_CACHE_PARQUET" ]; then
+      media_type_audit_args+=(--mapped_cache_parquet "$MEDIA_TYPE_AUDIT_MAPPED_CACHE_PARQUET")
+    else
+      echo "[warn] media type mapped cache not found: $MEDIA_TYPE_AUDIT_MAPPED_CACHE_PARQUET"
+    fi
+    run_with_log "01b_media_type_audit" \
+      "$PYTHON_BIN" src/scripts/audit_sstk_media_type.py \
+        "${media_type_audit_args[@]}"
+  fi
+  if [ "$MEDIA_TYPE_AUDIT_USE_PHOTO_PRIMARY" -eq 1 ]; then
+    if [ ! -f "$MEDIA_TYPE_AUDIT_PHOTO_PARQUET" ]; then
+      echo "[error] photo_primary media audit split not found: $MEDIA_TYPE_AUDIT_PHOTO_PARQUET"
+      exit 1
+    fi
+    FILTERED_PARQUET="$MEDIA_TYPE_AUDIT_PHOTO_PARQUET"
+    echo "[info] downstream filtered parquet switched to media-audited photo_primary split: $FILTERED_PARQUET"
+  fi
 fi
 
 if [ "$PREFER_CURATED_IMAGES" -eq 1 ] && [ -d "$CURATED_IMAGE_DIR" ]; then
@@ -2150,7 +2282,7 @@ build_training_label_debug_viz() {
   fi
   run_with_log "13d_build_training_label_debug_viz" \
     "$PYTHON_BIN" src/scripts/build_gaic_training_label_debug_viz.py \
-      --coco_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
+      --label_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
       --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
       --gaic_gt_train_json "$GAIC_TRAIN_REFERENCE_JSON" \
       --gaic_gt_test_json "$GAIC_TEST_REFERENCE_JSON" \
@@ -2262,28 +2394,39 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
     echo "[error] conditional detr training labels missing after build: $TRAINING_LABELS_DETR_CANONICAL_JSON | $TRAINING_LABELS_DETR_BATCH_JSON"
     exit 1
   fi
-  if ! should_skip_file "$TRAINING_LABELS_COCO_SUMMARY_JSON"; then
-    run_with_log "13b_convert_training_labels_coco" \
-      "$PYTHON_BIN" src/scripts/convert_sstk_detr_labels_to_coco.py \
+  if ! should_skip_file "$TRAINING_LABELS_LABEL_SUMMARY_JSON"; then
+    run_with_log "13b_convert_training_labels_annotation_json" \
+      "$PYTHON_BIN" src/scripts/export_sstk_detr_labels_to_annotation_json.py \
         --canonical_jsonl "$TRAINING_LABELS_DETR_CANONICAL_JSON" \
         --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
         --progress 1 \
-        --out_dir "$TRAINING_LABELS_COCO_DIR"
+        --out_dir "$TRAINING_LABELS_LABEL_JSON_DIR"
   fi
   if [ ! -f "$GAIC_REFERENCE_JSON" ]; then
     echo "[error] gaic-like conversion requires reference json: $GAIC_REFERENCE_JSON"
     exit 1
   fi
   if ! should_skip_file "$TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON"; then
+    GAIC_LIKE_SPLIT_ARGS=()
+    if [ -n "${GAIC_TRAIN_REFERENCE_JSON:-}" ] && [ -f "$GAIC_TRAIN_REFERENCE_JSON" ]; then
+      GAIC_LIKE_SPLIT_ARGS+=(--gaic_train_reference_json "$GAIC_TRAIN_REFERENCE_JSON")
+    fi
+    if [ -n "${GAIC_VAL_REFERENCE_JSON:-}" ] && [ -f "$GAIC_VAL_REFERENCE_JSON" ]; then
+      GAIC_LIKE_SPLIT_ARGS+=(--gaic_val_reference_json "$GAIC_VAL_REFERENCE_JSON")
+    fi
+    if [ -n "${GAIC_TEST_REFERENCE_JSON:-}" ] && [ -f "$GAIC_TEST_REFERENCE_JSON" ]; then
+      GAIC_LIKE_SPLIT_ARGS+=(--gaic_test_reference_json "$GAIC_TEST_REFERENCE_JSON")
+    fi
     run_with_log "13c_convert_training_labels_gaic_like" \
       "$PYTHON_BIN" src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
         --batch_jsonl "$TRAINING_LABELS_DETR_BATCH_JSON" \
         --gaic_reference_json "$GAIC_REFERENCE_JSON" \
-        --size_reference_coco_json "$TRAINING_LABELS_COCO_BATCH_JSON" \
+        --size_reference_label_json "$TRAINING_LABELS_LABEL_BATCH_JSON" \
         --out_json "$TRAINING_LABELS_GAIC_LIKE_JSON" \
         --out_summary_json "$TRAINING_LABELS_GAIC_LIKE_SUMMARY_JSON" \
         --progress 1 \
-        --out_guide_md "$TRAINING_LABELS_GAIC_LIKE_GUIDE_MD"
+        --out_guide_md "$TRAINING_LABELS_GAIC_LIKE_GUIDE_MD" \
+        "${GAIC_LIKE_SPLIT_ARGS[@]}"
   fi
   if [ "$RUN_TRAINING_LABEL_DEBUG_VIZ" -eq 1 ]; then
     if ! should_skip_file "$TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON"; then
@@ -2323,16 +2466,36 @@ if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
         --out_dir "$MULTIMODE_TRAINING_LABELS_DIR" \
         --target_ars "$MULTIMODE_TARGET_ARS" \
         --max_images "$MULTIMODE_MAX_IMAGES" \
+        --include_optional_negatives "$MULTIMODE_INCLUDE_OPTIONAL_NEGATIVES" \
+        --write_split_outputs "$MULTIMODE_WRITE_SPLIT_OUTPUTS" \
+        --train_ratio "$MULTIMODE_TRAIN_RATIO" \
+        --split_seed "$MULTIMODE_SPLIT_SEED" \
         --write_debug_viz "$MULTIMODE_WRITE_DEBUG_VIZ" \
         --debug_viz_limit "$MULTIMODE_DEBUG_VIZ_LIMIT" \
+        --landscape_candidate_policy "$MULTIMODE_LANDSCAPE_CANDIDATE_POLICY" \
+        --landscape_score_policy "$MULTIMODE_LANDSCAPE_SCORE_POLICY" \
+        --landscape_teacher_score_scope "$MULTIMODE_LANDSCAPE_TEACHER_SCORE_SCOPE" \
+        --mode_intent_policy "$MULTIMODE_MODE_INTENT_POLICY" \
         --progress 1
+    MULTIMODE_VALIDATE_ARGS=(
+      --summary_json "$MULTIMODE_SUMMARY_JSON"
+      --label_json "$MULTIMODE_LABEL_JSON"
+      --query_status_jsonl "$MULTIMODE_QUERY_STATUS_JSONL"
+      --out_json "$MULTIMODE_VALIDATION_JSON"
+      --image_root "${EFFECTIVE_IMAGE_DIR:-$CURATED_IMAGE_DIR}"
+      --features_jsonl "$RESOLVED_MULTIMODE_FEATURES_JSONL"
+      --candidates_jsonl "$RESOLVED_MULTIMODE_CANDIDATES_JSONL"
+      --progress 1
+    )
+    if [ "$MULTIMODE_MAX_IMAGES" -eq 0 ]; then
+      MULTIMODE_VALIDATE_ARGS+=(--expected_source_images "$CURATED_POOL_SIZE" --allow_partial 0)
+    fi
+    if [ "$MULTIMODE_WRITE_SPLIT_OUTPUTS" -eq 1 ]; then
+      MULTIMODE_VALIDATE_ARGS+=(--split_manifest_json "${MULTIMODE_TRAINING_LABELS_DIR}/splits/split_manifest.json")
+    fi
     run_with_log "14b_validate_multimode_training_labels" \
       "$PYTHON_BIN" src/scripts/validate_multimode_training_labels.py \
-        --summary_json "$MULTIMODE_SUMMARY_JSON" \
-        --coco_json "$MULTIMODE_COCO_JSON" \
-        --query_status_jsonl "$MULTIMODE_QUERY_STATUS_JSONL" \
-        --out_json "$MULTIMODE_VALIDATION_JSON" \
-        --progress 1
+        "${MULTIMODE_VALIDATE_ARGS[@]}"
   fi
 fi
 
@@ -2453,7 +2616,7 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
   echo " detr batch       : $TRAINING_LABELS_DETR_BATCH_JSON"
   echo " detr skipped     : $TRAINING_LABELS_DETR_SKIPPED_JSON"
   echo " training report  : $TRAINING_LABELS_REPORT_MD"
-  echo " coco summary     : $TRAINING_LABELS_COCO_SUMMARY_JSON"
+  echo " label summary    : $TRAINING_LABELS_LABEL_SUMMARY_JSON"
   echo " gaic-like json   : $TRAINING_LABELS_GAIC_LIKE_JSON"
   echo " gaic-like guide  : $TRAINING_LABELS_GAIC_LIKE_GUIDE_MD"
   if [ "$RUN_TRAINING_LABEL_DEBUG_VIZ" -eq 1 ]; then
@@ -2479,7 +2642,7 @@ if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
   echo " multimode labels : $MULTIMODE_TRAINING_LABELS_DIR"
   echo " multimode summary: $MULTIMODE_SUMMARY_JSON"
   echo " multimode status : $MULTIMODE_QUERY_STATUS_JSONL"
-  echo " multimode coco   : $MULTIMODE_COCO_JSON"
+  echo " multimode labels : $MULTIMODE_LABEL_JSON"
   echo " multimode valid  : $MULTIMODE_VALIDATION_JSON"
 fi
 if [ "$RUN_VLM_TEACHER" -eq 1 ]; then

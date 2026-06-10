@@ -362,6 +362,18 @@ proposal generator는 `Conditional DETR`와 `RT-DETR`에서 아이디어를 가�
 - objectness / proposal quality $\hat o_i$
 - proposal token $t_i^0$
 
+### AR-constrained proposal parameterization
+
+2026-04-17 패치부터 fixed target AR(`1:1`, `9:16`, `16:9`, `3:4`, `4:3`)에서는 proposal box를 자유 `cx,cy,w,h` 회귀로 두지 않는다. 이전 구현은 target AR token을 조건으로 넣었지만 bbox head 자체는 4자유도 `cxcywh`를 직접 예측했기 때문에, `target_ar=3:4` row에서도 proposal top-1이 1:1에 가까운 박스로 나올 수 있었다. 이는 ranking crop(red)과 proposal head top-1(orange)이 항상 달라 보이는 주요 원인이었다.
+
+새 구현은 bbox head의 raw sigmoid 출력 중 `cx`, `cy`, `scale`만 fixed AR proposal에 사용한다. 단순히 square letterbox 전체 `[0,1]`에 target AR을 맞추면 box가 padding 영역으로 넘어간 뒤 원본 좌표 복원에서 clipping되어 실제 crop AR이 깨질 수 있다. 따라서 data adapter가 실제 resized content 영역 `letterbox_content_box=[x_0,y_0,x_1,y_1]`를 모델에 전달하고, fixed AR proposal은 이 content rect 내부에서만 생성한다.
+
+원본 target AR을 $r$, 원본 이미지 AR을 $a=W/H$, letterbox content 크기를 $C_w,C_h$라고 하면, letterbox 좌표계에서 써야 하는 보정 AR은 $r_{lb}=r(C_w/C_h)/a$다. 이 값을 기준으로 `scale`이 content rect 안의 최대 fixed-AR crop 크기를 조절한다.
+
+$$ w=s\min(C_w,r_{lb}C_h),\quad h=w/r_{lb},\quad c_x=x_0+w/2+\sigma_x(C_w-w),\quad c_y=y_0+h/2+\sigma_y(C_h-h) $$
+
+`FREE` target AR만 기존 자유 `cxcywh` 경로를 유지한다. 이렇게 하면 fixed AR proposal은 모델 구조상 원본 crop target AR을 만족하고, AR 불일치 correction을 ranking이나 visualizer에 떠넘기지 않는다. 평가 JSON에는 각 proposal별 `target_ar`, `target_ar_value`, `crop_ar`, `letterbox_ar`, `target_ar_log_error`, `target_ar_compatible`를 기록한다. 시각화의 orange box는 raw proposal top-1이 아니라 target-AR compatible proposal top-1을 우선 표시한다.
+
 ### query 수
 
 - HQ: $Q=32$
@@ -821,6 +833,20 @@ $$
 | `prop.token0` | `[1,Q,D]` | initial proposal token |
 | `prop.uncert` | `[1,Q]` | optional proposal uncertainty |
 
+fixed AR inference/debug JSON에서는 proposal별로 다음 메타데이터를 추가로 기록한다.
+
+| 필드 | 의미 |
+|---|---|
+| `target_ar_value` | `1:1`, `3:4` 등 target AR의 실수값. `FREE`는 `null` |
+| `crop_ar` | 원본 이미지 좌표로 복원한 proposal의 실제 crop pixel AR |
+| `letterbox_ar` | letterbox 좌표계 proposal AR |
+| `target_ar_log_error` | `abs(log(crop_ar / target_ar_value))` |
+| `target_ar_compatible` | fixed AR에서 log error가 허용 범위 안인지 여부 |
+| `proposal_top1_raw` | objectness 기준 raw top-1 proposal |
+| `proposal_top1_target_ar` | target AR compatibility를 우선한 표시/진단용 proposal |
+
+평가 metric은 raw objectness top-1과 target-AR-selected top-1을 분리한다. `proposal_raw_top1_target_ar_log_error`와 `proposal_raw_top1_target_ar_compatible`는 raw proposal head가 곧바로 표시 가능한지를 보고, `proposal_top1_target_ar_log_error`와 `proposal_top1_target_ar_compatible`는 target-AR selection 후 사용자-facing orange box가 target AR을 만족하는지 본다.
+
 ## 9.3 box pooling 출력
 
 | 텐서 | shape | 설명 |
@@ -848,6 +874,234 @@ $$
 | `policy.delta_vs_base` | `[1,1]` | baseline 대비 개선량 |
 | `refine.delta` | `[1,2,3]` | top-1/top-2 local delta |
 
+## 9.6 explainable output 계약
+
+최종 제품 출력은 crop box만 반환하면 안 된다. 정성 검증, 디버깅, 고객/PM 리뷰를 위해 모델은 crop 결과와 함께 사람이 읽을 수 있는 labelized explanation을 반환한다.
+
+1차 구현에서 바로 반환 가능한 항목은 다음이다.
+
+| 항목 | source tensor | 출력 예 |
+|---|---|---|
+| crop decision | `policy.logits` | `{"id": 2, "label": "crop", "score": 0.83}` |
+| photo / subject mode | `route.logits` | `{"id": 6, "label": "scene_general", "score": 0.71}` |
+| candidate utility | `rank.utility` | `{"score": 0.78, "label": "good"}` |
+| candidate risk | `rank.risk` | `{"score": 0.12, "label": "safe"}` |
+| positive likelihood | `rank.positive` | `{"score": 0.67, "label": "likely"}` |
+| macro checklist | `rank.ASC/T` | `aesthetic`, `subject`, `composition`, `technical` 각각 `good/ok/bad` |
+
+1차 label rule은 calibration 전까지 단순 threshold를 쓴다. score `>=0.72`는 `good`, `0.45~0.72`는 `ok`, `<0.45`는 `bad`로 표시한다. 이 label은 사람 검증용 display label이며, 최종 품질 판단은 official benchmark metric과 slice QA로 한다.
+
+현재 구현에서는 `train_checklist.jsonl` 계열의 실제 candidate field를 이용해 세부 checklist head를 분리했다. 기존 `macro_head`만으로는 `composition: ok 0.63` 같은 거친 설명만 가능했다. SSTK data factory label에는 이미 `checklist_labels`, `checklist_scores`, `composition_focus`, `why_tags`, `reject_tags`, `safety_penalty`가 들어 있으므로, v4.0 student는 이들을 별도 target으로 받아 아래 세 종류의 detailed explanation head를 학습한다.
+
+- `checklist_class_head`: 13개 checklist group의 multi-class label을 예측한다. 예: `headroom_loose`, `lookroom_excessive`, `rule_of_thirds_strong`, `phi_grid_weak`, `context_preserved`.
+- `checklist_applicability_head`: subject mode와 candidate crop을 기준으로 각 checklist group이 적용 가능한지 예측한다. 예: `object_single`에서는 `headroom`, `lookroom`, `face_cut`, `joint_cut`을 known-not-applicable로 둔다.
+- `detail_score_head`: 22개 normalized numeric score를 예측한다. 예: `third_strength`, `phi_strength`, `center_strength`, `headroom_ratio_norm`, `lookroom_ratio_norm`, `symmetry_score`, `safety_penalty_soft`.
+- `why_tag_head`: 31개 why/reject tag를 multi-label로 예측한다. 예: `avoid_face_cut`, `avoid_person_cut`, `rule_of_thirds`, `phi_grid`, `headroom_violation`, `lookroom_violation`.
+
+`na`는 설명 가능한 구도 상태가 아니라 teacher label 결측을 뜻한다. 따라서 class loss에서는 `checklist_labels.<key>`가 없거나 값이 `na`, `none`, `null`, 빈 문자열인 경우 해당 group의 valid mask를 0으로 둔다. vocab에는 checkpoint 호환성과 inference fallback을 위해 `na` class를 유지하지만, 새 학습에서는 `na`를 맞히는 방향으로 설명 head를 최적화하지 않는다. 추론/시각화에서는 `na` class 예측을 품질 라벨처럼 표시하지 않고 `unlabeled p=<probability>`로 표시하며, 실제 구도 판단은 `detail_scores`와 non-NA class label을 함께 본다.
+
+또한 모든 checklist가 모든 subject mode에 적용되는 것은 아니다. `portrait_single/group`에서는 headroom/lookroom/face/person cut이 의미 있지만, `object_single` 또는 `object_multi`에서는 사람 전용 항목이 의미 없다. 새 데이터 adapter는 `EXPLANATION_APPLICABILITY_BY_MODE`를 기준으로 `checklist_applicability_target`, `checklist_applicability_valid`, `why_tag_applicable`를 생성한다. class/detail/why loss는 이 mask를 반영한다. 추론 decode는 mode-inapplicable 항목을 `available=false`, `display_label=not_applicable`로 표시하고 score를 숨긴다. mode상 가능하지만 모델이 applicability를 낮게 본 항목은 `display_label=unavailable`로 표시해 `not_applicable`과 구분한다. 따라서 사람이 없는 object crop에서 `headroom_loose 0.89` 같은 hallucination성 explanation이 사용자-facing 산출물에 나오지 않는다.
+
+| 세부 head | label 예 | 주요 학습 신호 |
+|---|---|---|
+| rule-of-thirds / composition | `rule_of_thirds_strong`, `phi_grid_weak`, `center_comp_strong` | `checklist_labels.third_dist/phi_dist/center_dist`, `composition_focus` |
+| headroom / lookroom | `headroom_loose`, `headroom_ok`, `lookroom_excessive` | `checklist_labels.headroom/lookroom`, normalized ratio score, reject tag |
+| subject coverage / scale | `good`, `marginal`, `too_loose`, `ideal_scale` | subject prior, `checklist_labels.subject_coverage/subject_scale` |
+| cut/context/copyspace safety | `no_face_cut`, `joint_cut_mild`, `context_preserved`, `copyspace_partial` | reject/safety tag, context/copyspace checklist |
+| why / reject tags | `avoid_face_cut`, `rule_of_thirds`, `headroom_violation` | `why_tags`, `reject_tags`, destructive-negative bucket |
+
+따라서 inference JSON의 권장 형태는 아래와 같다.
+
+```json
+{
+  "decision": {"label": "crop", "score": 0.83},
+  "subject_mode": {"label": "portrait_single", "score": 0.72},
+  "predictions": [
+    {
+      "rank": 1,
+      "bbox_norm_xyxy": [0.12, 0.08, 0.88, 0.92],
+      "score": 0.78,
+      "checklist": {
+        "composition": {"label": "good", "score": 0.76},
+        "subject": {"label": "good", "score": 0.84},
+        "technical": {"label": "ok", "score": 0.62}
+      },
+      "detailed_checklist": {
+        "third_dist": {"label": "rule_of_thirds_strong", "score": 0.82},
+        "headroom": {"label": "headroom_loose", "display_label": "headroom_loose", "available": true, "score": 0.71},
+        "lookroom": {"label": "lookroom_excessive", "display_label": "lookroom_excessive", "available": true, "score": 0.66}
+      },
+      "detail_scores": {
+        "third_strength": 0.78,
+        "phi_strength": 0.61,
+        "symmetry_score": 0.58
+      },
+      "why_tags": [
+        {"tag": "rule_of_thirds", "score": 0.74},
+        {"tag": "avoid_face_cut", "score": 0.68}
+      ],
+      "explanation": {
+        "risk": {"label": "safe", "score": 0.11},
+        "positive": {"label": "likely", "score": 0.69}
+      }
+    }
+  ]
+}
+```
+
+이 구조를 쓰면 PNG contact sheet에는 crop box와 함께 `decision`, `subject_mode`, `composition/subject/technical` label뿐 아니라 세부 checklist, detail score, why tag, label-side teacher checklist를 함께 표시할 수 있다. JSONL 평가 산출물에서는 label별 failure slice, contradiction slice, teacher-label imitation 품질을 바로 집계할 수 있다.
+
+## 9.7 Product AR/full label score replacement 계약
+
+2026-04-20 이후 MobileCropNet의 제품 track은 `Product AR cropper + explanation`으로 고정한다. 따라서 학습 label도 `FREE`, `1:1`, `3:4`, `4:3`, `16:9`, `9:16` target AR row를 모두 포함하는 Product AR/full schema를 기본으로 사용한다. GAIC official MOS benchmark나 GAIC public cropper score track은 MobileCropNet student 자체를 GAIC scorer로 만드는 목표가 아니라, crop score teacher 또는 label curation을 진단하는 별도 track이다.
+
+T6 deep ranker 또는 GAIC public cropper score를 Product AR/full label에 적용할 때는 crop score supervision만 교체한다. SSTK data factory의 subject mode, checklist label, applicability, fatal/safety/reject metadata는 계속 설명/안전 audit target으로 보존한다. 이때 external score가 높지만 SSTK가 hard reject 또는 fatal로 표시한 후보는 positive로 승격하지 않고 다음 정책을 적용한다.
+
+| 상황 | 학습 label 처리 |
+|---|---|
+| external score 높음 + SSTK explanation 양호 | 같은 `(image_id, target_ar)` group의 positive 후보로 선택 가능 |
+| external score 높음 + SSTK contradiction | raw external score는 보존하되 낮은 weight 또는 conflict bucket으로 audit |
+| external score 높음 + SSTK hard reject/fatal | adjusted score를 `unsafe_score_cap`으로 cap하고 `external_high_sstk_hard_reject_demoted` bucket으로 demotion |
+| external score 낮음 + SSTK negative | normal/hard negative로 유지 |
+
+이 계약의 핵심은 external scorer의 ranking signal과 SSTK product safety signal을 혼동하지 않는 것이다. 모델의 utility/ranking head는 T6/public score의 순서를 학습할 수 있지만, 제품에서 명백히 위험한 crop을 top positive로 학습하지 않도록 converter가 `best_safe_external_with_sstk_fallback` 정책을 적용한다. 원본 external score와 demotion 사유는 `external_score_teacher` metadata에 남겨서 정성 분석, slice QA, label builder ablation에 사용한다.
+
+구현은 `export_mobilecropnet_v4_product_ar_candidates.py`, `score_mobilecropnet_v4_product_ar_candidates_with_public_cropper.py`, `run_mobilecropnet_v4_product_ar_t6_label_generation.sh`, `build_mobilecropnet_v4_product_ar_score_labels.py`, `run_mobilecropnet_v4_product_ar_score_track_matrix.sh`로 분리했다. 생성 label은 `training_labels_public_score_product_ar_v1`, `training_labels_t6_score_product_ar_v1`이며, GAIC v2 official split 기준 Train 14,915 row / Val 1,136 row / Test 2,824 row의 Product AR/full schema를 유지한다. 2026-04-20 full-profile 실험에서는 `T6/turbo_256`이 top-return 계열, `public/rank_320`과 `public/balanced_288`이 ranking correlation 계열에서 가장 강했다. 세부 수치와 산출물 경로는 `MobileCropNet_v4_0_GAIC_Experiment_Report_KO_2026-04-16.md`의 7.12 절을 기준으로 관리한다.
+
+2026-04-21부터는 이 Product AR/full label 위에 `deploy-align` 학습을 추가한다. 핵심은 label candidate bank에서만 utility를 맞추는 것이 아니라, **모델이 실제 배포 시 생성하는 proposal set에도 ranking/positive/risk 정렬 신호를 직접 주는 것**이다. 배포 selection policy는 `proposal_topk_rerank(top-8)`를 기본으로 두고, 관련 설계와 실험은 `MobileCropNet_v4_0_Product_AR_DeployAlign_Report_KO_2026-04-21.md`에서 별도로 관리한다. 최종 결과 기준으로는 `prod_rank_288`, `rank_320`보다 `turbo_256`이 배포 안정성이 훨씬 높았고, `deploy-align 0.30/0.15` ablation 모두 `arx2`는 넘었지만 기존 `T6/turbo_256` baseline 자체는 넘지 못했다. 따라서 제품 승격 모델은 여전히 `mcn-t6prodar-turbo-256-20260420-220603`이며, deploy-align lane은 배포 정합형 evaluator/visualization 계약과 loss ablation을 검증한 연구 결과로 유지한다. 또한 현재 deploy-align lane의 checkpoint 선택은 training loop 내부 exact direct evaluator가 아니라 `deploy_align_topreturn` proxy metric 기반이므로, direct Product AR primary metric과의 selection gap을 함께 해석해야 한다.
+
+## 9.8 현재 구현을 이해하기 위한 핵심 요약
+
+### 9.8.1 현재 모델은 무엇을 학습하는가
+
+현재 MobileCropNet v4는 크게 두 모듈로 보면 이해가 쉽다.
+
+| 모듈 | 역할 | 현재 구현 포인트 |
+|---|---|---|
+| Proposal generator | 이미지와 target AR을 보고 crop 후보 box 집합을 생성 | `proposal_queries`, `proposal_box_head`, `proposal_logit_head`로 구성된 learned proposal head. fixed AR row에서는 AR-constrained parameterization을 사용한다. |
+| Ranker + policy/explanation | 생성된 후보 또는 label candidate bank를 비교해 최종 crop과 설명을 고름 | ROI pooled candidate token, relation refinement, optional set-transformer ranker, utility/positive/risk/policy/checklist/route head로 구성된다. |
+
+즉 배포 시 모델은 `proposal 생성 -> 후보 scoring/ranking -> 최종 crop 선택 -> decision/subject mode/explanation 출력` 순서로 동작한다. 현재 제품 권장 selection policy는 `proposal_topk_rerank(top-8)`이다. 단순 `proposal objectness top-1`이나 `utility top-1`만으로 바로 내보내는 방식이 아니다.
+
+### 9.8.2 학습 라벨은 어떻게 만들어지는가
+
+학습의 출발점은 SSTK data factory가 만든 Product AR/full label이다. 이 label은 이미지마다 `FREE`, `1:1`, `3:4`, `4:3`, `16:9`, `9:16` row를 만들고, 각 row에 대해 `candidate_pool`, `matching_targets`, `pairwise/listwise`, `decision`, `route`, `checklist`, `why tag`를 함께 담는다.
+
+라벨 생성 흐름은 아래처럼 이해하면 된다.
+
+1. SSTK teacher pipeline이 이미지별 crop 후보 집합을 만든다.
+2. 각 후보에 대해 subject mode, checklist, fatal/reject, safety, decision 같은 product semantics를 붙인다.
+3. score supervision은 track에 따라 다음 셋 중 하나를 사용한다.
+   - 기본 SSTK score: SSTK teacher의 `score_prob`, `crop_utility_prob`, `rank_pct`
+   - T6 score track: 같은 후보 box 위에 T6 deep ranker score를 다시 계산해 score supervision만 교체
+   - public score track: 같은 후보 box 위에 GAIC public cropper score를 다시 계산해 score supervision만 교체
+4. external score가 높아도 SSTK가 `hard reject`, `fatal`, `unsafe`로 본 후보는 positive로 승격하지 않는다. converter가 `best_safe_external_with_sstk_fallback` 정책으로 safe 후보를 positive로 고른다.
+
+중요한 점은 box 자체와 explanation ontology는 SSTK가 제공하고, score ordering만 T6/public으로 교체할 수 있다는 것이다. 즉 `T6/public score 기반 Product AR/full label`은 "다른 crop 후보를 새로 만든 것"이 아니라 "같은 후보 집합에 대해 utility supervision을 재정의한 것"이다.
+
+### 9.8.3 Proposal generator는 무엇으로 학습되는가
+
+proposal generator는 row 안의 positive crop 집합으로 학습된다. 여기서 positive box는 `matching_targets`와 safe high-score positive 후보를 합쳐 만든다.
+
+핵심 손실은 다음과 같다.
+
+| proposal 학습 신호 | 의미 |
+|---|---|
+| `proposal_obj_loss` | 어떤 generated proposal이 positive와 충분히 겹치는지 objectness로 학습 |
+| `proposal_box_loss` | positive box에 더 가깝게 위치/크기를 맞추도록 학습 |
+| `proposal_diversity_loss` | proposal collapse를 막고 후보 다양성을 유지 |
+| `proposal_recall_0_5` | positive를 proposal set이 실제로 포함하는지 보는 핵심 진단 지표 |
+
+`deploy-align` 실험에서는 여기에 generated proposal 자체를 다시 ranker target에 맞추는 `generated_proposal_alignment_loss`를 추가했다. 즉 배포 시 생성되는 proposal 집합에도 score/listwise/positive/risk 정렬 신호를 직접 주는 lane이다.
+
+### 9.8.4 Ranker는 무엇으로 학습되는가
+
+ranker는 candidate box 집합을 입력으로 받아 후보 간 상대 순서를 학습한다. 이때 입력 candidate는 학습 시에는 주로 Product AR/full label의 `candidate_pool`이고, 배포 시에는 모델이 스스로 생성한 proposal set이다.
+
+핵심 손실은 다음과 같다.
+
+| ranker 학습 신호 | 의미 |
+|---|---|
+| `score_loss` | 각 후보의 normalized score target을 직접 맞춤 |
+| `listwise_loss` | 후보 전체 순서 분포를 맞춤 |
+| `pairwise_loss` / `explicit_pairwise_loss` | 좋은 후보가 나쁜 후보보다 높게 오르도록 비교 학습 |
+| `positive_loss` | top crop에 가까운 후보를 positive로 분리 |
+| `risk_loss`, `top1_risk_loss` | hard negative / unsafe / overflow / destructive reject를 상위로 올리지 않도록 억제 |
+| `top_return_loss`, `topk_coverage_loss` | top-1, top-k 실사용 성능을 직접 끌어올리는 보조 손실 |
+| `teacher_distill_loss` | teacher soft distribution을 student ranking 분포에 주입하는 보조 경로 |
+
+여기에 checklist/why/applicability/route/decision head가 붙어서 explanation과 policy를 같이 학습한다. 따라서 현재 ranker는 단순 score head가 아니라 `crop scorer + product decision + explanation decoder`에 가깝다.
+
+### 9.8.5 모듈별 성능에 가장 크게 영향을 주는 요소
+
+Proposal generator 쪽에서 가장 중요한 것은 아래 셋이다.
+
+1. positive recall: 좋은 crop이 proposal set 안에 실제로 존재하는가
+2. target AR compatibility: fixed AR row에서 생성 box가 정말 해당 종횡비를 만족하는가
+3. positive bag 정의: 어떤 후보를 positive로 볼지, unsafe candidate를 어떻게 배제할지
+
+Ranker 쪽에서 가장 중요한 것은 아래 넷이다.
+
+1. score target 품질: SSTK/T6/public 중 어떤 ordering을 주는가
+2. pairwise/listwise/top-return loss 구성: correlation을 밀지, top-return을 밀지
+3. candidate coverage: 학습 시 candidate pool이 충분히 다양한가
+4. selection surface 정합성: 학습 때 보던 candidate bank와 배포 때 보는 generated proposal set이 얼마나 비슷한가
+
+시스템 전체로 보면 결국 두 가지가 가장 크다.
+
+1. proposal set 안에 괜찮은 crop이 들어오는가
+2. 들어온 후보들 중 ranker가 실제 배포 selection policy에서 올바른 것을 고르는가
+
+즉 proposal recall이 낮으면 ranker가 아무리 좋아도 최종 crop이 나빠지고, 반대로 proposal이 좋아도 ranking/selection이 틀리면 사용자 결과는 망가진다.
+
+### 9.8.6 모듈과 시스템은 어떻게 평가하는가
+
+평가는 두 표면으로 나눠서 봐야 한다.
+
+| 평가 표면 | 목적 | 주 평가 데이터 | 핵심 지표 |
+|---|---|---|---|
+| Direct Product AR evaluation | 실제 배포 crop 성능 평가 | GAIC v2 official split을 Product AR/full schema로 변환한 label | `final_positive_hit_iou_0_5`, `final_best_iou_to_positive`, `proposal_positive_recall_at_5_iou_0_5`, `route_acc`, `decision_acc` |
+| Official GAIC MOS benchmark | scorer/ranker의 FREE-form ranking quality 평가 | GAIC official benchmark annotation / candidate set | `PCC`, `SRCC`, `Acc1/5`, `Acc1/10`, `Acc4/10`, `Accw4/10`, `top1 MOS` |
+
+여기서 중요한 해석은 다음과 같다.
+
+- Direct Product AR evaluation은 proposal generator와 ranker를 함께 본다.
+- Official GAIC MOS benchmark는 주로 scorer/ranker 품질을 보는 표면이다. benchmark candidate set이 이미 정해져 있기 때문에 proposal generator 자체를 직접 재는 평가는 아니다.
+- 따라서 GAIC MOS가 좋아도 Product AR 배포 crop이 항상 좋은 것은 아니고, 반대로 Product AR direct 성능이 좋아도 GAIC ranking correlation이 최고가 아닐 수 있다.
+
+### 9.8.6.1 Public cropper와 Direct Product AR를 어떻게 비교할 수 있는가
+
+이 질문은 평가 표면을 분리해서 봐야 한다.
+
+1. `GAIC`, `CGS` 같은 public cropper는 **candidate scorer**이므로, Product AR/full label의 `candidate_pool` 위에 점수를 붙여 `(image_id, target_ar)` 그룹별 top-1 candidate를 고르게 만들 수 있다.
+2. 따라서 `final_positive_hit_iou_0_5`, `final_best_iou_to_positive`, `final_risk_hit_iou_0_5`, `final_target_ar_compatible` 같은 **candidate-bank direct Product AR 지표**는 계산 가능하다.
+3. 반면 public cropper는 MobileCropNet처럼 learned proposal generator, route head, decision head를 갖지 않으므로 `proposal_positive_recall_at_k`, `route_acc`, `decision_acc`까지 같은 의미로 직접 비교할 수는 없다.
+4. `CACNet`은 단일 crop 회귀 모델이라 candidate별 native score가 없기 때문에, Product AR/full direct 비교에서도 projection 기반 근사 비교만 가능하다.
+
+즉 public cropper와 MobileCropNet의 Direct Product AR 비교는 두 단계로 나뉜다.
+
+| 비교 수준 | 가능 여부 | 설명 |
+|---|---|---|
+| candidate-bank direct 비교 | 가능 (`GAIC`, `CGS`) | 같은 Product AR 후보 집합 위에서 점수를 붙이고 top-1을 고르는 scorer baseline으로 비교 |
+| deployed system full 비교 | 제한적 | MobileCropNet은 proposal generator + ranker + policy를 함께 평가하지만 public cropper는 proposal/policy 모듈이 없음 |
+| projection-only 비교 | 제한적 (`CACNet`) | 단일 예측 crop을 가장 가까운 candidate에 투영하는 진단값만 가능 |
+
+현재 코드베이스에는 두 가지가 이미 구현돼 있다. 첫째, `score_mobilecropnet_v4_product_ar_candidates_with_public_cropper.py`가 Product AR 후보 row를 `GAIC/CGS` public cropper로 scoring한다. 둘째, 이 점수를 이용한 `training_labels_public_score_product_ar_v1` label generation과 MobileCropNet 학습 실험이 이미 완료돼 있다. 다만 **public cropper 자체를 Product AR/full label 위에서 top-1 선택하게 한 뒤, MobileCropNet direct evaluator와 동일 형식의 전용 정량 report를 생성하는 실험은 아직 별도 구현/정리되지 않았다.**
+
+따라서 현재 시점의 가장 타당한 해석은 다음과 같다. public cropper에 대해서는 이미 `GAIC official benchmark`, `unified public benchmark`, `Product AR score-label generation`은 완료돼 있지만, **Product AR direct evaluator 기준의 apples-to-apples candidate-bank baseline report는 추가 구현 항목**이다.
+
+### 9.8.7 배포 시 사용자가 체감하는 성능을 가장 크게 좌우하는 것
+
+사용자가 실제로 보는 것은 "최종 crop 1개"이기 때문에 아래 항목이 체감 성능을 가장 크게 좌우한다.
+
+1. **selection policy**: 현재는 `proposal_topk_rerank(top-8)`가 가장 중요하다. 같은 checkpoint라도 `utility_top1`와 결과가 달라질 수 있다.
+2. **proposal coverage**: 생성된 후보 안에 좋은 crop이 없으면 최종 crop은 반드시 나빠진다.
+3. **route/decision coherence**: `keep_full`, `minimal_crop`, `crop` 판단과 subject mode가 어긋나면 crop과 explanation이 함께 이상해진다.
+4. **unsafe/fatal filtering**: score가 높아도 product safety 관점에서 위험한 crop을 막아야 한다.
+5. **training surface와 deployment surface의 정합성**: label candidate bank에서만 잘 맞고 generated proposal set에서는 무너지면, 오프라인 metric 대비 실제 사용자 결과가 나빠진다.
+
+실무적으로는 `ranker score` 하나보다 `proposal recall + rerank policy + safety demotion`의 합이 사용자 경험을 결정한다. 그래서 현재 제품 track에서는 "GAIC scorer 최고점"보다 "Product AR direct 성능과 시각화 품질"을 우선해서 해석한다.
+
 # 10. 온디바이스 배포 최적화 설계
 
 ## 10.1 원칙: 알고리즘은 하나, 프로파일은 셋
@@ -863,6 +1117,44 @@ v4.0은 HQ, Balanced, Turbo 세 프로파일을 정의한다.
 | HQ-320 | 320 | 32 | 2-layer set transformer | ON | MobileNetV4-Hybrid-M | 최고 품질 / distillation teacher |
 | Balanced-288 | 288 | 24 | RelationLite+ | gray-zone only | RepViT-M2 또는 MobileNetV4-Hybrid-M | 기본 제품형 |
 | Turbo-256 | 256 | 16 | RelationLite | 기본 OFF | RepViT-M2 | 30ms급 latency 우선 |
+
+### 구현 정렬 상태와 향후 기본 프로파일
+
+2026-04-16 기준 현재까지 학습/평가된 GAIC MobileCropNet v4 checkpoint는 외부 pretrained backbone을 사용하지 않았다. 대표 Balanced run은 `input_size=288`, `proposal_q=24`, `candidate_k=24`, `token_dim=128`, `width_mult=0.75`, `backbone_name=custom_depthwise`, `backbone_pretrained=false`였고, 이후 HQ-320 검증 run도 `backbone_name=mobilenetv4_hybrid_medium`, `backbone_pretrained=false`로 수행됐다. 따라서 기존 checkpoint 성능은 pretrained backbone을 적용한 HQ-320/Balanced/Turbo 성능으로 해석하면 안 된다.
+
+2026-04-17 업데이트: 설계상 권장 프로파일은 여전히 `HQ-320`이지만, GAIC v2 official MOS 기준 SSTK-only Product Track에서는 `HQ-320` 자체보다 `rank_320` corrected sweep과 `hybrid384` 확장이 더 좋은 결과를 냈다. 따라서 설계 검증/고품질 후보 실험은 `HQ-320`을 유지하되, 제품 후보 실험과 report의 primary candidate는 `rank_320 tr06-s19`와 `hybrid384`를 함께 본다. 모든 구현 preset은 `backbone_pretrained=true`를 기본값으로 하며, checkpoint 재로드 시에는 저장된 state dict를 사용하므로 외부 pretrained download를 반복하지 않는다. HQ-320 구현 preset은 다음과 같이 고정한다.
+
+| 항목 | HQ-320 구현 preset |
+|---|---|
+| `model_profile` | `hq_320` |
+| `input_size` | 320 |
+| `proposal_q` | 32 |
+| `candidate_k` | 32 |
+| `token_dim` | 192 |
+| `width_mult` | 1.0 |
+| `backbone_name` | `mobilenetv4_hybrid_medium.e200_r256_in12k_ft_in1k` |
+| `backbone_pretrained` | `true` |
+| `image_mean/std` | ImageNet mean/std, `0.485,0.456,0.406` / `0.229,0.224,0.225` |
+| `ranker_type` | `set_transformer` |
+| `ranker_depth` | 2 |
+| `refiner` | strict HQ 요구사항이며, 현재 구현에서는 별도 local box refiner 학습 loss가 아직 미완료 |
+
+Balanced/Turbo preset은 제품 latency와 품질 ablation을 위해 별도로 유지한다.
+
+| 프로파일 | 구현 `backbone_name` | pretrained source | 정규화 | 선택 근거 |
+|---|---|---|---|---|
+| HQ-320 | `mobilenetv4_hybrid_medium.e200_r256_in12k_ft_in1k` | ImageNet-12k pretrain + ImageNet-1k finetune | ImageNet mean/std | 설계상 HQ backbone family와 일치하고, timm 공개 MobileNetV4-Hybrid-M 중 320 test config에 가장 잘 맞는 고성능 weight다. |
+| Balanced-288 | `mobilenetv4_conv_medium.e250_r384_in12k_ft_in1k` | ImageNet-12k pretrain + ImageNet-1k finetune | ImageNet mean/std | RepViT-M2는 timm `repvit_m2.dist_in1k` weight가 있어 deployment ablation 후보로 유지하지만, 현재 품질 preset은 더 강한 in12k+in1k MobileNetV4-Conv-M weight를 사용한다. |
+| Turbo-256 | `mobilenetv4_conv_small.e3600_r256_in1k` | ImageNet-1k pretrained | `0.5,0.5,0.5` / `0.5,0.5,0.5` | 256 입력 profile에 맞는 MobileNetV4 small 계열 중 가장 강한 공개 timm weight이며, profile의 latency 목적을 유지한다. |
+
+Product Track에서 추가로 쓰는 실험 프로파일은 다음과 같이 해석한다.
+
+| 프로파일 | 구현 요약 | 현재 판단 |
+|---|---|---|
+| `rank_320` | 320 입력, MobileNetV4 Conv-M pretrained, 32 candidate/proposal, set-transformer ranker depth 2 | SSTK-only 균형형 product candidate. 2026-04-17 corrected sweep 기준 `tr06-s19`가 Acc4/10, Accw4/10, top-return 균형이 가장 좋다. |
+| `hybrid384` | 384 입력, MobileNetV4 Hybrid-M pretrained, 48 candidate/proposal, token 256, set-transformer ranker depth 3 | GAIC v2 official MOS top-return best. 단 비용과 Acc4/10/Accw4/10을 함께 봐야 한다. |
+
+학습 CLI는 명시적 model-size override가 없으면 `hq_320` preset을 적용한다. 단, product sweep runner는 `rank_320`/`hybrid384` 같은 명시 프로파일을 넘겨 실행한다. regression smoke test나 latency ablation처럼 `--input_size`, `--proposal_q`, `--backbone_name` 등 모델 크기 인자를 직접 넘긴 경우에는 그 run을 custom profile로 기록한다. 논문/제품 성능 표에서는 `HQ-320 selected`, `rank_320 product`, `hybrid384 heavy`, `Balanced/Turbo ablation`을 분리한다. 엄밀한 HQ-320 완료 판정은 MobileNetV4-Hybrid-M, 320 input, 32 query, 2-layer set transformer, local refiner loss/출력까지 모두 켜진 checkpoint에만 부여한다.
 
 ## 10.2 latency model
 
@@ -953,6 +1245,9 @@ $$
 - best-positive coverage@IoU
 - baseline-preserve recall
 - mode/AR별 proposal recall
+- raw fixed AR proposal top-1 `proposal_raw_top1_target_ar_log_error`
+- target-AR-selected proposal `proposal_top1_target_ar_compatible` rate
+- raw proposal top-1과 target-AR filtered proposal top-1의 분리 지표
 - unsafe proposal rate
 
 ## 11.2 ranking 평가
@@ -1014,6 +1309,11 @@ v4.0은 explanation head를 “있으면 좋은 부가 기능”이 아니라, q
 - why-tag consistency
 - explanation fidelity (선택 이유가 실제 metric과 일치하는가)
 - contradiction rate
+- mode consistency violation rate
+- not-applicable false positive rate
+- applicability precision/recall
+- label agreement when applicable
+- person-tag-on-object rate
 
 ## 11.6 시스템 평가
 

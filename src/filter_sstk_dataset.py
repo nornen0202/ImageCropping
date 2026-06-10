@@ -666,6 +666,79 @@ def export_curated_images(df_curated, args):
     )
 
 
+def apply_media_type_presampling_gate(df, args):
+    if not bool(int(getattr(args, "media_type_presampling_gate", 0))):
+        return df
+
+    try:
+        from sstk_media_type_audit import presampling_metadata_gate
+    except Exception as e:
+        raise RuntimeError(f"failed to import media type gate policy: {e}") from e
+
+    if len(df) == 0:
+        return df
+
+    records = []
+    for _, row in df.iterrows():
+        gate = presampling_metadata_gate(row.to_dict())
+        records.append(
+            {
+                "presample_media_type_primary": gate["presample_media_type_primary"],
+                "presample_media_decision": gate["presample_media_decision"],
+                "presample_media_reject_reason": gate["presample_media_reject_reason"],
+            }
+        )
+    gate_df = pd.DataFrame(records, index=df.index)
+    gated = pd.concat([df, gate_df], axis=1)
+
+    keep_decisions = {
+        item.strip()
+        for item in str(getattr(args, "media_type_presampling_keep_decisions", "keep_photo_primary")).split(",")
+        if item.strip()
+    }
+    before = len(gated)
+    decision_counts = gated["presample_media_decision"].value_counts(dropna=False).to_dict()
+    gated = gated[gated["presample_media_decision"].isin(keep_decisions)].copy()
+
+    print(
+        "[media-gate] pre-sampling media type gate "
+        f"before={before} after={len(gated)} removed={before - len(gated)} "
+        f"keep_decisions={sorted(keep_decisions)}"
+    )
+    print("[media-gate] decision counts before gate:")
+    print(pd.Series(decision_counts).sort_values(ascending=False))
+
+    report_path = str(getattr(args, "media_type_presampling_report", "") or "").strip()
+    if not report_path:
+        base_output = os.path.splitext(str(getattr(args, "output", "filtered_sstk.parquet")))[0]
+        report_path = f"{base_output}_media_type_presampling_gate_summary.json"
+    try:
+        summary = {
+            "enabled": True,
+            "input_rows": int(before),
+            "output_rows": int(len(gated)),
+            "removed_rows": int(before - len(gated)),
+            "keep_decisions": sorted(keep_decisions),
+            "decision_counts_before": {str(k): int(v) for k, v in decision_counts.items()},
+            "decision_counts_after": {
+                str(k): int(v)
+                for k, v in gated["presample_media_decision"].value_counts(dropna=False).to_dict().items()
+            },
+        }
+        if "super_cat" in gated.columns:
+            summary["category_counts_after"] = {
+                str(k): int(v) for k, v in gated["super_cat"].value_counts(dropna=False).to_dict().items()
+            }
+        os.makedirs(os.path.dirname(report_path) or ".", exist_ok=True)
+        with open(report_path, "w", encoding="utf-8") as f:
+            json.dump(summary, f, ensure_ascii=False, indent=2, sort_keys=True)
+        print(f"[media-gate] summary saved to {report_path}")
+    except Exception as e:
+        print(f"[media-gate] failed to write summary: {e}")
+
+    return gated
+
+
 def _collect_existing_image_stems(image_dir):
     stems = set()
     try:
@@ -940,6 +1013,30 @@ def main():
         default=0,
         help="Thread workers for sample tar extraction (-1=all cores, 0=auto(all available cores), >0=fixed).",
     )
+    parser.add_argument(
+        '--skip_comparison_samples',
+        type=int,
+        default=0,
+        help="If 1, skip qualitative curated-vs-rejected comparison sample extraction.",
+    )
+    parser.add_argument(
+        '--media_type_presampling_gate',
+        type=int,
+        default=0,
+        help="If 1, apply metadata-only media-type gate before aesthetic percentile cut and stratified sampling.",
+    )
+    parser.add_argument(
+        '--media_type_presampling_keep_decisions',
+        type=str,
+        default="keep_photo_primary",
+        help="Comma-separated presampling media decisions to keep before sampling.",
+    )
+    parser.add_argument(
+        '--media_type_presampling_report',
+        type=str,
+        default="",
+        help="Optional JSON path for presampling media-type gate summary.",
+    )
 
     args = parser.parse_args()
     require_train_match = bool(int(args.require_train_match))
@@ -1195,6 +1292,9 @@ def main():
         
         print(f"Saving fully mapped DataFrame cache to {df_mapped_cache_path}...")
         df.to_parquet(df_mapped_cache_path, index=False)
+
+    if len(df) > 0 and bool(int(getattr(args, "media_type_presampling_gate", 0))):
+        df = apply_media_type_presampling_gate(df, args)
         
     if len(df) > 0 and args.curated_pool_size > 0:
         df_initial = df.copy()
@@ -1245,15 +1345,19 @@ def main():
             print("Filtered pool is already smaller than requested curated_pool_size, keeping all.")
             df = df_filtered
             
-        print("Generating Curated vs Rejected Qualitative Comparison Extract...")
-        try:
-            # ONLY include images that actually failed the aesthetic 50% threshold cut. 
-            # This avoids polluting the 'rejected' pool with top-50% images that were just dropped to meet curated_pool_size.
-            df_rejected = df_initial[~df_initial['image_id'].isin(df_filtered['image_id'])].copy()
-            extract_and_save_samples(df, df_rejected, args)
-        except Exception as e:
-            print(f"Failed to generate qualitative samples: {e}")
-            raise e
+        if bool(int(getattr(args, "skip_comparison_samples", 0))):
+            print("Skipping Curated vs Rejected Qualitative Comparison Extract.")
+        else:
+            print("Generating Curated vs Rejected Qualitative Comparison Extract...")
+            try:
+                # ONLY include images that actually failed the aesthetic threshold cut.
+                # This avoids polluting the 'rejected' pool with top-percentile images
+                # that were just dropped to meet curated_pool_size.
+                df_rejected = df_initial[~df_initial['image_id'].isin(df_filtered['image_id'])].copy()
+                extract_and_save_samples(df, df_rejected, args)
+            except Exception as e:
+                print(f"Failed to generate qualitative samples: {e}")
+                raise e
 
         if str(args.save_curated_images_dir).strip():
             try:

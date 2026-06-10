@@ -224,7 +224,7 @@ IMAGE_DIR=""
 WEIGHTS_DIR=""
 C4_LANG="en"
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+PYTHON_BIN="${PYTHON_BIN:-}"
 
 # ── 옵션 파싱 ─────────────────────────────────────────────────────────────────
 while [ "$#" -gt 0 ]; do
@@ -246,6 +246,7 @@ while [ "$#" -gt 0 ]; do
         --batch_size)  BATCH_SIZE="$2";  shift 2 ;;
         --server_mode) SERVER_MODE="$2"; shift 2 ;;
         --venv_path)   VENV_PATH="$2";  shift 2 ;;
+        --python_bin)  PYTHON_BIN="$2"; shift 2 ;;
         --tar_dir)     TAR_DIR="$2";     shift 2 ;;
         --image_dir)   IMAGE_DIR="$2";   shift 2 ;;
         --weights_dir) WEIGHTS_DIR="$2"; shift 2 ;;
@@ -274,12 +275,15 @@ fi
 
 # ── 가상환경 활성화 (로컬 모드만) ────────────────────────────────────────────
 if [ "$SERVER_MODE" -ne 1 ]; then
+    PYTHON_BIN="${PYTHON_BIN:-/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python}"
     if [ -f "$VENV_PATH" ]; then
         # shellcheck disable=SC1090
         source "$VENV_PATH"
     else
         echo "Warning: venv not found at $VENV_PATH, using system python."
     fi
+else
+    PYTHON_BIN="${PYTHON_BIN:-/usr/local/bin/python3}"
 fi
 
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then

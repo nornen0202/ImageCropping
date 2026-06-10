@@ -1103,7 +1103,7 @@ python3 src/scripts/build_gaic_gt_score_cache.py \
   --out_jsonl data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/gaic_gt_score_cache_free.jsonl
 
 python3 src/scripts/build_gaic_training_label_debug_viz.py \
-  --coco_json data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json \
+  --label_json data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/label_json/gaic_like_labels_full.json \
   --batch_jsonl data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl \
   --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
   --gaic_gt_test_json data/Publics/GAIC/annotations_json/instances_test.json \
@@ -1189,12 +1189,12 @@ python3 src/scripts/convert_sstk_detr_batch_to_gaic_like.py \
   --gaic_reference_json data/Publics/GAIC/annotations_json/instances_train.json \
   --gaic_train_reference_json data/Publics/GAIC/annotations_json/instances_train.json \
   --gaic_test_reference_json data/Publics/GAIC/annotations_json/instances_test.json \
-  --out_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like.json \
-  --out_train_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_train.json \
-  --out_test_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_test.json \
-  --out_unassigned_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_unassigned.json \
-  --out_summary_json ${OUT_DIR}/coco/gaic_like_conversion_summary.json \
-  --out_guide_md ${OUT_DIR}/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md
+  --out_json ${OUT_DIR}/label_json/gaic_like_labels_full.json \
+  --out_train_json ${OUT_DIR}/label_json/gaic_like_labels_train.json \
+  --out_test_json ${OUT_DIR}/label_json/gaic_like_labels_test.json \
+  --out_unassigned_json ${OUT_DIR}/label_json/gaic_like_labels_unassigned.json \
+  --out_summary_json ${OUT_DIR}/label_json/gaic_like_conversion_summary.json \
+  --out_guide_md ${OUT_DIR}/label_json/GAIC_LIKE_LABEL_FORMAT_KO.md
 
 python3 src/scripts/build_gaic_gt_score_cache.py \
   --candidates_jsonl data/GAIC/All/artifacts/candidates/candidates_ar_${RUN_TAG}.jsonl \
@@ -1208,7 +1208,7 @@ python3 src/scripts/build_gaic_gt_score_cache.py \
   --out_jsonl ${OUT_DIR}/gaic_gt_score_cache_free.jsonl
 
 python3 src/scripts/build_gaic_training_label_debug_viz.py \
-  --coco_json ${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like.json \
+  --label_json ${OUT_DIR}/label_json/gaic_like_labels_full.json \
   --batch_jsonl ${OUT_DIR}/train_conditional_detr_batch.jsonl \
   --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
   --gaic_gt_test_json data/Publics/GAIC/annotations_json/instances_test.json \
@@ -1237,12 +1237,12 @@ python3 src/scripts/build_gaic_training_label_debug_viz.py \
 - `A_macro` 유무 확인은 `train_conditional_detr_batch.jsonl`이 아니라 `train_conditional_detr_canonical.jsonl`의 `candidates[].macro_targets.A_macro` 기준으로 보는 것이 맞습니다. canonical export에서 non-null이면 expensive/macro 산출은 살아 있는 것입니다.
 - GT checklist의 `A_macro`는 `gaic_gt_score_cache_free.jsonl` 기준입니다. cheap-only GT cache면 `A_macro=NA`가 정상이고, server-side expensive GT cache를 다시 만든 뒤에만 채워집니다.
 
-또한 각 training label dir의 `coco/` 아래에는 다음 split export가 함께 생성됩니다.
+또한 각 training label dir의 `label_json/` 아래에는 다음 split export가 함께 생성됩니다.
 
-- `instances_conditional_detr_batch_gaic_like.json`
-- `instances_conditional_detr_batch_gaic_like_train.json`
-- `instances_conditional_detr_batch_gaic_like_test.json`
-- `instances_conditional_detr_batch_gaic_like_unassigned.json`
+- `gaic_like_labels_full.json`
+- `gaic_like_labels_train.json`
+- `gaic_like_labels_test.json`
+- `gaic_like_labels_unassigned.json`
 
 `unassigned` 는 현재 local GAIC subset에 존재하지만 public `instances_train/test.json` 어디에도 image_id가 없는 샘플입니다.
 
@@ -1418,7 +1418,7 @@ python3 src/scripts/build_gaic_gt_score_cache.py \
   --out_jsonl ${OUT_ROOT}/single_stage2_utility/training_labels/gaic_gt_score_cache_free.jsonl
 
 python3 src/scripts/build_gaic_training_label_debug_viz.py \
-  --coco_json ${OUT_ROOT}/baseline_current_refined/training_labels/coco/instances_conditional_detr_batch_gaic_like.json \
+  --label_json ${OUT_ROOT}/baseline_current_refined/training_labels/label_json/gaic_like_labels_full.json \
   --batch_jsonl ${OUT_ROOT}/baseline_current_refined/training_labels/train_conditional_detr_batch.jsonl \
   --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
   --gaic_gt_test_json data/Publics/GAIC/annotations_json/instances_test.json \
@@ -1435,7 +1435,7 @@ python3 src/scripts/build_gaic_training_label_debug_viz.py \
   --out_dir ${OUT_ROOT}/baseline_current_refined/training_labels/debug_visualizations_balanced50_complete
 
 python3 src/scripts/build_gaic_training_label_debug_viz.py \
-  --coco_json ${OUT_ROOT}/single_stage2_utility/training_labels/coco/instances_conditional_detr_batch_gaic_like.json \
+  --label_json ${OUT_ROOT}/single_stage2_utility/training_labels/label_json/gaic_like_labels_full.json \
   --batch_jsonl ${OUT_ROOT}/single_stage2_utility/training_labels/train_conditional_detr_batch.jsonl \
   --gaic_gt_train_json data/Publics/GAIC/annotations_json/instances_train.json \
   --gaic_gt_test_json data/Publics/GAIC/annotations_json/instances_test.json \
@@ -1547,12 +1547,12 @@ for POLICY in ignore promote_soft_positive; do
     --gaic_reference_json "${GAIC_REF}" \
     --gaic_train_reference_json data/Publics/GAIC/annotations_json/instances_train.json \
     --gaic_test_reference_json data/Publics/GAIC/annotations_json/instances_test.json \
-    --out_json "${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like.json" \
-    --out_train_json "${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_train.json" \
-    --out_test_json "${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_test.json" \
-    --out_unassigned_json "${OUT_DIR}/coco/instances_conditional_detr_batch_gaic_like_unassigned.json" \
-    --out_summary_json "${OUT_DIR}/coco/gaic_like_conversion_summary.json" \
-    --out_guide_md "${OUT_DIR}/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
+    --out_json "${OUT_DIR}/label_json/gaic_like_labels_full.json" \
+    --out_train_json "${OUT_DIR}/label_json/gaic_like_labels_train.json" \
+    --out_test_json "${OUT_DIR}/label_json/gaic_like_labels_test.json" \
+    --out_unassigned_json "${OUT_DIR}/label_json/gaic_like_labels_unassigned.json" \
+    --out_summary_json "${OUT_DIR}/label_json/gaic_like_conversion_summary.json" \
+    --out_guide_md "${OUT_DIR}/label_json/GAIC_LIKE_LABEL_FORMAT_KO.md"
 done
 ```
 
@@ -1639,9 +1639,9 @@ bash src/scripts/run_gaic_to_teacher_e2e.sh \
 - teacher: `data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_full.jsonl`
 - vlm labels: `data/GAIC/All/artifacts/vlm_teacher/labels/crop_label_v1_gaic_full.jsonl`
 - training validation: `data/GAIC/All/artifacts/training_labels/gaic_full/validation_summary.json`
-- GAIC-like train split: `data/GAIC/All/artifacts/training_labels/gaic_full/coco/instances_conditional_detr_batch_gaic_like_train.json`
-- GAIC-like test split: `data/GAIC/All/artifacts/training_labels/gaic_full/coco/instances_conditional_detr_batch_gaic_like_test.json`
-- GAIC-like unassigned split: `data/GAIC/All/artifacts/training_labels/gaic_full/coco/instances_conditional_detr_batch_gaic_like_unassigned.json`
+- GAIC-like train split: `data/GAIC/All/artifacts/training_labels/gaic_full/label_json/gaic_like_labels_train.json`
+- GAIC-like test split: `data/GAIC/All/artifacts/training_labels/gaic_full/label_json/gaic_like_labels_test.json`
+- GAIC-like unassigned split: `data/GAIC/All/artifacts/training_labels/gaic_full/label_json/gaic_like_labels_unassigned.json`
 - wrapper validation: `data/GAIC/All/artifacts/validation/gaic_e2e_validation_gaic_full.json`
 
 ## 7. 검증 정책

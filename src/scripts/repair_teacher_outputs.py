@@ -367,6 +367,59 @@ def run_py(script: Path, args: Sequence[str]) -> None:
     subprocess.run(cmd, check=True)
 
 
+def side_outputs_fresh(out_jsonl: Path, paths: Sequence[Path]) -> bool:
+    """Return true when overview/QA outputs already reflect the current score file."""
+    if not out_jsonl.exists() or out_jsonl.stat().st_size <= 0:
+        return False
+    score_mtime = out_jsonl.stat().st_mtime
+    for p in paths:
+        if not p.exists() or p.stat().st_size <= 0:
+            return False
+        if p.stat().st_mtime < score_mtime:
+            return False
+    return True
+
+
+def rebuild_side_outputs(
+    *,
+    out_jsonl: Path,
+    overview_json: Path,
+    overview_csv: Path,
+    qa_json: Path,
+    qa_csv: Path,
+    dry_run: bool,
+    verbose: bool,
+) -> None:
+    if dry_run or not out_jsonl.exists() or out_jsonl.stat().st_size <= 0:
+        return
+    if side_outputs_fresh(out_jsonl, [overview_json, overview_csv, qa_json, qa_csv]):
+        info("[repair] overview/QA already fresh; skipping rebuild.", verbose=verbose)
+        return
+    script_dir = Path(__file__).resolve().parent
+    run_py(
+        script_dir / "rebuild_teacher_overview.py",
+        [
+            "--teacher_scores_jsonl",
+            str(out_jsonl),
+            "--output_json",
+            str(overview_json),
+            "--output_by_ar_csv",
+            str(overview_csv),
+        ],
+    )
+    run_py(
+        script_dir / "qa_teacher_report.py",
+        [
+            "--teacher_scores_jsonl",
+            str(out_jsonl),
+            "--output_json",
+            str(qa_json),
+            "--output_by_ar_csv",
+            str(qa_csv),
+        ],
+    )
+
+
 def main() -> None:
     args = parse_args()
     verbose = as_bool(args.verbose)
@@ -438,32 +491,22 @@ def main() -> None:
     )
     if best_shard is None:
         info("[repair] no promotable shard dir found (or strict expected match not satisfied).", verbose=verbose)
-        # Still ensure overview/QA exist for current final.
-        if out_jsonl.exists() and out_jsonl.stat().st_size > 0:
-            script_dir = Path(__file__).resolve().parent
-            if not dry_run:
-                run_py(
-                    script_dir / "rebuild_teacher_overview.py",
-                    [
-                        "--teacher_scores_jsonl",
-                        str(out_jsonl),
-                        "--output_json",
-                        str(overview_json),
-                        "--output_by_ar_csv",
-                        str(overview_csv),
-                    ],
-                )
-                run_py(
-                    script_dir / "qa_teacher_report.py",
-                    [
-                        "--teacher_scores_jsonl",
-                        str(out_jsonl),
-                        "--output_json",
-                        str(qa_json),
-                        "--output_by_ar_csv",
-                        str(qa_csv),
-                    ],
-                )
+        # Still ensure overview/QA exist for current final, but avoid re-scanning
+        # multi-GB score files when the scorer just wrote fresh side outputs.
+        rebuild_side_outputs(
+            out_jsonl=out_jsonl,
+            overview_json=overview_json,
+            overview_csv=overview_csv,
+            qa_json=qa_json,
+            qa_csv=qa_csv,
+            dry_run=dry_run,
+            verbose=verbose,
+        )
+        ensure_integrity(stats=final_stats, expected_rows=expected_rows, context=str(out_jsonl))
+        progress_log(
+            f"repair_teacher_outputs: finished | rows={final_stats.rows} | expensive_real_rows={final_stats.expensive_real_rows}",
+            enabled=progress_enabled,
+        )
         return
 
     info(
@@ -518,38 +561,26 @@ def main() -> None:
             )
         info("[repair] promote+rebuild done.", verbose=verbose)
     else:
-        info("[repair] final output already preferred. rebuilding overview/QA for consistency.", verbose=verbose)
-        script_dir = Path(__file__).resolve().parent
-        if not dry_run and out_jsonl.exists():
-            run_py(
-                script_dir / "rebuild_teacher_overview.py",
-                [
-                    "--teacher_scores_jsonl",
-                    str(out_jsonl),
-                    "--output_json",
-                    str(overview_json),
-                    "--output_by_ar_csv",
-                    str(overview_csv),
-                ],
-            )
-            run_py(
-                script_dir / "qa_teacher_report.py",
-                [
-                    "--teacher_scores_jsonl",
-                    str(out_jsonl),
-                    "--output_json",
-                    str(qa_json),
-                    "--output_by_ar_csv",
-                    str(qa_csv),
-                ],
-            )
+        info("[repair] final output already preferred. verifying overview/QA freshness.", verbose=verbose)
+        rebuild_side_outputs(
+            out_jsonl=out_jsonl,
+            overview_json=overview_json,
+            overview_csv=overview_csv,
+            qa_json=qa_json,
+            qa_csv=qa_csv,
+            dry_run=dry_run,
+            verbose=verbose,
+        )
 
-    final_after = analyze_jsonl(
-        out_jsonl,
-        progress=progress_enabled,
-        progress_every=progress_every,
-        progress_min_seconds=progress_min_seconds,
-    )
+    if promote:
+        final_after = analyze_jsonl(
+            out_jsonl,
+            progress=progress_enabled,
+            progress_every=progress_every,
+            progress_min_seconds=progress_min_seconds,
+        )
+    else:
+        final_after = final_stats
     info(
         "[repair] final(after) rows={} expensive_real_rows={} parse_error_rows={}".format(
             final_after.rows,

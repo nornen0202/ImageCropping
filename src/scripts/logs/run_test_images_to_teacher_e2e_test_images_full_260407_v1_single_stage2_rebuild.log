@@ -1,0 +1,616 @@
+========================================================
+ Test-images e2e wrapper
+========================================================
+ data_dir              : data/TestImages/All
+ image_root            : data/test_images
+ flat_image_dir        : data/TestImages/All/images
+ bucket                : test_images_all
+ run_tag               : test_images_full_260407_v1
+ prepare_max_images    : 0
+ prepare_num_workers   : 255 (cpu_cores=255)
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 1
+ shared_gpu_ids        : 0,1,2,3 (workers=4)
+ run_c1                : 0
+ run_c2                : 0
+ run_c3                : 0
+ run_c3_enrich         : 0
+ run_c4                : 0
+ run_c5                : 0
+ run_c6                : 0
+ run_merge             : 0
+ run_subject_routing   : 0
+ run_candidates        : 0
+ run_teacher           : 0
+ use_real_expensive    : 1
+ run_c7_saliency       : 1 (priority=quality_first device=auto)
+ generate_captions     : 0 (preset=server_quality backend=auto multi_gpu=1 gpu_ids=0,1,2,3 workers=4)
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1 (policy=ignore)
+ score_profile         : single_stage2 (overrides=<none>)
+ training_debug_viz    : 1 (out=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ auto_leftover_variants: 0 (policies=keep_negative,promote_soft_positive)
+ run_detailed_report   : 0
+ reference_json        : data/TestImages/All/test_images_reference.json
+========================================================
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset: start | image_root=/group-volume/users/jaden.ju/Sources/ImageCropping/data/test_images | output_parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:scan_images: start total=34 unit=paths
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:scan_images: [========================] 34/34 (100.0%) | 0.0s | images=33
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:scan_images: [========================] 34/34 (100.0%) | 0.0s | images=33
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:load_caption_map: start unit=rows
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:load_caption_map: 33 rows | 0.0s | mapped=33
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset: scanned=33 | num_workers=33 | captions=33
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:prepare_manifest_rows: start total=33 unit=images
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:prepare_manifest_rows: [========================] 33/33 (100.0%) | 0.1s
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:prepare_manifest_rows: [========================] 33/33 (100.0%) | 0.1s
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:load_annotation_payloads: start total=0 unit=files
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:load_annotation_payloads: 0 files | 0.0s | loaded=0
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:build_reference:payloads: start total=0 unit=jsons
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:build_reference:payloads: 0 jsons | 0.0s | images=0 anns=0
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:build_reference:images: start total=33 unit=images
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:build_reference:images: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:build_reference:images: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:build_reference:annotations: start total=0 unit=annotations
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset:build_reference:annotations: 0 annotations | 0.0s
+[progress 2026-04-08 00:45:28] prepare_gaic_curated_dataset: finished | prepared=33 | parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet
+{
+  "status": "ok",
+  "image_root": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/test_images",
+  "output_parquet": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet",
+  "flat_image_dir": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+  "bucket": "test_images_all",
+  "link_mode": "symlink",
+  "num_workers": 33,
+  "pseudo_tar_chunk_size": 256,
+  "max_images": 0,
+  "num_images_scanned_total": 33,
+  "num_images_prepared": 33,
+  "split_counts": {
+    "root": 33
+  },
+  "extension_counts": {
+    ".jpg": 33
+  },
+  "link_counts": {
+    "existing_match": 33
+  },
+  "pseudo_tar_groups": 1,
+  "largest_pseudo_tar_group": 33,
+  "caption_jsonl": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260407_v1.jsonl",
+  "caption_rows_available": 33,
+  "caption_rows_applied": 33,
+  "reference": {
+    "generated": true,
+    "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/test_images_reference.json",
+    "image_count": 33,
+    "annotation_count": 0,
+    "source_annotation_jsons": [],
+    "source_stats": {}
+  }
+}
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : test_images_all
+ data_dir            : data/TestImages/All
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : test_images_full_260407_v1
+ skip_existing       : 1
+ shared_gpu_defaults : gpu_ids=0,1,2,3 workers=4
+ precompute_mode     : unified
+ run_filter          : 0
+ filter_train_match  : 1
+ filter_tag_embed    : mgpu=-1 gpu_ids=0,1,2,3 bs=128 chunk=0 device=auto
+ filter_cpu_map      : workers=0 chunk=4096 sample_extract_workers=0
+ export_curated_img  : 0 (dir=data/TestImages/All/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/TestImages/All/images)
+ extract_mode        : auto (extract_multi_gpu=-1, gpu_ids=0,1,2,3, workers=4)
+ run_c1/c2/c3/c4/c5/c6 : 0/0/0/0/0/0
+ run_c3_enrich/merge : 0/0
+ subject routing     : run=0 top_n=5 union_top_m=3 det_proxy=1
+ c7 saliency         : run=1 priority=quality_first device=auto
+ c7 saliency multi   : reuse extract gpu_ids=0,1,2,3 workers=4 mode=auto
+ run_component_viz   : 0 (out=data/TestImages/All/artifacts/precompute/visualizations/components_test_images_full_260407_v1, num_samples=120)
+ public proposals    : enable=0 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/TestImages/All/artifacts/public_teachers/raw/teacher_raw_public_test_images_full_260407_v1.jsonl | data/TestImages/All/artifacts/public_teachers/proposals/teacher_proposals_public_test_images_full_260407_v1.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=0,1,2,3 workers=4
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 0
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 0 (real_expensive=1)
+ c1 source           : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ teacher_multi_gpu   : 1 (gpu_ids=0,1,2,3, workers=4)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=24 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_public_ref  : save_public_teacher_ref_eval=1
+ teacher_aesthetic   : backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 0 (backend=heuristic fallback=none model=Qwen/Qwen3-VL-4B-Instruct)
+ run_training_labels : 1 (dir=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync policy=ignore)
+ score_profile       : single_stage2 (overrides=<none>)
+ training_debug_viz  : 1 (out=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ gaic_reference_json : data/TestImages/All/test_images_reference.json
+ gaic_train_ref_json : data/Publics/GAIC/annotations_json/instances_train.json
+ gaic_test_ref_json  : data/Publics/GAIC/annotations_json/instances_test.json
+ run_detailed_report : 0 (dir=data/TestImages/All/artifacts/reports/test_images_full_260407_v1_detailed examples_per_bucket=5)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=0,1,2,3, workers=4)
+ vlm out/meta/sum    : data/TestImages/All/artifacts/vlm_teacher/labels/crop_label_v1_test_images_full_260407_v1.jsonl | data/TestImages/All/artifacts/vlm_teacher/meta/meta_norm_v1_test_images_full_260407_v1.jsonl | data/TestImages/All/artifacts/vlm_teacher/summary/vlm_teacher_summary_test_images_full_260407_v1.json
+========================================================
+[info] using curated image cache dir: data/TestImages/All/images
+[skip] exists: data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl
+[run] 13_build_training_labels
+[progress 2026-04-08 00:45:30] build_finalscore_training_data: start | teacher_scores_jsonl=data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260407_v1.jsonl | out_dir=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync | safe_leftover_policy=ignore
+[progress 2026-04-08 00:45:30] load_teacher_records:teacher_scores_ar_test_images_full_260407_v1.jsonl: start total=33 unit=records
+[progress 2026-04-08 00:45:34] load_teacher_records:teacher_scores_ar_test_images_full_260407_v1.jsonl: [========================] 33/33 (100.0%) | 4.0s | line=33
+[progress 2026-04-08 00:45:34] load_teacher_records:teacher_scores_ar_test_images_full_260407_v1.jsonl: [========================] 33/33 (100.0%) | 4.0s | path=teacher_scores_ar_test_images_full_260407_v1.jsonl
+[progress 2026-04-08 00:45:34] build_finalscore_training_data: teacher_records=33 | ar_groups=198 | subject_modes=5
+[progress 2026-04-08 00:45:34] build_training_datasets: start total=198 unit=ar_groups
+[progress 2026-04-08 00:45:45] build_training_datasets: [===>....................] 33/198 (16.7%) | 10.4s<52.1s | record=6/33 | image_id=test_10 | pairwise=119 | batch=26 | skipped=7
+[progress 2026-04-08 00:45:55] build_training_datasets: [=====>..................] 57/198 (28.8%) | 20.7s<51.1s | record=10/33 | image_id=test_11 | pairwise=248 | batch=50 | skipped=7
+[progress 2026-04-08 00:46:05] build_training_datasets: [=========>..............] 84/198 (42.4%) | 30.9s<42.0s | record=14/33 | image_id=test_12 | pairwise=396 | batch=74 | skipped=10
+[progress 2026-04-08 00:46:15] build_training_datasets: [===========>............] 106/198 (53.5%) | 41.3s<35.8s | record=18/33 | image_id=test_13 | pairwise=552 | batch=96 | skipped=10
+[progress 2026-04-08 00:46:26] build_training_datasets: [===============>........] 134/198 (67.7%) | 52.0s<24.8s | record=23/33 | image_id=test_22 | pairwise=655 | batch=113 | skipped=21
+[progress 2026-04-08 00:46:36] build_training_datasets: [==================>.....] 163/198 (82.3%) | 1m02s<13.4s | record=28/33 | image_id=test_30 | pairwise=787 | batch=139 | skipped=24
+[progress 2026-04-08 00:46:47] build_training_datasets: [======================>.] 190/198 (96.0%) | 1m13s<3.1s | record=32/33 | image_id=test_31 | pairwise=922 | batch=166 | skipped=24
+[progress 2026-04-08 00:46:48] build_training_datasets: [========================] 198/198 (100.0%) | 1m14s | record=33/33 | image_id=test_8 | pairwise=948 | batch=173 | skipped=25
+[progress 2026-04-08 00:46:48] build_training_datasets: [========================] 198/198 (100.0%) | 1m14s | records=33 | pairwise=948 | listwise=173 | decision=198 | checklist=3575 | regression=3575 | canonical=173 | batch=173 | skipped=25
+[progress 2026-04-08 00:46:48] build_finalscore_training_data: build_qa_summary
+[progress 2026-04-08 00:46:48] build_qa_summary: start total=346 unit=rows
+[progress 2026-04-08 00:46:48] build_qa_summary: [================>.......] 250/346 (72.3%) | 0.0s<0.0s | phase=canonical_rows | image_id=test_20
+[progress 2026-04-08 00:46:48] build_qa_summary: [========================] 346/346 (100.0%) | 0.0s | phase=canonical_rows | image_id=test_8
+[progress 2026-04-08 00:46:48] build_qa_summary: [========================] 346/346 (100.0%) | 0.0s | pairwise=948 | batch=173 | canonical=173
+[progress 2026-04-08 00:46:48] build_finalscore_training_data: validate_datasets
+[progress 2026-04-08 00:46:48] validate_datasets: start total=346 unit=rows
+[progress 2026-04-08 00:46:48] validate_datasets: [================>.......] 250/346 (72.3%) | 0.0s<0.0s | phase=batch_rows | image_id=test_20
+[progress 2026-04-08 00:46:48] validate_datasets: [========================] 346/346 (100.0%) | 0.0s | phase=batch_rows | image_id=test_8
+[progress 2026-04-08 00:46:48] validate_datasets: [========================] 346/346 (100.0%) | 0.0s | errors=0 | warnings=0
+[progress 2026-04-08 00:46:48] build_finalscore_training_data: collect_label_guide_summary
+[progress 2026-04-08 00:46:48] collect_label_guide_summary: start total=346 unit=rows
+[progress 2026-04-08 00:46:48] collect_label_guide_summary: [================>.......] 250/346 (72.3%) | 0.1s<0.1s | phase=batch_rows | image_id=test_20
+[progress 2026-04-08 00:46:48] collect_label_guide_summary: [========================] 346/346 (100.0%) | 0.1s | phase=batch_rows | image_id=test_8
+[progress 2026-04-08 00:46:48] collect_label_guide_summary: [========================] 346/346 (100.0%) | 0.1s | subject_modes=5 | policies=5 | decision_types=3
+[progress 2026-04-08 00:46:48] build_finalscore_training_data: build_gaic_like_report_summary
+[progress 2026-04-08 00:46:48] build_gaic_like_report_summary: start total=173 unit=rows
+[progress 2026-04-08 00:46:48] build_gaic_like_report_summary: [========================] 173/173 (100.0%) | 0.0s | image_id=test_8
+[progress 2026-04-08 00:46:48] build_gaic_like_report_summary: [========================] 173/173 (100.0%) | 0.0s | images=32 | positive=332 | negative=3243
+[progress 2026-04-08 00:46:48] build_finalscore_training_data: build_report_examples
+[progress 2026-04-08 00:46:49] build_report_examples: start total=8 unit=examples
+[progress 2026-04-08 00:46:51] build_report_examples: [==>.....................] 1/8 (12.5%) | 2.8s<19.8s | image_id=test_11 target_ar=16:9 candidate_visuals=5
+[progress 2026-04-08 00:46:53] build_report_examples: [=====>..................] 2/8 (25.0%) | 4.2s<12.7s | image_id=test_12 target_ar=16:9 candidate_visuals=5
+[progress 2026-04-08 00:46:55] build_report_examples: [========>...............] 3/8 (37.5%) | 6.8s<11.3s | image_id=test_16 target_ar=16:9 candidate_visuals=3
+[progress 2026-04-08 00:46:59] build_report_examples: [===========>............] 4/8 (50.0%) | 10.0s<10.0s | image_id=test_16 target_ar=1:1 candidate_visuals=4
+[progress 2026-04-08 00:47:02] build_report_examples: [==============>.........] 5/8 (62.5%) | 13.3s<8.0s | image_id=test_25 target_ar=FREE candidate_visuals=4
+[progress 2026-04-08 00:47:03] build_report_examples: [=================>......] 6/8 (75.0%) | 14.3s<4.8s | image_id=test_1 target_ar=FREE candidate_visuals=1
+[progress 2026-04-08 00:47:03] build_report_examples: [====================>...] 7/8 (87.5%) | 14.8s<2.1s | image_id=test_4 target_ar=FREE candidate_visuals=4
+[progress 2026-04-08 00:47:04] build_report_examples: [========================] 8/8 (100.0%) | 15.8s | image_id=test_41 target_ar=FREE candidate_visuals=4
+[progress 2026-04-08 00:47:04] build_report_examples: [========================] 8/8 (100.0%) | 15.8s | rendered=8
+[progress 2026-04-08 00:47:04] build_finalscore_training_data: write output jsonl files
+[progress 2026-04-08 00:47:04] write_jsonl:train_pairwise.jsonl: start total=948 unit=rows
+[progress 2026-04-08 00:47:04] write_jsonl:train_pairwise.jsonl: [========================] 948/948 (100.0%) | 0.0s | path=train_pairwise.jsonl
+[progress 2026-04-08 00:47:04] write_jsonl:train_pairwise.jsonl: [========================] 948/948 (100.0%) | 0.0s | path=train_pairwise.jsonl
+[progress 2026-04-08 00:47:04] write_jsonl:train_listwise.jsonl: start total=173 unit=rows
+[progress 2026-04-08 00:47:05] write_jsonl:train_listwise.jsonl: [========================] 173/173 (100.0%) | 0.2s | path=train_listwise.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_listwise.jsonl: [========================] 173/173 (100.0%) | 0.2s | path=train_listwise.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_decision.jsonl: start total=198 unit=rows
+[progress 2026-04-08 00:47:05] write_jsonl:train_decision.jsonl: [========================] 198/198 (100.0%) | 0.0s | path=train_decision.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_decision.jsonl: [========================] 198/198 (100.0%) | 0.0s | path=train_decision.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_checklist.jsonl: start total=3575 unit=rows
+[progress 2026-04-08 00:47:05] write_jsonl:train_checklist.jsonl: [===============>........] 2500/3575 (69.9%) | 0.3s<0.1s | path=train_checklist.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_checklist.jsonl: [========================] 3575/3575 (100.0%) | 0.4s | path=train_checklist.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_checklist.jsonl: [========================] 3575/3575 (100.0%) | 0.4s | path=train_checklist.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_regression.jsonl: start total=3575 unit=rows
+[progress 2026-04-08 00:47:05] write_jsonl:train_regression.jsonl: [===============>........] 2500/3575 (69.9%) | 0.3s<0.1s | path=train_regression.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_regression.jsonl: [========================] 3575/3575 (100.0%) | 0.4s | path=train_regression.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_regression.jsonl: [========================] 3575/3575 (100.0%) | 0.4s | path=train_regression.jsonl
+[progress 2026-04-08 00:47:05] write_jsonl:train_conditional_detr_canonical.jsonl: start total=173 unit=rows
+[progress 2026-04-08 00:47:06] write_jsonl:train_conditional_detr_canonical.jsonl: [========================] 173/173 (100.0%) | 0.4s | path=train_conditional_detr_canonical.jsonl
+[progress 2026-04-08 00:47:06] write_jsonl:train_conditional_detr_canonical.jsonl: [========================] 173/173 (100.0%) | 0.5s | path=train_conditional_detr_canonical.jsonl
+[progress 2026-04-08 00:47:06] write_jsonl:train_conditional_detr_batch.jsonl: start total=173 unit=rows
+[progress 2026-04-08 00:47:06] write_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.4s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 00:47:06] write_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.4s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 00:47:06] write_jsonl:train_conditional_detr_skipped.jsonl: start total=25 unit=rows
+[progress 2026-04-08 00:47:06] write_jsonl:train_conditional_detr_skipped.jsonl: [========================] 25/25 (100.0%) | 0.0s | path=train_conditional_detr_skipped.jsonl
+[progress 2026-04-08 00:47:06] write_jsonl:train_conditional_detr_skipped.jsonl: [========================] 25/25 (100.0%) | 0.0s | path=train_conditional_detr_skipped.jsonl
+[progress 2026-04-08 00:47:06] build_finalscore_training_data: write summary artifacts
+[progress 2026-04-08 00:47:06] build_finalscore_training_data: build_markdown_report
+[progress 2026-04-08 00:47:06] build_finalscore_training_data: finished | status=ok | canonical=173 | batch=173 | examples=8
+{
+  "out_dir": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync",
+  "safe_leftover_policy": "ignore",
+  "counts": {
+    "train_pairwise.jsonl": 948,
+    "train_listwise.jsonl": 173,
+    "train_decision.jsonl": 198,
+    "train_checklist.jsonl": 3575,
+    "train_regression.jsonl": 3575,
+    "train_conditional_detr_canonical.jsonl": 173,
+    "train_conditional_detr_batch.jsonl": 173,
+    "train_conditional_detr_skipped.jsonl": 25,
+    "report_examples": 8
+  },
+  "qa_summary_path": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/qa_summary.json",
+  "validation_summary_path": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/validation_summary.json",
+  "status": "ok"
+}
+[run] 13b_convert_training_labels_coco
+[progress 2026-04-08 00:47:07] convert_sstk_detr_labels_to_coco: start | out_dir=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco
+[progress 2026-04-08 00:47:07] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_canonical.jsonl: start total=173 unit=rows
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_canonical.jsonl: [========================] 173/173 (100.0%) | 0.3s
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_canonical.jsonl: [========================] 173/173 (100.0%) | 0.3s | path=train_conditional_detr_canonical.jsonl
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_batch.jsonl: start total=173 unit=rows
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:build_canonical_coco: start total=173 unit=records
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:build_canonical_coco: [========================] 173/173 (100.0%) | 0.2s | annotations=4755
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:build_canonical_coco: [========================] 173/173 (100.0%) | 0.2s | images=173 annotations=4755
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:build_batch_coco: start total=173 unit=records
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:build_batch_coco: [========================] 173/173 (100.0%) | 0.0s | annotations=332
+[progress 2026-04-08 00:47:08] convert_sstk_detr_labels_to_coco:build_batch_coco: [========================] 173/173 (100.0%) | 0.0s | images=173 annotations=332
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: start total=4755 unit=annotations
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: [====>...................] 1000/4755 (21.0%) | 0.0s<0.0s
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: [=========>..............] 2000/4755 (42.1%) | 0.0s<0.0s
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: [==============>.........] 3000/4755 (63.1%) | 0.0s<0.0s
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: [===================>....] 4000/4755 (84.1%) | 0.0s<0.0s
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: [========================] 4755/4755 (100.0%) | 0.0s
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: [========================] 4755/4755 (100.0%) | 0.0s | errors=0
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: start total=332 unit=annotations
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: [========================] 332/332 (100.0%) | 0.0s
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco:validate_coco: [========================] 332/332 (100.0%) | 0.0s | errors=0
+[progress 2026-04-08 00:47:09] convert_sstk_detr_labels_to_coco: finished | canonical_annotations=4755 | batch_annotations=332
+{
+  "canonical_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_canonical.json",
+  "batch_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_batch.json",
+  "canonical_validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 4755,
+    "gt_annotation_count": 332,
+    "label_type_counts": {
+      "top1": 173,
+      "soft_positive": 154,
+      "unsafe_negative": 105,
+      "hard_negative": 498,
+      "near_negative": 1423,
+      "ignore": 577,
+      "negative": 1820,
+      "baseline_positive": 5
+    },
+    "error_count": 0,
+    "errors": []
+  },
+  "batch_validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 332,
+    "gt_annotation_count": 332,
+    "label_type_counts": {
+      "": 332
+    },
+    "error_count": 0,
+    "errors": []
+  }
+}
+[run] 13c_convert_training_labels_gaic_like
+[progress 2026-04-08 00:47:09] convert_sstk_detr_batch_to_gaic_like: start | batch_jsonl=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_batch.jsonl | out_json=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_batch_gaic_like.json
+[progress 2026-04-08 00:47:09] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: start total=173 unit=rows
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:build_instances: start total=173 unit=records
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:build_instances: [========================] 173/173 (100.0%) | 0.1s | annotations=3575
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:build_instances: [========================] 173/173 (100.0%) | 0.1s | images=173 annotations=3575
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:validate: start total=3575 unit=annotations
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:validate: [=====>..................] 1000/3575 (28.0%) | 0.0s<0.0s
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:validate: [============>...........] 2000/3575 (55.9%) | 0.0s<0.0s
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:validate: [===================>....] 3000/3575 (83.9%) | 0.0s<0.0s
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:validate: [========================] 3575/3575 (100.0%) | 0.0s
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like:validate: [========================] 3575/3575 (100.0%) | 0.0s | errors=0 warnings=0
+[progress 2026-04-08 00:47:10] convert_sstk_detr_batch_to_gaic_like: finished | images=173 | annotations=3575
+{
+  "out_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 3575,
+    "gt_annotation_count": 332,
+    "negative_annotation_count": 3243,
+    "subject_mode_id_counts": {
+      "0": 162,
+      "1": 617,
+      "2": 950,
+      "3": 1065,
+      "4": 781
+    },
+    "decision_id_counts": {
+      "0": 3,
+      "1": 2060,
+      "2": 1512
+    },
+    "label_type_counts": {
+      "matching_target": 332,
+      "near_negative": 1423,
+      "negative": 1820
+    },
+    "score_range": {
+      "min": 0.002472623,
+      "max": 0.997527377
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {}
+}
+[run] 13d_build_training_label_debug_viz
+[progress 2026-04-08 00:47:12] build_gaic_training_label_debug_viz: start | coco_json=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_batch_gaic_like.json | batch_jsonl=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_batch.jsonl
+[progress 2026-04-08 00:47:17] build_gaic_training_label_debug_viz: selected_images=32 | render_workers=32
+[progress 2026-04-08 00:47:17] build_gaic_training_label_debug_viz:render_selected_images: start total=32 unit=images
+[progress 2026-04-08 00:48:35] build_gaic_training_label_debug_viz:render_selected_images: [........................] 1/32 (3.1%) | 1m19s<40m42s | image_id=test_1
+[progress 2026-04-08 00:48:48] build_gaic_training_label_debug_viz:render_selected_images: [>.......................] 2/32 (6.2%) | 1m32s<22m55s | image_id=test_29
+[progress 2026-04-08 00:49:20] build_gaic_training_label_debug_viz:render_selected_images: [=>......................] 3/32 (9.4%) | 2m03s<19m51s | image_id=test_27
+[progress 2026-04-08 00:49:51] build_gaic_training_label_debug_viz:render_selected_images: [==>.....................] 5/32 (15.6%) | 2m35s<13m56s | image_id=test_3
+[progress 2026-04-08 00:50:10] build_gaic_training_label_debug_viz:render_selected_images: [===>....................] 6/32 (18.8%) | 2m54s<12m33s | image_id=test_8
+[progress 2026-04-08 00:50:21] build_gaic_training_label_debug_viz:render_selected_images: [=========>..............] 14/32 (43.8%) | 3m04s<3m57s | image_id=test_45
+[progress 2026-04-08 00:50:28] build_gaic_training_label_debug_viz:render_selected_images: [=================>......] 24/32 (75.0%) | 3m12s<1m04s | image_id=test_24
+[progress 2026-04-08 00:50:32] build_gaic_training_label_debug_viz:render_selected_images: [========================] 32/32 (100.0%) | 3m15s | image_id=test_28
+[progress 2026-04-08 00:50:32] build_gaic_training_label_debug_viz:render_selected_images: [========================] 32/32 (100.0%) | 3m15s
+[progress 2026-04-08 00:50:32] build_gaic_training_label_debug_viz: finished | selected_images=32 | out_dir=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/debug_visualizations_balanced50_bottomneg
+{"status": "ok", "out_dir": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/debug_visualizations_balanced50_bottomneg", "selected_images": 32}
+========================================================
+ Done
+========================================================
+ filtered parquet : data/TestImages/All/filtered_test_images_all.parquet
+ precompute raw    : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl (unified C1/C2/C3/C4/C5/C6)
+ feats c1 source   : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ feats c1 alias    : data/TestImages/All/artifacts/precompute/feats_c1.jsonl
+ feats c2/c3e/c4/c5/c6: data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl | data/TestImages/All/artifacts/precompute/feats_c4.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl
+ merged feats     : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ c7 saliency json : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl
+ c7 sal summary   : data/TestImages/All/artifacts/precompute/c7_saliency_test_images_full_260407_v1_summary.json
+ downstream feats : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl
+ candidates       : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260407_v1.jsonl
+ cand overview    : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260407_v1_overview.json
+ teacher jsonl    : data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260407_v1.jsonl
+ teacher overview : data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_full_260407_v1.json
+ teacher QA       : data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_full_260407_v1.json
+ teacher viz dir  : data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_full_260407_v1
+ training labels  : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync
+ detr canonical   : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_canonical.jsonl
+ detr batch       : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_batch.jsonl
+ detr skipped     : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_skipped.jsonl
+ training report  : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/TRAINING_DATA_REPORT_KO.md
+ coco summary     : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/coco_conversion_summary.json
+ gaic-like json   : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_batch_gaic_like.json
+ gaic-like guide  : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md
+ debug viz dir    : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/debug_visualizations_balanced50_bottomneg
+ debug viz summary: data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/debug_visualizations_balanced50_bottomneg/summary/summary.json
+ training labels  : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync
+ training pairwise: data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_pairwise.jsonl
+ training detr canonical: data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_canonical.jsonl
+ training detr batch: data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_batch.jsonl
+ training detr skipped: data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_skipped.jsonl
+ training qa      : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/qa_summary.json
+ training validation: data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/validation_summary.json
+ training report  : data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/TRAINING_DATA_REPORT_KO.md
+ logs             : data/TestImages/All/logs/e2e_test_images_full_260407_v1
+[run] refresh GAIC-like export for test images
+[progress 2026-04-08 00:50:33] convert_sstk_detr_batch_to_gaic_like: start | batch_jsonl=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_batch.jsonl | out_json=data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_batch_gaic_like.json
+[progress 2026-04-08 00:50:33] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: start total=173 unit=rows
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:build_instances: start total=173 unit=records
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:build_instances: [========================] 173/173 (100.0%) | 0.2s | annotations=3575
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:build_instances: [========================] 173/173 (100.0%) | 0.2s | images=173 annotations=3575
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:validate: start total=3575 unit=annotations
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:validate: [=====>..................] 1000/3575 (28.0%) | 0.0s<0.0s
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:validate: [============>...........] 2000/3575 (55.9%) | 0.0s<0.0s
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:validate: [===================>....] 3000/3575 (83.9%) | 0.0s<0.0s
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:validate: [========================] 3575/3575 (100.0%) | 0.0s
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like:validate: [========================] 3575/3575 (100.0%) | 0.0s | errors=0 warnings=0
+[progress 2026-04-08 00:50:34] convert_sstk_detr_batch_to_gaic_like: finished | images=173 | annotations=3575
+{
+  "out_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 3575,
+    "gt_annotation_count": 332,
+    "negative_annotation_count": 3243,
+    "subject_mode_id_counts": {
+      "0": 162,
+      "1": 617,
+      "2": 950,
+      "3": 1065,
+      "4": 781
+    },
+    "decision_id_counts": {
+      "0": 3,
+      "1": 2060,
+      "2": 1512
+    },
+    "label_type_counts": {
+      "matching_target": 332,
+      "near_negative": 1423,
+      "negative": 1820
+    },
+    "score_range": {
+      "min": 0.002472623,
+      "max": 0.997527377
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {}
+}
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs: start | manifest_parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet | summary_json=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/validation/test_images_e2e_validation_test_images_full_260407_v1.json
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs: load prepare summary test_images_prepare_summary.json
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_raw.jsonl: start total=33 unit=rows
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_raw.jsonl: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_raw.jsonl: [========================] 33/33 (100.0%) | 0.0s | path=feats_c2c3c5_v2_strict_raw.jsonl
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl: start total=33 unit=rows
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl: [========================] 33/33 (100.0%) | 0.0s | path=feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+[progress 2026-04-08 00:50:37] validate_gaic_e2e_outputs:read_jsonl:candidates_ar_test_images_full_260407_v1.jsonl: start total=33 unit=rows
+[progress 2026-04-08 00:50:38] validate_gaic_e2e_outputs:read_jsonl:candidates_ar_test_images_full_260407_v1.jsonl: [========================] 33/33 (100.0%) | 0.5s
+[progress 2026-04-08 00:50:38] validate_gaic_e2e_outputs:read_jsonl:candidates_ar_test_images_full_260407_v1.jsonl: [========================] 33/33 (100.0%) | 0.5s | path=candidates_ar_test_images_full_260407_v1.jsonl
+[progress 2026-04-08 00:50:38] validate_gaic_e2e_outputs:read_jsonl:teacher_scores_ar_test_images_full_260407_v1.jsonl: start total=33 unit=rows
+[progress 2026-04-08 00:50:42] validate_gaic_e2e_outputs:read_jsonl:teacher_scores_ar_test_images_full_260407_v1.jsonl: [========================] 33/33 (100.0%) | 3.9s
+[progress 2026-04-08 00:50:42] validate_gaic_e2e_outputs:read_jsonl:teacher_scores_ar_test_images_full_260407_v1.jsonl: [========================] 33/33 (100.0%) | 3.9s | path=teacher_scores_ar_test_images_full_260407_v1.jsonl
+[progress 2026-04-08 00:50:42] validate_gaic_e2e_outputs: finished | status=ok | errors=0 | warnings=0
+{
+  "status": "ok",
+  "manifest_rows": 33,
+  "precompute_rows": 33,
+  "errors": [],
+  "warnings": [],
+  "sections": {
+    "manifest": {
+      "rows": 33,
+      "unique_image_ids": 33,
+      "split_counts": {
+        "root": 33
+      }
+    },
+    "prepare_summary": {
+      "status": "ok",
+      "image_root": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/test_images",
+      "output_parquet": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet",
+      "flat_image_dir": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+      "bucket": "test_images_all",
+      "link_mode": "symlink",
+      "num_workers": 33,
+      "pseudo_tar_chunk_size": 256,
+      "max_images": 0,
+      "num_images_scanned_total": 33,
+      "num_images_prepared": 33,
+      "split_counts": {
+        "root": 33
+      },
+      "extension_counts": {
+        ".jpg": 33
+      },
+      "link_counts": {
+        "existing_match": 33
+      },
+      "pseudo_tar_groups": 1,
+      "largest_pseudo_tar_group": 33,
+      "caption_jsonl": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260407_v1.jsonl",
+      "caption_rows_available": 33,
+      "caption_rows_applied": 33,
+      "reference": {
+        "generated": true,
+        "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/test_images_reference.json",
+        "image_count": 33,
+        "annotation_count": 0,
+        "source_annotation_jsons": [],
+        "source_stats": {}
+      }
+    },
+    "precompute": {
+      "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl",
+      "rows": 33,
+      "has_c2_seg_rows": 33,
+      "has_c3_pose_rows": 33,
+      "has_c4_ocr_rows": 33,
+      "has_c5_geom_rows": 33,
+      "unique_image_ids": 33
+    },
+    "routed": {
+      "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl",
+      "rows": 33,
+      "routing_rows": 33,
+      "unique_image_ids": 33
+    },
+    "candidates": {
+      "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260407_v1.jsonl",
+      "rows": 33,
+      "unique_image_ids": 33,
+      "subset_of_manifest": true
+    },
+    "teacher": {
+      "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260407_v1.jsonl",
+      "rows": 33,
+      "unique_image_ids": 33,
+      "expected_vlm_tasks_all_ar": 198
+    },
+    "training_validation": {
+      "status": "ok",
+      "error_count": 0,
+      "warning_count": 0,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "conditional_detr_canonical": 173,
+        "conditional_detr_batch": 173,
+        "conditional_detr_skipped": 25
+      }
+    },
+    "training_gaic_like": {
+      "out_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/coco/instances_conditional_detr_batch_gaic_like.json",
+      "source_batch_jsonl": "data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/train_conditional_detr_batch.jsonl",
+      "gaic_reference_json": "data/TestImages/All/test_images_reference.json",
+      "sstk_meta": {
+        "safe_leftover_policies": [
+          "ignore"
+        ],
+        "split_image_counts": {
+          "unknown": 173
+        },
+        "split_annotation_counts": {
+          "unknown": 3575
+        }
+      },
+      "validation": {
+        "status": "ok",
+        "image_count": 173,
+        "annotation_count": 3575,
+        "gt_annotation_count": 332,
+        "negative_annotation_count": 3243,
+        "subject_mode_id_counts": {
+          "0": 162,
+          "1": 617,
+          "2": 950,
+          "3": 1065,
+          "4": 781
+        },
+        "decision_id_counts": {
+          "0": 3,
+          "1": 2060,
+          "2": 1512
+        },
+        "label_type_counts": {
+          "matching_target": 332,
+          "near_negative": 1423,
+          "negative": 1820
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      },
+      "split_exports": {}
+    }
+  }
+}
+[done] training-label debug viz: data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/debug_visualizations_balanced50_bottomneg
+       summary: data/TestImages/All/artifacts/training_labels/test_images_full_260407_v1_leftover_ignore_monotonic_single_stage2_sync/debug_visualizations_balanced50_bottomneg/summary/summary.json
+[done] validation summary: data/TestImages/All/artifacts/validation/test_images_e2e_validation_test_images_full_260407_v1.json

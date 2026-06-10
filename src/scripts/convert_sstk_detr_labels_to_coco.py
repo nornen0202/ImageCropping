@@ -351,7 +351,7 @@ def write_json(path: Path, payload: Dict[str, Any]) -> None:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Convert SSTK Conditional-DETR labels to COCO instances JSON")
+    parser = argparse.ArgumentParser(description="Convert SSTK Conditional-DETR labels to annotation label JSON")
     parser.add_argument("--canonical_jsonl", required=True)
     parser.add_argument("--batch_jsonl", required=True)
     parser.add_argument("--out_dir", required=True)
@@ -371,7 +371,7 @@ def main() -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     progress_log(
-        f"convert_sstk_detr_labels_to_coco: start | out_dir={out_dir}",
+        f"convert_sstk_detr_labels_to_annotation_json: start | out_dir={out_dir}",
         enabled=progress_enabled,
     )
     canonical_records = load_jsonl(
@@ -402,8 +402,8 @@ def main() -> None:
         progress_min_seconds=progress_min_seconds,
     )
 
-    canonical_path = out_dir / "instances_conditional_detr_canonical.json"
-    batch_path = out_dir / "instances_conditional_detr_batch.json"
+    canonical_path = out_dir / "conditional_detr_labels_canonical.json"
+    batch_path = out_dir / "conditional_detr_labels_batch.json"
     write_json(canonical_path, canonical_coco)
     write_json(batch_path, batch_coco)
 
@@ -427,9 +427,9 @@ def main() -> None:
         "canonical_validation": canonical_validation,
         "batch_validation": batch_validation,
     }
-    write_json(out_dir / "coco_conversion_summary.json", summary)
+    write_json(out_dir / "annotation_format_conversion_summary.json", summary)
     progress_log(
-        f"convert_sstk_detr_labels_to_coco: finished | canonical_annotations={canonical_validation['annotation_count']} | batch_annotations={batch_validation['annotation_count']}",
+        f"convert_sstk_detr_labels_to_annotation_json: finished | canonical_annotations={canonical_validation['annotation_count']} | batch_annotations={batch_validation['annotation_count']}",
         enabled=progress_enabled,
     )
     print(json.dumps(summary, ensure_ascii=False, indent=2))

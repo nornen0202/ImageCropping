@@ -102,6 +102,8 @@ ORDINAL_LABEL_MAPS: Dict[str, Dict[str, int]] = {
         "headroom_loose": 2,
     },
     "lookroom": {
+        "lookroom_insufficient": 0,
+        "lookroom_excessive": 2,
         "lookroom_tight": 0,
         "lookroom_adequate": 1,
         "lookroom_loose": 2,
@@ -1590,11 +1592,11 @@ def ordinal_target_from_label(field: str, candidate: Dict[str, Any], label: str)
                 return 1
             return 2
     if field in {"headroom", "lookroom"}:
-        if "tight" in normalized or "cut" in normalized:
+        if "tight" in normalized or "insufficient" in normalized or "cut" in normalized:
             return 0
         if "ok" in normalized or "adequate" in normalized or "ideal" in normalized:
             return 1
-        if "loose" in normalized:
+        if "loose" in normalized or "excessive" in normalized:
             return 2
     if field == "context":
         if "lost" in normalized:
@@ -3893,7 +3895,7 @@ def build_label_guide_section(label_guide: Dict[str, Any]) -> str:
             "ignored_candidates",
             "batch",
             "negative pool에서 제외된 ignore 집합",
-            "`safe_leftover_policy=ignore`일 때 safe high-score leftover를 별도로 분리한 버킷. COCO/GAIC-like negative annotation에는 넣지 않음",
+            "`safe_leftover_policy=ignore`일 때 safe high-score leftover를 별도로 분리한 버킷. annotation-format/GAIC-like negative annotation에는 넣지 않음",
         ),
         (
             "label_type",
@@ -4238,9 +4240,9 @@ def build_markdown_report(
         "",
         "## 5. GAIC-like 변환본 요약",
         "",
-        "- GAIC-like 변환본은 `train_conditional_detr_batch.jsonl`에서 `matching_targets`와 `candidate_pool`을 함께 COCO/GAIC 스타일 annotation으로 펼친 뷰입니다.",
+        "- GAIC-like 변환본은 `train_conditional_detr_batch.jsonl`에서 `matching_targets`와 `candidate_pool`을 함께 annotation-format/GAIC-like annotation으로 펼친 뷰입니다.",
         "- `matching_targets`는 `gt_flag=1`, `candidate_pool`은 `gt_flag=0`으로 저장되며, `score`는 positive/negative 모두 SSTK local score를 사용합니다.",
-        "- GAIC wrapper가 official split reference를 함께 넘기면 `coco/instances_conditional_detr_batch_gaic_like_train.json`, `..._test.json`, `..._unassigned.json`도 같이 생성됩니다.",
+        "- GAIC wrapper가 official split reference를 함께 넘기면 `label_json/gaic_like_labels_train.json`, `..._test.json`, `..._unassigned.json`도 같이 생성됩니다.",
         "- `unassigned`는 현재 local GAIC subset에 존재하지만 public `instances_train/test.json` 어디에도 image_id가 없는 샘플을 뜻합니다.",
         "- 동일 report 예시 샘플 아래에도 각 샘플의 변환 결과 일부를 같이 붙여 두었습니다.",
         "",

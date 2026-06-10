@@ -56,6 +56,11 @@ RUN_C6=0
 USE_REAL_EXPENSIVE=0
 RUN_C1=0
 RUN_C1_EXPLICIT=0
+ALIGN_DEVICE="auto"
+AESTHETIC_DEVICE="auto"
+EXP_BATCH_SIZE=24
+EXP_PREPROCESS_WORKERS=0
+EXP_PIN_MEMORY=1
 PRECOMPUTE_MODE="unified"
 RUN_C7_SALIENCY=0
 C7_SALIENCY_PRIORITY="quality_first"
@@ -63,6 +68,7 @@ C7_SALIENCY_WEIGHTS_DIR=""
 C7_SALIENCY_DEVICE="auto"
 GAIC_REFERENCE_JSON=""
 GAIC_TRAIN_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_train.json"
+GAIC_VAL_REFERENCE_JSON=""
 GAIC_TEST_REFERENCE_JSON="data/Publics/GAIC/annotations_json/instances_test.json"
 TRAINING_DIR_OVERRIDE=""
 MULTIMODE_TRAINING_DIR_OVERRIDE=""
@@ -139,6 +145,11 @@ while [ "$#" -gt 0 ]; do
     --run_c6) RUN_C6="$2"; shift 2 ;;
     --use_real_expensive) USE_REAL_EXPENSIVE="$2"; shift 2 ;;
     --run_c1) RUN_C1="$2"; RUN_C1_EXPLICIT=1; shift 2 ;;
+    --align_device) ALIGN_DEVICE="$2"; shift 2 ;;
+    --aesthetic_device) AESTHETIC_DEVICE="$2"; shift 2 ;;
+    --exp_batch_size) EXP_BATCH_SIZE="$2"; shift 2 ;;
+    --exp_preprocess_workers) EXP_PREPROCESS_WORKERS="$2"; shift 2 ;;
+    --exp_pin_memory) EXP_PIN_MEMORY="$2"; shift 2 ;;
     --precompute_mode) PRECOMPUTE_MODE="$2"; shift 2 ;;
     --run_c7_saliency) RUN_C7_SALIENCY="$2"; shift 2 ;;
     --c7_saliency_priority) C7_SALIENCY_PRIORITY="$2"; shift 2 ;;
@@ -146,6 +157,7 @@ while [ "$#" -gt 0 ]; do
     --c7_saliency_device) C7_SALIENCY_DEVICE="$2"; shift 2 ;;
     --gaic_reference_json) GAIC_REFERENCE_JSON="$2"; shift 2 ;;
     --gaic_train_reference_json) GAIC_TRAIN_REFERENCE_JSON="$2"; shift 2 ;;
+    --gaic_val_reference_json) GAIC_VAL_REFERENCE_JSON="$2"; shift 2 ;;
     --gaic_test_reference_json) GAIC_TEST_REFERENCE_JSON="$2"; shift 2 ;;
     --training_labels_dir) TRAINING_DIR_OVERRIDE="$2"; shift 2 ;;
     --multimode_training_labels_dir) MULTIMODE_TRAINING_DIR_OVERRIDE="$2"; shift 2 ;;
@@ -363,22 +375,24 @@ ROUTED_JSONL="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed.jsonl"
 ROUTED_C7_JSONL="${PRECOMPUTE_DIR}/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl"
 CANDIDATES_JSONL="${CANDIDATES_DIR}/candidates_ar${SUFFIX}.jsonl"
 TEACHER_JSONL="${TEACHER_DIR}/scores/teacher_scores_ar${SUFFIX}.jsonl"
+TEACHER_DOWNSTREAM_COMPACT_JSONL="${TEACHER_DIR}/scores/teacher_scores_ar${SUFFIX}_downstream_compact.jsonl"
 VLM_LABELS_JSONL="${VLM_DIR}/labels/crop_label_v1${SUFFIX}.jsonl"
 VLM_META_JSONL="${VLM_DIR}/meta/meta_norm_v1${SUFFIX}.jsonl"
 VLM_SUMMARY_JSON="${VLM_DIR}/summary/vlm_teacher_summary${SUFFIX}.json"
 TRAINING_VALIDATION_JSON="${TRAINING_DIR}/validation_summary.json"
 TRAINING_DETR_CANONICAL_JSON="${TRAINING_DIR}/train_conditional_detr_canonical.jsonl"
 TRAINING_DETR_BATCH_JSON="${TRAINING_DIR}/train_conditional_detr_batch.jsonl"
-TRAINING_GAIC_LIKE_SUMMARY_JSON="${TRAINING_DIR}/coco/gaic_like_conversion_summary.json"
-TRAINING_GAIC_LIKE_JSON="${TRAINING_DIR}/coco/instances_conditional_detr_batch_gaic_like.json"
-TRAINING_GAIC_LIKE_TRAIN_JSON="${TRAINING_DIR}/coco/instances_conditional_detr_batch_gaic_like_train.json"
-TRAINING_GAIC_LIKE_TEST_JSON="${TRAINING_DIR}/coco/instances_conditional_detr_batch_gaic_like_test.json"
-TRAINING_GAIC_LIKE_UNASSIGNED_JSON="${TRAINING_DIR}/coco/instances_conditional_detr_batch_gaic_like_unassigned.json"
+TRAINING_GAIC_LIKE_SUMMARY_JSON="${TRAINING_DIR}/label_json/gaic_like_conversion_summary.json"
+TRAINING_GAIC_LIKE_JSON="${TRAINING_DIR}/label_json/gaic_like_labels_full.json"
+TRAINING_GAIC_LIKE_TRAIN_JSON="${TRAINING_DIR}/label_json/gaic_like_labels_train.json"
+TRAINING_GAIC_LIKE_VAL_JSON="${TRAINING_DIR}/label_json/gaic_like_labels_val.json"
+TRAINING_GAIC_LIKE_TEST_JSON="${TRAINING_DIR}/label_json/gaic_like_labels_test.json"
+TRAINING_GAIC_LIKE_UNASSIGNED_JSON="${TRAINING_DIR}/label_json/gaic_like_labels_unassigned.json"
 TRAINING_LABEL_DEBUG_VIZ_OUT_DIR=${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR:-"${TRAINING_DIR}/debug_visualizations_balanced${TRAINING_LABEL_DEBUG_VIZ_SAMPLE_SIZE}_bottomneg"}
 TRAINING_LABEL_DEBUG_VIZ_SUMMARY_JSON="${TRAINING_LABEL_DEBUG_VIZ_OUT_DIR}/summary/summary.json"
 MULTIMODE_SUMMARY_JSON="${MULTIMODE_TRAINING_DIR}/summary.json"
 MULTIMODE_QUERY_STATUS_JSONL="${MULTIMODE_TRAINING_DIR}/mode_query_status.jsonl"
-MULTIMODE_COCO_JSON="${MULTIMODE_TRAINING_DIR}/coco/instances_multimode_training_labels.json"
+MULTIMODE_LABEL_JSON="${MULTIMODE_TRAINING_DIR}/label_json/multimode_labels_full.json"
 MULTIMODE_VALIDATION_JSON="${MULTIMODE_TRAINING_DIR}/validation_summary.json"
 if [ -z "$GAIC_CAPTION_JSONL" ]; then
   GAIC_CAPTION_JSONL="${METADATA_DIR}/gaic_captions${SUFFIX}.jsonl"
@@ -442,6 +456,7 @@ echo " skip_existing         : $SKIP_EXISTING"
 echo " shared_gpu_ids        : ${EFFECTIVE_GPU_IDS:-auto} (workers=${EFFECTIVE_GPU_WORKERS:-auto})"
 echo " run_c1                : $RUN_C1"
 echo " use_real_expensive    : $USE_REAL_EXPENSIVE"
+echo " expensive devices     : align=$ALIGN_DEVICE aesthetic=$AESTHETIC_DEVICE batch=$EXP_BATCH_SIZE preprocess_workers=$EXP_PREPROCESS_WORKERS pin_memory=$EXP_PIN_MEMORY"
 echo " run_c7_saliency       : $RUN_C7_SALIENCY (priority=$C7_SALIENCY_PRIORITY device=$C7_SALIENCY_DEVICE)"
 echo " gaic_generate_caps    : $GAIC_GENERATE_CAPTIONS (preset=$GAIC_CAPTION_PRESET backend=${GAIC_CAPTION_BACKEND:-auto} multi_gpu=$GAIC_CAPTION_MULTI_GPU gpu_ids=${EFFECTIVE_CAPTION_GPU_IDS:-auto} workers=${EFFECTIVE_CAPTION_GPU_WORKERS:-auto})"
 echo " run_c6                : $RUN_C6"
@@ -457,6 +472,7 @@ echo " run_gaic_benchmark    : $RUN_GAIC_BENCHMARK_EVAL (sample_count=$GAIC_BENC
 echo " run_gaic_subject_ab   : $RUN_GAIC_SUBJECT_REGION_AB (run_tag=$GAIC_SUBJECT_AB_RUN_TAG sample_count=$GAIC_SUBJECT_AB_SAMPLE_COUNT max_images=$GAIC_SUBJECT_AB_MAX_IMAGES)"
 echo " gaic_reference_json   : $GAIC_REFERENCE_JSON"
 echo " gaic_train_ref_json   : $GAIC_TRAIN_REFERENCE_JSON"
+echo " gaic_val_ref_json     : ${GAIC_VAL_REFERENCE_JSON:-<none>}"
 echo " gaic_test_ref_json    : $GAIC_TEST_REFERENCE_JSON"
 echo "========================================================"
 
@@ -483,16 +499,20 @@ current_routed_jsonl() {
 build_gaic_like_export() {
   local training_dir="$1"
   local batch_jsonl="${training_dir}/train_conditional_detr_batch.jsonl"
-  local coco_dir="${training_dir}/coco"
-  local out_json="${coco_dir}/instances_conditional_detr_batch_gaic_like.json"
-  local out_summary_json="${coco_dir}/gaic_like_conversion_summary.json"
-  local out_guide_md="${coco_dir}/GAIC_INSTANCES_TRAIN_FORMAT_KO.md"
-  local out_train_json="${coco_dir}/instances_conditional_detr_batch_gaic_like_train.json"
-  local out_test_json="${coco_dir}/instances_conditional_detr_batch_gaic_like_test.json"
-  local out_unassigned_json="${coco_dir}/instances_conditional_detr_batch_gaic_like_unassigned.json"
+  local label_json_dir="${training_dir}/label_json"
+  local out_json="${label_json_dir}/gaic_like_labels_full.json"
+  local out_summary_json="${label_json_dir}/gaic_like_conversion_summary.json"
+  local out_guide_md="${label_json_dir}/GAIC_LIKE_LABEL_FORMAT_KO.md"
+  local out_train_json="${label_json_dir}/gaic_like_labels_train.json"
+  local out_val_json="${label_json_dir}/gaic_like_labels_val.json"
+  local out_test_json="${label_json_dir}/gaic_like_labels_test.json"
+  local out_unassigned_json="${label_json_dir}/gaic_like_labels_unassigned.json"
   local split_args=()
   if [ -f "$GAIC_TRAIN_REFERENCE_JSON" ]; then
     split_args+=(--gaic_train_reference_json "$GAIC_TRAIN_REFERENCE_JSON")
+  fi
+  if [ -n "${GAIC_VAL_REFERENCE_JSON:-}" ] && [ -f "$GAIC_VAL_REFERENCE_JSON" ]; then
+    split_args+=(--gaic_val_reference_json "$GAIC_VAL_REFERENCE_JSON")
   fi
   if [ -f "$GAIC_TEST_REFERENCE_JSON" ]; then
     split_args+=(--gaic_test_reference_json "$GAIC_TEST_REFERENCE_JSON")
@@ -505,9 +525,18 @@ build_gaic_like_export() {
     --out_guide_md "$out_guide_md" \
     --progress 1 \
     --out_train_json "$out_train_json" \
+    --out_val_json "$out_val_json" \
     --out_test_json "$out_test_json" \
     --out_unassigned_json "$out_unassigned_json" \
     "${split_args[@]}"
+}
+
+validation_teacher_jsonl() {
+  if [ -f "$TEACHER_DOWNSTREAM_COMPACT_JSONL" ]; then
+    printf "%s" "$TEACHER_DOWNSTREAM_COMPACT_JSONL"
+  else
+    printf "%s" "$TEACHER_JSONL"
+  fi
 }
 
 validate_training_outputs() {
@@ -519,9 +548,9 @@ validate_training_outputs() {
     --precompute_jsonl "$FEATS_RAW_JSONL"
     --routed_jsonl "$(current_routed_jsonl)"
     --candidates_jsonl "$CANDIDATES_JSONL"
-    --teacher_jsonl "$TEACHER_JSONL"
+    --teacher_jsonl "$(validation_teacher_jsonl)"
     --training_validation_json "${training_dir}/validation_summary.json"
-    --training_gaic_like_summary_json "${training_dir}/coco/gaic_like_conversion_summary.json"
+    --training_gaic_like_summary_json "${training_dir}/label_json/gaic_like_conversion_summary.json"
     --summary_json "$validation_json"
   )
   if [ "$RUN_VLM_TEACHER" -eq 1 ]; then
@@ -546,7 +575,7 @@ build_training_variant() {
   local variant_validation_json="${VALIDATION_DIR}/gaic_e2e_validation_${RUN_TAG}_leftover_${suffix}_monotonic.json"
   if [ "$SKIP_EXISTING" -eq 1 ] \
     && [ -f "${variant_dir}/validation_summary.json" ] \
-    && [ -f "${variant_dir}/coco/gaic_like_conversion_summary.json" ] \
+    && [ -f "${variant_dir}/label_json/gaic_like_conversion_summary.json" ] \
     && [ -f "$variant_validation_json" ]; then
     echo "[skip] leftover variant already complete: ${variant_dir}"
     return 0
@@ -562,11 +591,11 @@ build_training_variant() {
     --progress 1 \
     --strict_validation 1 \
     --report_examples 8
-  "$PYTHON_BIN" src/scripts/convert_sstk_detr_labels_to_coco.py \
+  "$PYTHON_BIN" src/scripts/export_sstk_detr_labels_to_annotation_json.py \
     --canonical_jsonl "${variant_dir}/train_conditional_detr_canonical.jsonl" \
     --batch_jsonl "${variant_dir}/train_conditional_detr_batch.jsonl" \
     --progress 1 \
-    --out_dir "${variant_dir}/coco"
+    --out_dir "${variant_dir}/label_json"
   build_gaic_like_export "$variant_dir"
   validate_training_outputs "$variant_dir" "$variant_validation_json"
 }
@@ -623,6 +652,19 @@ PREPARE_CAPTION_ARGS=()
 if [ -f "$GAIC_CAPTION_JSONL" ]; then
   PREPARE_CAPTION_ARGS+=(--caption_jsonl "$GAIC_CAPTION_JSONL")
 fi
+PREPARE_ANNOTATION_ARGS=()
+if [ -f "$GAIC_TRAIN_REFERENCE_JSON" ]; then
+  PREPARE_ANNOTATION_ARGS+=("$GAIC_TRAIN_REFERENCE_JSON")
+fi
+if [ -n "${GAIC_VAL_REFERENCE_JSON:-}" ] && [ -f "$GAIC_VAL_REFERENCE_JSON" ]; then
+  PREPARE_ANNOTATION_ARGS+=("$GAIC_VAL_REFERENCE_JSON")
+fi
+if [ -f "$GAIC_TEST_REFERENCE_JSON" ]; then
+  PREPARE_ANNOTATION_ARGS+=("$GAIC_TEST_REFERENCE_JSON")
+fi
+if [ "${#PREPARE_ANNOTATION_ARGS[@]}" -gt 0 ]; then
+  PREPARE_ANNOTATION_ARGS=(--annotation_jsons "${PREPARE_ANNOTATION_ARGS[@]}")
+fi
 
 "$PYTHON_BIN" src/scripts/prepare_gaic_curated_dataset.py \
   --image_root "$IMAGE_ROOT" \
@@ -630,9 +672,6 @@ fi
   --flat_image_dir "$FLAT_IMAGE_DIR" \
   --summary_json "$PREP_SUMMARY_JSON" \
   --reference_json_out "$GAIC_REFERENCE_JSON" \
-  --annotation_jsons \
-    data/Publics/GAIC/annotations_json/instances_train.json \
-    data/Publics/GAIC/annotations_json/instances_test.json \
   --bucket "$BUCKET" \
   --pseudo_tar_chunk_size "$PSEUDO_TAR_CHUNK_SIZE" \
   --link_mode "$LINK_MODE" \
@@ -640,6 +679,7 @@ fi
   --progress 1 \
   --num_workers "$EFFECTIVE_PREPARE_NUM_WORKERS" \
   --skip_existing_links "$SKIP_EXISTING_LINKS" \
+  "${PREPARE_ANNOTATION_ARGS[@]}" \
   "${PREPARE_CAPTION_ARGS[@]}"
 
 if [ "$PREPARE_ONLY" -eq 1 ]; then
@@ -675,6 +715,11 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --c7_saliency_priority "$C7_SALIENCY_PRIORITY" \
   --c7_saliency_device "$C7_SALIENCY_DEVICE" \
   --use_real_expensive "$USE_REAL_EXPENSIVE" \
+  --align_device "$ALIGN_DEVICE" \
+  --aesthetic_device "$AESTHETIC_DEVICE" \
+  --exp_batch_size "$EXP_BATCH_SIZE" \
+  --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
+  --exp_pin_memory "$EXP_PIN_MEMORY" \
   --run_c6 "$RUN_C6" \
   --run_vlm_teacher "$RUN_VLM_TEACHER" \
   --vlm_backend "$VLM_BACKEND" \
@@ -699,6 +744,7 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
   --run_detailed_report "$RUN_DETAILED_REPORT" \
   --gaic_reference_json "$GAIC_REFERENCE_JSON" \
   --gaic_train_reference_json "$GAIC_TRAIN_REFERENCE_JSON" \
+  --gaic_val_reference_json "$GAIC_VAL_REFERENCE_JSON" \
   --gaic_test_reference_json "$GAIC_TEST_REFERENCE_JSON" \
   "${PHASEA_SHARED_ACCEL_ARGS[@]}" \
   "${C7_EXTRA_ARGS[@]}" \
@@ -721,8 +767,8 @@ if [ "$RUN_TRAINING_LABELS" -eq 1 ]; then
 fi
 
 if [ "$RUN_MULTIMODE_TRAINING_LABELS" -eq 1 ]; then
-  if [ ! -f "$MULTIMODE_SUMMARY_JSON" ] || [ ! -f "$MULTIMODE_COCO_JSON" ] || [ ! -f "$MULTIMODE_VALIDATION_JSON" ]; then
-    echo "[error] expected multimode outputs missing: $MULTIMODE_SUMMARY_JSON | $MULTIMODE_COCO_JSON | $MULTIMODE_VALIDATION_JSON"
+  if [ ! -f "$MULTIMODE_SUMMARY_JSON" ] || [ ! -f "$MULTIMODE_LABEL_JSON" ] || [ ! -f "$MULTIMODE_VALIDATION_JSON" ]; then
+    echo "[error] expected multimode outputs missing: $MULTIMODE_SUMMARY_JSON | $MULTIMODE_LABEL_JSON | $MULTIMODE_VALIDATION_JSON"
     exit 1
   fi
 fi
@@ -738,7 +784,7 @@ VALIDATE_ARGS=(
   --precompute_jsonl "$FEATS_RAW_JSONL"
   --routed_jsonl "$(current_routed_jsonl)"
   --candidates_jsonl "$CANDIDATES_JSONL"
-  --teacher_jsonl "$TEACHER_JSONL"
+  --teacher_jsonl "$(validation_teacher_jsonl)"
   --summary_json "$VALIDATION_SUMMARY_JSON"
 )
 
@@ -772,8 +818,12 @@ fi
 
 if [ "$RUN_GAIC_BENCHMARK_EVAL" -eq 1 ]; then
   if [ ! -d "$TRAINING_DIR" ]; then
-    echo "[error] gaic benchmark eval requires training labels dir: $TRAINING_DIR"
-    exit 1
+    echo "[info] training labels dir not found; creating empty benchmark context dir: $TRAINING_DIR"
+    mkdir -p "$TRAINING_DIR"
+  fi
+  BENCHMARK_SPLIT_ARGS=()
+  if [ -n "${GAIC_VAL_REFERENCE_JSON:-}" ] && [ -f "$GAIC_VAL_REFERENCE_JSON" ]; then
+    BENCHMARK_SPLIT_ARGS+=(--gaic_val_json "$GAIC_VAL_REFERENCE_JSON")
   fi
   BENCHMARK_REPORT_DIR="${ARTIFACTS_DIR}/reports/gaic_benchmark_eval_${RUN_TAG}"
   echo "[run] GAIC benchmark eval -> ${BENCHMARK_REPORT_DIR}"
@@ -783,11 +833,18 @@ if [ "$RUN_GAIC_BENCHMARK_EVAL" -eq 1 ]; then
     --teacher_jsonl "$TEACHER_JSONL" \
     --training_label_dir "$TRAINING_DIR" \
     --gaic_train_json "$GAIC_TRAIN_REFERENCE_JSON" \
+    "${BENCHMARK_SPLIT_ARGS[@]}" \
     --gaic_test_json "$GAIC_TEST_REFERENCE_JSON" \
     --image_dir "$FLAT_IMAGE_DIR" \
     --output_dir "$BENCHMARK_REPORT_DIR" \
     --sample_count "$GAIC_BENCHMARK_SAMPLE_COUNT" \
-    --max_images "$GAIC_BENCHMARK_MAX_IMAGES"
+    --max_images "$GAIC_BENCHMARK_MAX_IMAGES" \
+    --run_full_expensive "$USE_REAL_EXPENSIVE" \
+    --align_device "$ALIGN_DEVICE" \
+    --aesthetic_device "$AESTHETIC_DEVICE" \
+    --exp_batch_size "$EXP_BATCH_SIZE" \
+    --exp_preprocess_workers "$EXP_PREPROCESS_WORKERS" \
+    --exp_pin_memory "$EXP_PIN_MEMORY"
 fi
 
 if [ "$RUN_GAIC_SUBJECT_REGION_AB" -eq 1 ]; then

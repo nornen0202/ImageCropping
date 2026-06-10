@@ -1,0 +1,598 @@
+[warn] venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ Test-images e2e wrapper
+========================================================
+ data_dir              : data/TestImages/All
+ image_root            : data/test_images
+ flat_image_dir        : data/TestImages/All/images
+ bucket                : test_images_all
+ run_tag               : test_images_260331_r0
+ prepare_max_images    : 0
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 0
+ run_c1                : 1
+ run_c2                : 1
+ run_c3                : 1
+ run_c3_enrich         : 1
+ run_c4                : 1
+ run_c5                : 1
+ run_c6                : 1
+ run_merge             : 1
+ run_subject_routing   : 1
+ run_candidates        : 1
+ run_teacher           : 1
+ use_real_expensive    : 1
+ run_c7_saliency       : 1 (priority=quality_first device=auto)
+ generate_captions     : 1 (preset=local_efficient backend=auto)
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1 (policy=ignore)
+ auto_leftover_variants: 1 (policies=keep_negative,ignore,promote_soft_positive)
+ run_detailed_report   : 1
+ reference_json        : data/TestImages/All/test_images_reference.json
+========================================================
+{
+  "status": "ok",
+  "image_dir": "/group-volume/jaden.ju/Sources/ImageCropping/data/test_images",
+  "input_parquet": "",
+  "output_jsonl": "/group-volume/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_260331_r0.jsonl",
+  "preset": "local_efficient",
+  "backend": "blip",
+  "model_id": "Salesforce/blip-image-captioning-base",
+  "caption_prompt": "",
+  "device": "cuda",
+  "dtype": "float16",
+  "num_rows_total": 33,
+  "num_existing_skipped": 0,
+  "num_rows_generated_this_run": 33,
+  "num_rows_pending_after_skip": 33
+}
+{
+  "status": "ok",
+  "image_root": "/group-volume/jaden.ju/Sources/ImageCropping/data/test_images",
+  "output_parquet": "/group-volume/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet",
+  "flat_image_dir": "/group-volume/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+  "bucket": "test_images_all",
+  "link_mode": "symlink",
+  "pseudo_tar_chunk_size": 256,
+  "max_images": 0,
+  "num_images_scanned_total": 33,
+  "num_images_prepared": 33,
+  "split_counts": {
+    "root": 33
+  },
+  "extension_counts": {
+    ".jpg": 33
+  },
+  "link_counts": {
+    "symlink": 33
+  },
+  "pseudo_tar_groups": 1,
+  "largest_pseudo_tar_group": 33,
+  "caption_jsonl": "/group-volume/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_260331_r0.jsonl",
+  "caption_rows_available": 33,
+  "caption_rows_applied": 33,
+  "reference": {
+    "generated": true,
+    "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/TestImages/All/test_images_reference.json",
+    "image_count": 33,
+    "annotation_count": 0,
+    "source_annotation_jsons": [],
+    "source_stats": {}
+  }
+}
+[warn] venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : test_images_all
+ data_dir            : data/TestImages/All
+ server_mode         : 0
+ tar_dir             : /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100
+ run_tag             : test_images_260331_r0
+ skip_existing       : 0
+ precompute_mode     : unified
+ run_filter          : 0
+ filter_train_match  : 1
+ filter_tag_embed    : mgpu=-1 gpu_ids=auto bs=128 chunk=0 device=auto
+ filter_cpu_map      : workers=0 chunk=4096 sample_extract_workers=0
+ export_curated_img  : 0 (dir=data/TestImages/All/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/TestImages/All/images)
+ extract_mode        : auto (extract_multi_gpu=-1, gpu_ids=0,1,2,3,4, workers=5)
+ run_c1/c2/c3/c4/c5/c6 : 1/1/1/1/1/1
+ run_c3_enrich/merge : 1/1
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ c7 saliency         : run=1 priority=quality_first device=auto
+ c7 saliency multi   : reuse extract gpu_ids=0,1,2,3,4 workers=5 mode=auto
+ run_component_viz   : 0 (out=data/TestImages/All/artifacts/precompute/visualizations/components_test_images_260331_r0, num_samples=120)
+ public proposals    : enable=0 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/TestImages/All/artifacts/public_teachers/raw/teacher_raw_public_test_images_260331_r0.jsonl | data/TestImages/All/artifacts/public_teachers/proposals/teacher_proposals_public_test_images_260331_r0.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=auto workers=auto
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 1
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 1 (real_expensive=1)
+ c1 source           : data/TestImages/All/artifacts/precompute/feats_c1.jsonl
+ teacher_multi_gpu   : 1 (gpu_ids=0,1,2,3,4, workers=5)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=24 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_public_ref  : save_public_teacher_ref_eval=1
+ teacher_aesthetic   : backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 0 (backend=heuristic fallback=none model=Qwen/Qwen3-VL-4B-Instruct)
+ run_training_labels : 1 (dir=data/TestImages/All/artifacts/training_labels/test_images_260331_r0 policy=ignore)
+ gaic_reference_json : data/TestImages/All/test_images_reference.json
+ run_detailed_report : 1 (dir=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed examples_per_bucket=5)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=auto, workers=auto)
+ vlm out/meta/sum    : data/TestImages/All/artifacts/vlm_teacher/labels/crop_label_v1_test_images_260331_r0.jsonl | data/TestImages/All/artifacts/vlm_teacher/meta/meta_norm_v1_test_images_260331_r0.jsonl | data/TestImages/All/artifacts/vlm_teacher/summary/vlm_teacher_summary_test_images_260331_r0.json
+========================================================
+[info] using curated image cache dir: data/TestImages/All/images
+[run] 02_extract_precompute_unified
+Warning: venv not found at /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate, using system python.
+[info] python_bin: python3
+[quality-defaults] C5_SCALELSD_CKPT=/group-volume/jaden.ju/Sources/ImageCropping/weights/scalelsd/scalelsd-vitbase-v1-train-sa1b.pt
+[quality-defaults] C6_GAZELLE_REPO=/group-volume/jaden.ju/Sources/ImageCropping/third_party/gazelle
+[quality-defaults] C6_GAZELLE_CKPT=/group-volume/jaden.ju/Sources/ImageCropping/.cache/torch/hub/checkpoints/gazelle_dinov2_vitb14_inout.pt
+[quality-defaults] C6_TORCH_HUB_DIR=/group-volume/jaden.ju/Sources/ImageCropping/.cache/torch/hub
+[quality-defaults] C6_GAZELLE_USE_TORCHHUB=1
+[c4-preflight] paddle import failed: No module named 'paddle'
+[warn] [c4-preflight] Paddle CUDA runtime not ready (rc=2). forcing C4_BACKEND=disabled to avoid SIGFPE.
+==============================================
+ Feature Extraction Component Runner
+==============================================
+  Input    : data/TestImages/All/filtered_test_images_all.parquet
+  Bucket   : test_images_all
+  Output   : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+  Component: c1 c2 c3 c4 c5 c6
+  Priority : quality_first
+  Mode     : multi  (Detected GPUs: 5)
+  Tar Dir  : /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100
+  Image Dir: data/TestImages/All/images
+  WeightsDir: /group-volume/jaden.ju/Sources/ImageCropping/weights
+  Threads  : OMP=1 OPENBLAS=1 MKL=1
+  C4 backend env: disabled
+==============================================
+[MODE] Multi-GPU (No Ray, sharded single-process workers)
+[multi] gpu_ids=0,1,2,3,4 workers=5
+[multi] shard-local devices: C4_PPOCR_DEVICE=gpu:0, C5_SCALELSD_DEVICE=cuda:0, C6_GAZELLE_DEVICE=cuda:0
+[multi] launch shard=0/5 gpu=0 -> data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.1368/part_0.jsonl
+[multi] launch shard=1/5 gpu=1 -> data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.1368/part_1.jsonl
+[multi] launch shard=2/5 gpu=2 -> data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.1368/part_2.jsonl
+[multi] launch shard=3/5 gpu=3 -> data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.1368/part_3.jsonl
+[multi] launch shard=4/5 gpu=4 -> data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.1368/part_4.jsonl
+[multi] merged output -> data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[multi] shard logs -> data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.1368
+==============================================
+ Done.
+==============================================
+[run] 03_enrich_c3_unified
+[enrich_c3] running CPU-only JSONL post-process (no GPU inference).
+enrich_c3: 0it [00:00, ?it/s]enrich_c3: 33it [00:00, 375.05it/s]
+[done] total=33 enriched_records=24 missing_hw=0 use_actual_image_size=1 output=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+[run] 07a_enrich_subject_mode
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 32it [00:00, 316.07it/s]subject-mode-enrich: 33it [00:00, 316.07it/s]
+[done] total=33 routed=33 missing_meta=0 output=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[done] subject_mode_counts={'other_ambiguous': 9, 'portrait_single': 7, 'portrait_group': 10, 'scene_general': 7}
+[done] policy_counts={'generic_v1': 9, 'portrait_single_v1': 7, 'portrait_group_v1': 10, 'scene_v1': 7}
+[run] 07aa_augment_c7_saliency
+augment-c7-saliency[0/1]:   0%|                                                          | 0/33 [00:00<?, ?it/s]augment-c7-saliency[0/1]:   3%|█▌                                                | 1/33 [00:03<01:36,  3.03s/it]augment-c7-saliency[0/1]:   6%|███                                               | 2/33 [00:03<00:43,  1.39s/it]augment-c7-saliency[0/1]:   9%|████▌                                             | 3/33 [00:04<00:39,  1.31s/it]augment-c7-saliency[0/1]:  12%|██████                                            | 4/33 [00:05<00:36,  1.26s/it]augment-c7-saliency[0/1]:  15%|███████▌                                          | 5/33 [00:06<00:34,  1.23s/it]augment-c7-saliency[0/1]:  18%|█████████                                         | 6/33 [00:07<00:24,  1.12it/s]augment-c7-saliency[0/1]:  21%|██████████▌                                       | 7/33 [00:07<00:17,  1.48it/s]augment-c7-saliency[0/1]:  24%|████████████                                      | 8/33 [00:07<00:16,  1.55it/s]augment-c7-saliency[0/1]:  27%|█████████████▋                                    | 9/33 [00:09<00:20,  1.19it/s]augment-c7-saliency[0/1]:  30%|██████████████▊                                  | 10/33 [00:10<00:21,  1.07it/s]augment-c7-saliency[0/1]:  33%|████████████████▎                                | 11/33 [00:10<00:16,  1.30it/s]augment-c7-saliency[0/1]:  36%|█████████████████▊                               | 12/33 [00:11<00:18,  1.12it/s]augment-c7-saliency[0/1]:  39%|███████████████████▎                             | 13/33 [00:13<00:19,  1.02it/s]augment-c7-saliency[0/1]:  42%|████████████████████▊                            | 14/33 [00:13<00:15,  1.26it/s]augment-c7-saliency[0/1]:  45%|██████████████████████▎                          | 15/33 [00:13<00:11,  1.55it/s]augment-c7-saliency[0/1]:  48%|███████████████████████▊                         | 16/33 [00:13<00:08,  1.92it/s]augment-c7-saliency[0/1]:  52%|█████████████████████████▏                       | 17/33 [00:14<00:07,  2.19it/s]augment-c7-saliency[0/1]:  55%|██████████████████████████▋                      | 18/33 [00:14<00:06,  2.43it/s]augment-c7-saliency[0/1]:  58%|████████████████████████████▏                    | 19/33 [00:14<00:05,  2.50it/s]augment-c7-saliency[0/1]:  61%|█████████████████████████████▋                   | 20/33 [00:15<00:06,  2.16it/s]augment-c7-saliency[0/1]:  64%|███████████████████████████████▏                 | 21/33 [00:15<00:04,  2.56it/s]augment-c7-saliency[0/1]:  67%|████████████████████████████████▋                | 22/33 [00:15<00:03,  3.02it/s]augment-c7-saliency[0/1]:  70%|██████████████████████████████████▏              | 23/33 [00:17<00:05,  1.69it/s]augment-c7-saliency[0/1]:  73%|███████████████████████████████████▋             | 24/33 [00:18<00:06,  1.32it/s]augment-c7-saliency[0/1]:  76%|█████████████████████████████████████            | 25/33 [00:19<00:07,  1.13it/s]augment-c7-saliency[0/1]:  79%|██████████████████████████████████████▌          | 26/33 [00:20<00:06,  1.02it/s]augment-c7-saliency[0/1]:  82%|████████████████████████████████████████         | 27/33 [00:21<00:06,  1.03s/it]augment-c7-saliency[0/1]:  85%|█████████████████████████████████████████▌       | 28/33 [00:22<00:03,  1.27it/s]augment-c7-saliency[0/1]:  88%|███████████████████████████████████████████      | 29/33 [00:22<00:02,  1.58it/s]augment-c7-saliency[0/1]:  91%|████████████████████████████████████████████▌    | 30/33 [00:23<00:02,  1.29it/s]augment-c7-saliency[0/1]:  94%|██████████████████████████████████████████████   | 31/33 [00:24<00:01,  1.11it/s]augment-c7-saliency[0/1]:  97%|███████████████████████████████████████████████▌ | 32/33 [00:25<00:00,  1.34it/s]augment-c7-saliency[0/1]: 100%|█████████████████████████████████████████████████| 33/33 [00:25<00:00,  1.64it/s]augment-c7-saliency[0/1]: 100%|█████████████████████████████████████████████████| 33/33 [00:25<00:00,  1.30it/s]
+{
+  "status": "ok",
+  "input_jsonl": "data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl",
+  "output_jsonl": "data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl",
+  "image_dir": "data/TestImages/All/images",
+  "requested_priority": "quality_first",
+  "processed": 33,
+  "reused": 0,
+  "missing_images": 0,
+  "backend_counts": {
+    "birefnet": 33
+  },
+  "fallback_counts": {},
+  "elapsed_sec": 26.888,
+  "num_shards": 1,
+  "shard_index": 0,
+  "shard_range": {
+    "start": 0,
+    "end": 33
+  },
+  "total_input_rows": 33,
+  "multi_gpu_requested": false
+}
+[run] 07ab_reroute_subject_mode_after_c7
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 28it [00:00, 271.29it/s]subject-mode-enrich: 33it [00:00, 275.36it/s]
+[done] total=33 routed=33 missing_meta=0 output=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+[done] subject_mode_counts={'other_ambiguous': 9, 'portrait_single': 8, 'portrait_group': 10, 'scene_general': 6}
+[done] policy_counts={'generic_v1': 9, 'portrait_single_v1': 8, 'portrait_group_v1': 10, 'scene_v1': 6}
+[run] 09_generate_candidates
+Warning: venv not found at /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate, using system python.
+==============================================
+ Candidate Generator Runner (Phase B1)
+==============================================
+  Input Parquet : data/TestImages/All/filtered_test_images_all.parquet
+  Feats C2      : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+  Feats C3      : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+  Output JSONL  : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0.jsonl
+  Server Mode   : 0
+  TAR_DIR       : /media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100
+  IMAGE_DIR     : data/TestImages/All/images
+  use_actual    : 1
+  strict_actual : 1
+  Extra Args    : --actual_size_cache_json data/TestImages/All/cache/actual_image_size_map.json --max_images 0 --num_workers 0 --mp_chunksize 64 --mp_start_method auto --ar_list FREE 1:1 9:16 16:9 3:4 4:3
+==============================================
+[CandidateGen] Loading inputs...
+[CandidateGen] rows=33 c2_seg=33 c2_det=33(nonempty=29) c3=33(nonempty=24) routing=33 c7_saliency=33 teacher_proposals=0 cfg_hash=6abdc55aed4517a2
+[CandidateGen] worker mode: single-process
+[CandidateGen] Building/loading actual TAR image-size map...
+[CandidateGen] actual_size_map loaded: 33 images
+CandidateGen:   0%|                                                                      | 0/33 [00:00<?, ?it/s]CandidateGen:   3%|█▉                                                            | 1/33 [00:00<00:06,  5.08it/s]CandidateGen:   6%|███▊                                                          | 2/33 [00:00<00:04,  6.33it/s]CandidateGen:   9%|█████▋                                                        | 3/33 [00:00<00:04,  6.80it/s]CandidateGen:  12%|███████▌                                                      | 4/33 [00:00<00:06,  4.69it/s]CandidateGen:  15%|█████████▍                                                    | 5/33 [00:01<00:07,  3.50it/s]CandidateGen:  18%|███████████▎                                                  | 6/33 [00:01<00:06,  4.26it/s]CandidateGen:  21%|█████████████▏                                                | 7/33 [00:01<00:05,  4.86it/s]CandidateGen:  24%|███████████████                                               | 8/33 [00:01<00:04,  5.35it/s]CandidateGen:  27%|████████████████▉                                             | 9/33 [00:01<00:04,  5.77it/s]CandidateGen:  30%|██████████████████▍                                          | 10/33 [00:01<00:03,  6.10it/s]CandidateGen:  33%|████████████████████▎                                        | 11/33 [00:02<00:03,  6.40it/s]CandidateGen:  36%|██████████████████████▏                                      | 12/33 [00:02<00:03,  6.53it/s]CandidateGen:  39%|████████████████████████                                     | 13/33 [00:02<00:03,  6.17it/s]CandidateGen:  42%|█████████████████████████▉                                   | 14/33 [00:02<00:03,  5.99it/s]CandidateGen:  45%|███████████████████████████▋                                 | 15/33 [00:02<00:03,  5.47it/s]CandidateGen:  48%|█████████████████████████████▌                               | 16/33 [00:03<00:04,  4.22it/s]CandidateGen:  52%|███████████████████████████████▍                             | 17/33 [00:03<00:04,  3.91it/s]CandidateGen:  55%|█████████████████████████████████▎                           | 18/33 [00:03<00:04,  3.62it/s]CandidateGen:  58%|███████████████████████████████████                          | 19/33 [00:04<00:04,  3.40it/s]CandidateGen:  61%|████████████████████████████████████▉                        | 20/33 [00:04<00:03,  3.73it/s]CandidateGen:  64%|██████████████████████████████████████▊                      | 21/33 [00:04<00:02,  4.19it/s]CandidateGen:  67%|████████████████████████████████████████▋                    | 22/33 [00:04<00:03,  3.55it/s]CandidateGen:  70%|██████████████████████████████████████████▌                  | 23/33 [00:05<00:02,  3.96it/s]CandidateGen:  73%|████████████████████████████████████████████▎                | 24/33 [00:05<00:01,  4.69it/s]CandidateGen:  76%|██████████████████████████████████████████████▏              | 25/33 [00:05<00:01,  5.18it/s]CandidateGen:  79%|████████████████████████████████████████████████             | 26/33 [00:05<00:01,  5.75it/s]CandidateGen:  82%|█████████████████████████████████████████████████▉           | 27/33 [00:05<00:01,  5.67it/s]CandidateGen:  85%|███████████████████████████████████████████████████▊         | 28/33 [00:05<00:00,  5.34it/s]CandidateGen:  88%|█████████████████████████████████████████████████████▌       | 29/33 [00:06<00:00,  5.42it/s]CandidateGen:  91%|███████████████████████████████████████████████████████▍     | 30/33 [00:06<00:00,  5.00it/s]CandidateGen:  94%|█████████████████████████████████████████████████████████▎   | 31/33 [00:06<00:00,  5.63it/s]CandidateGen:  97%|███████████████████████████████████████████████████████████▏ | 32/33 [00:06<00:00,  4.57it/s]CandidateGen: 100%|█████████████████████████████████████████████████████████████| 33/33 [00:06<00:00,  5.18it/s]CandidateGen: 100%|█████████████████████████████████████████████████████████████| 33/33 [00:06<00:00,  4.84it/s]
+[CandidateGen] Done. written=33 avg_total_candidates=507.52 elapsed=6.82s throughput=4.84 img/s
+[CandidateGen] size_source_counts={'tar_actual': 33}
+[CandidateGen] output=data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0.jsonl
+[CandidateGen] Building overview from output jsonl...
+[CandidateGen] Overview saved: data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0_overview.json, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0_overview_by_ar.csv, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0_overview_by_source.csv, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0_overview_by_subject_source.csv
+[CandidateGen] Visualization saved under: data/TestImages/All/artifacts/candidates/visualizations/candidates_ar_test_images_260331_r0_viz
+==============================================
+ Done.
+==============================================
+[run] 10_teacher_scorer
+[warn] venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+[config] server_mode=0 tar_dir=/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100 image_dir=data/TestImages/All/images
+[config] candidates=data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0.jsonl
+[config] features=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+[config] c1=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[config] parquet=data/TestImages/All/filtered_test_images_all.parquet
+[config] output_jsonl=data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl
+[config] expensive_accel: batch=24 eval_top_m=0 preprocess_workers=0 pin_memory=1
+[config] public_teacher_ref_eval: save=1
+[config] aesthetic: backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+[config] portrait_safety: hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+[config] viz_image_ids=<none> viz_image_ids_file=<none>
+[1/3] Running teacher scorer...
+[multi] teacher shard mode enabled: gpu_ids=0,1,2,3,4 workers=5
+[multi] launch shard=0/5 gpu=0 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl.shards.2411/teacher_scores_shard_0.jsonl
+[multi] launch shard=1/5 gpu=1 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl.shards.2411/teacher_scores_shard_1.jsonl
+[multi] launch shard=2/5 gpu=2 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl.shards.2411/teacher_scores_shard_2.jsonl
+[multi] launch shard=3/5 gpu=3 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl.shards.2411/teacher_scores_shard_3.jsonl
+[multi] launch shard=4/5 gpu=4 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl.shards.2411/teacher_scores_shard_4.jsonl
+[multi] merged teacher jsonl -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl
+[done] rebuilt overview: data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_260331_r0.json
+[done] rebuilt overview csv: data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_test_images_260331_r0.csv
+[multi] rebuilt overview -> data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_260331_r0.json
+[2/3] Building QA report...
+[done] report_json=data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_260331_r0.json
+[done] report_by_ar_csv=data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_test_images_260331_r0.csv
+[3/3] Rendering teacher scorer visualizations...
+[done] rendered=120 out_dir=data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_260331_r0
+[done] overview=data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_260331_r0/viz_overview.json
+[done] Teacher scorer outputs:
+  - data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl
+  - data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_260331_r0.json
+  - data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_test_images_260331_r0.csv
+  - data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_260331_r0.json
+  - data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_test_images_260331_r0.csv
+  - data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_260331_r0
+[run] 10b_teacher_repair_outputs
+[done] rebuilt overview: data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_260331_r0.json
+[done] rebuilt overview csv: data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_test_images_260331_r0.csv
+[done] report_json=data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_260331_r0.json
+[done] report_by_ar_csv=data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_test_images_260331_r0.csv
+[repair] final rows=33 expensive_real_rows=33 parse_error_rows=0 expected_rows=33 shard_dirs=1
+[repair] best shard dir=data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl.shards.2411 rows=33 expensive_real_rows=33 parse_error_rows=0
+[repair] final output already preferred. rebuilding overview/QA for consistency.
+[repair] final(after) rows=33 expensive_real_rows=33 parse_error_rows=0
+[run] 12a_build_report_assets
+[done] summary=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/summary_test_images_260331_r0.json
+[done] subject_count_examples=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/evidence/subject_count_examples_test_images_260331_r0.json
+[done] subject_mode_examples=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/evidence/subject_mode_examples_test_images_260331_r0.json
+[run] 12b_build_detailed_report_seed
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_11/REPORT_test_11_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_11/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_19/REPORT_test_19_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_19/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_24/REPORT_test_24_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_24/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_26/REPORT_test_26_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_26/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_30/REPORT_test_30_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_30/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_1/REPORT_test_1_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_1/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_12/REPORT_test_12_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_12/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_13/REPORT_test_13_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_13/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_14/REPORT_test_14_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_14/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_22/REPORT_test_22_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_22/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_15/REPORT_test_15_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_15/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_3/REPORT_test_3_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_3/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_38/REPORT_test_38_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_38/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_29/REPORT_test_29_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_29/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_23/REPORT_test_23_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_23/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_18/REPORT_test_18_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_18/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_10/REPORT_test_10_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_10/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_9/REPORT_test_9_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_9/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_16/REPORT_test_16_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_16/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_20/REPORT_test_20_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_20/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_8/REPORT_test_8_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_8/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_4/REPORT_test_4_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_4/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_41/REPORT_test_41_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_41/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_21/REPORT_test_21_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_21/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_25/REPORT_test_25_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_25/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_6/REPORT_test_6_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_6/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/REPORT_DRAFT_KO.md
+[done] drilldown_index=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/DRILLDOWN_INDEX.md
+[done] drilldown_layout_qa=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/drilldown_layout_qa.json
+[done] teacher_rep=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/evidence/teacher_representative_examples_test_images_260331_r0.json
+[done] checklist=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/checklist_label_examples_test_images_260331_r0.json
+[done] rank_compare=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/topk_rank_comparison_test_images_260331_r0.json
+[done] public_teacher_compare=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/public_teacher_comparison_test_images_260331_r0.json
+[done] training_label_examples=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/training_label_examples_test_images_260331_r0.json
+[done] example_ids=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/report_example_image_ids_test_images_260331_r0.txt
+[done] manifest=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/self_contained/self_contained_manifest.json
+[done] zip=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_images_260331_r0_detailed.zip
+[done] overview_zip=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_images_260331_r0_detailed_overview.zip
+[run] 12c_render_report_teacher_viz
+[done] rendered=156 out_dir=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/_staging_teacher_viz/teacher_scorer_test_images_260331_r0
+[done] overview=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/_staging_teacher_viz/teacher_scorer_test_images_260331_r0/viz_overview.json
+[run] 12d_build_detailed_report_final
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_11/REPORT_test_11_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_11/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_19/REPORT_test_19_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_19/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_24/REPORT_test_24_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_24/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_26/REPORT_test_26_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_26/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_30/REPORT_test_30_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_30/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_1/REPORT_test_1_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_1/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_12/REPORT_test_12_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_12/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_13/REPORT_test_13_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_13/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_14/REPORT_test_14_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_14/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_22/REPORT_test_22_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_22/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_15/REPORT_test_15_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_15/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_3/REPORT_test_3_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_3/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_38/REPORT_test_38_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_38/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_29/REPORT_test_29_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_29/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_23/REPORT_test_23_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_23/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_18/REPORT_test_18_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_18/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_10/REPORT_test_10_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_10/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_9/REPORT_test_9_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_9/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_16/REPORT_test_16_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_16/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_20/REPORT_test_20_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_20/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_8/REPORT_test_8_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_8/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_4/REPORT_test_4_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_4/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_41/REPORT_test_41_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_41/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_21/REPORT_test_21_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_21/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_25/REPORT_test_25_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_25/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_6/REPORT_test_6_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_6/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/REPORT_DRAFT_KO.md
+[done] drilldown_index=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/DRILLDOWN_INDEX.md
+[done] drilldown_layout_qa=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/drilldown_layout_qa.json
+[done] teacher_rep=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/evidence/teacher_representative_examples_test_images_260331_r0.json
+[done] checklist=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/checklist_label_examples_test_images_260331_r0.json
+[done] rank_compare=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/topk_rank_comparison_test_images_260331_r0.json
+[done] public_teacher_compare=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/public_teacher_comparison_test_images_260331_r0.json
+[done] training_label_examples=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/training_label_examples_test_images_260331_r0.json
+[done] example_ids=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/analytics/report_example_image_ids_test_images_260331_r0.txt
+[done] manifest=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/self_contained/self_contained_manifest.json
+[done] zip=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_images_260331_r0_detailed.zip
+[done] overview_zip=data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/test_images_260331_r0_detailed_overview.zip
+[run] 13_build_training_labels
+{
+  "out_dir": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0",
+  "safe_leftover_policy": "ignore",
+  "counts": {
+    "train_pairwise.jsonl": 1098,
+    "train_listwise.jsonl": 198,
+    "train_decision.jsonl": 198,
+    "train_checklist.jsonl": 4845,
+    "train_regression.jsonl": 4845,
+    "train_conditional_detr_canonical.jsonl": 173,
+    "train_conditional_detr_batch.jsonl": 173,
+    "train_conditional_detr_skipped.jsonl": 25,
+    "report_examples": 8
+  },
+  "qa_summary_path": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/qa_summary.json",
+  "validation_summary_path": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/validation_summary.json",
+  "status": "ok"
+}
+[run] 13b_convert_training_labels_coco
+{
+  "canonical_json": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/instances_conditional_detr_canonical.json",
+  "batch_json": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/instances_conditional_detr_batch.json",
+  "canonical_validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 4457,
+    "gt_annotation_count": 767,
+    "label_type_counts": {
+      "top1": 173,
+      "unsafe_negative": 260,
+      "soft_positive": 590,
+      "hard_negative": 349,
+      "negative": 1953,
+      "ignore": 112,
+      "near_negative": 1016,
+      "baseline_positive": 4
+    },
+    "error_count": 0,
+    "errors": []
+  },
+  "batch_validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 767,
+    "gt_annotation_count": 767,
+    "label_type_counts": {
+      "": 767
+    },
+    "error_count": 0,
+    "errors": []
+  }
+}
+[run] 13c_convert_training_labels_gaic_like
+{
+  "out_json": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 4345,
+    "gt_annotation_count": 767,
+    "negative_annotation_count": 3578,
+    "subject_mode_id_counts": {
+      "0": 1610,
+      "1": 815,
+      "2": 879,
+      "3": 1041
+    },
+    "decision_id_counts": {
+      "0": 1497,
+      "1": 2721,
+      "2": 127
+    },
+    "label_type_counts": {
+      "matching_target": 767,
+      "unsafe_negative": 260,
+      "hard_negative": 349,
+      "negative": 1953,
+      "near_negative": 1016
+    },
+    "score_range": {
+      "min": 0.002473,
+      "max": 0.997527
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {}
+}
+========================================================
+ Done
+========================================================
+ filtered parquet : data/TestImages/All/filtered_test_images_all.parquet
+ precompute raw    : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl (unified C1/C2/C3/C4/C5/C6)
+ feats c1 source   : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ feats c1 alias    : data/TestImages/All/artifacts/precompute/feats_c1.jsonl
+ feats c2/c3e/c4/c5/c6: data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl | data/TestImages/All/artifacts/precompute/feats_c4.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+ merged feats     : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ routed feats     : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ c7 saliency json : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+ c7 sal summary   : data/TestImages/All/artifacts/precompute/c7_saliency_test_images_260331_r0_summary.json
+ downstream feats : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+ candidates       : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0.jsonl
+ cand overview    : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_260331_r0_overview.json
+ teacher jsonl    : data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_260331_r0.jsonl
+ teacher overview : data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_260331_r0.json
+ teacher QA       : data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_260331_r0.json
+ teacher viz dir  : data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_260331_r0
+ training labels  : data/TestImages/All/artifacts/training_labels/test_images_260331_r0
+ detr canonical   : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/train_conditional_detr_canonical.jsonl
+ detr batch       : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/train_conditional_detr_batch.jsonl
+ detr skipped     : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/train_conditional_detr_skipped.jsonl
+ training report  : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/TRAINING_DATA_REPORT_KO.md
+ coco summary     : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/coco_conversion_summary.json
+ gaic-like json   : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/instances_conditional_detr_batch_gaic_like.json
+ gaic-like guide  : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md
+ report dir       : data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed
+ report viz stage : data/TestImages/All/artifacts/reports/test_images_260331_r0_detailed/assets/_staging_teacher_viz/teacher_scorer_test_images_260331_r0
+ training labels  : data/TestImages/All/artifacts/training_labels/test_images_260331_r0
+ training pairwise: data/TestImages/All/artifacts/training_labels/test_images_260331_r0/train_pairwise.jsonl
+ training detr canonical: data/TestImages/All/artifacts/training_labels/test_images_260331_r0/train_conditional_detr_canonical.jsonl
+ training detr batch: data/TestImages/All/artifacts/training_labels/test_images_260331_r0/train_conditional_detr_batch.jsonl
+ training detr skipped: data/TestImages/All/artifacts/training_labels/test_images_260331_r0/train_conditional_detr_skipped.jsonl
+ training qa      : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/qa_summary.json
+ training validation: data/TestImages/All/artifacts/training_labels/test_images_260331_r0/validation_summary.json
+ training report  : data/TestImages/All/artifacts/training_labels/test_images_260331_r0/TRAINING_DATA_REPORT_KO.md
+ logs             : data/TestImages/All/logs/e2e_test_images_260331_r0
+[run] refresh GAIC-like export for test images
+{
+  "out_json": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/TestImages/All/artifacts/training_labels/test_images_260331_r0/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 4345,
+    "gt_annotation_count": 767,
+    "negative_annotation_count": 3578,
+    "subject_mode_id_counts": {
+      "0": 1610,
+      "1": 815,
+      "2": 879,
+      "3": 1041
+    },
+    "decision_id_counts": {
+      "0": 1497,
+      "1": 2721,
+      "2": 127
+    },
+    "label_type_counts": {
+      "matching_target": 767,
+      "unsafe_negative": 260,
+      "hard_negative": 349,
+      "negative": 1953,
+      "near_negative": 1016
+    },
+    "score_range": {
+      "min": 0.002473,
+      "max": 0.997527
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {}
+}
+[run] build leftover variant: policy=keep_negative out_dir=data/TestImages/All/artifacts/training_labels/test_images_260331_r0_leftover_keepneg

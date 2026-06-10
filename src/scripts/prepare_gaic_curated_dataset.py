@@ -14,7 +14,10 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import pandas as pd
 from PIL import Image
 
-from progress_utils import ProgressTracker, progress_log
+try:
+    from progress_utils import ProgressTracker, progress_log
+except ModuleNotFoundError:
+    from scripts.progress_utils import ProgressTracker, progress_log
 
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
@@ -34,7 +37,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--reference_json_out",
         default="",
-        help="optional GAIC reference json generated from available train/test annotations",
+        help="optional GAIC reference json generated from available train/val/test annotations",
     )
     parser.add_argument(
         "--annotation_jsons",

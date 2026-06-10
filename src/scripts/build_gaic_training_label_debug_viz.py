@@ -82,8 +82,8 @@ FOCUS_COMPONENT_ORDER = (
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Build GAIC training-label debug visualizations.")
     p.add_argument(
-        "--coco_json",
-        default="data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json",
+        "--label_json",
+        default="",
     )
     p.add_argument(
         "--batch_jsonl",
@@ -359,10 +359,9 @@ def load_subject_overlay_index(
         return {}
     by_image: Dict[str, Dict[str, Any]] = {}
 
-    # Prefer the compact batch labels when available. They already carry the
-    # routing/subject overlay needed for selected images, while the candidates
-    # JSONL can be much larger than the debug sample.
-    if candidates_jsonl.exists() and not batch_jsonl.exists():
+    # Prefer candidate-side support maps when available; batch labels may be an
+    # empty compact sidecar in smoke tests or may omit the full support grid.
+    if candidates_jsonl.exists():
         with candidates_jsonl.open("r", encoding="utf-8") as handle:
             for line in handle:
                 if len(by_image) >= len(wanted):
@@ -2270,12 +2269,12 @@ def select_balanced_images(
     return selected
 
 
-def build_image_index_from_coco(
-    coco_json: Path,
+def build_image_index_from_label_json(
+    label_json: Path,
     image_root: Path,
     mode_names: Dict[int, str],
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Dict[str, Any]]]:
-    payload = load_json(coco_json)
+    payload = load_json(label_json)
     images_by_id = {safe_int(img.get("id"), -1): img for img in safe_list(payload.get("images"))}
     image_map: Dict[str, Dict[str, Any]] = {}
     for ann in safe_list(payload.get("annotations")):
@@ -2590,11 +2589,14 @@ def main() -> None:
     resolved_format = resolve_viz_format(str(args.format))
     image_suffix = viz_suffix(resolved_format)
     jpg_quality = max(1, min(100, int(args.jpg_quality)))
-    coco_json = Path(args.coco_json)
+    label_json_arg = args.label_json
+    if not str(label_json_arg).strip():
+        label_json_arg = "data/GAIC/All/artifacts/training_labels/gaic_260330_r0_leftover_ignore_monotonic/label_json/gaic_like_labels_full.json"
+    label_json = Path(label_json_arg)
     batch_jsonl = Path(args.batch_jsonl)
     gaic_gt_paths = [Path(args.gaic_gt_train_json), Path(args.gaic_gt_test_json)]
     gt_score_cache_path = Path(args.gt_score_cache_jsonl) if str(args.gt_score_cache_jsonl).strip() else Path(
-        coco_json.parent.parent / "gaic_gt_score_cache_free.jsonl"
+        label_json.parent.parent / "gaic_gt_score_cache_free.jsonl"
     )
     teacher_jsonl = Path(args.teacher_jsonl) if str(args.teacher_jsonl).strip() else derive_default_teacher_jsonl(batch_jsonl)
     candidates_jsonl = Path(args.candidates_jsonl) if str(args.candidates_jsonl).strip() else None
@@ -2634,11 +2636,11 @@ def main() -> None:
         )
     )
     progress_log(
-        f"build_gaic_training_label_debug_viz: start | coco_json={coco_json} | batch_jsonl={batch_jsonl}",
+        f"build_gaic_training_label_debug_viz: start | label_json={label_json} | batch_jsonl={batch_jsonl}",
         enabled=progress_enabled,
     )
 
-    image_rows, mode_inconsistencies = build_image_index_from_coco(coco_json, image_root, mode_names)
+    image_rows, mode_inconsistencies = build_image_index_from_label_json(label_json, image_root, mode_names)
     gt_index = load_gaic_gt_index(gaic_gt_paths)
     gt_score_cache_stats = {"images_with_cache": 0, "gt_boxes_with_score": 0, "gt_boxes_without_score": 0}
     if gt_index and gt_score_cache_path.exists():
@@ -2650,9 +2652,9 @@ def main() -> None:
             summary_dir / "summary.json",
             {
                 "status": "skipped",
-                "reason": "no_training_images_in_coco",
+                "reason": "no_training_images_in_label_json",
                 "input": {
-                    "coco_json": str(coco_json),
+                    "label_json": str(label_json),
                     "batch_jsonl": str(batch_jsonl),
                         "gaic_gt_jsons": [str(path) for path in gaic_gt_paths],
                         "gt_score_cache_jsonl": str(gt_score_cache_path) if gt_score_cache_path.exists() else "",
@@ -3133,7 +3135,7 @@ def main() -> None:
         summary_dir / "summary.json",
         {
             "input": {
-                "coco_json": str(coco_json),
+                "label_json": str(label_json),
                 "batch_jsonl": str(batch_jsonl),
                 "gaic_gt_jsons": [str(path) for path in gaic_gt_paths],
                 "gt_score_cache_jsonl": str(gt_score_cache_path) if gt_score_cache_path.exists() else "",

@@ -655,12 +655,12 @@ bash src/scripts/run_phaseA_to_teacher_e2e.sh \
 - `checklist_target_schema.json`
 - `TRAINING_DATA_REPORT_KO.md`
 - `examples/*.png`
-- `coco/instances_conditional_detr_canonical.json`
-- `coco/instances_conditional_detr_batch.json`
-- `coco/coco_conversion_summary.json`
-- `coco/instances_conditional_detr_batch_gaic_like.json`
-- `coco/gaic_like_conversion_summary.json`
-- `coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md`
+- `label_json/conditional_detr_labels_canonical.json`
+- `label_json/conditional_detr_labels_batch.json`
+- `label_json/annotation_format_conversion_summary.json`
+- `label_json/gaic_like_labels_full.json`
+- `label_json/gaic_like_conversion_summary.json`
+- `label_json/GAIC_LIKE_LABEL_FORMAT_KO.md`
 
 Conditional-DETR training label 해석:
 - `train_conditional_detr_canonical.jsonl`: 사람이 읽고 QA/재가공하기 쉬운 canonical schema. `routing + baseline + decision + candidates[] + checklist_labels/checklist_scores + masks`를 유지합니다.
@@ -676,12 +676,12 @@ Conditional-DETR training label 해석:
 - conditional detr batch: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl`
 - conditional detr skipped: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/train_conditional_detr_skipped.jsonl`
 - training label report: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/TRAINING_DATA_REPORT_KO.md`
-- coco conversion summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/coco/coco_conversion_summary.json`
-- gaic-like json: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json`
-- gaic-like summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/coco/gaic_like_conversion_summary.json`
-- gaic-like guide: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md`
+- annotation-format conversion summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/label_json/annotation_format_conversion_summary.json`
+- gaic-like json: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/label_json/gaic_like_labels_full.json`
+- gaic-like summary: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/label_json/gaic_like_conversion_summary.json`
+- gaic-like guide: `data/SSTK/${DATANAME}/artifacts/training_labels/${RUN_TAG}_leftover_ignore_monotonic/label_json/GAIC_LIKE_LABEL_FORMAT_KO.md`
 - multimode summary: `data/SSTK/${DATANAME}/artifacts/training_labels_multimode/${RUN_TAG}_multimode_v1/summary.json`
-- multimode COCO: `data/SSTK/${DATANAME}/artifacts/training_labels_multimode/${RUN_TAG}_multimode_v1/coco/instances_multimode_training_labels.json`
+- multimode label JSON: `data/SSTK/${DATANAME}/artifacts/training_labels_multimode/${RUN_TAG}_multimode_v1/label_json/multimode_labels_full.json`
 - multimode debug viz: `data/SSTK/${DATANAME}/artifacts/training_labels_multimode/${RUN_TAG}_multimode_v1/debug_viz/`
 
 ### 3.6b `data/SSTK/Full_10000` 기존 산출물 현황

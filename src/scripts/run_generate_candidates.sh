@@ -45,6 +45,7 @@ shift 4
 
 SERVER_MODE=0
 VENV_PATH="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate"
+PYTHON_BIN="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python"
 LOCAL_TAR_DIR="/media/jyju25/T7_4TB_JY/Projects_26/Dataset/SSTK/20230916/sstk_100"
 SERVER_TAR_DIR="/sstk/20230916/sstk_100"
 TAR_DIR=""
@@ -61,6 +62,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --venv_path)
       VENV_PATH="$2"
+      shift 2
+      ;;
+    --python_bin)
+      PYTHON_BIN="$2"
       shift 2
       ;;
     --tar_dir)
@@ -101,6 +106,8 @@ if [ "$SERVER_MODE" -ne 1 ]; then
   else
     echo "Warning: venv not found at $VENV_PATH, using system python."
   fi
+else
+  PYTHON_BIN="/usr/local/bin/python3"
 fi
 
 SRC_DIR=$(cd "$(dirname "$0")/.." && pwd)
@@ -123,7 +130,7 @@ if [ "${#PASS_ARGS[@]}" -gt 0 ]; then
 fi
 echo "=============================================="
 
-python "$PY_SCRIPT" \
+"$PYTHON_BIN" "$PY_SCRIPT" \
   --input_parquet "$INPUT_PARQUET" \
   --feats_c2_jsonl "$FEATS_C2_JSONL" \
   --feats_c3_jsonl "$FEATS_C3_JSONL" \

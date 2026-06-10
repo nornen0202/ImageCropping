@@ -1,0 +1,1082 @@
+========================================================
+ GAIC e2e wrapper
+========================================================
+ data_dir              : data/GAIC/All
+ image_root            : data/Publics/GAIC/images
+ flat_image_dir        : data/GAIC/All/images
+ bucket                : gaic_all
+ run_tag               : gaic_260402_reroute_v1
+ prepare_max_images    : 0
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 1
+ run_c1                : 1
+ use_real_expensive    : 1
+ run_c7_saliency       : 1 (priority=quality_first device=auto)
+ gaic_generate_caps    : 0 (preset=server_quality backend=auto)
+ run_c6                : 1
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1 (policy=ignore)
+ training_debug_viz    : 1 (out=data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ auto_leftover_variants: 1 (policies=keep_negative,promote_soft_positive)
+ run_detailed_report   : 1
+ run_gaic_benchmark    : 1 (sample_count=8 max_images=0)
+ run_gaic_subject_ab   : 1 (run_tag=gaic_260402_reroute_v1_ab sample_count=8 max_images=0)
+ gaic_reference_json   : data/GAIC/All/gaic_reference_available.json
+ gaic_train_ref_json   : data/Publics/GAIC/annotations_json/instances_train.json
+ gaic_test_ref_json    : data/Publics/GAIC/annotations_json/instances_test.json
+========================================================
+{
+  "status": "ok",
+  "image_root": "/group-volume/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/images",
+  "output_parquet": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/filtered_gaic_all.parquet",
+  "flat_image_dir": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/images",
+  "bucket": "gaic_all",
+  "link_mode": "symlink",
+  "pseudo_tar_chunk_size": 256,
+  "max_images": 0,
+  "num_images_scanned_total": 1236,
+  "num_images_prepared": 1236,
+  "split_counts": {
+    "test": 200,
+    "train": 1036
+  },
+  "extension_counts": {
+    ".jpg": 1236
+  },
+  "link_counts": {
+    "existing_match": 1236
+  },
+  "pseudo_tar_groups": 5,
+  "largest_pseudo_tar_group": 256,
+  "caption_jsonl": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/metadata/gaic_captions_gaic_260324_r0.jsonl",
+  "caption_rows_available": 1236,
+  "caption_rows_applied": 1236,
+  "reference": {
+    "generated": true,
+    "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/gaic_reference_available.json",
+    "image_count": 1236,
+    "annotation_count": 86098,
+    "source_annotation_jsons": [
+      "/group-volume/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/annotations_json/instances_train.json",
+      "/group-volume/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/annotations_json/instances_test.json"
+    ],
+    "source_stats": {
+      "instances_train.json": {
+        "images_in_json": 1939,
+        "annotations_in_json": 167853,
+        "matched_available_images": 877
+      },
+      "instances_test.json": {
+        "images_in_json": 349,
+        "annotations_in_json": 30253,
+        "matched_available_images": 118
+      }
+    }
+  }
+}
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : gaic_all
+ data_dir            : data/GAIC/All
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : gaic_260402_reroute_v1
+ skip_existing       : 1
+ precompute_mode     : unified
+ run_filter          : 0
+ filter_train_match  : 1
+ filter_tag_embed    : mgpu=-1 gpu_ids=auto bs=128 chunk=0 device=auto
+ filter_cpu_map      : workers=0 chunk=4096 sample_extract_workers=0
+ export_curated_img  : 0 (dir=data/GAIC/All/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/GAIC/All/images)
+ extract_mode        : auto (extract_multi_gpu=-1, gpu_ids=0,1,2,3, workers=4)
+ run_c1/c2/c3/c4/c5/c6 : 1/1/1/1/1/1
+ run_c3_enrich/merge : 1/1
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ c7 saliency         : run=1 priority=quality_first device=auto
+ c7 saliency multi   : reuse extract gpu_ids=0,1,2,3 workers=4 mode=auto
+ run_component_viz   : 0 (out=data/GAIC/All/artifacts/precompute/visualizations/components_gaic_260402_reroute_v1, num_samples=120)
+ public proposals    : enable=0 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/GAIC/All/artifacts/public_teachers/raw/teacher_raw_public_gaic_260402_reroute_v1.jsonl | data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260402_reroute_v1.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=auto workers=auto
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 1
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r1.jsonl
+ run_teacher         : 1 (real_expensive=1)
+ c1 source           : data/GAIC/All/artifacts/precompute/feats_c1.jsonl
+ teacher_multi_gpu   : 1 (gpu_ids=0,1,2,3, workers=4)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=24 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_public_ref  : save_public_teacher_ref_eval=1
+ teacher_aesthetic   : backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 0 (backend=heuristic fallback=none model=Qwen/Qwen3-VL-4B-Instruct)
+ run_training_labels : 1 (dir=data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic policy=ignore)
+ training_debug_viz  : 1 (out=data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ gaic_reference_json : data/GAIC/All/gaic_reference_available.json
+ gaic_train_ref_json : data/Publics/GAIC/annotations_json/instances_train.json
+ gaic_test_ref_json  : data/Publics/GAIC/annotations_json/instances_test.json
+ run_detailed_report : 1 (dir=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed examples_per_bucket=5)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=auto, workers=auto)
+ vlm out/meta/sum    : data/GAIC/All/artifacts/vlm_teacher/labels/crop_label_v1_gaic_260402_reroute_v1.jsonl | data/GAIC/All/artifacts/vlm_teacher/meta/meta_norm_v1_gaic_260402_reroute_v1.jsonl | data/GAIC/All/artifacts/vlm_teacher/summary/vlm_teacher_summary_gaic_260402_reroute_v1.json
+========================================================
+[info] using curated image cache dir: data/GAIC/All/images
+[skip] exists: data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[skip] exists: data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+[warn] unified raw has no c1 embeddings. falling back to legacy c1 file: data/GAIC/All/artifacts/precompute/feats_c1.jsonl
+[skip] exists: data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[skip] exists: data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl
+[skip] exists: data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+[run] 09_generate_candidates
+==============================================
+ Candidate Generator Runner (Phase B1)
+==============================================
+  Input Parquet : data/GAIC/All/filtered_gaic_all.parquet
+  Feats C2      : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+  Feats C3      : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+  Output JSONL  : data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1.jsonl
+  Server Mode   : 1
+  TAR_DIR       : /sstk/20230916/sstk_100
+  IMAGE_DIR     : data/GAIC/All/images
+  use_actual    : 1
+  strict_actual : 1
+  Extra Args    : --actual_size_cache_json data/GAIC/All/cache/actual_image_size_map.json --max_images 0 --num_workers 0 --mp_chunksize 64 --mp_start_method auto --ar_list FREE 1:1 9:16 16:9 3:4 4:3 --teacher_proposals_jsonl data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260324_r1.jsonl --teacher_nms_iou 0.95 --teacher_max_seeds_per_teacher 1 --teacher_prefer_expand 1 --teacher_jitter_shift_fracs 0.03 --teacher_jitter_scales 0.92 1.0 1.08
+==============================================
+[CandidateGen] Loading inputs...
+[CandidateGen] rows=1236 c2_seg=1236 c2_det=1236(nonempty=802) c3=1236(nonempty=517) routing=1236 c7_saliency=1236 teacher_proposals=1236 cfg_hash=6abdc55aed4517a2
+[CandidateGen] worker mode: multiprocess workers=16 chunksize=64 start=auto
+[CandidateGen] Building/loading actual TAR image-size map...
+[CandidateGen] actual_size_map loaded: 1236 images
+CandidateGen-MP:   0%|                                                        | 0/1236 [00:00<?, ?it/s]CandidateGen-MP:   0%|                                             | 1/1236 [00:37<12:45:55, 37.21s/it]CandidateGen-MP:   0%|                                              | 2/1236 [00:37<5:18:17, 15.48s/it]CandidateGen-MP:   0%|▏                                             | 5/1236 [00:37<1:31:35,  4.46s/it]CandidateGen-MP:   1%|▎                                               | 8/1236 [00:40<55:26,  2.71s/it]CandidateGen-MP:   1%|▍                                              | 10/1236 [00:41<38:16,  1.87s/it]CandidateGen-MP:   1%|▍                                              | 13/1236 [00:41<23:19,  1.14s/it]CandidateGen-MP:   1%|▌                                              | 15/1236 [00:41<17:02,  1.19it/s]CandidateGen-MP:   2%|▊                                              | 23/1236 [00:41<06:39,  3.04it/s]CandidateGen-MP:   3%|█▏                                             | 31/1236 [00:41<03:38,  5.52it/s]CandidateGen-MP:   3%|█▍                                             | 39/1236 [00:41<02:16,  8.78it/s]CandidateGen-MP:   4%|█▊                                             | 47/1236 [00:41<01:31, 12.99it/s]CandidateGen-MP:   4%|██                                             | 55/1236 [00:41<01:05, 18.08it/s]CandidateGen-MP:   5%|██▍                                            | 63/1236 [00:42<00:48, 24.14it/s]CandidateGen-MP:   6%|██▋                                            | 71/1236 [00:42<00:37, 31.00it/s]CandidateGen-MP:   6%|███                                            | 79/1236 [00:42<00:30, 38.29it/s]CandidateGen-MP:   7%|███▎                                           | 87/1236 [00:42<00:25, 45.43it/s]CandidateGen-MP:   8%|███▌                                           | 95/1236 [00:42<00:22, 51.34it/s]CandidateGen-MP:   8%|███▊                                          | 103/1236 [00:42<00:19, 56.99it/s]CandidateGen-MP:   9%|████▏                                         | 111/1236 [00:42<00:18, 62.10it/s]CandidateGen-MP:  10%|████▍                                         | 119/1236 [00:42<00:16, 66.59it/s]CandidateGen-MP:  10%|████▋                                         | 127/1236 [00:42<00:15, 69.44it/s]CandidateGen-MP:  11%|█████                                         | 135/1236 [00:42<00:15, 70.08it/s]CandidateGen-MP:  12%|█████▎                                        | 143/1236 [00:43<00:15, 71.58it/s]CandidateGen-MP:  12%|█████▌                                        | 151/1236 [00:43<00:14, 72.74it/s]CandidateGen-MP:  13%|█████▉                                        | 159/1236 [00:43<00:14, 74.25it/s]CandidateGen-MP:  14%|██████▏                                       | 167/1236 [00:43<00:14, 75.22it/s]CandidateGen-MP:  14%|██████▌                                       | 175/1236 [00:43<00:14, 75.01it/s]CandidateGen-MP:  15%|██████▊                                       | 183/1236 [00:43<00:13, 75.75it/s]CandidateGen-MP:  15%|███████                                       | 191/1236 [00:43<00:13, 75.50it/s]CandidateGen-MP:  16%|███████▍                                      | 199/1236 [00:43<00:13, 75.02it/s]CandidateGen-MP:  17%|███████▋                                      | 207/1236 [00:43<00:13, 75.14it/s]CandidateGen-MP:  17%|████████                                      | 215/1236 [00:44<00:13, 75.29it/s]CandidateGen-MP:  18%|████████▎                                     | 223/1236 [00:44<00:13, 74.81it/s]CandidateGen-MP:  19%|████████▌                                     | 231/1236 [00:44<00:13, 75.47it/s]CandidateGen-MP:  19%|████████▉                                     | 239/1236 [00:44<00:13, 76.28it/s]CandidateGen-MP:  20%|█████████▏                                    | 247/1236 [00:44<00:13, 75.99it/s]CandidateGen-MP:  21%|█████████▍                                    | 255/1236 [00:44<00:12, 76.06it/s]CandidateGen-MP:  21%|█████████▊                                    | 263/1236 [00:44<00:12, 76.16it/s]CandidateGen-MP:  22%|██████████                                    | 271/1236 [00:44<00:12, 74.88it/s]CandidateGen-MP:  23%|██████████▍                                   | 279/1236 [00:44<00:12, 76.16it/s]CandidateGen-MP:  23%|██████████▋                                   | 287/1236 [00:44<00:12, 75.21it/s]CandidateGen-MP:  24%|██████████▉                                   | 295/1236 [00:45<00:12, 75.34it/s]CandidateGen-MP:  25%|███████████▎                                  | 303/1236 [00:45<00:12, 73.67it/s]CandidateGen-MP:  25%|███████████▌                                  | 311/1236 [00:45<00:12, 74.01it/s]CandidateGen-MP:  26%|███████████▊                                  | 319/1236 [00:45<00:12, 72.72it/s]CandidateGen-MP:  26%|████████████▏                                 | 327/1236 [00:45<00:12, 74.20it/s]CandidateGen-MP:  27%|████████████▍                                 | 335/1236 [00:45<00:12, 73.89it/s]CandidateGen-MP:  28%|████████████▊                                 | 343/1236 [00:45<00:12, 74.02it/s]CandidateGen-MP:  28%|█████████████                                 | 351/1236 [00:45<00:11, 74.18it/s]CandidateGen-MP:  29%|█████████████▎                                | 359/1236 [00:45<00:11, 74.03it/s]CandidateGen-MP:  30%|█████████████▋                                | 367/1236 [00:46<00:11, 72.80it/s]CandidateGen-MP:  30%|█████████████▉                                | 375/1236 [00:46<00:11, 73.69it/s]CandidateGen-MP:  31%|██████████████▎                               | 383/1236 [00:46<00:11, 72.84it/s]CandidateGen-MP:  32%|██████████████▌                               | 391/1236 [00:46<00:11, 71.88it/s]CandidateGen-MP:  32%|██████████████▊                               | 399/1236 [00:46<00:11, 72.77it/s]CandidateGen-MP:  33%|███████████████▏                              | 407/1236 [00:46<00:11, 72.14it/s]CandidateGen-MP:  34%|███████████████▍                              | 415/1236 [00:46<00:11, 71.08it/s]CandidateGen-MP:  34%|███████████████▋                              | 423/1236 [00:46<00:11, 70.07it/s]CandidateGen-MP:  35%|████████████████                              | 431/1236 [00:46<00:11, 69.00it/s]CandidateGen-MP:  36%|████████████████▎                             | 439/1236 [00:47<00:11, 70.10it/s]CandidateGen-MP:  36%|████████████████▋                             | 447/1236 [00:47<00:11, 70.63it/s]CandidateGen-MP:  37%|████████████████▉                             | 455/1236 [00:47<00:10, 72.03it/s]CandidateGen-MP:  37%|█████████████████▏                            | 463/1236 [00:47<00:10, 73.14it/s]CandidateGen-MP:  38%|█████████████████▌                            | 471/1236 [00:47<00:10, 73.82it/s]CandidateGen-MP:  39%|█████████████████▊                            | 479/1236 [00:47<00:10, 72.68it/s]CandidateGen-MP:  39%|██████████████████                            | 487/1236 [00:47<00:10, 72.82it/s]CandidateGen-MP:  40%|██████████████████▍                           | 495/1236 [00:47<00:10, 72.93it/s]CandidateGen-MP:  41%|██████████████████▋                           | 503/1236 [00:47<00:09, 73.72it/s]CandidateGen-MP:  41%|███████████████████                           | 511/1236 [00:48<00:09, 73.18it/s]CandidateGen-MP:  42%|███████████████████▎                          | 519/1236 [00:48<00:09, 73.47it/s]CandidateGen-MP:  43%|███████████████████▌                          | 527/1236 [00:48<00:09, 73.74it/s]CandidateGen-MP:  43%|███████████████████▉                          | 535/1236 [00:48<00:09, 74.38it/s]CandidateGen-MP:  44%|████████████████████▏                         | 543/1236 [00:48<00:09, 73.55it/s]CandidateGen-MP:  45%|████████████████████▌                         | 551/1236 [00:48<00:09, 74.46it/s]CandidateGen-MP:  45%|████████████████████▊                         | 559/1236 [00:48<00:09, 74.56it/s]CandidateGen-MP:  46%|█████████████████████                         | 567/1236 [00:48<00:08, 76.03it/s]CandidateGen-MP:  47%|█████████████████████▍                        | 575/1236 [00:48<00:08, 75.98it/s]CandidateGen-MP:  47%|█████████████████████▋                        | 583/1236 [00:49<00:08, 75.08it/s]CandidateGen-MP:  48%|█████████████████████▉                        | 591/1236 [00:49<00:08, 74.74it/s]CandidateGen-MP:  48%|██████████████████████▎                       | 599/1236 [00:49<00:08, 74.84it/s]CandidateGen-MP:  49%|██████████████████████▌                       | 607/1236 [00:49<00:08, 74.09it/s]CandidateGen-MP:  50%|██████████████████████▉                       | 615/1236 [00:49<00:08, 74.03it/s]CandidateGen-MP:  50%|███████████████████████▏                      | 623/1236 [00:49<00:08, 74.82it/s]CandidateGen-MP:  51%|███████████████████████▍                      | 631/1236 [00:49<00:08, 74.75it/s]CandidateGen-MP:  52%|███████████████████████▊                      | 639/1236 [00:49<00:07, 75.27it/s]CandidateGen-MP:  52%|████████████████████████                      | 647/1236 [00:49<00:07, 75.13it/s]CandidateGen-MP:  53%|████████████████████████▍                     | 655/1236 [00:50<00:07, 74.22it/s]CandidateGen-MP:  54%|████████████████████████▋                     | 663/1236 [00:50<00:07, 73.76it/s]CandidateGen-MP:  54%|████████████████████████▉                     | 671/1236 [00:50<00:07, 73.70it/s]CandidateGen-MP:  55%|█████████████████████████▎                    | 679/1236 [00:50<00:07, 73.76it/s]CandidateGen-MP:  56%|█████████████████████████▌                    | 687/1236 [00:50<00:07, 74.46it/s]CandidateGen-MP:  56%|█████████████████████████▊                    | 695/1236 [00:50<00:07, 74.24it/s]CandidateGen-MP:  57%|██████████████████████████▏                   | 703/1236 [00:50<00:07, 75.54it/s]CandidateGen-MP:  58%|██████████████████████████▍                   | 711/1236 [00:50<00:06, 76.24it/s]CandidateGen-MP:  58%|██████████████████████████▊                   | 719/1236 [00:50<00:06, 75.65it/s]CandidateGen-MP:  59%|███████████████████████████                   | 727/1236 [00:50<00:06, 75.28it/s]CandidateGen-MP:  59%|███████████████████████████▎                  | 735/1236 [00:51<00:06, 74.80it/s]CandidateGen-MP:  60%|███████████████████████████▋                  | 743/1236 [00:51<00:06, 74.73it/s]CandidateGen-MP:  61%|███████████████████████████▉                  | 751/1236 [00:51<00:06, 75.03it/s]CandidateGen-MP:  61%|████████████████████████████▏                 | 759/1236 [00:51<00:06, 73.97it/s]CandidateGen-MP:  62%|████████████████████████████▌                 | 767/1236 [00:51<00:06, 75.15it/s]CandidateGen-MP:  63%|████████████████████████████▊                 | 775/1236 [00:51<00:06, 74.60it/s]CandidateGen-MP:  63%|█████████████████████████████▏                | 783/1236 [00:53<00:29, 15.14it/s]CandidateGen-MP:  64%|█████████████████████████████▎                | 789/1236 [00:54<00:49,  9.02it/s]CandidateGen-MP:  64%|█████████████████████████████▋                | 797/1236 [00:54<00:35, 12.49it/s]CandidateGen-MP:  65%|█████████████████████████████▉                | 805/1236 [00:54<00:25, 16.92it/s]CandidateGen-MP:  66%|██████████████████████████████▎               | 813/1236 [00:54<00:19, 22.18it/s]CandidateGen-MP:  66%|██████████████████████████████▌               | 821/1236 [00:55<00:14, 28.21it/s]CandidateGen-MP:  67%|██████████████████████████████▊               | 829/1236 [00:55<00:11, 34.83it/s]CandidateGen-MP:  68%|███████████████████████████████▏              | 837/1236 [00:55<00:09, 41.63it/s]CandidateGen-MP:  68%|███████████████████████████████▍              | 845/1236 [00:55<00:08, 47.97it/s]CandidateGen-MP:  69%|███████████████████████████████▋              | 853/1236 [00:55<00:07, 53.92it/s]CandidateGen-MP:  70%|████████████████████████████████              | 861/1236 [00:55<00:06, 59.00it/s]CandidateGen-MP:  70%|████████████████████████████████▎             | 869/1236 [00:55<00:05, 62.79it/s]CandidateGen-MP:  71%|████████████████████████████████▋             | 877/1236 [00:55<00:05, 65.67it/s]CandidateGen-MP:  72%|████████████████████████████████▉             | 885/1236 [00:55<00:05, 66.97it/s]CandidateGen-MP:  72%|█████████████████████████████████▏            | 893/1236 [00:56<00:04, 68.77it/s]CandidateGen-MP:  73%|█████████████████████████████████▌            | 901/1236 [00:56<00:04, 69.54it/s]CandidateGen-MP:  74%|█████████████████████████████████▊            | 909/1236 [00:56<00:04, 70.54it/s]CandidateGen-MP:  74%|██████████████████████████████████▏           | 917/1236 [00:56<00:04, 71.49it/s]CandidateGen-MP:  75%|██████████████████████████████████▍           | 925/1236 [00:56<00:04, 70.78it/s]CandidateGen-MP:  75%|██████████████████████████████████▋           | 933/1236 [00:56<00:04, 71.47it/s]CandidateGen-MP:  76%|███████████████████████████████████           | 941/1236 [00:56<00:04, 71.62it/s]CandidateGen-MP:  77%|███████████████████████████████████▎          | 949/1236 [00:56<00:03, 71.81it/s]CandidateGen-MP:  77%|███████████████████████████████████▌          | 957/1236 [00:56<00:03, 71.96it/s]CandidateGen-MP:  78%|███████████████████████████████████▉          | 965/1236 [00:57<00:03, 72.12it/s]CandidateGen-MP:  79%|████████████████████████████████████▏         | 973/1236 [00:57<00:03, 72.85it/s]CandidateGen-MP:  79%|████████████████████████████████████▌         | 981/1236 [00:57<00:03, 74.45it/s]CandidateGen-MP:  80%|████████████████████████████████████▊         | 989/1236 [00:57<00:03, 74.92it/s]CandidateGen-MP:  81%|█████████████████████████████████████         | 997/1236 [00:57<00:03, 75.60it/s]CandidateGen-MP:  81%|████████████████████████████████████▌        | 1005/1236 [00:57<00:03, 74.46it/s]CandidateGen-MP:  82%|████████████████████████████████████▉        | 1013/1236 [00:57<00:02, 75.51it/s]CandidateGen-MP:  83%|█████████████████████████████████████▏       | 1021/1236 [00:57<00:02, 74.98it/s]CandidateGen-MP:  83%|█████████████████████████████████████▍       | 1029/1236 [00:57<00:02, 74.58it/s]CandidateGen-MP:  84%|█████████████████████████████████████▊       | 1037/1236 [00:57<00:02, 75.09it/s]CandidateGen-MP:  85%|██████████████████████████████████████       | 1045/1236 [00:58<00:02, 74.36it/s]CandidateGen-MP:  85%|██████████████████████████████████████▎      | 1053/1236 [00:58<00:02, 73.89it/s]CandidateGen-MP:  86%|██████████████████████████████████████▋      | 1061/1236 [00:58<00:02, 73.63it/s]CandidateGen-MP:  86%|██████████████████████████████████████▉      | 1069/1236 [00:58<00:02, 73.74it/s]CandidateGen-MP:  87%|███████████████████████████████████████▏     | 1077/1236 [00:58<00:02, 73.90it/s]CandidateGen-MP:  88%|███████████████████████████████████████▌     | 1085/1236 [00:58<00:02, 73.43it/s]CandidateGen-MP:  88%|███████████████████████████████████████▊     | 1093/1236 [00:58<00:01, 73.99it/s]CandidateGen-MP:  89%|████████████████████████████████████████     | 1101/1236 [00:58<00:01, 75.18it/s]CandidateGen-MP:  90%|████████████████████████████████████████▍    | 1109/1236 [00:58<00:01, 75.04it/s]CandidateGen-MP:  90%|████████████████████████████████████████▋    | 1117/1236 [00:59<00:01, 74.99it/s]CandidateGen-MP:  91%|████████████████████████████████████████▉    | 1125/1236 [00:59<00:01, 74.32it/s]CandidateGen-MP:  92%|█████████████████████████████████████████▎   | 1133/1236 [00:59<00:01, 74.31it/s]CandidateGen-MP:  92%|█████████████████████████████████████████▌   | 1141/1236 [00:59<00:01, 73.77it/s]CandidateGen-MP:  93%|█████████████████████████████████████████▊   | 1149/1236 [00:59<00:01, 73.51it/s]CandidateGen-MP:  94%|██████████████████████████████████████████   | 1157/1236 [00:59<00:01, 72.92it/s]CandidateGen-MP:  94%|██████████████████████████████████████████▍  | 1165/1236 [00:59<00:00, 72.82it/s]CandidateGen-MP:  95%|██████████████████████████████████████████▋  | 1173/1236 [00:59<00:00, 72.89it/s]CandidateGen-MP:  96%|██████████████████████████████████████████▉  | 1181/1236 [00:59<00:00, 72.63it/s]CandidateGen-MP:  96%|███████████████████████████████████████████▎ | 1189/1236 [01:00<00:00, 72.29it/s]CandidateGen-MP:  97%|███████████████████████████████████████████▌ | 1197/1236 [01:00<00:00, 73.02it/s]CandidateGen-MP:  97%|███████████████████████████████████████████▊ | 1205/1236 [01:00<00:00, 73.59it/s]CandidateGen-MP:  98%|████████████████████████████████████████████▏| 1213/1236 [01:00<00:00, 73.06it/s]CandidateGen-MP:  99%|████████████████████████████████████████████▍| 1221/1236 [01:00<00:00, 72.34it/s]CandidateGen-MP:  99%|████████████████████████████████████████████▋| 1229/1236 [01:00<00:00, 73.68it/s]CandidateGen-MP: 100%|█████████████████████████████████████████████| 1236/1236 [01:00<00:00, 20.30it/s]
+[CandidateGen] Done. written=1236 avg_total_candidates=811.31 elapsed=60.89s throughput=20.30 img/s
+[CandidateGen] size_source_counts={'tar_actual': 1236}
+[CandidateGen] output=data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1.jsonl
+[CandidateGen] Building overview from output jsonl...
+[CandidateGen] Overview saved: data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1_overview.json, data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1_overview_by_ar.csv, data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1_overview_by_source.csv, data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1_overview_by_subject_source.csv
+[CandidateGen] Visualization saved under: data/GAIC/All/artifacts/candidates/visualizations/candidates_ar_gaic_260402_reroute_v1_viz
+==============================================
+ Done.
+==============================================
+[run] 10_teacher_scorer
+[config] server_mode=1 tar_dir=/sstk/20230916/sstk_100 image_dir=data/GAIC/All/images
+[config] candidates=data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1.jsonl
+[config] features=data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+[config] c1=data/GAIC/All/artifacts/precompute/feats_c1.jsonl
+[config] parquet=data/GAIC/All/filtered_gaic_all.parquet
+[config] output_jsonl=data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl
+[config] expensive_accel: batch=24 eval_top_m=0 preprocess_workers=0 pin_memory=1
+[config] public_teacher_ref_eval: save=1
+[config] aesthetic: backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+[config] portrait_safety: hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+[config] viz_image_ids=<none> viz_image_ids_file=<none>
+[1/3] Running teacher scorer...
+[multi] teacher shard mode enabled: gpu_ids=0,1,2,3 workers=4
+[multi] launch shard=0/4 gpu=0 -> data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl.shards.723/teacher_scores_shard_0.jsonl
+[multi] launch shard=1/4 gpu=1 -> data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl.shards.723/teacher_scores_shard_1.jsonl
+[multi] launch shard=2/4 gpu=2 -> data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl.shards.723/teacher_scores_shard_2.jsonl
+[multi] launch shard=3/4 gpu=3 -> data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl.shards.723/teacher_scores_shard_3.jsonl
+[multi] merged teacher jsonl -> data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl
+[done] rebuilt overview: data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260402_reroute_v1.json
+[done] rebuilt overview csv: data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_gaic_260402_reroute_v1.csv
+[multi] rebuilt overview -> data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260402_reroute_v1.json
+[2/3] Building QA report...
+[done] report_json=data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_gaic_260402_reroute_v1.json
+[done] report_by_ar_csv=data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_gaic_260402_reroute_v1.csv
+[3/3] Rendering teacher scorer visualizations...
+[done] rendered=120 out_dir=data/GAIC/All/artifacts/teacher/visualizations/teacher_scorer_gaic_260402_reroute_v1
+[done] overview=data/GAIC/All/artifacts/teacher/visualizations/teacher_scorer_gaic_260402_reroute_v1/viz_overview.json
+[done] Teacher scorer outputs:
+  - data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl
+  - data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260402_reroute_v1.json
+  - data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_gaic_260402_reroute_v1.csv
+  - data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_gaic_260402_reroute_v1.json
+  - data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_gaic_260402_reroute_v1.csv
+  - data/GAIC/All/artifacts/teacher/visualizations/teacher_scorer_gaic_260402_reroute_v1
+[run] 10b_teacher_repair_outputs
+[done] rebuilt overview: data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260402_reroute_v1.json
+[done] rebuilt overview csv: data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_gaic_260402_reroute_v1.csv
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              [done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/216118/REPORT_216118_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/216118/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/218317/REPORT_218317_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/218317/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220262/REPORT_220262_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220262/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/221999/REPORT_221999_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/221999/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/230778/REPORT_230778_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/230778/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/214577/REPORT_214577_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/214577/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220207/REPORT_220207_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220207/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220243/REPORT_220243_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220243/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220404/REPORT_220404_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220404/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220660/REPORT_220660_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220660/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220093/REPORT_220093_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220093/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220357/REPORT_220357_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220357/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220883/REPORT_220883_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/220883/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/221365/REPORT_221365_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/221365/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/222971/REPORT_222971_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/222971/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/211085/REPORT_211085_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/211085/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/211144/REPORT_211144_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/211144/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/211292/REPORT_211292_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/211292/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/211958/REPORT_211958_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/211958/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/212000/REPORT_212000_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/212000/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/310159/REPORT_310159_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/310159/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/343345/REPORT_343345_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/343345/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/302503/REPORT_302503_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/302503/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/496742/REPORT_496742_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/496742/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/422155/REPORT_422155_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/422155/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/275186/REPORT_275186_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/275186/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/322548/REPORT_322548_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/322548/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/405143/REPORT_405143_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/405143/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/238842/REPORT_238842_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/238842/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/312262/REPORT_312262_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/312262/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/300267/REPORT_300267_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/300267/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/264614/REPORT_264614_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/264614/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/287610/REPORT_287610_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/287610/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/309374/REPORT_309374_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/309374/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/252867/REPORT_252867_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/252867/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/245410/REPORT_245410_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/245410/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/325662/REPORT_325662_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/325662/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/230379/REPORT_230379_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/230379/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/309654/REPORT_309654_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/309654/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/257834/REPORT_257834_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/257834/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/241703/REPORT_241703_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/241703/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/349287/REPORT_349287_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/349287/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/252789/REPORT_252789_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/252789/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/416191/REPORT_416191_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/416191/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/397234/REPORT_397234_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/397234/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/246204/REPORT_246204_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/246204/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/292336/REPORT_292336_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/292336/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/253929/REPORT_253929_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/253929/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/218744/REPORT_218744_KO.md
+[done] analysis_json=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/218744/assets/analysis.json
+[done] report=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/REPORT_DRAFT_KO.md
+[done] drilldown_index=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/DRILLDOWN_INDEX.md
+[done] drilldown_layout_qa=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/analytics/drilldown_layout_qa.json
+[done] teacher_rep=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/evidence/teacher_representative_examples_gaic_260402_reroute_v1.json
+[done] checklist=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/analytics/checklist_label_examples_gaic_260402_reroute_v1.json
+[done] rank_compare=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/analytics/topk_rank_comparison_gaic_260402_reroute_v1.json
+[done] public_teacher_compare=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/analytics/public_teacher_comparison_gaic_260402_reroute_v1.json
+[done] training_label_examples=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/analytics/training_label_examples_gaic_260402_reroute_v1.json
+[done] example_ids=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/analytics/report_example_image_ids_gaic_260402_reroute_v1.txt
+[done] manifest=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/self_contained/self_contained_manifest.json
+[done] zip=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/gaic_260402_reroute_v1_detailed.zip
+[done] overview_zip=data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/gaic_260402_reroute_v1_detailed_overview.zip
+[run] 13_build_training_labels
+{
+  "out_dir": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic",
+  "safe_leftover_policy": "ignore",
+  "counts": {
+    "train_pairwise.jsonl": 18682,
+    "train_listwise.jsonl": 7416,
+    "train_decision.jsonl": 7416,
+    "train_checklist.jsonl": 194782,
+    "train_regression.jsonl": 194782,
+    "train_conditional_detr_canonical.jsonl": 6839,
+    "train_conditional_detr_batch.jsonl": 6839,
+    "train_conditional_detr_skipped.jsonl": 577,
+    "report_examples": 8
+  },
+  "qa_summary_path": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/qa_summary.json",
+  "validation_summary_path": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/validation_summary.json",
+  "status": "ok"
+}
+[run] 13b_convert_training_labels_coco
+{
+  "canonical_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/instances_conditional_detr_canonical.json",
+  "batch_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/instances_conditional_detr_batch.json",
+  "canonical_validation": {
+    "status": "ok",
+    "image_count": 6839,
+    "annotation_count": 206465,
+    "gt_annotation_count": 15226,
+    "label_type_counts": {
+      "top1": 6839,
+      "soft_positive": 8137,
+      "negative": 104054,
+      "unsafe_negative": 8888,
+      "ignore": 26734,
+      "hard_negative": 5808,
+      "baseline_positive": 250,
+      "near_negative": 45755
+    },
+    "error_count": 0,
+    "errors": []
+  },
+  "batch_validation": {
+    "status": "ok",
+    "image_count": 6839,
+    "annotation_count": 15226,
+    "gt_annotation_count": 15226,
+    "label_type_counts": {
+      "": 15226
+    },
+    "error_count": 0,
+    "errors": []
+  }
+}
+[run] 13c_convert_training_labels_gaic_like
+{
+  "out_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 6839,
+    "annotation_count": 165035,
+    "gt_annotation_count": 15226,
+    "negative_annotation_count": 149809,
+    "subject_mode_id_counts": {
+      "0": 103196,
+      "1": 19553,
+      "2": 21698,
+      "3": 20588
+    },
+    "decision_id_counts": {
+      "0": 979,
+      "1": 107851,
+      "2": 56205
+    },
+    "label_type_counts": {
+      "matching_target": 15226,
+      "negative": 104054,
+      "near_negative": 45755
+    },
+    "score_range": {
+      "min": 0.002472623,
+      "max": 0.997527377
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {}
+}
+[run] 13d_build_training_label_debug_viz
+{"status": "ok", "out_dir": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg", "selected_images": 50}
+========================================================
+ Done
+========================================================
+ filtered parquet : data/GAIC/All/filtered_gaic_all.parquet
+ precompute raw    : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl (unified C1/C2/C3/C4/C5/C6)
+ feats c1 source   : data/GAIC/All/artifacts/precompute/feats_c1.jsonl
+ feats c1 alias    : data/GAIC/All/artifacts/precompute/feats_c1.jsonl
+ feats c2/c3e/c4/c5/c6: data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl | data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl | data/GAIC/All/artifacts/precompute/feats_c4.jsonl | data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl | data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+ merged feats     : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ routed feats     : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ c7 saliency json : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+ c7 sal summary   : data/GAIC/All/artifacts/precompute/c7_saliency_gaic_260402_reroute_v1_summary.json
+ downstream feats : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+ candidates       : data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1.jsonl
+ cand overview    : data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1_overview.json
+ teacher jsonl    : data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl
+ teacher overview : data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260402_reroute_v1.json
+ teacher QA       : data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_gaic_260402_reroute_v1.json
+ teacher viz dir  : data/GAIC/All/artifacts/teacher/visualizations/teacher_scorer_gaic_260402_reroute_v1
+ training labels  : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic
+ detr canonical   : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/train_conditional_detr_canonical.jsonl
+ detr batch       : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl
+ detr skipped     : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/train_conditional_detr_skipped.jsonl
+ training report  : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/TRAINING_DATA_REPORT_KO.md
+ coco summary     : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/coco_conversion_summary.json
+ gaic-like json   : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json
+ gaic-like guide  : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md
+ debug viz dir    : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg
+ debug viz summary: data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg/summary/summary.json
+ report dir       : data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed
+ report viz stage : data/GAIC/All/artifacts/reports/gaic_260402_reroute_v1_detailed/assets/_staging_teacher_viz/teacher_scorer_gaic_260402_reroute_v1
+ training labels  : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic
+ training pairwise: data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/train_pairwise.jsonl
+ training detr canonical: data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/train_conditional_detr_canonical.jsonl
+ training detr batch: data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl
+ training detr skipped: data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/train_conditional_detr_skipped.jsonl
+ training qa      : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/qa_summary.json
+ training validation: data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/validation_summary.json
+ training report  : data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/TRAINING_DATA_REPORT_KO.md
+ logs             : data/GAIC/All/logs/e2e_gaic_260402_reroute_v1
+[run] refresh GAIC-like export with official split outputs
+{
+  "out_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 6839,
+    "annotation_count": 165035,
+    "gt_annotation_count": 15226,
+    "negative_annotation_count": 149809,
+    "subject_mode_id_counts": {
+      "0": 103196,
+      "1": 19553,
+      "2": 21698,
+      "3": 20588
+    },
+    "decision_id_counts": {
+      "0": 979,
+      "1": 107851,
+      "2": 56205
+    },
+    "label_type_counts": {
+      "matching_target": 15226,
+      "negative": 104054,
+      "near_negative": 45755
+    },
+    "score_range": {
+      "min": 0.002472623,
+      "max": 0.997527377
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {
+    "enabled": true,
+    "outputs": {
+      "train": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like_train.json",
+      "test": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like_test.json",
+      "unassigned": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like_unassigned.json"
+    },
+    "image_counts": {
+      "train": 4862,
+      "test": 635,
+      "unassigned": 1342
+    },
+    "annotation_counts": {
+      "train": 117244,
+      "test": 14993,
+      "unassigned": 32798
+    },
+    "validation": {
+      "train": {
+        "status": "ok",
+        "image_count": 4862,
+        "annotation_count": 117244,
+        "gt_annotation_count": 10865,
+        "negative_annotation_count": 106379,
+        "subject_mode_id_counts": {
+          "0": 71782,
+          "1": 14708,
+          "2": 16680,
+          "3": 14074
+        },
+        "decision_id_counts": {
+          "0": 587,
+          "1": 77373,
+          "2": 39284
+        },
+        "label_type_counts": {
+          "matching_target": 10865,
+          "negative": 74928,
+          "near_negative": 31451
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      },
+      "test": {
+        "status": "ok",
+        "image_count": 635,
+        "annotation_count": 14993,
+        "gt_annotation_count": 1430,
+        "negative_annotation_count": 13563,
+        "subject_mode_id_counts": {
+          "0": 8282,
+          "1": 1816,
+          "2": 2144,
+          "3": 2751
+        },
+        "decision_id_counts": {
+          "0": 150,
+          "1": 9190,
+          "2": 5653
+        },
+        "label_type_counts": {
+          "matching_target": 1430,
+          "negative": 9528,
+          "near_negative": 4035
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      },
+      "unassigned": {
+        "status": "ok",
+        "image_count": 1342,
+        "annotation_count": 32798,
+        "gt_annotation_count": 2931,
+        "negative_annotation_count": 29867,
+        "subject_mode_id_counts": {
+          "0": 23132,
+          "1": 3029,
+          "2": 2874,
+          "3": 3763
+        },
+        "decision_id_counts": {
+          "0": 242,
+          "1": 21288,
+          "2": 11268
+        },
+        "label_type_counts": {
+          "matching_target": 2931,
+          "negative": 19598,
+          "near_negative": 10269
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      }
+    },
+    "reference_paths": {
+      "train": "data/Publics/GAIC/annotations_json/instances_train.json",
+      "test": "data/Publics/GAIC/annotations_json/instances_test.json"
+    }
+  }
+}
+[run] build leftover variant: policy=keep_negative out_dir=data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic
+{
+  "out_dir": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic",
+  "safe_leftover_policy": "keep_negative",
+  "counts": {
+    "train_pairwise.jsonl": 18651,
+    "train_listwise.jsonl": 7416,
+    "train_decision.jsonl": 7416,
+    "train_checklist.jsonl": 194484,
+    "train_regression.jsonl": 194484,
+    "train_conditional_detr_canonical.jsonl": 6839,
+    "train_conditional_detr_batch.jsonl": 6839,
+    "train_conditional_detr_skipped.jsonl": 577,
+    "report_examples": 8
+  },
+  "qa_summary_path": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/qa_summary.json",
+  "validation_summary_path": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/validation_summary.json",
+  "status": "ok"
+}
+{
+  "canonical_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_canonical.json",
+  "batch_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch.json",
+  "canonical_validation": {
+    "status": "ok",
+    "image_count": 6839,
+    "annotation_count": 206465,
+    "gt_annotation_count": 14928,
+    "label_type_counts": {
+      "top1": 6839,
+      "soft_positive": 7839,
+      "negative": 104054,
+      "unsafe_negative": 8888,
+      "ignore": 27032,
+      "hard_negative": 5808,
+      "baseline_positive": 250,
+      "near_negative": 45755
+    },
+    "error_count": 0,
+    "errors": []
+  },
+  "batch_validation": {
+    "status": "ok",
+    "image_count": 6839,
+    "annotation_count": 14928,
+    "gt_annotation_count": 14928,
+    "label_type_counts": {
+      "": 14928
+    },
+    "error_count": 0,
+    "errors": []
+  }
+}
+{
+  "out_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 6839,
+    "annotation_count": 164737,
+    "gt_annotation_count": 14928,
+    "negative_annotation_count": 149809,
+    "subject_mode_id_counts": {
+      "0": 102959,
+      "1": 19528,
+      "2": 21678,
+      "3": 20572
+    },
+    "decision_id_counts": {
+      "0": 979,
+      "1": 107553,
+      "2": 56205
+    },
+    "label_type_counts": {
+      "matching_target": 14928,
+      "negative": 104054,
+      "near_negative": 45755
+    },
+    "score_range": {
+      "min": 0.002472623,
+      "max": 0.997527377
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {
+    "enabled": true,
+    "outputs": {
+      "train": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch_gaic_like_train.json",
+      "test": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch_gaic_like_test.json",
+      "unassigned": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch_gaic_like_unassigned.json"
+    },
+    "image_counts": {
+      "train": 4862,
+      "test": 635,
+      "unassigned": 1342
+    },
+    "annotation_counts": {
+      "train": 117022,
+      "test": 14974,
+      "unassigned": 32741
+    },
+    "validation": {
+      "train": {
+        "status": "ok",
+        "image_count": 4862,
+        "annotation_count": 117022,
+        "gt_annotation_count": 10643,
+        "negative_annotation_count": 106379,
+        "subject_mode_id_counts": {
+          "0": 71609,
+          "1": 14690,
+          "2": 16665,
+          "3": 14058
+        },
+        "decision_id_counts": {
+          "0": 587,
+          "1": 77151,
+          "2": 39284
+        },
+        "label_type_counts": {
+          "matching_target": 10643,
+          "negative": 74928,
+          "near_negative": 31451
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      },
+      "test": {
+        "status": "ok",
+        "image_count": 635,
+        "annotation_count": 14974,
+        "gt_annotation_count": 1411,
+        "negative_annotation_count": 13563,
+        "subject_mode_id_counts": {
+          "0": 8266,
+          "1": 1813,
+          "2": 2144,
+          "3": 2751
+        },
+        "decision_id_counts": {
+          "0": 150,
+          "1": 9171,
+          "2": 5653
+        },
+        "label_type_counts": {
+          "matching_target": 1411,
+          "negative": 9528,
+          "near_negative": 4035
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      },
+      "unassigned": {
+        "status": "ok",
+        "image_count": 1342,
+        "annotation_count": 32741,
+        "gt_annotation_count": 2874,
+        "negative_annotation_count": 29867,
+        "subject_mode_id_counts": {
+          "0": 23084,
+          "1": 3025,
+          "2": 2869,
+          "3": 3763
+        },
+        "decision_id_counts": {
+          "0": 242,
+          "1": 21231,
+          "2": 11268
+        },
+        "label_type_counts": {
+          "matching_target": 2874,
+          "negative": 19598,
+          "near_negative": 10269
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      }
+    },
+    "reference_paths": {
+      "train": "data/Publics/GAIC/annotations_json/instances_train.json",
+      "test": "data/Publics/GAIC/annotations_json/instances_test.json"
+    }
+  }
+}
+{
+  "status": "ok",
+  "manifest_rows": 1236,
+  "precompute_rows": 1236,
+  "errors": [],
+  "warnings": [],
+  "sections": {
+    "manifest": {
+      "rows": 1236,
+      "unique_image_ids": 1236,
+      "split_counts": {
+        "test": 200,
+        "train": 1036
+      }
+    },
+    "prepare_summary": {
+      "status": "ok",
+      "image_root": "/group-volume/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/images",
+      "output_parquet": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/filtered_gaic_all.parquet",
+      "flat_image_dir": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/images",
+      "bucket": "gaic_all",
+      "link_mode": "symlink",
+      "pseudo_tar_chunk_size": 256,
+      "max_images": 0,
+      "num_images_scanned_total": 1236,
+      "num_images_prepared": 1236,
+      "split_counts": {
+        "test": 200,
+        "train": 1036
+      },
+      "extension_counts": {
+        ".jpg": 1236
+      },
+      "link_counts": {
+        "existing_match": 1236
+      },
+      "pseudo_tar_groups": 5,
+      "largest_pseudo_tar_group": 256,
+      "caption_jsonl": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/metadata/gaic_captions_gaic_260324_r0.jsonl",
+      "caption_rows_available": 1236,
+      "caption_rows_applied": 1236,
+      "reference": {
+        "generated": true,
+        "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/gaic_reference_available.json",
+        "image_count": 1236,
+        "annotation_count": 86098,
+        "source_annotation_jsons": [
+          "/group-volume/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/annotations_json/instances_train.json",
+          "/group-volume/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/annotations_json/instances_test.json"
+        ],
+        "source_stats": {
+          "instances_train.json": {
+            "images_in_json": 1939,
+            "annotations_in_json": 167853,
+            "matched_available_images": 877
+          },
+          "instances_test.json": {
+            "images_in_json": 349,
+            "annotations_in_json": 30253,
+            "matched_available_images": 118
+          }
+        }
+      }
+    },
+    "precompute": {
+      "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl",
+      "rows": 1236,
+      "has_c2_seg_rows": 1236,
+      "has_c3_pose_rows": 1236,
+      "has_c4_ocr_rows": 0,
+      "has_c5_geom_rows": 1236,
+      "unique_image_ids": 1236
+    },
+    "routed": {
+      "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl",
+      "rows": 1236,
+      "routing_rows": 1236,
+      "unique_image_ids": 1236
+    },
+    "candidates": {
+      "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260402_reroute_v1.jsonl",
+      "rows": 1236,
+      "unique_image_ids": 1236,
+      "subset_of_manifest": true
+    },
+    "teacher": {
+      "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260402_reroute_v1.jsonl",
+      "rows": 1236,
+      "unique_image_ids": 1236,
+      "expected_vlm_tasks_all_ar": 7416
+    },
+    "training_validation": {
+      "status": "ok",
+      "error_count": 0,
+      "warning_count": 0,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "conditional_detr_canonical": 6839,
+        "conditional_detr_batch": 6839,
+        "conditional_detr_skipped": 577
+      }
+    },
+    "training_gaic_like": {
+      "out_json": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch_gaic_like.json",
+      "source_batch_jsonl": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/train_conditional_detr_batch.jsonl",
+      "gaic_reference_json": "data/GAIC/All/gaic_reference_available.json",
+      "sstk_meta": {
+        "safe_leftover_policies": [
+          "keep_negative"
+        ],
+        "split_image_counts": {
+          "test": 635,
+          "train": 4862,
+          "unassigned": 1342
+        },
+        "split_annotation_counts": {
+          "test": 14974,
+          "train": 117022,
+          "unassigned": 32741
+        }
+      },
+      "validation": {
+        "status": "ok",
+        "image_count": 6839,
+        "annotation_count": 164737,
+        "gt_annotation_count": 14928,
+        "negative_annotation_count": 149809,
+        "subject_mode_id_counts": {
+          "0": 102959,
+          "1": 19528,
+          "2": 21678,
+          "3": 20572
+        },
+        "decision_id_counts": {
+          "0": 979,
+          "1": 107553,
+          "2": 56205
+        },
+        "label_type_counts": {
+          "matching_target": 14928,
+          "negative": 104054,
+          "near_negative": 45755
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      },
+      "split_exports": {
+        "enabled": true,
+        "outputs": {
+          "train": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch_gaic_like_train.json",
+          "test": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch_gaic_like_test.json",
+          "unassigned": "data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_keepneg_monotonic/coco/instances_conditional_detr_batch_gaic_like_unassigned.json"
+        },
+        "image_counts": {
+          "train": 4862,
+          "test": 635,
+          "unassigned": 1342
+        },
+        "annotation_counts": {
+          "train": 117022,
+          "test": 14974,
+          "unassigned": 32741
+        },
+        "validation": {
+          "train": {
+            "status": "ok",
+            "image_count": 4862,
+            "annotation_count": 117022,
+            "gt_annotation_count": 10643,
+            "negative_annotation_count": 106379,
+            "subject_mode_id_counts": {
+              "0": 71609,
+              "1": 14690,
+              "2": 16665,
+              "3": 14058
+            },
+            "decision_id_counts": {
+              "0": 587,
+              "1": 77151,
+              "2": 39284
+            },
+            "label_type_counts": {
+              "matching_target": 10643,
+              "negative": 74928,
+              "near_negative": 31451
+            },
+            "score_range": {
+              "min": 0.002472623,
+              "max": 0.997527377
+            },
+            "error_count": 0,
+            "warning_count": 0,
+            "errors": [],
+            "warnings": []
+          },
+          "test": {
+            "status": "ok",
+            "image_count": 635,
+            "annotation_count": 14974,
+            "gt_annotation_count": 1411,
+            "negative_annotation_count": 13563,
+            "subject_mode_id_counts": {
+              "0": 8266,
+              "1": 1813,
+              "2": 2144,
+              "3": 2751
+            },
+            "decision_id_counts": {
+              "0": 150,
+              "1": 9171,
+              "2": 5653
+            },
+            "label_type_counts": {
+              "matching_target": 1411,
+              "negative": 9528,
+              "near_negative": 4035
+            },
+            "score_range": {
+              "min": 0.002472623,
+              "max": 0.997527377
+            },
+            "error_count": 0,
+            "warning_count": 0,
+            "errors": [],
+            "warnings": []
+          },
+          "unassigned": {
+            "status": "ok",
+            "image_count": 1342,
+            "annotation_count": 32741,
+            "gt_annotation_count": 2874,
+            "negative_annotation_count": 29867,
+            "subject_mode_id_counts": {
+              "0": 23084,
+              "1": 3025,
+              "2": 2869,
+              "3": 3763
+            },
+            "decision_id_counts": {
+              "0": 242,
+              "1": 21231,
+              "2": 11268
+            },
+            "label_type_counts": {
+              "matching_target": 2874,
+              "negative": 19598,
+              "near_negative": 10269
+            },
+            "score_range": {
+              "min": 0.002472623,
+              "max": 0.997527377
+            },
+            "error_count": 0,
+            "warning_count": 0,
+            "errors": [],
+            "warnings": []
+          }
+        },
+        "reference_paths": {
+          "train": "data/Publics/GAIC/annotations_json/instances_train.json",
+          "test": "data/Publics/GAIC/annotations_json/instances_test.json"
+        }
+      }
+    }
+  }
+}
+[run] build leftover variant: policy=promote_soft_positive out_dir=data/GAIC/All/artifacts/training_labels/gaic_260402_reroute_v1_leftover_softpos_monotonic

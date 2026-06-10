@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import sys
+import time
 from collections import Counter, defaultdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
@@ -30,10 +33,12 @@ from multimode.coco_writer import (
     write_jsonl,
 )
 from multimode.entity_atoms import build_entity_atoms
+from multimode.explainability import attach_explainability_to_attributes
 from multimode.mode_catalog import BASE_CATEGORIES
 from multimode.mode_scorer import score_query_candidates, select_query_results
 from multimode.query_builder import ModeQuery, build_mode_queries
 from multimode.query_guidance import build_query_guidance
+from label_artifacts.paths import LABEL_JSON_DIRNAME, MULTIMODE_LABEL_FILENAMES
 from scripts.progress_utils import ProgressTracker, progress_log
 
 
@@ -70,6 +75,125 @@ def _safe_int(value: Any, default: int = 0) -> int:
         return int(value)
     except (TypeError, ValueError):
         return int(default)
+
+
+def _candidate_teacher_ids(candidate: Dict[str, Any]) -> set[str]:
+    teacher_ids: set[str] = set()
+    for key in ("source", "teacher_id"):
+        value = str(candidate.get(key) or "").strip().lower()
+        if value.startswith("teacher:"):
+            teacher_ids.add(value.split(":", 1)[1])
+        elif value:
+            teacher_ids.add(value)
+    for key in ("source_types", "source_lineage", "teacher_ids"):
+        values = candidate.get(key)
+        if not isinstance(values, (list, tuple)):
+            continue
+        for item in values:
+            value = str(item or "").strip().lower()
+            if value.startswith("teacher:"):
+                teacher_ids.add(value.split(":", 1)[1])
+            elif value in {"gaic", "cgs", "cacnet"}:
+                teacher_ids.add(value)
+    provenance = candidate.get("teacher_provenance")
+    if isinstance(provenance, list):
+        for item in provenance:
+            if not isinstance(item, dict):
+                continue
+            value = str(item.get("teacher_id") or "").strip().lower()
+            if value:
+                teacher_ids.add(value)
+    return teacher_ids
+
+
+def _is_direct_teacher_candidate(candidate: Dict[str, Any], teacher_id: str) -> bool:
+    source = str(candidate.get("source") or "").strip().lower()
+    return source == f"teacher:{teacher_id}"
+
+
+def _ordered_unique_candidates(candidates: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen = set()
+    for candidate in candidates:
+        key = str(candidate.get("candidate_id") or "")
+        if not key:
+            bbox = candidate.get("bbox_norm_xyxy")
+            key = repr(bbox)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(candidate)
+    return out
+
+
+def _landscape_candidate_filter(
+    *,
+    query: ModeQuery,
+    candidates: List[Dict[str, Any]],
+    policy: str,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+    policy_norm = str(policy or "all").strip().lower()
+    if query.mode_name != "landscape" or policy_norm == "all":
+        return candidates, {
+            "landscape_candidate_policy": "all",
+            "landscape_candidate_input_count": len(candidates),
+            "landscape_candidate_used_count": len(candidates),
+            "landscape_candidate_teacher_count": 0,
+        }
+    teacher_candidates = [
+        candidate
+        for candidate in candidates
+        if str(candidate.get("source") or "").strip().lower().startswith("teacher:")
+    ]
+    direct_gaic_candidates = [
+        candidate
+        for candidate in teacher_candidates
+        if _is_direct_teacher_candidate(candidate, "gaic")
+    ]
+    gaic_lineage_candidates = [
+        candidate
+        for candidate in teacher_candidates
+        if "gaic" in _candidate_teacher_ids(candidate)
+    ]
+    selected_tier = "all"
+    if policy_norm == "teacher_only":
+        used = teacher_candidates
+        selected_tier = "teacher"
+    elif policy_norm == "prefer_teacher":
+        used = teacher_candidates if teacher_candidates else candidates
+        selected_tier = "teacher" if teacher_candidates else "all_fallback"
+    elif policy_norm in {"prefer_gaic", "gaic_first", "prefer_gaic_subject_safe"}:
+        if str(query.target_ar or "").strip().upper() == "FREE" and direct_gaic_candidates:
+            used = _ordered_unique_candidates(direct_gaic_candidates + gaic_lineage_candidates)
+            selected_tier = "direct_gaic_free_preferred"
+        elif gaic_lineage_candidates:
+            used = gaic_lineage_candidates
+            selected_tier = "gaic_lineage"
+        elif teacher_candidates:
+            used = teacher_candidates
+            selected_tier = "teacher_fallback"
+        else:
+            used = candidates
+            selected_tier = "all_fallback"
+    elif policy_norm in {"gaic_only", "gaic_lineage_only"}:
+        if str(query.target_ar or "").strip().upper() == "FREE" and direct_gaic_candidates:
+            used = _ordered_unique_candidates(direct_gaic_candidates + gaic_lineage_candidates)
+            selected_tier = "direct_gaic_free_preferred"
+        else:
+            used = gaic_lineage_candidates
+            selected_tier = "gaic_lineage"
+    else:
+        raise ValueError(f"Unsupported landscape candidate policy: {policy}")
+    return used, {
+        "landscape_candidate_policy": policy_norm,
+        "landscape_candidate_input_count": len(candidates),
+        "landscape_candidate_used_count": len(used),
+        "landscape_candidate_teacher_count": len(teacher_candidates),
+        "landscape_candidate_direct_gaic_count": len(direct_gaic_candidates),
+        "landscape_candidate_gaic_lineage_count": len(gaic_lineage_candidates),
+        "landscape_candidate_selected_tier": selected_tier,
+        "landscape_candidate_fallback_to_all": int(selected_tier == "all_fallback"),
+    }
 
 
 def _load_jsonl(path: Path, *, key_field: Optional[str] = None, max_rows: int = 0, progress: bool = False) -> Any:
@@ -135,6 +259,38 @@ def _read_image_ids_file(path: Optional[Path]) -> Optional[set[str]]:
             if value:
                 image_ids.add(value)
     return image_ids
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _write_status(path: Path, payload: Dict[str, Any]) -> None:
+    row = dict(payload)
+    row["last_update_time"] = _utc_now()
+    write_json(path, row)
+
+
+def _stable_split_key(image_id: str, seed: int) -> str:
+    return hashlib.sha1(f"{int(seed)}:{image_id}".encode("utf-8", errors="ignore")).hexdigest()
+
+
+def _build_split_assignments(
+    image_ids: Sequence[str],
+    *,
+    train_ratio: float,
+    seed: int,
+) -> Dict[str, str]:
+    ratio = max(0.0, min(1.0, float(train_ratio)))
+    ordered = sorted((str(image_id) for image_id in image_ids), key=lambda value: (_stable_split_key(value, int(seed)), value))
+    train_count = int(round(len(ordered) * ratio))
+    train_ids = set(ordered[:train_count])
+    return {image_id: ("train" if image_id in train_ids else "val") for image_id in ordered}
+
+
+def _write_text_lines(path: Path, values: Sequence[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(str(value) for value in values) + ("\n" if values else ""), encoding="utf-8")
 
 
 def _build_image_index(image_root: Path, *, progress: bool) -> Dict[str, Path]:
@@ -251,6 +407,48 @@ def _query_status_row(
     }
 
 
+def _round_optional_box(box: Any) -> Optional[List[float]]:
+    if not isinstance(box, (list, tuple)) or len(box) != 4:
+        return None
+    try:
+        return [round(float(value), 6) for value in box]
+    except (TypeError, ValueError):
+        return None
+
+
+def _round_box_list(boxes: Any) -> List[List[float]]:
+    if not isinstance(boxes, list):
+        return []
+    out: List[List[float]] = []
+    for box in boxes:
+        rounded = _round_optional_box(box)
+        if rounded is not None:
+            out.append(rounded)
+    return out
+
+
+def _subject_debug_payload(query: ModeQuery) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {}
+    for key, box in (
+        ("core_bbox_norm_xyxy", query.core_bbox_norm_xyxy),
+        ("envelope_bbox_norm_xyxy", query.envelope_bbox_norm_xyxy),
+        ("anchor_bbox_norm_xyxy", query.anchor_bbox_norm_xyxy),
+        ("support_bbox_norm_xyxy", query.support_bbox_norm_xyxy),
+        ("face_bbox_norm_xyxy", query.face_bbox_norm_xyxy),
+        ("head_bbox_norm_xyxy", query.head_bbox_norm_xyxy),
+    ):
+        rounded = _round_optional_box(box)
+        if rounded is not None:
+            payload[key] = rounded
+    member_boxes = _round_box_list(query.member_boxes_norm_xyxy)
+    if member_boxes:
+        payload["member_boxes_norm_xyxy"] = member_boxes
+    member_face_boxes = _round_box_list(query.member_face_boxes_norm_xyxy)
+    if member_face_boxes:
+        payload["member_face_boxes_norm_xyxy"] = member_face_boxes
+    return payload
+
+
 def _annotation_attributes(
     *,
     query: ModeQuery,
@@ -266,10 +464,17 @@ def _annotation_attributes(
         "candidate_id": str(selected_row.get("candidate_id", "")),
         "candidate_source": str(selected_row.get("source", "")),
         "score_components": components,
+        "subject_debug": _subject_debug_payload(query),
     }
     payload.update(query.attributes)
     payload.update(extra)
-    return payload
+    return attach_explainability_to_attributes(
+        mode_name=query.mode_name,
+        target_ar=query.target_ar,
+        score_mode=float(selected_row.get("score_mode", 0.0)),
+        attributes=payload,
+        hard_reject_reasons=extra.get("hard_reject_reasons") if isinstance(extra, dict) else [],
+    )
 
 
 def _load_debug_font(font_size: int) -> Any:
@@ -661,7 +866,7 @@ def _build_summary(
     return {
         "image_count": int(image_count),
         "image_task_count": int(image_task_count),
-        "coco_image_count": len(image_rows),
+        "source_image_entry_count": len(image_rows),
         "annotation_count": len(annotation_rows),
         "positive_annotation_count": sum(1 for row in annotation_rows if int(row.get("gt_flag", 0)) == 1),
         "negative_annotation_count": sum(1 for row in annotation_rows if int(row.get("gt_flag", 0)) == 0),
@@ -678,6 +883,250 @@ def _build_summary(
         },
         "mode_summary": mode_summary,
     }
+
+
+def _source_id_by_image_id(image_rows: Sequence[Dict[str, Any]]) -> Dict[int, str]:
+    return {int(row.get("id", 0)): str(row.get("source_image_id", "")) for row in image_rows}
+
+
+def _collect_label_stats(
+    *,
+    image_rows: Sequence[Dict[str, Any]],
+    annotation_rows: Sequence[Dict[str, Any]],
+    query_status_rows: Sequence[Dict[str, Any]],
+) -> Dict[str, Any]:
+    source_by_image_id = _source_id_by_image_id(image_rows)
+    mode_query_counter = Counter(str(row.get("mode_name", "")) for row in query_status_rows)
+    mode_positive_query_counter = Counter(
+        str(row.get("mode_name", "")) for row in query_status_rows if int(row.get("positive_exists", 0)) == 1
+    )
+    ar_query_counter = Counter(str(row.get("target_ar", "")) for row in query_status_rows)
+    ar_positive_query_counter = Counter(
+        str(row.get("target_ar", "")) for row in query_status_rows if int(row.get("positive_exists", 0)) == 1
+    )
+    mode_ar_query_counter = Counter((str(row.get("mode_name", "")), str(row.get("target_ar", ""))) for row in query_status_rows)
+    mode_ar_positive_query_counter = Counter(
+        (str(row.get("mode_name", "")), str(row.get("target_ar", "")))
+        for row in query_status_rows
+        if int(row.get("positive_exists", 0)) == 1
+    )
+
+    mode_ann_counter = Counter(str(row.get("mode_name", "")) for row in annotation_rows)
+    mode_pos_ann_counter = Counter(str(row.get("mode_name", "")) for row in annotation_rows if int(row.get("gt_flag", 0)) == 1)
+    mode_neg_ann_counter = Counter(str(row.get("mode_name", "")) for row in annotation_rows if int(row.get("gt_flag", 0)) == 0)
+    ar_ann_counter = Counter()
+    ar_pos_ann_counter = Counter()
+    ar_neg_ann_counter = Counter()
+    mode_ar_ann_counter = Counter()
+    mode_ar_pos_ann_counter = Counter()
+    mode_ar_neg_ann_counter = Counter()
+    pos_images_by_mode: Dict[str, set[str]] = defaultdict(set)
+    pos_images_by_ar: Dict[str, set[str]] = defaultdict(set)
+    scores_by_mode: Dict[str, List[float]] = defaultdict(list)
+    missing_target_ar = 0
+    invalid_bbox_count = 0
+
+    for row in annotation_rows:
+        mode_name = str(row.get("mode_name", ""))
+        attrs = row.get("attributes") if isinstance(row.get("attributes"), dict) else {}
+        target_ar = str(attrs.get("target_ar", ""))
+        if not target_ar:
+            missing_target_ar += 1
+        gt_flag = int(row.get("gt_flag", 0))
+        image_id = int(row.get("image_id", 0))
+        source_image_id = source_by_image_id.get(image_id, "")
+        bbox = row.get("bbox") if isinstance(row.get("bbox"), list) else []
+        if (
+            len(bbox) != 4
+            or any(not isinstance(value, (int, float)) or not math.isfinite(float(value)) for value in bbox)
+            or float(bbox[2]) <= 0.0
+            or float(bbox[3]) <= 0.0
+        ):
+            invalid_bbox_count += 1
+        ar_ann_counter[target_ar] += 1
+        mode_ar_ann_counter[(mode_name, target_ar)] += 1
+        if gt_flag == 1:
+            ar_pos_ann_counter[target_ar] += 1
+            mode_ar_pos_ann_counter[(mode_name, target_ar)] += 1
+            pos_images_by_mode[mode_name].add(source_image_id)
+            pos_images_by_ar[target_ar].add(source_image_id)
+            scores_by_mode[mode_name].append(float(row.get("score_mode", 0.0)))
+        else:
+            ar_neg_ann_counter[target_ar] += 1
+            mode_ar_neg_ann_counter[(mode_name, target_ar)] += 1
+
+    modes = sorted(set(mode_query_counter) | set(mode_ann_counter))
+    target_ars = sorted(set(ar_query_counter) | set(ar_ann_counter))
+    mode_stats = []
+    for mode_name in modes:
+        query_count = int(mode_query_counter.get(mode_name, 0))
+        positive_queries = int(mode_positive_query_counter.get(mode_name, 0))
+        positive_annotations = int(mode_pos_ann_counter.get(mode_name, 0))
+        negative_annotations = int(mode_neg_ann_counter.get(mode_name, 0))
+        scores = scores_by_mode.get(mode_name, [])
+        mode_stats.append(
+            {
+                "mode_name": mode_name,
+                "query_count": query_count,
+                "positive_query_count": positive_queries,
+                "no_positive_query_count": max(0, query_count - positive_queries),
+                "positive_query_rate": round(positive_queries / float(query_count), 6) if query_count else 0.0,
+                "annotation_count": int(mode_ann_counter.get(mode_name, 0)),
+                "positive_annotation_count": positive_annotations,
+                "negative_annotation_count": negative_annotations,
+                "positive_negative_ratio": round(positive_annotations / float(max(1, negative_annotations)), 6),
+                "positive_image_count": len(pos_images_by_mode.get(mode_name, set())),
+                "positive_score_mean": round(sum(scores) / float(len(scores)), 6) if scores else None,
+                "positive_score_min": round(min(scores), 6) if scores else None,
+                "positive_score_max": round(max(scores), 6) if scores else None,
+            }
+        )
+
+    target_ar_stats = []
+    for target_ar in target_ars:
+        query_count = int(ar_query_counter.get(target_ar, 0))
+        positive_queries = int(ar_positive_query_counter.get(target_ar, 0))
+        target_ar_stats.append(
+            {
+                "target_ar": target_ar,
+                "query_count": query_count,
+                "positive_query_count": positive_queries,
+                "positive_query_rate": round(positive_queries / float(query_count), 6) if query_count else 0.0,
+                "annotation_count": int(ar_ann_counter.get(target_ar, 0)),
+                "positive_annotation_count": int(ar_pos_ann_counter.get(target_ar, 0)),
+                "negative_annotation_count": int(ar_neg_ann_counter.get(target_ar, 0)),
+                "positive_image_count": len(pos_images_by_ar.get(target_ar, set())),
+            }
+        )
+
+    mode_target_ar_stats = []
+    for mode_name in modes:
+        for target_ar in target_ars:
+            query_count = int(mode_ar_query_counter.get((mode_name, target_ar), 0))
+            annotation_count = int(mode_ar_ann_counter.get((mode_name, target_ar), 0))
+            if query_count == 0 and annotation_count == 0:
+                continue
+            positive_queries = int(mode_ar_positive_query_counter.get((mode_name, target_ar), 0))
+            mode_target_ar_stats.append(
+                {
+                    "mode_name": mode_name,
+                    "target_ar": target_ar,
+                    "query_count": query_count,
+                    "positive_query_count": positive_queries,
+                    "positive_query_rate": round(positive_queries / float(query_count), 6) if query_count else 0.0,
+                    "annotation_count": annotation_count,
+                    "positive_annotation_count": int(mode_ar_pos_ann_counter.get((mode_name, target_ar), 0)),
+                    "negative_annotation_count": int(mode_ar_neg_ann_counter.get((mode_name, target_ar), 0)),
+                }
+            )
+
+    return {
+        "image_count": len(image_rows),
+        "annotation_count": len(annotation_rows),
+        "positive_annotation_count": sum(1 for row in annotation_rows if int(row.get("gt_flag", 0)) == 1),
+        "negative_annotation_count": sum(1 for row in annotation_rows if int(row.get("gt_flag", 0)) == 0),
+        "query_count": len(query_status_rows),
+        "positive_query_count": sum(1 for row in query_status_rows if int(row.get("positive_exists", 0)) == 1),
+        "no_positive_query_count": sum(1 for row in query_status_rows if int(row.get("positive_exists", 0)) == 0),
+        "missing_target_ar_annotation_count": missing_target_ar,
+        "invalid_bbox_annotation_count": invalid_bbox_count,
+        "mode_stats": mode_stats,
+        "target_ar_stats": target_ar_stats,
+        "mode_target_ar_stats": mode_target_ar_stats,
+        "query_decision_counts": dict(Counter(str(row.get("decision", "")) for row in query_status_rows)),
+        "query_negative_count_histogram": {
+            str(key): int(value)
+            for key, value in sorted(Counter(int(row.get("negative_count", 0)) for row in query_status_rows).items())
+        },
+    }
+
+
+def _write_csv(path: Path, rows: Sequence[Dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not rows:
+        path.write_text("", encoding="utf-8")
+        return
+    import csv
+
+    with path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(rows[0].keys()))
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def _subset_coco_dataset(
+    coco_dataset: Dict[str, Any],
+    *,
+    source_image_ids: set[str],
+) -> Dict[str, Any]:
+    images = [
+        dict(row)
+        for row in coco_dataset.get("images", [])
+        if str(row.get("source_image_id", "")) in source_image_ids
+    ]
+    kept_image_ids = {int(row.get("id", 0)) for row in images}
+    annotations = [
+        dict(row)
+        for row in coco_dataset.get("annotations", [])
+        if int(row.get("image_id", 0)) in kept_image_ids
+    ]
+    return {
+        "images": images,
+        "categories": [dict(row) for row in coco_dataset.get("categories", [])],
+        "annotations": annotations,
+    }
+
+
+def _write_split_outputs(
+    *,
+    out_dir: Path,
+    coco_dataset: Dict[str, Any],
+    query_status_rows: Sequence[Dict[str, Any]],
+    split_assignments: Dict[str, str],
+) -> Dict[str, Any]:
+    split_dir = out_dir / "splits"
+    label_dir = out_dir / LABEL_JSON_DIRNAME
+    split_to_ids: Dict[str, List[str]] = {"train": [], "val": []}
+    for image_id, split_name in sorted(split_assignments.items()):
+        split_to_ids.setdefault(split_name, []).append(image_id)
+    for split_name, image_ids in split_to_ids.items():
+        _write_text_lines(split_dir / f"{split_name}_image_ids.txt", image_ids)
+
+    split_summary: Dict[str, Any] = {}
+    for split_name, image_ids in split_to_ids.items():
+        id_set = set(image_ids)
+        split_coco = _subset_coco_dataset(coco_dataset, source_image_ids=id_set)
+        split_query_rows = [row for row in query_status_rows if str(row.get("source_image_id", "")) in id_set]
+        split_stats = _collect_label_stats(
+            image_rows=split_coco.get("images", []),
+            annotation_rows=split_coco.get("annotations", []),
+            query_status_rows=split_query_rows,
+        )
+        label_json = label_dir / MULTIMODE_LABEL_FILENAMES[(split_name, False)]
+        target_ar_only_label_json = label_dir / MULTIMODE_LABEL_FILENAMES[(split_name, True)]
+        write_json(label_json, split_coco)
+        write_json(
+            target_ar_only_label_json,
+            build_target_ar_only_coco_dataset(split_coco),
+        )
+        write_json(split_dir / f"{split_name}_stats.json", split_stats)
+        _write_csv(split_dir / f"{split_name}_mode_stats.csv", split_stats["mode_stats"])
+        _write_csv(split_dir / f"{split_name}_target_ar_stats.csv", split_stats["target_ar_stats"])
+        _write_csv(split_dir / f"{split_name}_mode_target_ar_stats.csv", split_stats["mode_target_ar_stats"])
+        split_summary[split_name] = {
+            "image_ids_path": str(split_dir / f"{split_name}_image_ids.txt"),
+            "label_json": str(label_json),
+            "target_ar_only_label_json": str(target_ar_only_label_json),
+            "stats_json": str(split_dir / f"{split_name}_stats.json"),
+            "image_count": int(split_stats["image_count"]),
+            "query_count": int(split_stats["query_count"]),
+            "annotation_count": int(split_stats["annotation_count"]),
+            "positive_annotation_count": int(split_stats["positive_annotation_count"]),
+            "negative_annotation_count": int(split_stats["negative_annotation_count"]),
+        }
+    manifest = {"splits": split_summary}
+    write_json(split_dir / "split_manifest.json", manifest)
+    return manifest
 
 
 def _select_image_ids(
@@ -699,11 +1148,27 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
     features_jsonl = Path(args.features_jsonl)
     candidates_jsonl = Path(args.candidates_jsonl)
     out_dir = Path(args.out_dir)
+    label_dir = out_dir / LABEL_JSON_DIRNAME
+    out_dir.mkdir(parents=True, exist_ok=True)
+    status_path = out_dir / "status.json"
+    start_time = time.time()
+    start_time_iso = _utc_now()
     image_root = Path(args.image_root)
     target_ars = _normalize_target_ars(args.target_ars)
     if not target_ars:
         raise ValueError("target_ars is empty")
 
+    _write_status(
+        status_path,
+        {
+            "phase": "loading_inputs",
+            "start_time": start_time_iso,
+            "features_jsonl": str(features_jsonl),
+            "candidates_jsonl": str(candidates_jsonl),
+            "image_root": str(image_root),
+            "out_dir": str(out_dir),
+        },
+    )
     feature_rows_by_id = _load_jsonl(features_jsonl, key_field="image_id", progress=bool(args.progress))
     candidate_rows_by_id = _load_jsonl(candidates_jsonl, key_field="image_id", progress=bool(args.progress))
     image_index = _build_image_index(image_root, progress=bool(args.progress))
@@ -713,6 +1178,24 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
         candidate_rows_by_id=candidate_rows_by_id,
         allow_ids=allow_ids,
         max_images=int(args.max_images),
+    )
+    _write_status(
+        status_path,
+        {
+            "phase": "running",
+            "start_time": start_time_iso,
+            "selected_image_count": len(selected_image_ids),
+            "current_image_index": 0,
+            "image_task_count": 0,
+            "query_count": 0,
+            "annotation_count": 0,
+            "output_paths": {
+                "summary_json": str(out_dir / "summary.json"),
+                "status_json": str(status_path),
+                "label_json": str(label_dir / MULTIMODE_LABEL_FILENAMES[("full", False)]),
+                "query_status_jsonl": str(out_dir / "mode_query_status.jsonl"),
+            },
+        },
     )
 
     image_rows: List[Dict[str, Any]] = []
@@ -769,6 +1252,13 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
             image_task_count += 1
             for query in queries:
                 candidates = expand_query_candidates(base_candidates=base_candidates, query=query, image_ar=image_ar)
+                candidates, landscape_filter_attrs = _landscape_candidate_filter(
+                    query=query,
+                    candidates=candidates,
+                    policy=str(args.landscape_candidate_policy),
+                )
+                if query.mode_name == "landscape":
+                    query.attributes.update(landscape_filter_attrs)
                 scored = score_query_candidates(
                     query=query,
                     candidates=candidates,
@@ -776,6 +1266,9 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
                     width=width,
                     height=height,
                     image_ar=image_ar,
+                    landscape_score_policy=str(args.landscape_score_policy),
+                    landscape_teacher_score_scope=str(args.landscape_teacher_score_scope),
+                    mode_intent_policy=str(args.mode_intent_policy),
                 )
                 selection = select_query_results(query=query, scored_candidates=scored)
                 query_status_rows.append(
@@ -852,8 +1345,41 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
         if image_row_written:
             image_entry_id += 1
         tracker.update(idx)
+        if idx == len(selected_image_ids) or idx % 25 == 0:
+            _write_status(
+                status_path,
+                {
+                    "phase": "running",
+                    "start_time": start_time_iso,
+                    "selected_image_count": len(selected_image_ids),
+                    "current_image_index": idx,
+                    "current_source_image_id": image_id,
+                    "image_task_count": image_task_count,
+                    "query_count": len(query_status_rows),
+                    "annotation_count": len(annotation_rows),
+                    "elapsed_sec": round(time.time() - start_time, 3),
+                    "output_paths": {
+                        "summary_json": str(out_dir / "summary.json"),
+                        "status_json": str(status_path),
+                        "label_json": str(label_dir / MULTIMODE_LABEL_FILENAMES[("full", False)]),
+                        "query_status_jsonl": str(out_dir / "mode_query_status.jsonl"),
+                    },
+                },
+            )
     tracker.finish(len(selected_image_ids))
 
+    _write_status(
+        status_path,
+        {
+            "phase": "writing_outputs",
+            "start_time": start_time_iso,
+            "selected_image_count": len(selected_image_ids),
+            "image_task_count": image_task_count,
+            "query_count": len(query_status_rows),
+            "annotation_count": len(annotation_rows),
+            "elapsed_sec": round(time.time() - start_time, 3),
+        },
+    )
     coco_dataset = build_coco_dataset(image_rows=image_rows, annotation_rows=annotation_rows)
     summary = _build_summary(
         image_count=len(selected_image_ids),
@@ -870,16 +1396,54 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
         "max_images": int(args.max_images),
         "include_optional_negatives": int(args.include_optional_negatives),
         "write_debug_viz": int(args.write_debug_viz),
+        "landscape_candidate_policy": str(args.landscape_candidate_policy),
+        "landscape_score_policy": str(args.landscape_score_policy),
+        "landscape_teacher_score_scope": str(args.landscape_teacher_score_scope),
+        "mode_intent_policy": str(args.mode_intent_policy),
     }
-    out_dir.mkdir(parents=True, exist_ok=True)
+    if int(args.write_split_outputs) == 1:
+        split_assignments = _build_split_assignments(
+            selected_image_ids,
+            train_ratio=float(args.train_ratio),
+            seed=int(args.split_seed),
+        )
+        summary["split"] = {
+            "enabled": True,
+            "train_ratio": float(args.train_ratio),
+            "seed": int(args.split_seed),
+            "train_image_count": sum(1 for value in split_assignments.values() if value == "train"),
+            "val_image_count": sum(1 for value in split_assignments.values() if value == "val"),
+        }
+    summary["source_image_entry_count"] = int(summary.get("source_image_entry_count", summary.get("image_count", 0)))
     write_json(out_dir / "summary.json", summary)
     write_jsonl(out_dir / "mode_query_status.jsonl", query_status_rows)
-    write_json(out_dir / "coco" / "instances_multimode_training_labels.json", coco_dataset)
+    full_label_json = label_dir / MULTIMODE_LABEL_FILENAMES[("full", False)]
+    full_target_ar_only_label_json = label_dir / MULTIMODE_LABEL_FILENAMES[("full", True)]
+    write_json(full_label_json, coco_dataset)
     write_json(
-        out_dir / "coco" / "instances_multimode_training_labels_target_ar_only.json",
+        full_target_ar_only_label_json,
         build_target_ar_only_coco_dataset(coco_dataset),
     )
     write_json(out_dir / "categories.json", {"categories": BASE_CATEGORIES})
+    stats = _collect_label_stats(
+        image_rows=coco_dataset.get("images", []),
+        annotation_rows=coco_dataset.get("annotations", []),
+        query_status_rows=query_status_rows,
+    )
+    write_json(out_dir / "dataset_stats.json", stats)
+    _write_csv(out_dir / "mode_stats.csv", stats["mode_stats"])
+    _write_csv(out_dir / "target_ar_stats.csv", stats["target_ar_stats"])
+    _write_csv(out_dir / "mode_target_ar_stats.csv", stats["mode_target_ar_stats"])
+    if int(args.write_split_outputs) == 1:
+        split_manifest = _write_split_outputs(
+            out_dir=out_dir,
+            coco_dataset=coco_dataset,
+            query_status_rows=query_status_rows,
+            split_assignments=split_assignments,
+        )
+        summary["split"]["manifest_json"] = str(out_dir / "splits" / "split_manifest.json")
+        summary["split"]["splits"] = split_manifest["splits"]
+        write_json(out_dir / "summary.json", summary)
 
     if int(args.write_debug_viz) == 1 and image_task_debug:
         limit = int(args.debug_viz_limit)
@@ -917,6 +1481,30 @@ def build_dataset(args: argparse.Namespace) -> Dict[str, Any]:
         f"queries={summary['query_count']} positives={summary['positive_query_count']}",
         enabled=bool(args.progress),
     )
+    _write_status(
+        status_path,
+        {
+            "phase": "completed",
+            "start_time": start_time_iso,
+            "end_time": _utc_now(),
+            "selected_image_count": len(selected_image_ids),
+            "image_task_count": int(summary["image_task_count"]),
+            "query_count": int(summary["query_count"]),
+            "annotation_count": int(summary["annotation_count"]),
+            "positive_annotation_count": int(summary["positive_annotation_count"]),
+            "negative_annotation_count": int(summary["negative_annotation_count"]),
+            "elapsed_sec": round(time.time() - start_time, 3),
+            "output_paths": {
+                "summary_json": str(out_dir / "summary.json"),
+                "status_json": str(status_path),
+                "dataset_stats_json": str(out_dir / "dataset_stats.json"),
+                "label_json": str(full_label_json),
+                "target_ar_only_label_json": str(full_target_ar_only_label_json),
+                "query_status_jsonl": str(out_dir / "mode_query_status.jsonl"),
+                "split_manifest_json": str(out_dir / "splits" / "split_manifest.json"),
+            },
+        },
+    )
     return summary
 
 
@@ -930,15 +1518,70 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--image_ids_file", default="")
     parser.add_argument("--max_images", type=int, default=0)
     parser.add_argument("--include_optional_negatives", type=int, default=1)
+    parser.add_argument("--write_split_outputs", type=int, default=1)
+    parser.add_argument("--train_ratio", type=float, default=0.8)
+    parser.add_argument("--split_seed", type=int, default=20260506)
     parser.add_argument("--write_debug_viz", type=int, default=0)
     parser.add_argument("--debug_viz_limit", type=int, default=16)
+    parser.add_argument(
+        "--landscape_candidate_policy",
+        choices=[
+            "all",
+            "prefer_teacher",
+            "teacher_only",
+            "prefer_gaic",
+            "gaic_first",
+            "prefer_gaic_subject_safe",
+            "gaic_only",
+            "gaic_lineage_only",
+        ],
+        default="all",
+        help=(
+            "Candidate source policy for landscape queries. prefer_gaic uses direct GAIC for FREE when available, "
+            "then GAIC-lineage candidates, then teacher/public-cropper fallback."
+        ),
+    )
+    parser.add_argument(
+        "--landscape_score_policy",
+        choices=["composition", "teacher_only", "teacher_subject_safe"],
+        default="composition",
+        help=(
+            "Scoring policy for landscape queries. teacher_only ranks by Q_teach; "
+            "teacher_subject_safe keeps Q_teach primary but gates/tie-breaks salient subject preservation."
+        ),
+    )
+    parser.add_argument(
+        "--landscape_teacher_score_scope",
+        choices=["all", "gaic"],
+        default="all",
+        help="Teacher score source for landscape Q_teach. gaic uses only GAIC provenance/direct scores.",
+    )
+    parser.add_argument(
+        "--mode_intent_policy",
+        choices=["legacy", "strict_v11"],
+        default="legacy",
+        help="Optional stricter center/rot/object/face intent gates for v11 multimode labels.",
+    )
     parser.add_argument("--progress", type=int, default=1)
     return parser.parse_args(argv)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
-    build_dataset(args)
+    try:
+        build_dataset(args)
+    except Exception as exc:
+        out_dir = Path(args.out_dir)
+        _write_status(
+            out_dir / "status.json",
+            {
+                "phase": "failed",
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "out_dir": str(out_dir),
+            },
+        )
+        raise
     return 0
 
 

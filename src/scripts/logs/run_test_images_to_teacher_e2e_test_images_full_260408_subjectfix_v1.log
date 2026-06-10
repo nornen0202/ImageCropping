@@ -1,0 +1,200 @@
+========================================================
+ Test-images e2e wrapper
+========================================================
+ data_dir              : data/TestImages/All
+ image_root            : data/TestImages/All/images
+ flat_image_dir        : data/TestImages/All/images
+ bucket                : test_images_all
+ run_tag               : test_images_full_260408_subjectfix_v1
+ prepare_max_images    : 0
+ prepare_num_workers   : 255 (cpu_cores=255)
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 0
+ shared_gpu_ids        : 0,1,2,3 (workers=4)
+ run_c1                : 0
+ run_c2                : 0
+ run_c3                : 0
+ run_c3_enrich         : 0
+ run_c4                : 0
+ run_c5                : 0
+ run_c6                : 0
+ run_merge             : 0
+ run_subject_routing   : 1
+ run_candidates        : 1
+ run_teacher           : 1
+ use_real_expensive    : 1
+ run_c7_saliency       : 0 (priority=quality_first device=auto)
+ generate_captions     : 0 (preset=server_quality backend=auto multi_gpu=1 gpu_ids=0,1,2,3 workers=4)
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1 (policy=ignore)
+ score_profile         : single_stage2 (overrides=<none>)
+ training_debug_viz    : 1 (out=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v1_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ auto_leftover_variants: 0 (policies=keep_negative,promote_soft_positive)
+ run_detailed_report   : 1
+ reference_json        : data/TestImages/All/test_images_reference.json
+========================================================
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset: start | image_root=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images | output_parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:scan_images: start total=33 unit=paths
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:scan_images: [========================] 33/33 (100.0%) | 0.0s | images=33
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:scan_images: [========================] 33/33 (100.0%) | 0.0s | images=33
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset: scanned=33 | num_workers=33 | captions=0
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:prepare_manifest_rows: start total=33 unit=images
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:prepare_manifest_rows: [========================] 33/33 (100.0%) | 0.1s
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:prepare_manifest_rows: [========================] 33/33 (100.0%) | 0.1s
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:load_annotation_payloads: start total=0 unit=files
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:load_annotation_payloads: 0 files | 0.0s | loaded=0
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:build_reference:payloads: start total=0 unit=jsons
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:build_reference:payloads: 0 jsons | 0.0s | images=0 anns=0
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:build_reference:images: start total=33 unit=images
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:build_reference:images: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:build_reference:images: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:build_reference:annotations: start total=0 unit=annotations
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset:build_reference:annotations: 0 annotations | 0.0s
+[progress 2026-04-08 03:02:06] prepare_gaic_curated_dataset: finished | prepared=33 | parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet
+{
+  "status": "ok",
+  "image_root": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+  "output_parquet": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet",
+  "flat_image_dir": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+  "bucket": "test_images_all",
+  "link_mode": "symlink",
+  "num_workers": 33,
+  "pseudo_tar_chunk_size": 256,
+  "max_images": 0,
+  "num_images_scanned_total": 33,
+  "num_images_prepared": 33,
+  "split_counts": {
+    "root": 33
+  },
+  "extension_counts": {
+    ".jpg": 33
+  },
+  "link_counts": {
+    "existing_match": 33
+  },
+  "pseudo_tar_groups": 1,
+  "largest_pseudo_tar_group": 33,
+  "caption_jsonl": "",
+  "caption_rows_available": 0,
+  "caption_rows_applied": 0,
+  "reference": {
+    "generated": true,
+    "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/test_images_reference.json",
+    "image_count": 33,
+    "annotation_count": 0,
+    "source_annotation_jsons": [],
+    "source_stats": {}
+  }
+}
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : test_images_all
+ data_dir            : data/TestImages/All
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : test_images_full_260408_subjectfix_v1
+ skip_existing       : 0
+ shared_gpu_defaults : gpu_ids=0,1,2,3 workers=4
+ precompute_mode     : unified
+ run_filter          : 0
+ filter_train_match  : 1
+ filter_tag_embed    : mgpu=-1 gpu_ids=0,1,2,3 bs=128 chunk=0 device=auto
+ filter_cpu_map      : workers=0 chunk=4096 sample_extract_workers=0
+ export_curated_img  : 0 (dir=data/TestImages/All/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/TestImages/All/images)
+ extract_mode        : auto (extract_multi_gpu=-1, gpu_ids=0,1,2,3, workers=4)
+ run_c1/c2/c3/c4/c5/c6 : 0/0/0/0/0/0
+ run_c3_enrich/merge : 0/0
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ c7 saliency         : run=0 priority=quality_first device=auto
+ c7 saliency multi   : reuse extract gpu_ids=0,1,2,3 workers=4 mode=auto
+ run_component_viz   : 0 (out=data/TestImages/All/artifacts/precompute/visualizations/components_test_images_full_260408_subjectfix_v1, num_samples=120)
+ public proposals    : enable=0 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/TestImages/All/artifacts/public_teachers/raw/teacher_raw_public_test_images_full_260408_subjectfix_v1.jsonl | data/TestImages/All/artifacts/public_teachers/proposals/teacher_proposals_public_test_images_full_260408_subjectfix_v1.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=0,1,2,3 workers=4
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 1
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 1 (real_expensive=1)
+ c1 source           : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ teacher_multi_gpu   : 1 (gpu_ids=0,1,2,3, workers=4)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=24 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_public_ref  : save_public_teacher_ref_eval=1
+ teacher_aesthetic   : backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 0 (backend=heuristic fallback=none model=Qwen/Qwen3-VL-4B-Instruct)
+ run_training_labels : 1 (dir=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v1_leftover_ignore_monotonic policy=ignore)
+ score_profile       : single_stage2 (overrides=<none>)
+ training_debug_viz  : 1 (out=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v1_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ gaic_reference_json : data/TestImages/All/test_images_reference.json
+ gaic_train_ref_json : data/Publics/GAIC/annotations_json/instances_train.json
+ gaic_test_ref_json  : data/Publics/GAIC/annotations_json/instances_test.json
+ run_detailed_report : 1 (dir=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v1_detailed examples_per_bucket=5)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=0,1,2,3, workers=4)
+ vlm out/meta/sum    : data/TestImages/All/artifacts/vlm_teacher/labels/crop_label_v1_test_images_full_260408_subjectfix_v1.jsonl | data/TestImages/All/artifacts/vlm_teacher/meta/meta_norm_v1_test_images_full_260408_subjectfix_v1.jsonl | data/TestImages/All/artifacts/vlm_teacher/summary/vlm_teacher_summary_test_images_full_260408_subjectfix_v1.json
+========================================================
+[info] using curated image cache dir: data/TestImages/All/images
+[run] 07a_enrich_subject_mode
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 31it [00:00, 300.28it/s]subject-mode-enrich: 33it [00:00, 299.67it/s]
+[done] total=33 routed=33 missing_meta=0 output=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[done] subject_mode_counts={'scene_general': 7, 'object_multi': 2, 'portrait_group': 10, 'object_single': 7, 'portrait_single': 7}
+[done] policy_counts={'scene_v1': 7, 'object_multi_v1': 2, 'portrait_group_v1': 10, 'object_v1': 7, 'portrait_single_v1': 7}
+[run] 09_generate_candidates
+==============================================
+ Candidate Generator Runner (Phase B1)
+==============================================
+  Input Parquet : data/TestImages/All/filtered_test_images_all.parquet
+  Feats C2      : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+  Feats C3      : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+  Output JSONL  : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v1.jsonl
+  Server Mode   : 1
+  TAR_DIR       : /sstk/20230916/sstk_100
+  IMAGE_DIR     : data/TestImages/All/images
+  use_actual    : 1
+  strict_actual : 1
+  Extra Args    : --actual_size_cache_json data/TestImages/All/cache/actual_image_size_map.json --max_images 0 --num_workers 0 --mp_chunksize 64 --mp_start_method auto --ar_list FREE 1:1 9:16 16:9 3:4 4:3
+==============================================
+[CandidateGen] Loading inputs...
+[CandidateGen] rows=33 c2_seg=33 c2_det=33(nonempty=29) c3=33(nonempty=24) routing=33 c7_saliency=33 teacher_proposals=0 cfg_hash=6abdc55aed4517a2
+[CandidateGen] worker mode: multiprocess workers=33 chunksize=64 start=auto
+[CandidateGen] Building/loading actual TAR image-size map...
+[CandidateGen] actual_size_map loaded: 33 images
+CandidateGen-MP:   0%|                                                            | 0/33 [00:00<?, ?it/s]CandidateGen-MP:   3%|█▌                                                  | 1/33 [00:08<04:22,  8.19s/it]CandidateGen-MP:  76%|██████████████████████████████████████▋            | 25/33 [00:08<00:01,  4.23it/s]CandidateGen-MP: 100%|███████████████████████████████████████████████████| 33/33 [00:08<00:00,  3.93it/s]
+[CandidateGen] Done. written=33 avg_total_candidates=546.61 elapsed=8.39s throughput=3.93 img/s
+[CandidateGen] size_source_counts={'tar_actual': 33}
+[CandidateGen] output=data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v1.jsonl
+[CandidateGen] Building overview from output jsonl...
+[CandidateGen] Overview saved: data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v1_overview.json, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v1_overview_by_ar.csv, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v1_overview_by_source.csv, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v1_overview_by_subject_source.csv
+[CandidateGen] Visualization saved under: data/TestImages/All/artifacts/candidates/visualizations/candidates_ar_test_images_full_260408_subjectfix_v1_viz
+==============================================
+ Done.
+==============================================
+[run] 10_teacher_scorer
+[config] server_mode=1 tar_dir=/sstk/20230916/sstk_100 image_dir=data/TestImages/All/images
+[config] candidates=data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v1.jsonl
+[config] features=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[config] c1=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[config] parquet=data/TestImages/All/filtered_test_images_all.parquet
+[config] output_jsonl=data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v1.jsonl
+[config] expensive_accel: batch=24 eval_top_m=0 preprocess_workers=0 pin_memory=1
+[config] public_teacher_ref_eval: save=1
+[config] aesthetic: backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+[config] portrait_safety: hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+[config] viz_image_ids=<none> viz_image_ids_file=<none>
+[1/3] Running teacher scorer...
+[multi] teacher shard mode enabled: gpu_ids=0,1,2,3 workers=4
+[config] resolved_exp_preprocess_workers(per_shard)=63 total_cpu_cores=255
+[multi] launch shard=0/4 gpu=0 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v1.jsonl.shards.7685/teacher_scores_shard_0.jsonl
+[multi] launch shard=1/4 gpu=1 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v1.jsonl.shards.7685/teacher_scores_shard_1.jsonl
+[multi] launch shard=2/4 gpu=2 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v1.jsonl.shards.7685/teacher_scores_shard_2.jsonl
+[multi] launch shard=3/4 gpu=3 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v1.jsonl.shards.7685/teacher_scores_shard_3.jsonl

@@ -41,6 +41,17 @@ def resolve_image_path(file_name: str, image_roots: Sequence[Path]) -> Path | No
     return None
 
 
+def infer_official_split_from_annotation_json(annotation_json: Path) -> str:
+    text = str(annotation_json).lower()
+    if "train" in text:
+        return "train"
+    if "val" in text:
+        return "val"
+    if "test" in text:
+        return "test"
+    return ""
+
+
 def load_gaic_annotation_records(
     annotation_json: Path,
     *,
@@ -48,6 +59,7 @@ def load_gaic_annotation_records(
     max_images: int | None = None,
 ) -> list[dict[str, Any]]:
     payload = json.loads(Path(annotation_json).read_text(encoding="utf-8"))
+    official_split = infer_official_split_from_annotation_json(Path(annotation_json))
     images = {int(row["id"]): dict(row) for row in payload.get("images", [])}
     grouped: dict[int, list[dict[str, Any]]] = {}
     for ann in payload.get("annotations", []):
@@ -81,6 +93,8 @@ def load_gaic_annotation_records(
                 "width": width,
                 "height": height,
                 "image_path": str(image_path) if image_path is not None else "",
+                "official_split": official_split,
+                "annotation_json": str(Path(annotation_json)),
                 "candidates": candidates,
             }
         )

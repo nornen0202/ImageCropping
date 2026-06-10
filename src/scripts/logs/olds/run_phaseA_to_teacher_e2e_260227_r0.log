@@ -1,0 +1,95 @@
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-02-27.3
+ bucket              : sstk_100
+ data_dir            : data/SSTK/10K
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : e2e_260227_r0
+ skip_existing       : 1
+ precompute_mode     : unified
+ run_filter          : 0
+ export_curated_img  : 0 (dir=data/SSTK/10K/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/SSTK/10K/images)
+ extract_mode        : auto (gpu_ids=0,1,2,3,4,5,6, workers=7)
+ run_c1/c2/c3/c5    : 1/1/1/1
+ run_c3_enrich/merge : 1/1
+ run_component_viz   : 0 (out=data/SSTK/10K/artifacts/precompute/visualizations/components_e2e_260227_r0, num_samples=120)
+ public proposals    : enable=1 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/SSTK/10K/artifacts/public_teachers/raw/teacher_raw_public_e2e_260227_r0.jsonl | data/SSTK/10K/artifacts/public_teachers/proposals/teacher_proposals_public_e2e_260227_r0.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=auto workers=auto
+ run_candidates      : 0
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 1 (real_expensive=1)
+ teacher_multi_gpu   : 1 (gpu_ids=0,1,2,3,4,5,6, workers=7)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=512 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+========================================================
+[info] using curated image cache dir: data/SSTK/10K/images
+[skip] exists: data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[skip] exists: data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+[skip] exists: data/SSTK/10K/artifacts/public_teachers/raw/teacher_raw_public_e2e_260227_r0.jsonl
+[skip] exists: data/SSTK/10K/artifacts/public_teachers/proposals/teacher_proposals_public_e2e_260227_r0.jsonl
+[info] teacher proposal injection paths: data/SSTK/10K/artifacts/public_teachers/proposals/teacher_proposals_public_e2e_260227_r0.jsonl
+[run] 10_teacher_scorer
+[config] server_mode=1 tar_dir=/sstk/20230916/sstk_100 image_dir=data/SSTK/10K/images
+[config] candidates=data/SSTK/10K/artifacts/candidates/candidates_ar_e2e_260227_r0.jsonl
+[config] features=data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+[config] c1=data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[config] parquet=data/SSTK/10K/filtered_sstk_100.parquet
+[config] output_jsonl=data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl
+[config] expensive_accel: batch=512 eval_top_m=0 preprocess_workers=0 pin_memory=1
+[config] viz_image_ids=<none> viz_image_ids_file=<none>
+[1/3] Running teacher scorer...
+[multi] teacher shard mode enabled: gpu_ids=0,1,2,3,4,5,6 workers=7
+[multi] launch shard=0/7 gpu=0 -> data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl.shards.7379/teacher_scores_shard_0.jsonl
+[multi] launch shard=1/7 gpu=1 -> data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl.shards.7379/teacher_scores_shard_1.jsonl
+[multi] launch shard=2/7 gpu=2 -> data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl.shards.7379/teacher_scores_shard_2.jsonl
+[multi] launch shard=3/7 gpu=3 -> data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl.shards.7379/teacher_scores_shard_3.jsonl
+[multi] launch shard=4/7 gpu=4 -> data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl.shards.7379/teacher_scores_shard_4.jsonl
+[multi] launch shard=5/7 gpu=5 -> data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl.shards.7379/teacher_scores_shard_5.jsonl
+[multi] launch shard=6/7 gpu=6 -> data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl.shards.7379/teacher_scores_shard_6.jsonl
+[multi] merged teacher jsonl -> data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl
+[done] rebuilt overview: data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_e2e_260227_r0.json
+[done] rebuilt overview csv: data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_by_ar_e2e_260227_r0.csv
+[multi] rebuilt overview -> data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_e2e_260227_r0.json
+[2/3] Building QA report...
+[done] report_json=data/SSTK/10K/artifacts/teacher/qa/teacher_scores_qa_report_e2e_260227_r0.json
+[done] report_by_ar_csv=data/SSTK/10K/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_e2e_260227_r0.csv
+[3/3] Rendering teacher scorer visualizations...
+[done] rendered=120 out_dir=data/SSTK/10K/artifacts/teacher/visualizations/teacher_scorer_e2e_260227_r0
+[done] overview=data/SSTK/10K/artifacts/teacher/visualizations/teacher_scorer_e2e_260227_r0/viz_overview.json
+[done] Teacher scorer outputs:
+  - data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl
+  - data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_e2e_260227_r0.json
+  - data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_by_ar_e2e_260227_r0.csv
+  - data/SSTK/10K/artifacts/teacher/qa/teacher_scores_qa_report_e2e_260227_r0.json
+  - data/SSTK/10K/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_e2e_260227_r0.csv
+  - data/SSTK/10K/artifacts/teacher/visualizations/teacher_scorer_e2e_260227_r0
+[run] 10b_teacher_repair_outputs
+[done] rebuilt overview: data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_e2e_260227_r0.json
+[done] rebuilt overview csv: data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_by_ar_e2e_260227_r0.csv
+[done] report_json=data/SSTK/10K/artifacts/teacher/qa/teacher_scores_qa_report_e2e_260227_r0.json
+[done] report_by_ar_csv=data/SSTK/10K/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_e2e_260227_r0.csv
+[repair] final rows=10000 expensive_real_rows=10000 expected_rows=10000 shard_dirs=3
+[repair] best shard dir=data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl.shards.7379 rows=10000 expensive_real_rows=10000
+[repair] final output already preferred. rebuilding overview/QA for consistency.
+[repair] final(after) rows=10000 expensive_real_rows=10000
+========================================================
+ Done
+========================================================
+ filtered parquet : data/SSTK/10K/filtered_sstk_100.parquet
+ precompute raw    : data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ feats c1          : data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ feats c2/c3e/c5  : data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl | data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl | data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ merged feats     : data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ public raw       : data/SSTK/10K/artifacts/public_teachers/raw/teacher_raw_public_e2e_260227_r0.jsonl
+ public proposals : data/SSTK/10K/artifacts/public_teachers/proposals/teacher_proposals_public_e2e_260227_r0.jsonl
+ candidates       : data/SSTK/10K/artifacts/candidates/candidates_ar_e2e_260227_r0.jsonl
+ teacher jsonl    : data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl
+ teacher overview : data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_e2e_260227_r0.json
+ teacher QA       : data/SSTK/10K/artifacts/teacher/qa/teacher_scores_qa_report_e2e_260227_r0.json
+ teacher viz dir  : data/SSTK/10K/artifacts/teacher/visualizations/teacher_scorer_e2e_260227_r0
+ logs             : data/SSTK/10K/logs/e2e_e2e_260227_r0

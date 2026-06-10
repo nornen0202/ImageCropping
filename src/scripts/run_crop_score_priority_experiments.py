@@ -22,7 +22,7 @@ if str(SRC_ROOT) not in sys.path:
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from build_gaic_training_label_debug_viz import build_image_index_from_coco, invert_vocab, load_gaic_gt_index, select_balanced_images
+from build_gaic_training_label_debug_viz import build_image_index_from_label_json, invert_vocab, load_gaic_gt_index, select_balanced_images
 
 
 def parse_args() -> argparse.Namespace:
@@ -524,9 +524,9 @@ def build_teacher_subset_jsonl(src_path: Path, out_path: Path, max_images: int) 
     return out_path
 
 
-def select_debug_image_ids(coco_json: Path, image_root: Path, subject_mode_vocab: Path, gt_paths: Sequence[Path], sample_size: int, seed: int) -> List[str]:
+def select_debug_image_ids(label_json: Path, image_root: Path, subject_mode_vocab: Path, gt_paths: Sequence[Path], sample_size: int, seed: int) -> List[str]:
     mode_names = invert_vocab(subject_mode_vocab)
-    image_rows, _ = build_image_index_from_coco(coco_json, image_root, mode_names)
+    image_rows, _ = build_image_index_from_label_json(label_json, image_root, mode_names)
     gt_index = load_gaic_gt_index(gt_paths)
     eligible_rows = [row for row in image_rows if str(row.get("image_id", "")) in gt_index]
     selection_rows = eligible_rows if eligible_rows else image_rows
@@ -1138,7 +1138,7 @@ def main() -> None:
                 continue
             experiment_root = out_root / row["experiment_id"]
             training_dir = experiment_root / "training_labels"
-            coco_json = training_dir / "coco" / "instances_conditional_detr_batch_gaic_like.json"
+            label_json = training_dir / "label_json" / "gaic_like_labels_full.json"
             subject_mode_vocab = training_dir / "subject_mode_vocab.json"
             debug_sample_size = int(args.debug_sample_size)
             if (
@@ -1148,7 +1148,7 @@ def main() -> None:
             ):
                 debug_sample_size = int(args.debug_sample_size_all)
             selected_ids = select_debug_image_ids(
-                coco_json=coco_json,
+                label_json=label_json,
                 image_root=resolve_input_path(args.image_root),
                 subject_mode_vocab=subject_mode_vocab,
                 gt_paths=gt_paths,
@@ -1177,8 +1177,8 @@ def main() -> None:
                 run_command(
                     build_python_cmd(
                         "src/scripts/build_gaic_training_label_debug_viz.py",
-                        "--coco_json",
-                        str(coco_json),
+                        "--label_json",
+                        str(label_json),
                         "--batch_jsonl",
                         str(training_dir / "train_conditional_detr_batch.jsonl"),
                         "--gaic_gt_train_json",

@@ -1,0 +1,230 @@
+[
+  {
+    "file": "fig01_mobilecropnet_v4_runtime_architecture.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig01_mobilecropnet_v4_runtime_architecture.png",
+    "caption": "MobileCropNet v4 runtime architecture and output heads",
+    "bytes": 234579
+  },
+  {
+    "file": "fig02_training_contract_and_losses.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig02_training_contract_and_losses.png",
+    "caption": "Training label contract mapped to tensors, heads, and losses",
+    "bytes": 218045
+  },
+  {
+    "file": "fig03_strict_release_gate_matrix.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig03_strict_release_gate_matrix.png",
+    "caption": "Strict product release gate pass/fail matrix",
+    "bytes": 132746
+  },
+  {
+    "file": "fig04_current_equal4_leaderboard.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig04_current_equal4_leaderboard.png",
+    "caption": "Current shortlist equal-4 z-score leaderboard",
+    "bytes": 131748
+  },
+  {
+    "file": "fig05_route_subject_smoke_progress.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig05_route_subject_smoke_progress.png",
+    "caption": "Route and subject recovery smoke diagnostics",
+    "bytes": 157115
+  },
+  {
+    "file": "fig06_runtime_no_prior_rerun_matrix.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig06_runtime_no_prior_rerun_matrix.png",
+    "caption": "Runtime no-prior rerun metric matrix",
+    "bytes": 82827
+  },
+  {
+    "file": "fig07_subject_box_patch_status.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig07_subject_box_patch_status.png",
+    "caption": "Subject-box IoU patch run status",
+    "bytes": 80045
+  },
+  {
+    "file": "fig08_inference_latency_profile.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig08_inference_latency_profile.png",
+    "caption": "A100/RTX3050 forward latency evidence",
+    "bytes": 88128
+  },
+  {
+    "file": "fig10_teacher_public_cropper_ceiling.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig10_teacher_public_cropper_ceiling.png",
+    "caption": "Teacher/public cropper ceiling equal-4 comparison",
+    "bytes": 96720
+  },
+  {
+    "file": "fig11_candidate_bank_vs_generated_runtime.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig11_candidate_bank_vs_generated_runtime.png",
+    "caption": "Candidate-bank replay와 generated-proposal runtime의 평가 표면 차이를 설명하는 conceptual schematic. 실제 성능 수치가 아니라 no-prior deployment gap을 설명하기 위한 그림이다.",
+    "bytes": 184084
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_01_sstk_image_444218542.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_01_sstk_image_444218542.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 01: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 1436971
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_02_pond5_image_194228138.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_02_pond5_image_194228138.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 02: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 1551627
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_03_sstk_image_1865518057.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_03_sstk_image_1865518057.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 03: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 1923516
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_04_sstk_image_1486959038.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_04_sstk_image_1486959038.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 04: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 1209092
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_05_sstk_image_2196549559.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_05_sstk_image_2196549559.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 05: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 2113315
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_06_sstk_image_693448510.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_06_sstk_image_693448510.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 06: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 1209164
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_07_sstk_image_372926398.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_07_sstk_image_372926398.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 07: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 2101269
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_08_bigstock_image_425619878.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_08_bigstock_image_425619878.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 08: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 1630173
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_09_sstk_image_255265765.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_09_sstk_image_255265765.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 09: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 1202978
+  },
+  {
+    "file": "fig12_route_stratified_crop_sample_10_sstk_image_1502754071.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig12_route_stratified_crop_sample_10_sstk_image_1502754071.png",
+    "caption": "Teacher-route-stratified no-prior qualitative audit sample 10: original, target-AR crops, semantic route/decision/checklist/why summary",
+    "bytes": 1719071
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_01_bigstock_image_302661208.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_01_bigstock_image_302661208.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 01: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 1392718
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_02_pond5_image_152685564.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_02_pond5_image_152685564.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 02: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 1091193
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_03_bigstock_image_140150411.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_03_bigstock_image_140150411.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 03: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 2336891
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_04_sstk_image_753174793.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_04_sstk_image_753174793.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 04: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 1833800
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_05_sstk_image_364586810.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_05_sstk_image_364586810.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 05: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 723834
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_06_bigstock_image_418297522.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_06_bigstock_image_418297522.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 06: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 2024321
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_07_sstk_image_2327743739.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_07_sstk_image_2327743739.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 07: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 1021241
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_08_sstk_image_1158315238.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_08_sstk_image_1158315238.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 08: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 1403523
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_09_bigstock_image_385433447.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_09_bigstock_image_385433447.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 09: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 1165133
+  },
+  {
+    "file": "fig13_joint_head_inference_crop_sample_10_pond5_image_146594935.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig13_joint_head_inference_crop_sample_10_pond5_image_146594935.png",
+    "caption": "Joint head-quality no-prior inference gallery sample 10: crop geometry plus semantic route/decision/head audit summary",
+    "bytes": 1096040
+  },
+  {
+    "file": "fig16_mcn_public_cropper_qualitative_headgood_01.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig16_mcn_public_cropper_qualitative_headgood_01.png",
+    "caption": "MCN and public cropper qualitative comparison on teacher-matched release-gate head-good slice 01",
+    "bytes": 2131983
+  },
+  {
+    "file": "fig16_mcn_public_cropper_qualitative_headgood_02.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig16_mcn_public_cropper_qualitative_headgood_02.png",
+    "caption": "MCN and public cropper qualitative comparison on teacher-matched release-gate head-good slice 02",
+    "bytes": 2188991
+  },
+  {
+    "file": "fig16_mcn_public_cropper_qualitative_headgood_03.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig16_mcn_public_cropper_qualitative_headgood_03.png",
+    "caption": "MCN and public cropper qualitative comparison on teacher-matched release-gate head-good slice 03",
+    "bytes": 2191929
+  },
+  {
+    "file": "fig16_mcn_public_cropper_qualitative_headgood_04.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig16_mcn_public_cropper_qualitative_headgood_04.png",
+    "caption": "MCN and public cropper qualitative comparison on teacher-matched release-gate head-good slice 04",
+    "bytes": 2769696
+  },
+  {
+    "file": "fig17_latency_profile_public_cropper_comparison.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig17_latency_profile_public_cropper_comparison.png",
+    "caption": "MobileCropNet profile and public cropper latency comparison",
+    "bytes": 139269
+  },
+  {
+    "file": "fig17_latency_subset_mcn_public_cropper.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig17_latency_subset_mcn_public_cropper.png",
+    "caption": "Representative MobileCropNet profile and public cropper latency subset",
+    "bytes": 144988
+  },
+  {
+    "file": "fig16_teacher_crop_head_success_gallery.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig16_teacher_crop_head_success_gallery.png",
+    "caption": "Teacher crop/head success overview with subject mode, checklist, and why-tags",
+    "bytes": 969117
+  },
+  {
+    "file": "fig16_mcn_crop_head_success_gallery.png",
+    "path": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig16_mcn_crop_head_success_gallery.png",
+    "caption": "MobileCropNet crop/head success overview with route/decision, checklist decode, why-tags, score, and IoU",
+    "bytes": 1258936
+  }
+]

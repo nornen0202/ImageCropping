@@ -46,14 +46,26 @@ FILTER_TAG_EMBED_DEVICE=${FILTER_TAG_EMBED_DEVICE:-auto}
 FILTER_CATEGORY_MAP_WORKERS=${FILTER_CATEGORY_MAP_WORKERS:-0}
 FILTER_CATEGORY_MAP_CHUNK_SIZE=${FILTER_CATEGORY_MAP_CHUNK_SIZE:-4096}
 FILTER_SAMPLE_EXTRACT_WORKERS=${FILTER_SAMPLE_EXTRACT_WORKERS:-0}
+FILTER_SKIP_COMPARISON_SAMPLES=${FILTER_SKIP_COMPARISON_SAMPLES:-0}
 FILTER_CURATED_EXPORT_WORKERS=${FILTER_CURATED_EXPORT_WORKERS:-0}
 FILTER_CURATED_EXPORT_AUTO_CAP=${FILTER_CURATED_EXPORT_AUTO_CAP:-8}
 FILTER_CURATED_EXPORT_CHUNKSIZE=${FILTER_CURATED_EXPORT_CHUNKSIZE:-1}
+FILTER_MEDIA_TYPE_PRESAMPLING_GATE=${FILTER_MEDIA_TYPE_PRESAMPLING_GATE:-0}
+FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS=${FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS:-keep_photo_primary}
+FILTER_MEDIA_TYPE_PRESAMPLING_REPORT=${FILTER_MEDIA_TYPE_PRESAMPLING_REPORT:-}
+PYTHON_BIN=${PYTHON_BIN:-}
 
 # 가상환경 활성화 (서버 모드가 아닐 경우에만)
 if [ "$SERVER_MODE" -ne 1 ]; then
+    if [ -z "$PYTHON_BIN" ]; then
+        PYTHON_BIN="/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/python"
+    fi
     if [ -f "/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate" ]; then
         source /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+    fi
+else
+    if [ -z "$PYTHON_BIN" ]; then
+        PYTHON_BIN="/usr/local/bin/python3"
     fi
 fi
 
@@ -90,6 +102,8 @@ echo "TagEmbed BS/Chunk : $FILTER_TAG_EMBED_BATCH_SIZE / $FILTER_TAG_EMBED_CHUNK
 echo "TagEmbed Device   : $FILTER_TAG_EMBED_DEVICE"
 echo "CatMap Workers    : $FILTER_CATEGORY_MAP_WORKERS (chunk=$FILTER_CATEGORY_MAP_CHUNK_SIZE)"
 echo "SampleX Workers   : $FILTER_SAMPLE_EXTRACT_WORKERS"
+echo "Skip Compare      : $FILTER_SKIP_COMPARISON_SAMPLES"
+echo "Media PreGate     : $FILTER_MEDIA_TYPE_PRESAMPLING_GATE (keep=$FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS)"
 if [ -n "$CURATED_IMAGE_DIR" ]; then
   echo "Curated Image Dir : $CURATED_IMAGE_DIR"
   echo "Curated Img Skip  : $CURATED_IMAGE_SKIP_EXISTING"
@@ -98,6 +112,13 @@ fi
 echo "========================================="
 
 EXTRA_ARGS=()
+EXTRA_ARGS+=(
+  --media_type_presampling_gate "$FILTER_MEDIA_TYPE_PRESAMPLING_GATE"
+  --media_type_presampling_keep_decisions "$FILTER_MEDIA_TYPE_PRESAMPLING_KEEP_DECISIONS"
+)
+if [ -n "$FILTER_MEDIA_TYPE_PRESAMPLING_REPORT" ]; then
+  EXTRA_ARGS+=(--media_type_presampling_report "$FILTER_MEDIA_TYPE_PRESAMPLING_REPORT")
+fi
 if [ -n "$CURATED_IMAGE_DIR" ]; then
   EXTRA_ARGS+=(
     --save_curated_images_dir "$CURATED_IMAGE_DIR"
@@ -109,7 +130,7 @@ if [ -n "$CURATED_IMAGE_DIR" ]; then
 fi
 
 # 필터링 스크립트 실행
-python3 -u "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
+"$PYTHON_BIN" -u "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
     --sdp_dir "$SDP_DIR" \
     --train_dir "$TRAIN_DIR" \
     --tar_dir "$TAR_DIR" \
@@ -127,6 +148,7 @@ python3 -u "$PROJECT_ROOT/src/filter_sstk_dataset.py" \
     --category_map_workers "$FILTER_CATEGORY_MAP_WORKERS" \
     --category_map_chunk_size "$FILTER_CATEGORY_MAP_CHUNK_SIZE" \
     --sample_extract_workers "$FILTER_SAMPLE_EXTRACT_WORKERS" \
+    --skip_comparison_samples "$FILTER_SKIP_COMPARISON_SAMPLES" \
     "${EXTRA_ARGS[@]}"
 
 echo "Filtering completed."

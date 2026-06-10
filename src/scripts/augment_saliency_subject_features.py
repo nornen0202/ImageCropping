@@ -29,7 +29,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--input_jsonl", required=True)
     p.add_argument("--output_jsonl", required=True)
     p.add_argument("--image_dir", required=True)
-    p.add_argument("--priority", choices=["high_efficiency", "quality_first"], default="quality_first")
+    p.add_argument("--priority", choices=["high_efficiency", "quality_first", "opencv", "opencv_only"], default="quality_first")
     p.add_argument("--weights_dir", default="")
     p.add_argument("--device", default="auto")
     p.add_argument("--overwrite", type=int, default=0)

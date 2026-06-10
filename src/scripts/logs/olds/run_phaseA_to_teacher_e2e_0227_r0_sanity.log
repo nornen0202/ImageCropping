@@ -1,0 +1,304 @@
+========================================================
+ E2E Config
+========================================================
+ bucket              : sstk_100
+ data_dir            : data/SSTK/10K
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : e2e_260227_r0
+ skip_existing       : 0
+ precompute_mode     : unified
+ run_filter          : 0
+ export_curated_img  : 0 (dir=data/SSTK/10K/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=<none>)
+ extract_mode        : auto (gpu_ids=auto, workers=auto)
+ run_c1/c2/c3/c5    : 0/0/0/0
+ run_c3_enrich/merge : 0/0
+ public proposals    : enable=1 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/SSTK/10K/artifacts/public_teachers/raw/teacher_raw_public_e2e_260227_r0.jsonl | data/SSTK/10K/artifacts/public_teachers/proposals/teacher_proposals_public_e2e_260227_r0.jsonl
+ public infer multi  : multi_gpu=1 gpu_ids=0,1,2 workers=4
+ run_candidates      : 0
+ teacher proposals   : <none>
+ run_teacher         : 0 (real_expensive=1)
+ teacher_multi_gpu   : 1 (gpu_ids=0,1,2, workers=4)
+========================================================
+[run] 08a_public_teacher_setup
+Including CUDA code.
+running build_ext
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/utils/cpp_extension.py:426: UserWarning: There are no x86_64-linux-gnu-g++ version bounds defined for CUDA version 12.1
+  warnings.warn(f'There are no {compiler_name} version bounds defined for CUDA version {cuda_str_version}')
+building 'roi_align_api' extension
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/utils/cpp_extension.py:1964: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
+Emitting ninja build file /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/build.ninja...
+Compiling objects...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+[1/1] c++ -MMD -MF /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o.d -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -g -fwrapv -O2 -fPIC -I/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/include -I/usr/include/python3.10 -c -c /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp -o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=roi_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++17
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp: In function ‘int roi_align_forward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:16:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   16 |     auto data_flat = features.data<float>();
+      |                                           ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:17:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   17 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:18:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   18 |     auto output_flat = output.data<float>();
+      |                                           ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp: In function ‘int roi_align_backward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:62:47: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   62 |     auto top_grad_flat = top_grad.data<float>();
+      |                                               ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:63:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   63 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:64:53: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   64 |     auto bottom_grad_flat = bottom_grad.data<float>();
+      |                                                     ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+x86_64-linux-gnu-g++ -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -g -fwrapv -O2 -shared -Wl,-O1 -Wl,-Bsymbolic-functions /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_kernel.o -L/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/lib -L/usr/local/cuda-12.1/lib64 -L/usr/lib/x86_64-linux-gnu -lc10 -ltorch -ltorch_cpu -ltorch_python -lcudart -lc10_cuda -ltorch_cuda -o build/lib.linux-x86_64-cpython-310/roi_align_api.cpython-310-x86_64-linux-gnu.so
+copying build/lib.linux-x86_64-cpython-310/roi_align_api.cpython-310-x86_64-linux-gnu.so -> 
+Including CUDA code.
+running build_ext
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/utils/cpp_extension.py:426: UserWarning: There are no x86_64-linux-gnu-g++ version bounds defined for CUDA version 12.1
+  warnings.warn(f'There are no {compiler_name} version bounds defined for CUDA version {cuda_str_version}')
+building 'rod_align_api' extension
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/utils/cpp_extension.py:1964: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
+Emitting ninja build file /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/build.ninja...
+Compiling objects...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+[1/2] /usr/local/cuda-12.1/bin/nvcc --generate-dependencies-with-compile --dependency-output /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o.d -I/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/include -I/usr/include/python3.10 -c -c /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_kernel.cu -o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options ''"'"'-fPIC'"'"'' -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=rod_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -gencode=arch=compute_86,code=compute_86 -gencode=arch=compute_86,code=sm_86 -std=c++17
+[2/2] c++ -MMD -MF /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o.d -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -g -fwrapv -O2 -fPIC -I/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/include -I/usr/include/python3.10 -c -c /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp -o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=rod_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++17
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp: In function ‘int rod_align_forward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:17:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   17 |     auto data_flat = features.data<float>();
+      |                                           ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:18:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   18 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:19:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   19 |     auto output_flat = output.data<float>();
+      |                                           ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp: In function ‘int rod_align_backward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:64:47: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   64 |     auto top_grad_flat = top_grad.data<float>();
+      |                                               ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:65:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   65 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:66:53: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   66 |     auto bottom_grad_flat = bottom_grad.data<float>();
+      |                                                     ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+x86_64-linux-gnu-g++ -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -g -fwrapv -O2 -shared -Wl,-O1 -Wl,-Bsymbolic-functions /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o -L/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/lib -L/usr/local/cuda-12.1/lib64 -L/usr/lib/x86_64-linux-gnu -lc10 -ltorch -ltorch_cpu -ltorch_python -lcudart -lc10_cuda -ltorch_cuda -o build/lib.linux-x86_64-cpython-310/rod_align_api.cpython-310-x86_64-linux-gnu.so
+copying build/lib.linux-x86_64-cpython-310/rod_align_api.cpython-310-x86_64-linux-gnu.so -> 
+[setup] repo exists: third_party/public_cropping_teachers/gaic
+[setup] repo exists: third_party/public_cropping_teachers/cacnet
+[setup] repo exists: third_party/public_cropping_teachers/cgs
+[setup] patching gaic repo for python3/torch2 compatibility: third_party/public_cropping_teachers/gaic
+[setup] patching cgs cuda extensions for torch2: third_party/public_cropping_teachers/cgs
+[setup] building cgs roi_align extension: third_party/public_cropping_teachers/cgs/roi_align
+[setup] building cgs rod_align extension: third_party/public_cropping_teachers/cgs/rod_align
+[setup] weight exists: weights/public_cropping_teachers/gaic/gaic_conference_pretrained.pth
+[setup] weight exists: weights/public_cropping_teachers/cacnet/best-FLMS_iou.pth
+[setup] weight exists: weights/public_cropping_teachers/cgs/cgs_pretrained.zip
+
+[setup] manual weight download guide
+- gaic:
+  url : https://drive.google.com/file/d/1OvLT_ul17zCK4ljAi4myGAgA50PmLy3Y/view?usp=sharing
+  save: weights/public_cropping_teachers/gaic/gaic_conference_pretrained.pth
+- cacnet:
+  url : https://drive.google.com/file/d/19LUhHK1viHu9TYqzk2te2orqzKMA_ZRQ/view?usp=sharing
+  save: weights/public_cropping_teachers/cacnet/best-FLMS_iou.pth
+- cgs:
+  url : https://drive.google.com/file/d/1CmMBcQdOc22Qnyle0xJlbO6BC8tdViWN/view?usp=sharing
+  save: weights/public_cropping_teachers/cgs/cgs_pretrained.zip
+
+[setup] done
+[run] 08b_public_teacher_infer
+[infer-wrapper] multi-gpu mode enabled: workers=3 gpu_ids=0,1,2
+[infer] device=cpu
+[infer][warn] curated_image_dir not found: data/SSTK/10K/images. fallback to tar source.
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+Traceback (most recent call last):
+  File "/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py", line 902, in <module>
+    main()
+  File "/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py", line 823, in main
+    raise ValueError(
+ValueError: No valid image source. Provide existing --tar_dir and/or --prefer_curated_images 1 --curated_image_dir <dir>.
+[infer] device=cuda
+[infer][warn] curated_image_dir not found: data/SSTK/10K/images. fallback to tar source.
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+Traceback (most recent call last):
+  File "/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py", line 902, in <module>
+    main()
+  File "/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py", line 823, in main
+    raise ValueError(
+ValueError: No valid image source. Provide existing --tar_dir and/or --prefer_curated_images 1 --curated_image_dir <dir>.
+[infer] device=cpu
+[infer][warn] curated_image_dir not found: data/SSTK/10K/images. fallback to tar source.
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+Traceback (most recent call last):
+  File "/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py", line 902, in <module>
+    main()
+  File "/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py", line 823, in main
+    raise ValueError(
+ValueError: No valid image source. Provide existing --tar_dir and/or --prefer_curated_images 1 --curated_image_dir <dir>.
+[infer-wrapper][warn] multi-gpu inference failed: failed_workers=3
+[infer-wrapper][error] multi-gpu inference failed (non-OOM or fallback disabled).

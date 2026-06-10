@@ -1,0 +1,1417 @@
+========================================================
+ Test-images e2e wrapper
+========================================================
+ data_dir              : data/TestImages/All
+ image_root            : data/TestImages/All/images
+ flat_image_dir        : data/TestImages/All/images
+ bucket                : test_images_all
+ run_tag               : test_images_full_260408_subjectfix_v2_equalized
+ prepare_max_images    : 0
+ prepare_num_workers   : 255 (cpu_cores=255)
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 0
+ shared_gpu_ids        : 0,1,2,3,4,5,6,7 (workers=8)
+ run_c1                : 0
+ run_c2                : 0
+ run_c3                : 0
+ run_c3_enrich         : 0
+ run_c4                : 0
+ run_c5                : 0
+ run_c6                : 0
+ run_merge             : 0
+ run_subject_routing   : 1
+ run_candidates        : 1
+ run_teacher           : 1
+ use_real_expensive    : 1
+ run_c7_saliency       : 1 (priority=quality_first device=auto)
+ generate_captions     : 1 (preset=server_quality backend=auto multi_gpu=1 gpu_ids=0,1,2,3,4,5,6,7 workers=8)
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1 (policy=ignore)
+ score_profile         : single_stage2 (overrides=<none>)
+ training_debug_viz    : 1 (out=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ auto_leftover_variants: 0 (policies=keep_negative,promote_soft_positive)
+ run_detailed_report   : 1
+ reference_json        : data/TestImages/All/test_images_reference.json
+========================================================
+[multi] gaic-caption shard mode enabled: gpu_ids=0,1,2,3,4,5,6,7 workers=8
+[multi] launch shard=0/8 gpu=0 -> /group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720/gaic_caption_shard_0.jsonl
+[multi] launch shard=1/8 gpu=1 -> /group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720/gaic_caption_shard_1.jsonl
+[multi] launch shard=2/8 gpu=2 -> /group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720/gaic_caption_shard_2.jsonl
+[multi] launch shard=3/8 gpu=3 -> /group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720/gaic_caption_shard_3.jsonl
+[multi] launch shard=4/8 gpu=4 -> /group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720/gaic_caption_shard_4.jsonl
+[multi] launch shard=5/8 gpu=5 -> /group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720/gaic_caption_shard_5.jsonl
+[multi] launch shard=6/8 gpu=6 -> /group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720/gaic_caption_shard_6.jsonl
+[multi] launch shard=7/8 gpu=7 -> /group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720/gaic_caption_shard_7.jsonl
+{
+  "status": "ok",
+  "image_dir": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+  "input_parquet": "",
+  "output_jsonl": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl",
+  "preset": "server_quality",
+  "backend": "blip",
+  "model_id": "Salesforce/blip-image-captioning-large",
+  "caption_prompt": "",
+  "device": "cuda:0",
+  "dtype": "float16",
+  "num_rows_total": 33,
+  "num_existing_skipped": 0,
+  "num_rows_pending_after_skip": 33,
+  "num_rows_assigned_to_shard": 5,
+  "num_rows_generated_this_run": 33,
+  "num_shards": 8,
+  "shard_index": -1,
+  "summary_json": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized_summary.json",
+  "multi_gpu": {
+    "enabled": true,
+    "gpu_ids": [
+      "0",
+      "1",
+      "2",
+      "3",
+      "4",
+      "5",
+      "6",
+      "7"
+    ],
+    "workers": 8,
+    "shard_dir": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.1720"
+  }
+}
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset: start | image_root=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images | output_parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:scan_images: start total=33 unit=paths
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:scan_images: [========================] 33/33 (100.0%) | 0.0s | images=33
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:scan_images: [========================] 33/33 (100.0%) | 0.0s | images=33
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:load_caption_map: start unit=rows
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:load_caption_map: 33 rows | 0.0s | mapped=33
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset: scanned=33 | num_workers=33 | captions=33
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:prepare_manifest_rows: start total=33 unit=images
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:prepare_manifest_rows: [========================] 33/33 (100.0%) | 0.1s
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:prepare_manifest_rows: [========================] 33/33 (100.0%) | 0.1s
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:load_annotation_payloads: start total=0 unit=files
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:load_annotation_payloads: 0 files | 0.0s | loaded=0
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:build_reference:payloads: start total=0 unit=jsons
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:build_reference:payloads: 0 jsons | 0.0s | images=0 anns=0
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:build_reference:images: start total=33 unit=images
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:build_reference:images: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:build_reference:images: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:build_reference:annotations: start total=0 unit=annotations
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset:build_reference:annotations: 0 annotations | 0.0s
+[progress 2026-04-08 05:40:54] prepare_gaic_curated_dataset: finished | prepared=33 | parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet
+{
+  "status": "ok",
+  "image_root": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+  "output_parquet": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet",
+  "flat_image_dir": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+  "bucket": "test_images_all",
+  "link_mode": "symlink",
+  "num_workers": 33,
+  "pseudo_tar_chunk_size": 256,
+  "max_images": 0,
+  "num_images_scanned_total": 33,
+  "num_images_prepared": 33,
+  "split_counts": {
+    "root": 33
+  },
+  "extension_counts": {
+    ".jpg": 33
+  },
+  "link_counts": {
+    "existing_match": 33
+  },
+  "pseudo_tar_groups": 1,
+  "largest_pseudo_tar_group": 33,
+  "caption_jsonl": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl",
+  "caption_rows_available": 33,
+  "caption_rows_applied": 33,
+  "reference": {
+    "generated": true,
+    "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/test_images_reference.json",
+    "image_count": 33,
+    "annotation_count": 0,
+    "source_annotation_jsons": [],
+    "source_stats": {}
+  }
+}
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : test_images_all
+ data_dir            : data/TestImages/All
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : test_images_full_260408_subjectfix_v2_equalized
+ skip_existing       : 0
+ shared_gpu_defaults : gpu_ids=0,1,2,3,4,5,6,7 workers=8
+ precompute_mode     : unified
+ run_filter          : 0
+ filter_train_match  : 1
+ filter_tag_embed    : mgpu=-1 gpu_ids=0,1,2,3,4,5,6,7 bs=128 chunk=0 device=auto
+ filter_cpu_map      : workers=0 chunk=4096 sample_extract_workers=0
+ export_curated_img  : 0 (dir=data/TestImages/All/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/TestImages/All/images)
+ extract_mode        : auto (extract_multi_gpu=-1, gpu_ids=0,1,2,3,4,5,6,7, workers=8)
+ run_c1/c2/c3/c4/c5/c6 : 0/0/0/0/0/0
+ run_c3_enrich/merge : 0/0
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ c7 saliency         : run=1 priority=quality_first device=auto
+ c7 saliency multi   : reuse extract gpu_ids=0,1,2,3,4,5,6,7 workers=8 mode=auto
+ run_component_viz   : 0 (out=data/TestImages/All/artifacts/precompute/visualizations/components_test_images_full_260408_subjectfix_v2_equalized, num_samples=120)
+ public proposals    : enable=1 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/TestImages/All/artifacts/public_teachers/raw/teacher_raw_public_test_images_full_260408_subjectfix_v2_equalized.jsonl | data/TestImages/All/artifacts/public_teachers/proposals/teacher_proposals_public_test_images_full_260408_subjectfix_v2_equalized.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=0,1,2,3,4,5,6,7 workers=8
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 1
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 1 (real_expensive=1)
+ c1 source           : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ teacher_multi_gpu   : 1 (gpu_ids=0,1,2,3,4,5,6,7, workers=8)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=24 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_public_ref  : save_public_teacher_ref_eval=1
+ teacher_aesthetic   : backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 0 (backend=heuristic fallback=none model=Qwen/Qwen3-VL-4B-Instruct)
+ run_training_labels : 1 (dir=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic policy=ignore)
+ score_profile       : single_stage2 (overrides=<none>)
+ training_debug_viz  : 1 (out=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ gaic_reference_json : data/TestImages/All/test_images_reference.json
+ gaic_train_ref_json : data/Publics/GAIC/annotations_json/instances_train.json
+ gaic_test_ref_json  : data/Publics/GAIC/annotations_json/instances_test.json
+ run_detailed_report : 1 (dir=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed examples_per_bucket=5)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=0,1,2,3,4,5,6,7, workers=8)
+ vlm out/meta/sum    : data/TestImages/All/artifacts/vlm_teacher/labels/crop_label_v1_test_images_full_260408_subjectfix_v2_equalized.jsonl | data/TestImages/All/artifacts/vlm_teacher/meta/meta_norm_v1_test_images_full_260408_subjectfix_v2_equalized.jsonl | data/TestImages/All/artifacts/vlm_teacher/summary/vlm_teacher_summary_test_images_full_260408_subjectfix_v2_equalized.json
+========================================================
+[info] using curated image cache dir: data/TestImages/All/images
+[run] 07a_enrich_subject_mode
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 30it [00:00, 292.27it/s]subject-mode-enrich: 33it [00:00, 290.85it/s]
+[done] total=33 routed=33 missing_meta=0 output=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[done] subject_mode_counts={'portrait_single': 10, 'scene_general': 5, 'portrait_group': 13, 'object_single': 4, 'object_multi': 1}
+[done] policy_counts={'portrait_single_v1': 10, 'scene_v1': 5, 'portrait_group_v1': 13, 'object_v1': 4, 'object_multi_v1': 1}
+[run] 07aa_augment_c7_saliency
+augment-c7-saliency[0/1]:   0%|                                                   | 0/33 [00:00<?, ?it/s]augment-c7-saliency[0/1]:   3%|█▎                                         | 1/33 [00:07<04:02,  7.59s/it]augment-c7-saliency[0/1]:   6%|██▌                                        | 2/33 [00:08<01:58,  3.82s/it]augment-c7-saliency[0/1]:   9%|███▉                                       | 3/33 [00:09<01:17,  2.57s/it]augment-c7-saliency[0/1]:  12%|█████▏                                     | 4/33 [00:10<00:48,  1.66s/it]augment-c7-saliency[0/1]:  15%|██████▌                                    | 5/33 [00:10<00:33,  1.20s/it]augment-c7-saliency[0/1]:  18%|███████▊                                   | 6/33 [00:10<00:23,  1.16it/s]augment-c7-saliency[0/1]:  21%|█████████                                  | 7/33 [00:11<00:24,  1.06it/s]augment-c7-saliency[0/1]:  24%|██████████▍                                | 8/33 [00:12<00:24,  1.02it/s]augment-c7-saliency[0/1]:  27%|███████████▋                               | 9/33 [00:13<00:24,  1.02s/it]augment-c7-saliency[0/1]:  30%|████████████▋                             | 10/33 [00:14<00:17,  1.30it/s]augment-c7-saliency[0/1]:  33%|██████████████                            | 11/33 [00:14<00:13,  1.69it/s]augment-c7-saliency[0/1]:  36%|███████████████▎                          | 12/33 [00:14<00:12,  1.69it/s]augment-c7-saliency[0/1]:  39%|████████████████▌                         | 13/33 [00:15<00:09,  2.08it/s]augment-c7-saliency[0/1]:  42%|█████████████████▊                        | 14/33 [00:15<00:07,  2.55it/s]augment-c7-saliency[0/1]:  45%|███████████████████                       | 15/33 [00:15<00:06,  2.66it/s]augment-c7-saliency[0/1]:  48%|████████████████████▎                     | 16/33 [00:15<00:05,  2.92it/s]augment-c7-saliency[0/1]:  52%|█████████████████████▋                    | 17/33 [00:16<00:04,  3.39it/s]augment-c7-saliency[0/1]:  55%|██████████████████████▉                   | 18/33 [00:17<00:07,  1.90it/s]augment-c7-saliency[0/1]:  58%|████████████████████████▏                 | 19/33 [00:18<00:09,  1.47it/s]augment-c7-saliency[0/1]:  61%|█████████████████████████▍                | 20/33 [00:18<00:06,  1.88it/s]augment-c7-saliency[0/1]:  64%|██████████████████████████▋               | 21/33 [00:18<00:05,  2.20it/s]augment-c7-saliency[0/1]:  67%|████████████████████████████              | 22/33 [00:19<00:06,  1.58it/s]augment-c7-saliency[0/1]:  70%|█████████████████████████████▎            | 23/33 [00:20<00:05,  1.81it/s]augment-c7-saliency[0/1]:  73%|██████████████████████████████▌           | 24/33 [00:21<00:06,  1.38it/s]augment-c7-saliency[0/1]:  76%|███████████████████████████████▊          | 25/33 [00:22<00:07,  1.11it/s]augment-c7-saliency[0/1]:  79%|█████████████████████████████████         | 26/33 [00:23<00:07,  1.04s/it]augment-c7-saliency[0/1]:  82%|██████████████████████████████████▎       | 27/33 [00:24<00:05,  1.20it/s]augment-c7-saliency[0/1]:  85%|███████████████████████████████████▋      | 28/33 [00:24<00:03,  1.38it/s]augment-c7-saliency[0/1]:  88%|████████████████████████████████████▉     | 29/33 [00:25<00:03,  1.22it/s]augment-c7-saliency[0/1]:  91%|██████████████████████████████████████▏   | 30/33 [00:26<00:02,  1.13it/s]augment-c7-saliency[0/1]:  94%|███████████████████████████████████████▍  | 31/33 [00:27<00:01,  1.37it/s]augment-c7-saliency[0/1]:  97%|████████████████████████████████████████▋ | 32/33 [00:27<00:00,  1.77it/s]augment-c7-saliency[0/1]: 100%|██████████████████████████████████████████| 33/33 [00:27<00:00,  2.09it/s]augment-c7-saliency[0/1]: 100%|██████████████████████████████████████████| 33/33 [00:27<00:00,  1.19it/s]
+{
+  "status": "ok",
+  "input_jsonl": "data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl",
+  "output_jsonl": "data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_c7_saliency.jsonl",
+  "image_dir": "data/TestImages/All/images",
+  "requested_priority": "quality_first",
+  "processed": 33,
+  "reused": 0,
+  "missing_images": 0,
+  "backend_counts": {
+    "birefnet": 33
+  },
+  "fallback_counts": {},
+  "elapsed_sec": 29.853,
+  "num_shards": 1,
+  "shard_index": 0,
+  "shard_range": {
+    "start": 0,
+    "end": 33
+  },
+  "total_input_rows": 33,
+  "multi_gpu_requested": false
+}
+[run] 07ab_reroute_subject_mode_after_c7
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 23it [00:00, 227.81it/s]subject-mode-enrich: 33it [00:00, 238.03it/s]
+[done] total=33 routed=33 missing_meta=0 output=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+[done] subject_mode_counts={'portrait_single': 10, 'scene_general': 5, 'portrait_group': 13, 'object_single': 4, 'object_multi': 1}
+[done] policy_counts={'portrait_single_v1': 10, 'scene_v1': 5, 'portrait_group_v1': 13, 'object_v1': 4, 'object_multi_v1': 1}
+[run] 08a_public_teacher_setup
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/setup.py:4: DeprecationWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html
+  from pkg_resources import parse_version
+Including CUDA code.
+running build_ext
+/home/user/.local/lib/python3.10/site-packages/torch/utils/cpp_extension.py:426: UserWarning: There are no g++ version bounds defined for CUDA version 12.1
+  warnings.warn(f'There are no {compiler_name} version bounds defined for CUDA version {cuda_str_version}')
+building 'roi_align_api' extension
+/home/user/.local/lib/python3.10/site-packages/torch/utils/cpp_extension.py:1964: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
+Emitting ninja build file /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/build.ninja...
+Compiling objects...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+[1/1] c++ -MMD -MF /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o.d -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -fPIC -I/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align -I/home/user/.local/lib/python3.10/site-packages/torch/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/TH -I/home/user/.local/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda/include -I/home/user/.local/lib/python3.10/site-packages/torch/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/TH -I/home/user/.local/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda/include -I/usr/local/include/python3.10 -c -c /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp -o /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=roi_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++17
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp: In function ‘int roi_align_forward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:16:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   16 |     auto data_flat = features.data<float>();
+      |                                           ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:17:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   17 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:18:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   18 |     auto output_flat = output.data<float>();
+      |                                           ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp: In function ‘int roi_align_backward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:62:47: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   62 |     auto top_grad_flat = top_grad.data<float>();
+      |                                               ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:63:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   63 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:64:53: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   64 |     auto bottom_grad_flat = bottom_grad.data<float>();
+      |                                                     ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+g++ -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -shared /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_kernel.o -L/home/user/.local/lib/python3.10/site-packages/torch/lib -L/usr/local/cuda/lib64 -L/usr/local/lib -lc10 -ltorch -ltorch_cpu -ltorch_python -lcudart -lc10_cuda -ltorch_cuda -o build/lib.linux-x86_64-cpython-310/roi_align_api.cpython-310-x86_64-linux-gnu.so
+copying build/lib.linux-x86_64-cpython-310/roi_align_api.cpython-310-x86_64-linux-gnu.so -> 
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/setup.py:4: DeprecationWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html
+  from pkg_resources import parse_version
+Including CUDA code.
+running build_ext
+/home/user/.local/lib/python3.10/site-packages/torch/utils/cpp_extension.py:426: UserWarning: There are no g++ version bounds defined for CUDA version 12.1
+  warnings.warn(f'There are no {compiler_name} version bounds defined for CUDA version {cuda_str_version}')
+building 'rod_align_api' extension
+/home/user/.local/lib/python3.10/site-packages/torch/utils/cpp_extension.py:1964: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
+Emitting ninja build file /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/build.ninja...
+Compiling objects...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+[1/2] /usr/local/cuda/bin/nvcc --generate-dependencies-with-compile --dependency-output /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o.d -I/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align -I/home/user/.local/lib/python3.10/site-packages/torch/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/TH -I/home/user/.local/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda/include -I/home/user/.local/lib/python3.10/site-packages/torch/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/TH -I/home/user/.local/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda/include -I/usr/local/include/python3.10 -c -c /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_kernel.cu -o /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options ''"'"'-fPIC'"'"'' -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=rod_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -gencode=arch=compute_80,code=compute_80 -gencode=arch=compute_80,code=sm_80 -std=c++17
+[2/2] c++ -MMD -MF /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o.d -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -fPIC -I/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align -I/home/user/.local/lib/python3.10/site-packages/torch/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/TH -I/home/user/.local/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda/include -I/home/user/.local/lib/python3.10/site-packages/torch/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/home/user/.local/lib/python3.10/site-packages/torch/include/TH -I/home/user/.local/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda/include -I/usr/local/include/python3.10 -c -c /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp -o /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=rod_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++17
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp: In function ‘int rod_align_forward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:17:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   17 |     auto data_flat = features.data<float>();
+      |                                           ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:18:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   18 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:19:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   19 |     auto output_flat = output.data<float>();
+      |                                           ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp: In function ‘int rod_align_backward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:64:47: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   64 |     auto top_grad_flat = top_grad.data<float>();
+      |                                               ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:65:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   65 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:66:53: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   66 |     auto bottom_grad_flat = bottom_grad.data<float>();
+      |                                                     ^
+In file included from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /home/user/.local/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/home/user/.local/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+g++ -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O3 -Wall -shared /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o /group-volume/users/jaden.ju/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o -L/home/user/.local/lib/python3.10/site-packages/torch/lib -L/usr/local/cuda/lib64 -L/usr/local/lib -lc10 -ltorch -ltorch_cpu -ltorch_python -lcudart -lc10_cuda -ltorch_cuda -o build/lib.linux-x86_64-cpython-310/rod_align_api.cpython-310-x86_64-linux-gnu.so
+copying build/lib.linux-x86_64-cpython-310/rod_align_api.cpython-310-x86_64-linux-gnu.so -> 
+[setup] repo exists: third_party/public_cropping_teachers/gaic
+[setup] repo exists: third_party/public_cropping_teachers/cacnet
+[setup] repo exists: third_party/public_cropping_teachers/cgs
+[setup] patching gaic repo for python3/torch2 compatibility: third_party/public_cropping_teachers/gaic
+[setup] patching cgs cuda extensions for torch2: third_party/public_cropping_teachers/cgs
+[setup] building cgs roi_align extension: third_party/public_cropping_teachers/cgs/roi_align
+[setup] building cgs rod_align extension: third_party/public_cropping_teachers/cgs/rod_align
+[setup][warn] gdown is not installed. skipping automatic weight download.
+
+[setup] manual weight download guide
+- gaic:
+  url : https://drive.google.com/file/d/1OvLT_ul17zCK4ljAi4myGAgA50PmLy3Y/view?usp=sharing
+  save: weights/public_cropping_teachers/gaic/gaic_conference_pretrained.pth
+- cacnet:
+  url : https://drive.google.com/file/d/19LUhHK1viHu9TYqzk2te2orqzKMA_ZRQ/view?usp=sharing
+  save: weights/public_cropping_teachers/cacnet/best-FLMS_iou.pth
+- cgs:
+  url : https://drive.google.com/file/d/1CmMBcQdOc22Qnyle0xJlbO6BC8tdViWN/view?usp=sharing
+  save: weights/public_cropping_teachers/cgs/cgs_pretrained.zip
+
+
+[setup] manual weight download guide
+- gaic:
+  url : https://drive.google.com/file/d/1OvLT_ul17zCK4ljAi4myGAgA50PmLy3Y/view?usp=sharing
+  save: weights/public_cropping_teachers/gaic/gaic_conference_pretrained.pth
+- cacnet:
+  url : https://drive.google.com/file/d/19LUhHK1viHu9TYqzk2te2orqzKMA_ZRQ/view?usp=sharing
+  save: weights/public_cropping_teachers/cacnet/best-FLMS_iou.pth
+- cgs:
+  url : https://drive.google.com/file/d/1CmMBcQdOc22Qnyle0xJlbO6BC8tdViWN/view?usp=sharing
+  save: weights/public_cropping_teachers/cgs/cgs_pretrained.zip
+
+[setup] done
+[run] 08b_public_teacher_infer
+[infer-wrapper] multi-gpu mode enabled: workers=8 gpu_ids=0,1,2,3,4,5,6,7
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/home/user/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/home/user/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/home/user/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/home/user/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/home/user/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/home/user/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/home/user/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/home/user/.local/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/group-volume/users/jaden.ju/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+[infer] device=cuda
+[infer] curated image source enabled: data/TestImages/All/images
+[infer] tar image source enabled: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=1 num_shards=8 shard_rows=4
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|                                                               | 0/4 [00:00<?, ?it/s][infer] device=cuda
+[infer] curated image source enabled: data/TestImages/All/images
+[infer] tar image source enabled: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=2 num_shards=8 shard_rows=4
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|                                                               | 0/4 [00:00<?, ?it/s][infer] device=cuda
+[infer] curated image source enabled: data/TestImages/All/images
+[infer] tar image source enabled: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=7 num_shards=8 shard_rows=4
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|                                                               | 0/4 [00:00<?, ?it/s][infer] device=cuda
+[infer] curated image source enabled: data/TestImages/All/images
+[infer] tar image source enabled: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=4 num_shards=8 shard_rows=4
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|                                                               | 0/4 [00:00<?, ?it/s][infer] device=cuda
+[infer] curated image source enabled: data/TestImages/All/images
+[infer] tar image source enabled: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=3 num_shards=8 shard_rows=4
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|                                                               | 0/4 [00:00<?, ?it/s][infer] device=cuda
+[infer] curated image source enabled: data/TestImages/All/images
+[infer] tar image source enabled: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=6 num_shards=8 shard_rows=4
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|                                                               | 0/4 [00:00<?, ?it/s][infer] device=cuda
+[infer] curated image source enabled: data/TestImages/All/images
+[infer] tar image source enabled: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=5 num_shards=8 shard_rows=4
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|                                                               | 0/4 [00:00<?, ?it/s][infer] device=cuda
+[infer] curated image source enabled: data/TestImages/All/images
+[infer] tar image source enabled: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=0 num_shards=8 shard_rows=5
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|                                                               | 0/5 [00:00<?, ?it/s]teacher-infer:  25%|█████████████▊                                         | 1/4 [00:01<00:03,  1.04s/it]teacher-infer:  25%|█████████████▊                                         | 1/4 [00:01<00:03,  1.06s/it]teacher-infer:  25%|█████████████▊                                         | 1/4 [00:01<00:03,  1.11s/it]teacher-infer:  25%|█████████████▊                                         | 1/4 [00:01<00:03,  1.12s/it]teacher-infer:  25%|█████████████▊                                         | 1/4 [00:01<00:03,  1.12s/it]teacher-infer:  50%|███████████████████████████▌                           | 2/4 [00:01<00:01,  1.63it/s]teacher-infer:  50%|███████████████████████████▌                           | 2/4 [00:01<00:01,  1.60it/s]teacher-infer:  50%|███████████████████████████▌                           | 2/4 [00:01<00:01,  1.59it/s]teacher-infer:  50%|███████████████████████████▌                           | 2/4 [00:01<00:01,  1.53it/s]teacher-infer:  50%|███████████████████████████▌                           | 2/4 [00:01<00:01,  1.48it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:01<00:00,  3.35it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:01<00:00,  2.45it/s]
+teacher-infer:  75%|█████████████████████████████████████████▎             | 3/4 [00:01<00:00,  2.10it/s][infer] image_source_stats local_hits=4 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.Rnlc56/shard_4.jsonl
+teacher-infer:  75%|█████████████████████████████████████████▎             | 3/4 [00:01<00:00,  2.03it/s]teacher-infer:  75%|█████████████████████████████████████████▎             | 3/4 [00:01<00:00,  2.03it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:01<00:00,  2.25it/s]
+[infer] image_source_stats local_hits=4 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.Rnlc56/shard_2.jsonl
+teacher-infer:  75%|█████████████████████████████████████████▎             | 3/4 [00:02<00:00,  1.12it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:02<00:00,  1.51it/s]
+teacher-infer:  20%|███████████                                            | 1/5 [00:02<00:10,  2.66s/it][infer] image_source_stats local_hits=4 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.Rnlc56/shard_5.jsonl
+teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:02<00:00,  1.32it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:02<00:00,  1.40it/s]
+[infer] image_source_stats local_hits=4 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.Rnlc56/shard_3.jsonl
+teacher-infer:  25%|█████████████▊                                         | 1/4 [00:02<00:08,  2.93s/it]teacher-infer:  40%|██████████████████████                                 | 2/5 [00:02<00:03,  1.29s/it]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.19it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.28it/s]
+[infer] image_source_stats local_hits=4 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.Rnlc56/shard_1.jsonl
+teacher-infer:  25%|█████████████▊                                         | 1/4 [00:03<00:09,  3.18s/it]teacher-infer:  50%|███████████████████████████▌                           | 2/4 [00:03<00:02,  1.38s/it]teacher-infer:  60%|█████████████████████████████████                      | 3/5 [00:03<00:01,  1.18it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.76it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.18it/s]
+[infer] image_source_stats local_hits=4 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.Rnlc56/shard_6.jsonl
+teacher-infer: 100%|███████████████████████████████████████████████████████| 5/5 [00:03<00:00,  2.49it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 5/5 [00:03<00:00,  1.45it/s]
+[infer] image_source_stats local_hits=5 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.Rnlc56/shard_0.jsonl
+teacher-infer:  50%|███████████████████████████▌                           | 2/4 [00:03<00:02,  1.49s/it]teacher-infer:  75%|█████████████████████████████████████████▎             | 3/4 [00:03<00:00,  1.15it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.76it/s]teacher-infer: 100%|███████████████████████████████████████████████████████| 4/4 [00:03<00:00,  1.08it/s]
+[infer] image_source_stats local_hits=4 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.Rnlc56/shard_7.jsonl
+[infer-wrapper] multi-gpu inference succeeded -> data/TestImages/All/artifacts/public_teachers/raw/teacher_raw_public_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[run] 08c_public_teacher_build_proposals
+[build] done. written=33 output=data/TestImages/All/artifacts/public_teachers/proposals/teacher_proposals_public_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[info] teacher proposal injection paths: data/TestImages/All/artifacts/public_teachers/proposals/teacher_proposals_public_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[run] 08d_reroute_subject_mode_with_public_teacher
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 22it [00:00, 209.33it/s]subject-mode-enrich: 33it [00:00, 221.65it/s]
+[done] total=33 routed=33 missing_meta=0 output=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+[done] subject_mode_counts={'portrait_single': 10, 'scene_general': 5, 'portrait_group': 13, 'object_single': 4, 'object_multi': 1}
+[done] policy_counts={'portrait_single_v1': 10, 'scene_v1': 5, 'portrait_group_v1': 13, 'object_v1': 4, 'object_multi_v1': 1}
+[run] 09_generate_candidates
+==============================================
+ Candidate Generator Runner (Phase B1)
+==============================================
+  Input Parquet : data/TestImages/All/filtered_test_images_all.parquet
+  Feats C2      : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+  Feats C3      : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+  Output JSONL  : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+  Server Mode   : 1
+  TAR_DIR       : /sstk/20230916/sstk_100
+  IMAGE_DIR     : data/TestImages/All/images
+  use_actual    : 1
+  strict_actual : 1
+  Extra Args    : --actual_size_cache_json data/TestImages/All/cache/actual_image_size_map.json --max_images 0 --num_workers 0 --mp_chunksize 64 --mp_start_method auto --ar_list FREE 1:1 9:16 16:9 3:4 4:3 --teacher_proposals_jsonl data/TestImages/All/artifacts/public_teachers/proposals/teacher_proposals_public_test_images_full_260408_subjectfix_v2_equalized.jsonl --teacher_nms_iou 0.95 --teacher_max_seeds_per_teacher 1 --teacher_prefer_expand 1 --teacher_jitter_shift_fracs 0.03 --teacher_jitter_scales 0.92 1.0 1.08
+==============================================
+[CandidateGen] Loading inputs...
+[CandidateGen] rows=33 c2_seg=33 c2_det=33(nonempty=29) c3=33(nonempty=24) routing=33 c7_saliency=33 teacher_proposals=33 cfg_hash=6abdc55aed4517a2
+[CandidateGen] worker mode: multiprocess workers=33 chunksize=64 start=auto
+[CandidateGen] Building/loading actual TAR image-size map...
+[CandidateGen] actual_size_map loaded: 33 images
+CandidateGen-MP:   0%|                                                            | 0/33 [00:00<?, ?it/s]CandidateGen-MP:   3%|█▌                                                  | 1/33 [00:13<07:00, 13.14s/it]CandidateGen-MP:  27%|██████████████▏                                     | 9/33 [00:13<00:25,  1.07s/it]CandidateGen-MP:  52%|██████████████████████████▎                        | 17/33 [00:13<00:07,  2.13it/s]CandidateGen-MP:  76%|██████████████████████████████████████▋            | 25/33 [00:13<00:02,  3.77it/s]CandidateGen-MP: 100%|███████████████████████████████████████████████████| 33/33 [00:13<00:00,  5.99it/s]CandidateGen-MP: 100%|███████████████████████████████████████████████████| 33/33 [00:13<00:00,  2.41it/s]
+[CandidateGen] Done. written=33 avg_total_candidates=810.03 elapsed=13.68s throughput=2.41 img/s
+[CandidateGen] size_source_counts={'tar_actual': 33}
+[CandidateGen] output=data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[CandidateGen] Building overview from output jsonl...
+[CandidateGen] Overview saved: data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized_overview.json, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized_overview_by_ar.csv, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized_overview_by_source.csv, data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized_overview_by_subject_source.csv
+[CandidateGen] Visualization saved under: data/TestImages/All/artifacts/candidates/visualizations/candidates_ar_test_images_full_260408_subjectfix_v2_equalized_viz
+==============================================
+ Done.
+==============================================
+[run] 09b_check_public_proposal_injection_gate
+[gate] proposal_injected_rate=1.000000 (min=0.950000, num_images=33)
+[gate] PASS
+[run] 10_teacher_scorer
+[config] server_mode=1 tar_dir=/sstk/20230916/sstk_100 image_dir=data/TestImages/All/images
+[config] candidates=data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[config] features=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+[config] c1=data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[config] parquet=data/TestImages/All/filtered_test_images_all.parquet
+[config] output_jsonl=data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[config] expensive_accel: batch=24 eval_top_m=0 preprocess_workers=0 pin_memory=1
+[config] public_teacher_ref_eval: save=1
+[config] aesthetic: backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+[config] portrait_safety: hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+[config] viz_image_ids=<none> viz_image_ids_file=<none>
+[1/3] Running teacher scorer...
+[multi] teacher shard mode enabled: gpu_ids=0,1,2,3,4,5,6,7 workers=8
+[config] resolved_exp_preprocess_workers(per_shard)=31 total_cpu_cores=255
+[multi] launch shard=0/8 gpu=0 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756/teacher_scores_shard_0.jsonl
+[multi] launch shard=1/8 gpu=1 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756/teacher_scores_shard_1.jsonl
+[multi] launch shard=2/8 gpu=2 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756/teacher_scores_shard_2.jsonl
+[multi] launch shard=3/8 gpu=3 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756/teacher_scores_shard_3.jsonl
+[multi] launch shard=4/8 gpu=4 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756/teacher_scores_shard_4.jsonl
+[multi] launch shard=5/8 gpu=5 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756/teacher_scores_shard_5.jsonl
+[multi] launch shard=6/8 gpu=6 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756/teacher_scores_shard_6.jsonl
+[multi] launch shard=7/8 gpu=7 -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756/teacher_scores_shard_7.jsonl
+[multi] merged teacher jsonl -> data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[done] rebuilt overview: data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_full_260408_subjectfix_v2_equalized.json
+[done] rebuilt overview csv: data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_test_images_full_260408_subjectfix_v2_equalized.csv
+[multi] rebuilt overview -> data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_full_260408_subjectfix_v2_equalized.json
+[2/3] Building QA report...
+[done] report_json=data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_full_260408_subjectfix_v2_equalized.json
+[done] report_by_ar_csv=data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_test_images_full_260408_subjectfix_v2_equalized.csv
+[3/3] Rendering teacher scorer visualizations...
+[done] rendered=120 out_dir=data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_full_260408_subjectfix_v2_equalized
+[done] overview=data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_full_260408_subjectfix_v2_equalized/viz_overview.json
+[done] Teacher scorer outputs:
+  - data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+  - data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_full_260408_subjectfix_v2_equalized.json
+  - data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_test_images_full_260408_subjectfix_v2_equalized.csv
+  - data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_full_260408_subjectfix_v2_equalized.json
+  - data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_test_images_full_260408_subjectfix_v2_equalized.csv
+  - data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_full_260408_subjectfix_v2_equalized
+[run] 10b_teacher_repair_outputs
+[progress 2026-04-08 05:50:40] repair_teacher_outputs: start | teacher_scores_jsonl=data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[progress 2026-04-08 05:50:40] repair_teacher_outputs:analyze_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 3.3s
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 3.3s | parse_errors=0
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: start total=8 unit=files
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_0.jsonl: start total=5 unit=rows
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_0.jsonl: [========================] 5/5 (100.0%) | 0.4s
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_0.jsonl: [========================] 5/5 (100.0%) | 0.4s | parse_errors=0
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [==>.....................] 1/8 (12.5%) | 0.4s<3.0s | path=teacher_scores_shard_0.jsonl rows=5
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_1.jsonl: start total=4 unit=rows
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_1.jsonl: [========================] 4/4 (100.0%) | 0.4s
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_1.jsonl: [========================] 4/4 (100.0%) | 0.4s | parse_errors=0
+[progress 2026-04-08 05:50:44] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [=====>..................] 2/8 (25.0%) | 0.9s<2.7s | path=teacher_scores_shard_1.jsonl rows=4
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_2.jsonl: start total=4 unit=rows
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_2.jsonl: [========================] 4/4 (100.0%) | 0.4s
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_2.jsonl: [========================] 4/4 (100.0%) | 0.4s | parse_errors=0
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [========>...............] 3/8 (37.5%) | 1.3s<2.2s | path=teacher_scores_shard_2.jsonl rows=4
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_3.jsonl: start total=4 unit=rows
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_3.jsonl: [========================] 4/4 (100.0%) | 0.5s
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_3.jsonl: [========================] 4/4 (100.0%) | 0.5s | parse_errors=0
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [===========>............] 4/8 (50.0%) | 1.8s<1.8s | path=teacher_scores_shard_3.jsonl rows=4
+[progress 2026-04-08 05:50:45] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_4.jsonl: start total=4 unit=rows
+[progress 2026-04-08 05:50:46] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_4.jsonl: [========================] 4/4 (100.0%) | 0.4s
+[progress 2026-04-08 05:50:46] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_4.jsonl: [========================] 4/4 (100.0%) | 0.4s | parse_errors=0
+[progress 2026-04-08 05:50:46] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [==============>.........] 5/8 (62.5%) | 2.2s<1.3s | path=teacher_scores_shard_4.jsonl rows=4
+[progress 2026-04-08 05:50:46] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_5.jsonl: start total=4 unit=rows
+[progress 2026-04-08 05:50:46] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_5.jsonl: [========================] 4/4 (100.0%) | 0.4s
+[progress 2026-04-08 05:50:46] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_5.jsonl: [========================] 4/4 (100.0%) | 0.4s | parse_errors=0
+[progress 2026-04-08 05:50:46] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [=================>......] 6/8 (75.0%) | 2.7s<0.9s | path=teacher_scores_shard_5.jsonl rows=4
+[progress 2026-04-08 05:50:46] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_6.jsonl: start total=4 unit=rows
+[progress 2026-04-08 05:50:47] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_6.jsonl: [========================] 4/4 (100.0%) | 0.3s
+[progress 2026-04-08 05:50:47] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_6.jsonl: [========================] 4/4 (100.0%) | 0.3s | parse_errors=0
+[progress 2026-04-08 05:50:47] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [====================>...] 7/8 (87.5%) | 3.0s<0.4s | path=teacher_scores_shard_6.jsonl rows=4
+[progress 2026-04-08 05:50:47] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_7.jsonl: start total=4 unit=rows
+[progress 2026-04-08 05:50:47] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_7.jsonl: [========================] 4/4 (100.0%) | 0.4s
+[progress 2026-04-08 05:50:47] repair_teacher_outputs:analyze_jsonl:teacher_scores_shard_7.jsonl: [========================] 4/4 (100.0%) | 0.4s | parse_errors=0
+[progress 2026-04-08 05:50:47] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [========================] 8/8 (100.0%) | 3.4s | path=teacher_scores_shard_7.jsonl rows=4
+[progress 2026-04-08 05:50:47] repair_teacher_outputs:analyze_shard_dir:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756: [========================] 8/8 (100.0%) | 3.4s | rows=33
+[done] rebuilt overview: data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_full_260408_subjectfix_v2_equalized.json
+[done] rebuilt overview csv: data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_test_images_full_260408_subjectfix_v2_equalized.csv
+[done] report_json=data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_full_260408_subjectfix_v2_equalized.json
+[done] report_by_ar_csv=data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_test_images_full_260408_subjectfix_v2_equalized.csv
+[repair] final rows=33 expensive_real_rows=33 parse_error_rows=0 expected_rows=33 shard_dirs=1
+[repair] best shard dir=data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl.shards.14756 rows=33 expensive_real_rows=33 parse_error_rows=0
+[repair] final output already preferred. rebuilding overview/QA for consistency.
+[progress 2026-04-08 05:50:55] repair_teacher_outputs:analyze_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:50:59] repair_teacher_outputs:analyze_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 3.3s
+[progress 2026-04-08 05:50:59] repair_teacher_outputs:analyze_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 3.3s | parse_errors=0
+[repair] final(after) rows=33 expensive_real_rows=33 parse_error_rows=0
+[progress 2026-04-08 05:50:59] repair_teacher_outputs: finished | rows=33 | expensive_real_rows=33
+[run] 12a_build_report_assets
+[progress 2026-04-08 05:50:59] build_sstk_report_assets: start | run_tag=test_images_full_260408_subjectfix_v2_equalized | routed_feats_jsonl=feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+[progress 2026-04-08 05:51:02] build_sstk_report_assets:routed_feats: start unit=rows
+[progress 2026-04-08 05:51:02] build_sstk_report_assets:routed_feats: 33 rows | 0.0s | modes=5
+[progress 2026-04-08 05:51:02] build_sstk_report_assets: finished | num_images=33 | subject_modes=5
+[done] summary=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/summary_test_images_full_260408_subjectfix_v2_equalized.json
+[done] subject_count_examples=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/evidence/subject_count_examples_test_images_full_260408_subjectfix_v2_equalized.json
+[done] subject_mode_examples=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/evidence/subject_mode_examples_test_images_full_260408_subjectfix_v2_equalized.json
+[run] 12b_build_detailed_report_seed
+[progress 2026-04-08 05:51:02] build_sstk_detailed_report: start | run_tag=test_images_full_260408_subjectfix_v2_equalized | report_dir=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed
+[progress 2026-04-08 05:51:03] build_sstk_detailed_report:load_teacher_rows:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:51:06] build_sstk_detailed_report:load_teacher_rows:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 3.7s
+[progress 2026-04-08 05:51:06] build_sstk_detailed_report:load_teacher_rows:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 3.7s | path=teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[progress 2026-04-08 05:51:06] build_sstk_detailed_report:build_routed_map:feats_c2c3c5_v2_strict_enriched_routed.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:51:06] build_sstk_detailed_report:build_routed_map:feats_c2c3c5_v2_strict_enriched_routed.jsonl: [========================] 33/33 (100.0%) | 0.0s | mapped=33
+[progress 2026-04-08 05:51:06] build_sstk_detailed_report:build_routed_map:feats_c2c3c5_v2_strict_enriched_routed.jsonl: [========================] 33/33 (100.0%) | 0.0s | path=feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[progress 2026-04-08 05:51:06] build_sstk_detailed_report: build_flat_examples
+[progress 2026-04-08 05:51:06] build_sstk_detailed_report: summarize assets
+[progress 2026-04-08 05:51:07] build_sstk_detailed_report: build rank/public teacher assets
+[progress 2026-04-08 05:51:07] build_sstk_detailed_report:generate_drilldown_reports: start total=25 unit=images
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_38/REPORT_test_38_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_38/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_1/REPORT_test_1_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_1/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_4/REPORT_test_4_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_4/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_41/REPORT_test_41_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_41/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_12/REPORT_test_12_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_12/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_13/REPORT_test_13_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_13/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_11/REPORT_test_11_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_11/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_14/REPORT_test_14_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_14/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_29/REPORT_test_29_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_29/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_3/REPORT_test_3_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_3/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_5/REPORT_test_5_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_5/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_6/REPORT_test_6_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_6/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_8/REPORT_test_8_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_8/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_25/REPORT_test_25_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_25/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_30/REPORT_test_30_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_30/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_31/REPORT_test_31_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_31/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_18/REPORT_test_18_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_18/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_17/REPORT_test_17_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_17/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_26/REPORT_test_26_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_26/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_15/REPORT_test_15_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_15/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_19/REPORT_test_19_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_19/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_28/REPORT_test_28_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_28/assets/analysis.json
+[progress 2026-04-08 05:51:17] build_sstk_detailed_report:generate_drilldown_reports: [===================>....] 21/25 (84.0%) | 10.2s<1.9s | image_id=test_19
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_23/REPORT_test_23_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_23/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_16/REPORT_test_16_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_16/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_24/REPORT_test_24_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_24/assets/analysis.json
+[progress 2026-04-08 05:51:19] build_sstk_detailed_report:generate_drilldown_reports: [========================] 25/25 (100.0%) | 12.2s | image_id=test_24
+[progress 2026-04-08 05:51:19] build_sstk_detailed_report:generate_drilldown_reports: [========================] 25/25 (100.0%) | 12.2s | reports_with_issues=0
+[progress 2026-04-08 05:51:28] build_sstk_detailed_report: finished | example_ids=25 | drilldown_reports=25
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/REPORT_DRAFT_KO.md
+[done] drilldown_index=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/DRILLDOWN_INDEX.md
+[done] drilldown_layout_qa=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/drilldown_layout_qa.json
+[done] teacher_rep=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/evidence/teacher_representative_examples_test_images_full_260408_subjectfix_v2_equalized.json
+[done] checklist=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/checklist_label_examples_test_images_full_260408_subjectfix_v2_equalized.json
+[done] rank_compare=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/topk_rank_comparison_test_images_full_260408_subjectfix_v2_equalized.json
+[done] public_teacher_compare=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/public_teacher_comparison_test_images_full_260408_subjectfix_v2_equalized.json
+[done] training_label_examples=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/training_label_examples_test_images_full_260408_subjectfix_v2_equalized.json
+[done] example_ids=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/report_example_image_ids_test_images_full_260408_subjectfix_v2_equalized.txt
+[done] manifest=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/self_contained/self_contained_manifest.json
+[done] zip=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_images_full_260408_subjectfix_v2_equalized_detailed.zip
+[done] overview_zip=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_images_full_260408_subjectfix_v2_equalized_detailed_overview.zip
+[run] 12c_render_report_teacher_viz
+[done] rendered=150 out_dir=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/_staging_teacher_viz/teacher_scorer_test_images_full_260408_subjectfix_v2_equalized
+[done] overview=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/_staging_teacher_viz/teacher_scorer_test_images_full_260408_subjectfix_v2_equalized/viz_overview.json
+[run] 12d_build_detailed_report_final
+[progress 2026-04-08 05:51:35] build_sstk_detailed_report: start | run_tag=test_images_full_260408_subjectfix_v2_equalized | report_dir=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed
+[progress 2026-04-08 05:51:35] build_sstk_detailed_report:load_teacher_rows:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:51:40] build_sstk_detailed_report:load_teacher_rows:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 5.0s
+[progress 2026-04-08 05:51:40] build_sstk_detailed_report:load_teacher_rows:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 5.0s | path=teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[progress 2026-04-08 05:51:40] build_sstk_detailed_report:build_routed_map:feats_c2c3c5_v2_strict_enriched_routed.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:51:40] build_sstk_detailed_report:build_routed_map:feats_c2c3c5_v2_strict_enriched_routed.jsonl: [========================] 33/33 (100.0%) | 0.0s | mapped=33
+[progress 2026-04-08 05:51:40] build_sstk_detailed_report:build_routed_map:feats_c2c3c5_v2_strict_enriched_routed.jsonl: [========================] 33/33 (100.0%) | 0.0s | path=feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[progress 2026-04-08 05:51:40] build_sstk_detailed_report: build_flat_examples
+[progress 2026-04-08 05:51:40] build_sstk_detailed_report: summarize assets
+[progress 2026-04-08 05:51:41] build_sstk_detailed_report: build rank/public teacher assets
+[progress 2026-04-08 05:51:41] build_sstk_detailed_report:generate_drilldown_reports: start total=25 unit=images
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_38/REPORT_test_38_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_38/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_1/REPORT_test_1_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_1/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_4/REPORT_test_4_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_4/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_12/REPORT_test_12_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_12/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_41/REPORT_test_41_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_41/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_11/REPORT_test_11_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_11/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_13/REPORT_test_13_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_13/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_14/REPORT_test_14_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_14/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_3/REPORT_test_3_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_3/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_5/REPORT_test_5_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_5/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_29/REPORT_test_29_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_29/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_6/REPORT_test_6_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_6/assets/analysis.json
+[progress 2026-04-08 05:51:51] build_sstk_detailed_report:generate_drilldown_reports: [==========>.............] 12/25 (48.0%) | 10.0s<10.9s | image_id=test_6
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_30/REPORT_test_30_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_30/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_25/REPORT_test_25_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_25/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_8/REPORT_test_8_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_8/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_31/REPORT_test_31_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_31/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_18/REPORT_test_18_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_18/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_17/REPORT_test_17_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_17/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_26/REPORT_test_26_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_26/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_19/REPORT_test_19_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_19/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_15/REPORT_test_15_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_15/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_28/REPORT_test_28_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_28/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_23/REPORT_test_23_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_23/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_16/REPORT_test_16_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_16/assets/analysis.json
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_24/REPORT_test_24_KO.md
+[done] analysis_json=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_24/assets/analysis.json
+[progress 2026-04-08 05:51:55] build_sstk_detailed_report:generate_drilldown_reports: [========================] 25/25 (100.0%) | 14.5s | image_id=test_24
+[progress 2026-04-08 05:51:55] build_sstk_detailed_report:generate_drilldown_reports: [========================] 25/25 (100.0%) | 14.5s | reports_with_issues=0
+[progress 2026-04-08 05:52:17] build_sstk_detailed_report: finished | example_ids=25 | drilldown_reports=25
+[done] report=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/REPORT_DRAFT_KO.md
+[done] drilldown_index=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/DRILLDOWN_INDEX.md
+[done] drilldown_layout_qa=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/drilldown_layout_qa.json
+[done] teacher_rep=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/evidence/teacher_representative_examples_test_images_full_260408_subjectfix_v2_equalized.json
+[done] checklist=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/checklist_label_examples_test_images_full_260408_subjectfix_v2_equalized.json
+[done] rank_compare=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/topk_rank_comparison_test_images_full_260408_subjectfix_v2_equalized.json
+[done] public_teacher_compare=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/public_teacher_comparison_test_images_full_260408_subjectfix_v2_equalized.json
+[done] training_label_examples=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/training_label_examples_test_images_full_260408_subjectfix_v2_equalized.json
+[done] example_ids=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/analytics/report_example_image_ids_test_images_full_260408_subjectfix_v2_equalized.txt
+[done] manifest=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/self_contained/self_contained_manifest.json
+[done] zip=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_images_full_260408_subjectfix_v2_equalized_detailed.zip
+[done] overview_zip=data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/test_images_full_260408_subjectfix_v2_equalized_detailed_overview.zip
+[run] 13_build_training_labels
+[progress 2026-04-08 05:52:18] build_finalscore_training_data: start | teacher_scores_jsonl=data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl | out_dir=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic | safe_leftover_policy=ignore
+[progress 2026-04-08 05:52:18] load_teacher_records:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: start total=33 unit=records
+[progress 2026-04-08 05:52:22] load_teacher_records:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 4.2s | line=33
+[progress 2026-04-08 05:52:22] load_teacher_records:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 4.2s | path=teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[progress 2026-04-08 05:52:22] build_finalscore_training_data: teacher_records=33 | ar_groups=198 | subject_modes=5
+[progress 2026-04-08 05:52:22] build_training_datasets: start total=198 unit=ar_groups
+[progress 2026-04-08 05:52:33] build_training_datasets: [==>.....................] 32/198 (16.2%) | 10.3s<53.3s | record=6/33 | image_id=test_10 | pairwise=112 | batch=25 | skipped=7
+[progress 2026-04-08 05:52:43] build_training_datasets: [=====>..................] 55/198 (27.8%) | 20.4s<53.1s | record=10/33 | image_id=test_11 | pairwise=236 | batch=48 | skipped=7
+[progress 2026-04-08 05:52:53] build_training_datasets: [========>...............] 81/198 (40.9%) | 30.6s<44.2s | record=14/33 | image_id=test_12 | pairwise=373 | batch=71 | skipped=10
+[progress 2026-04-08 05:53:03] build_training_datasets: [===========>............] 103/198 (52.0%) | 40.9s<37.7s | record=18/33 | image_id=test_13 | pairwise=535 | batch=93 | skipped=10
+[progress 2026-04-08 05:53:14] build_training_datasets: [===============>........] 132/198 (66.7%) | 51.3s<25.7s | record=22/33 | image_id=test_14 | pairwise=641 | batch=111 | skipped=21
+[progress 2026-04-08 05:53:24] build_training_datasets: [==================>.....] 159/198 (80.3%) | 1m01s<15.1s | record=27/33 | image_id=test_23 | pairwise=769 | batch=135 | skipped=24
+[progress 2026-04-08 05:53:34] build_training_datasets: [=====================>..] 187/198 (94.4%) | 1m12s<4.2s | record=32/33 | image_id=test_31 | pairwise=899 | batch=163 | skipped=24
+[progress 2026-04-08 05:53:37] build_training_datasets: [========================] 198/198 (100.0%) | 1m15s | record=33/33 | image_id=test_8 | pairwise=948 | batch=173 | skipped=25
+[progress 2026-04-08 05:53:37] build_training_datasets: [========================] 198/198 (100.0%) | 1m15s | records=33 | pairwise=948 | listwise=173 | decision=198 | checklist=3575 | regression=3575 | canonical=173 | batch=173 | skipped=25
+[progress 2026-04-08 05:53:37] build_finalscore_training_data: build_qa_summary
+[progress 2026-04-08 05:53:37] build_qa_summary: start total=346 unit=rows
+[progress 2026-04-08 05:53:37] build_qa_summary: [================>.......] 250/346 (72.3%) | 0.0s<0.0s | phase=canonical_rows | image_id=test_20
+[progress 2026-04-08 05:53:37] build_qa_summary: [========================] 346/346 (100.0%) | 0.0s | phase=canonical_rows | image_id=test_8
+[progress 2026-04-08 05:53:37] build_qa_summary: [========================] 346/346 (100.0%) | 0.0s | pairwise=948 | batch=173 | canonical=173
+[progress 2026-04-08 05:53:37] build_finalscore_training_data: validate_datasets
+[progress 2026-04-08 05:53:37] validate_datasets: start total=346 unit=rows
+[progress 2026-04-08 05:53:37] validate_datasets: [================>.......] 250/346 (72.3%) | 0.0s<0.0s | phase=batch_rows | image_id=test_20
+[progress 2026-04-08 05:53:37] validate_datasets: [========================] 346/346 (100.0%) | 0.0s | phase=batch_rows | image_id=test_8
+[progress 2026-04-08 05:53:37] validate_datasets: [========================] 346/346 (100.0%) | 0.0s | errors=0 | warnings=0
+[progress 2026-04-08 05:53:37] build_finalscore_training_data: collect_label_guide_summary
+[progress 2026-04-08 05:53:37] collect_label_guide_summary: start total=346 unit=rows
+[progress 2026-04-08 05:53:37] collect_label_guide_summary: [================>.......] 250/346 (72.3%) | 0.1s<0.1s | phase=batch_rows | image_id=test_20
+[progress 2026-04-08 05:53:37] collect_label_guide_summary: [========================] 346/346 (100.0%) | 0.1s | phase=batch_rows | image_id=test_8
+[progress 2026-04-08 05:53:37] collect_label_guide_summary: [========================] 346/346 (100.0%) | 0.1s | subject_modes=5 | policies=5 | decision_types=3
+[progress 2026-04-08 05:53:37] build_finalscore_training_data: build_gaic_like_report_summary
+[progress 2026-04-08 05:53:37] build_gaic_like_report_summary: start total=173 unit=rows
+[progress 2026-04-08 05:53:37] build_gaic_like_report_summary: [========================] 173/173 (100.0%) | 0.0s | image_id=test_8
+[progress 2026-04-08 05:53:37] build_gaic_like_report_summary: [========================] 173/173 (100.0%) | 0.0s | images=32 | positive=332 | negative=3243
+[progress 2026-04-08 05:53:37] build_finalscore_training_data: build_report_examples
+[progress 2026-04-08 05:53:37] build_report_examples: start total=8 unit=examples
+[progress 2026-04-08 05:53:40] build_report_examples: [==>.....................] 1/8 (12.5%) | 2.9s<20.2s | image_id=test_11 target_ar=16:9 candidate_visuals=5
+[progress 2026-04-08 05:53:42] build_report_examples: [=====>..................] 2/8 (25.0%) | 4.3s<12.9s | image_id=test_12 target_ar=16:9 candidate_visuals=5
+[progress 2026-04-08 05:53:44] build_report_examples: [========>...............] 3/8 (37.5%) | 6.8s<11.4s | image_id=test_16 target_ar=16:9 candidate_visuals=3
+[progress 2026-04-08 05:53:47] build_report_examples: [===========>............] 4/8 (50.0%) | 10.0s<10.0s | image_id=test_16 target_ar=1:1 candidate_visuals=4
+[progress 2026-04-08 05:53:51] build_report_examples: [==============>.........] 5/8 (62.5%) | 13.3s<8.0s | image_id=test_25 target_ar=FREE candidate_visuals=4
+[progress 2026-04-08 05:53:52] build_report_examples: [=================>......] 6/8 (75.0%) | 14.4s<4.8s | image_id=test_1 target_ar=FREE candidate_visuals=1
+[progress 2026-04-08 05:53:52] build_report_examples: [====================>...] 7/8 (87.5%) | 14.8s<2.1s | image_id=test_4 target_ar=FREE candidate_visuals=4
+[progress 2026-04-08 05:53:53] build_report_examples: [========================] 8/8 (100.0%) | 15.8s | image_id=test_41 target_ar=FREE candidate_visuals=4
+[progress 2026-04-08 05:53:53] build_report_examples: [========================] 8/8 (100.0%) | 15.8s | rendered=8
+[progress 2026-04-08 05:53:53] build_finalscore_training_data: write output jsonl files
+[progress 2026-04-08 05:53:53] write_jsonl:train_pairwise.jsonl: start total=948 unit=rows
+[progress 2026-04-08 05:53:53] write_jsonl:train_pairwise.jsonl: [========================] 948/948 (100.0%) | 0.0s | path=train_pairwise.jsonl
+[progress 2026-04-08 05:53:53] write_jsonl:train_pairwise.jsonl: [========================] 948/948 (100.0%) | 0.0s | path=train_pairwise.jsonl
+[progress 2026-04-08 05:53:53] write_jsonl:train_listwise.jsonl: start total=173 unit=rows
+[progress 2026-04-08 05:53:53] write_jsonl:train_listwise.jsonl: [========================] 173/173 (100.0%) | 0.2s | path=train_listwise.jsonl
+[progress 2026-04-08 05:53:53] write_jsonl:train_listwise.jsonl: [========================] 173/173 (100.0%) | 0.2s | path=train_listwise.jsonl
+[progress 2026-04-08 05:53:53] write_jsonl:train_decision.jsonl: start total=198 unit=rows
+[progress 2026-04-08 05:53:53] write_jsonl:train_decision.jsonl: [========================] 198/198 (100.0%) | 0.0s | path=train_decision.jsonl
+[progress 2026-04-08 05:53:53] write_jsonl:train_decision.jsonl: [========================] 198/198 (100.0%) | 0.0s | path=train_decision.jsonl
+[progress 2026-04-08 05:53:53] write_jsonl:train_checklist.jsonl: start total=3575 unit=rows
+[progress 2026-04-08 05:53:54] write_jsonl:train_checklist.jsonl: [===============>........] 2500/3575 (69.9%) | 0.2s<0.1s | path=train_checklist.jsonl
+[progress 2026-04-08 05:53:54] write_jsonl:train_checklist.jsonl: [========================] 3575/3575 (100.0%) | 0.4s | path=train_checklist.jsonl
+[progress 2026-04-08 05:53:54] write_jsonl:train_checklist.jsonl: [========================] 3575/3575 (100.0%) | 0.4s | path=train_checklist.jsonl
+[progress 2026-04-08 05:53:54] write_jsonl:train_regression.jsonl: start total=3575 unit=rows
+[progress 2026-04-08 05:53:54] write_jsonl:train_regression.jsonl: [===============>........] 2500/3575 (69.9%) | 0.2s<0.1s | path=train_regression.jsonl
+[progress 2026-04-08 05:53:54] write_jsonl:train_regression.jsonl: [========================] 3575/3575 (100.0%) | 0.3s | path=train_regression.jsonl
+[progress 2026-04-08 05:53:54] write_jsonl:train_regression.jsonl: [========================] 3575/3575 (100.0%) | 0.4s | path=train_regression.jsonl
+[progress 2026-04-08 05:53:54] write_jsonl:train_conditional_detr_canonical.jsonl: start total=173 unit=rows
+[progress 2026-04-08 05:53:55] write_jsonl:train_conditional_detr_canonical.jsonl: [========================] 173/173 (100.0%) | 0.4s | path=train_conditional_detr_canonical.jsonl
+[progress 2026-04-08 05:53:55] write_jsonl:train_conditional_detr_canonical.jsonl: [========================] 173/173 (100.0%) | 0.5s | path=train_conditional_detr_canonical.jsonl
+[progress 2026-04-08 05:53:55] write_jsonl:train_conditional_detr_batch.jsonl: start total=173 unit=rows
+[progress 2026-04-08 05:53:55] write_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.4s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 05:53:55] write_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.4s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 05:53:55] write_jsonl:train_conditional_detr_skipped.jsonl: start total=25 unit=rows
+[progress 2026-04-08 05:53:55] write_jsonl:train_conditional_detr_skipped.jsonl: [========================] 25/25 (100.0%) | 0.0s | path=train_conditional_detr_skipped.jsonl
+[progress 2026-04-08 05:53:55] write_jsonl:train_conditional_detr_skipped.jsonl: [========================] 25/25 (100.0%) | 0.0s | path=train_conditional_detr_skipped.jsonl
+[progress 2026-04-08 05:53:55] build_finalscore_training_data: write summary artifacts
+[progress 2026-04-08 05:53:55] build_finalscore_training_data: build_markdown_report
+[progress 2026-04-08 05:53:55] build_finalscore_training_data: finished | status=ok | canonical=173 | batch=173 | examples=8
+{
+  "out_dir": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic",
+  "safe_leftover_policy": "ignore",
+  "counts": {
+    "train_pairwise.jsonl": 948,
+    "train_listwise.jsonl": 173,
+    "train_decision.jsonl": 198,
+    "train_checklist.jsonl": 3575,
+    "train_regression.jsonl": 3575,
+    "train_conditional_detr_canonical.jsonl": 173,
+    "train_conditional_detr_batch.jsonl": 173,
+    "train_conditional_detr_skipped.jsonl": 25,
+    "report_examples": 8
+  },
+  "qa_summary_path": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/qa_summary.json",
+  "validation_summary_path": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/validation_summary.json",
+  "status": "ok"
+}
+[run] 13b_convert_training_labels_coco
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco: start | out_dir=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_canonical.jsonl: start total=173 unit=rows
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_canonical.jsonl: [========================] 173/173 (100.0%) | 0.3s
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_canonical.jsonl: [========================] 173/173 (100.0%) | 0.3s | path=train_conditional_detr_canonical.jsonl
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_batch.jsonl: start total=173 unit=rows
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:build_canonical_coco: start total=173 unit=records
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:build_canonical_coco: [========================] 173/173 (100.0%) | 0.1s | annotations=4755
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:build_canonical_coco: [========================] 173/173 (100.0%) | 0.1s | images=173 annotations=4755
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:build_batch_coco: start total=173 unit=records
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:build_batch_coco: [========================] 173/173 (100.0%) | 0.0s | annotations=332
+[progress 2026-04-08 05:53:56] convert_sstk_detr_labels_to_coco:build_batch_coco: [========================] 173/173 (100.0%) | 0.0s | images=173 annotations=332
+[progress 2026-04-08 05:53:57] convert_sstk_detr_labels_to_coco:validate_coco: start total=4755 unit=annotations
+[progress 2026-04-08 05:53:57] convert_sstk_detr_labels_to_coco:validate_coco: [====>...................] 1000/4755 (21.0%) | 0.0s<0.0s
+[progress 2026-04-08 05:53:57] convert_sstk_detr_labels_to_coco:validate_coco: [=========>..............] 2000/4755 (42.1%) | 0.0s<0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_labels_to_coco:validate_coco: [==============>.........] 3000/4755 (63.1%) | 0.0s<0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_labels_to_coco:validate_coco: [===================>....] 4000/4755 (84.1%) | 0.0s<0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_labels_to_coco:validate_coco: [========================] 4755/4755 (100.0%) | 0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_labels_to_coco:validate_coco: [========================] 4755/4755 (100.0%) | 0.0s | errors=0
+[progress 2026-04-08 05:53:58] convert_sstk_detr_labels_to_coco:validate_coco: start total=332 unit=annotations
+[progress 2026-04-08 05:53:58] convert_sstk_detr_labels_to_coco:validate_coco: [========================] 332/332 (100.0%) | 0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_labels_to_coco:validate_coco: [========================] 332/332 (100.0%) | 0.0s | errors=0
+[progress 2026-04-08 05:53:58] convert_sstk_detr_labels_to_coco: finished | canonical_annotations=4755 | batch_annotations=332
+{
+  "canonical_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_canonical.json",
+  "batch_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_batch.json",
+  "canonical_validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 4755,
+    "gt_annotation_count": 332,
+    "label_type_counts": {
+      "top1": 173,
+      "soft_positive": 154,
+      "unsafe_negative": 105,
+      "hard_negative": 498,
+      "near_negative": 1423,
+      "ignore": 577,
+      "negative": 1820,
+      "baseline_positive": 5
+    },
+    "error_count": 0,
+    "errors": []
+  },
+  "batch_validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 332,
+    "gt_annotation_count": 332,
+    "label_type_counts": {
+      "": 332
+    },
+    "error_count": 0,
+    "errors": []
+  }
+}
+[run] 13c_convert_training_labels_gaic_like
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like: start | batch_jsonl=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl | out_json=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: start total=173 unit=rows
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:build_instances: start total=173 unit=records
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:build_instances: [========================] 173/173 (100.0%) | 0.1s | annotations=3575
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:build_instances: [========================] 173/173 (100.0%) | 0.1s | images=173 annotations=3575
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:validate: start total=3575 unit=annotations
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:validate: [=====>..................] 1000/3575 (28.0%) | 0.0s<0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:validate: [============>...........] 2000/3575 (55.9%) | 0.0s<0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:validate: [===================>....] 3000/3575 (83.9%) | 0.0s<0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:validate: [========================] 3575/3575 (100.0%) | 0.0s
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like:validate: [========================] 3575/3575 (100.0%) | 0.0s | errors=0 warnings=0
+[progress 2026-04-08 05:53:58] convert_sstk_detr_batch_to_gaic_like: finished | images=173 | annotations=3575
+{
+  "out_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 3575,
+    "gt_annotation_count": 332,
+    "negative_annotation_count": 3243,
+    "subject_mode_id_counts": {
+      "0": 162,
+      "1": 617,
+      "2": 950,
+      "3": 1065,
+      "4": 781
+    },
+    "decision_id_counts": {
+      "0": 3,
+      "1": 2060,
+      "2": 1512
+    },
+    "label_type_counts": {
+      "matching_target": 332,
+      "near_negative": 1423,
+      "negative": 1820
+    },
+    "score_range": {
+      "min": 0.002472623,
+      "max": 0.997527377
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {}
+}
+[run] 13d_build_training_label_debug_viz
+[progress 2026-04-08 05:53:59] build_gaic_training_label_debug_viz: start | coco_json=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json | batch_jsonl=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl
+[progress 2026-04-08 05:54:11] build_gaic_training_label_debug_viz: selected_images=32 | render_workers=32
+[progress 2026-04-08 05:54:11] build_gaic_training_label_debug_viz:render_selected_images: start total=32 unit=images
+[progress 2026-04-08 05:55:26] build_gaic_training_label_debug_viz:render_selected_images: [........................] 1/32 (3.1%) | 1m15s<38m48s | image_id=test_1
+[progress 2026-04-08 05:55:40] build_gaic_training_label_debug_viz:render_selected_images: [>.......................] 2/32 (6.2%) | 1m29s<22m14s | image_id=test_29
+[progress 2026-04-08 05:56:08] build_gaic_training_label_debug_viz:render_selected_images: [=>......................] 3/32 (9.4%) | 1m58s<18m58s | image_id=test_27
+[progress 2026-04-08 05:56:38] build_gaic_training_label_debug_viz:render_selected_images: [==>.....................] 5/32 (15.6%) | 2m28s<13m17s | image_id=test_3
+[progress 2026-04-08 05:56:56] build_gaic_training_label_debug_viz:render_selected_images: [===>....................] 6/32 (18.8%) | 2m45s<11m54s | image_id=test_8
+[progress 2026-04-08 05:57:06] build_gaic_training_label_debug_viz:render_selected_images: [========>...............] 12/32 (37.5%) | 2m55s<4m52s | image_id=test_41
+[progress 2026-04-08 05:57:13] build_gaic_training_label_debug_viz:render_selected_images: [===============>........] 22/32 (68.8%) | 3m02s<1m23s | image_id=test_31
+[progress 2026-04-08 05:57:17] build_gaic_training_label_debug_viz:render_selected_images: [========================] 32/32 (100.0%) | 3m06s | image_id=test_23
+[progress 2026-04-08 05:57:17] build_gaic_training_label_debug_viz:render_selected_images: [========================] 32/32 (100.0%) | 3m06s
+[progress 2026-04-08 05:57:17] build_gaic_training_label_debug_viz: finished | selected_images=32 | out_dir=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg
+{"status": "ok", "out_dir": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg", "selected_images": 32}
+========================================================
+ Done
+========================================================
+ filtered parquet : data/TestImages/All/filtered_test_images_all.parquet
+ precompute raw    : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl (unified C1/C2/C3/C4/C5/C6)
+ feats c1 source   : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ feats c1 alias    : data/TestImages/All/artifacts/precompute/feats_c1.jsonl
+ feats c2/c3e/c4/c5/c6: data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl | data/TestImages/All/artifacts/precompute/feats_c4.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl | data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+ merged feats     : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ routed feats     : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ routed final     : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+ c7 saliency json : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+ c7 sal summary   : data/TestImages/All/artifacts/precompute/c7_saliency_test_images_full_260408_subjectfix_v2_equalized_summary.json
+ downstream feats : data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl
+ public raw       : data/TestImages/All/artifacts/public_teachers/raw/teacher_raw_public_test_images_full_260408_subjectfix_v2_equalized.jsonl
+ public proposals : data/TestImages/All/artifacts/public_teachers/proposals/teacher_proposals_public_test_images_full_260408_subjectfix_v2_equalized.jsonl
+ candidates       : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+ cand overview    : data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized_overview.json
+ teacher jsonl    : data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+ teacher overview : data/TestImages/All/artifacts/teacher/overview/teacher_scores_overview_test_images_full_260408_subjectfix_v2_equalized.json
+ teacher QA       : data/TestImages/All/artifacts/teacher/qa/teacher_scores_qa_report_test_images_full_260408_subjectfix_v2_equalized.json
+ teacher viz dir  : data/TestImages/All/artifacts/teacher/visualizations/teacher_scorer_test_images_full_260408_subjectfix_v2_equalized
+ training labels  : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic
+ detr canonical   : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_canonical.jsonl
+ detr batch       : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl
+ detr skipped     : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_skipped.jsonl
+ training report  : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/TRAINING_DATA_REPORT_KO.md
+ coco summary     : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/coco_conversion_summary.json
+ gaic-like json   : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json
+ gaic-like guide  : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md
+ debug viz dir    : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg
+ debug viz summary: data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg/summary/summary.json
+ report dir       : data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed
+ report viz stage : data/TestImages/All/artifacts/reports/test_images_full_260408_subjectfix_v2_equalized_detailed/assets/_staging_teacher_viz/teacher_scorer_test_images_full_260408_subjectfix_v2_equalized
+ training labels  : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic
+ training pairwise: data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_pairwise.jsonl
+ training detr canonical: data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_canonical.jsonl
+ training detr batch: data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl
+ training detr skipped: data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_skipped.jsonl
+ training qa      : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/qa_summary.json
+ training validation: data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/validation_summary.json
+ training report  : data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/TRAINING_DATA_REPORT_KO.md
+ logs             : data/TestImages/All/logs/e2e_test_images_full_260408_subjectfix_v2_equalized
+[run] refresh GAIC-like export for test images
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like: start | batch_jsonl=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl | out_json=data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: start total=173 unit=rows
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:load_jsonl:train_conditional_detr_batch.jsonl: [========================] 173/173 (100.0%) | 0.3s | path=train_conditional_detr_batch.jsonl
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:build_instances: start total=173 unit=records
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:build_instances: [========================] 173/173 (100.0%) | 0.1s | annotations=3575
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:build_instances: [========================] 173/173 (100.0%) | 0.1s | images=173 annotations=3575
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:validate: start total=3575 unit=annotations
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:validate: [=====>..................] 1000/3575 (28.0%) | 0.0s<0.0s
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:validate: [============>...........] 2000/3575 (55.9%) | 0.0s<0.0s
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:validate: [===================>....] 3000/3575 (83.9%) | 0.0s<0.0s
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:validate: [========================] 3575/3575 (100.0%) | 0.0s
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like:validate: [========================] 3575/3575 (100.0%) | 0.0s | errors=0 warnings=0
+[progress 2026-04-08 05:57:18] convert_sstk_detr_batch_to_gaic_like: finished | images=173 | annotations=3575
+{
+  "out_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 173,
+    "annotation_count": 3575,
+    "gt_annotation_count": 332,
+    "negative_annotation_count": 3243,
+    "subject_mode_id_counts": {
+      "0": 162,
+      "1": 617,
+      "2": 950,
+      "3": 1065,
+      "4": 781
+    },
+    "decision_id_counts": {
+      "0": 3,
+      "1": 2060,
+      "2": 1512
+    },
+    "label_type_counts": {
+      "matching_target": 332,
+      "near_negative": 1423,
+      "negative": 1820
+    },
+    "score_range": {
+      "min": 0.002472623,
+      "max": 0.997527377
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  },
+  "split_exports": {}
+}
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs: start | manifest_parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet | summary_json=/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/validation/test_images_e2e_validation_test_images_full_260408_subjectfix_v2_equalized.json
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs: load prepare summary test_images_prepare_summary.json
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_raw.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_raw.jsonl: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_raw.jsonl: [========================] 33/33 (100.0%) | 0.0s | path=feats_c2c3c5_v2_strict_raw.jsonl
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl: [========================] 33/33 (100.0%) | 0.0s
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs:read_jsonl:feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl: [========================] 33/33 (100.0%) | 0.0s | path=feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl
+[progress 2026-04-08 05:57:19] validate_gaic_e2e_outputs:read_jsonl:candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:57:20] validate_gaic_e2e_outputs:read_jsonl:candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 0.4s
+[progress 2026-04-08 05:57:20] validate_gaic_e2e_outputs:read_jsonl:candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 0.4s | path=candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[progress 2026-04-08 05:57:20] validate_gaic_e2e_outputs:read_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: start total=33 unit=rows
+[progress 2026-04-08 05:57:24] validate_gaic_e2e_outputs:read_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 3.9s
+[progress 2026-04-08 05:57:24] validate_gaic_e2e_outputs:read_jsonl:teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl: [========================] 33/33 (100.0%) | 3.9s | path=teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl
+[progress 2026-04-08 05:57:24] validate_gaic_e2e_outputs: finished | status=ok | errors=0 | warnings=0
+{
+  "status": "ok",
+  "manifest_rows": 33,
+  "precompute_rows": 33,
+  "errors": [],
+  "warnings": [],
+  "sections": {
+    "manifest": {
+      "rows": 33,
+      "unique_image_ids": 33,
+      "split_counts": {
+        "root": 33
+      }
+    },
+    "prepare_summary": {
+      "status": "ok",
+      "image_root": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+      "output_parquet": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/filtered_test_images_all.parquet",
+      "flat_image_dir": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/images",
+      "bucket": "test_images_all",
+      "link_mode": "symlink",
+      "num_workers": 33,
+      "pseudo_tar_chunk_size": 256,
+      "max_images": 0,
+      "num_images_scanned_total": 33,
+      "num_images_prepared": 33,
+      "split_counts": {
+        "root": 33
+      },
+      "extension_counts": {
+        ".jpg": 33
+      },
+      "link_counts": {
+        "existing_match": 33
+      },
+      "pseudo_tar_groups": 1,
+      "largest_pseudo_tar_group": 33,
+      "caption_jsonl": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_full_260408_subjectfix_v2_equalized.jsonl",
+      "caption_rows_available": 33,
+      "caption_rows_applied": 33,
+      "reference": {
+        "generated": true,
+        "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/test_images_reference.json",
+        "image_count": 33,
+        "annotation_count": 0,
+        "source_annotation_jsons": [],
+        "source_stats": {}
+      }
+    },
+    "precompute": {
+      "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl",
+      "rows": 33,
+      "has_c2_seg_rows": 33,
+      "has_c3_pose_rows": 33,
+      "has_c4_ocr_rows": 33,
+      "has_c5_geom_rows": 33,
+      "unique_image_ids": 33
+    },
+    "routed": {
+      "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_c7_saliency.jsonl",
+      "rows": 33,
+      "routing_rows": 33,
+      "unique_image_ids": 33
+    },
+    "candidates": {
+      "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/candidates/candidates_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl",
+      "rows": 33,
+      "unique_image_ids": 33,
+      "subset_of_manifest": true
+    },
+    "teacher": {
+      "path": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/teacher/scores/teacher_scores_ar_test_images_full_260408_subjectfix_v2_equalized.jsonl",
+      "rows": 33,
+      "unique_image_ids": 33,
+      "expected_vlm_tasks_all_ar": 198
+    },
+    "training_validation": {
+      "status": "ok",
+      "error_count": 0,
+      "warning_count": 0,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "conditional_detr_canonical": 173,
+        "conditional_detr_batch": 173,
+        "conditional_detr_skipped": 25
+      }
+    },
+    "training_gaic_like": {
+      "out_json": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/coco/instances_conditional_detr_batch_gaic_like.json",
+      "source_batch_jsonl": "data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl",
+      "gaic_reference_json": "data/TestImages/All/test_images_reference.json",
+      "sstk_meta": {
+        "safe_leftover_policies": [
+          "ignore"
+        ],
+        "split_image_counts": {
+          "unknown": 173
+        },
+        "split_annotation_counts": {
+          "unknown": 3575
+        }
+      },
+      "validation": {
+        "status": "ok",
+        "image_count": 173,
+        "annotation_count": 3575,
+        "gt_annotation_count": 332,
+        "negative_annotation_count": 3243,
+        "subject_mode_id_counts": {
+          "0": 162,
+          "1": 617,
+          "2": 950,
+          "3": 1065,
+          "4": 781
+        },
+        "decision_id_counts": {
+          "0": 3,
+          "1": 2060,
+          "2": 1512
+        },
+        "label_type_counts": {
+          "matching_target": 332,
+          "near_negative": 1423,
+          "negative": 1820
+        },
+        "score_range": {
+          "min": 0.002472623,
+          "max": 0.997527377
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      },
+      "split_exports": {}
+    }
+  }
+}
+[done] training-label debug viz: data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg
+       summary: data/TestImages/All/artifacts/training_labels/test_images_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg/summary/summary.json
+[done] validation summary: data/TestImages/All/artifacts/validation/test_images_e2e_validation_test_images_full_260408_subjectfix_v2_equalized.json

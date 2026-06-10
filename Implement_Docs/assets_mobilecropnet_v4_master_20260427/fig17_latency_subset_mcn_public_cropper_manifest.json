@@ -1,0 +1,70 @@
+{
+  "bytes": 144988,
+  "figure": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig17_latency_subset_mcn_public_cropper.png",
+  "metric_note": "Subset of Figure 17-2 manifest. Mean and p95 latency are plotted; labels also show params M and peak MB where available.",
+  "rows": [
+    {
+      "device": "RTX3050",
+      "group": "MobileCropNet",
+      "mean_ms_output": 6.827,
+      "method": "MCN balanced_288",
+      "note": "forward-only",
+      "p50_ms": 6.715,
+      "p95_ms": 8.844,
+      "params_m": 8.225,
+      "peak_mb": 154.3
+    },
+    {
+      "device": "RTX3050",
+      "group": "MobileCropNet",
+      "mean_ms_output": 7.517,
+      "method": "MCN rank_320",
+      "note": "forward-only",
+      "p50_ms": 7.195,
+      "p95_ms": 9.493,
+      "params_m": 9.768,
+      "peak_mb": 180.4
+    },
+    {
+      "device": "RTX3050",
+      "group": "MobileCropNet",
+      "mean_ms_output": 19.632,
+      "method": "MCN plus_384",
+      "note": "forward-only",
+      "p50_ms": 18.613,
+      "p95_ms": 24.864,
+      "params_m": 32.341,
+      "peak_mb": 589.1
+    },
+    {
+      "device": "RTX3050",
+      "group": "Public cropper",
+      "mean_ms_output": 30.049,
+      "method": "Public GAIC",
+      "note": "candidate-ranker forward-only",
+      "p50_ms": 2.492,
+      "p95_ms": 175.451,
+      "params_m": 2.91,
+      "peak_mb": 252.1
+    },
+    {
+      "device": "RTX3050",
+      "group": "Public cropper",
+      "mean_ms_output": 60.553,
+      "method": "Public CGS",
+      "note": "candidate-ranker forward-only",
+      "p50_ms": 32.981,
+      "p95_ms": 349.714,
+      "params_m": 21.254,
+      "peak_mb": 417.4
+    }
+  ],
+  "selection": [
+    "MCN balanced_288",
+    "MCN rank_320",
+    "MCN plus_384",
+    "Public GAIC",
+    "Public CGS"
+  ],
+  "source_manifest": "Implement_Docs/assets_mobilecropnet_v4_master_20260427/fig17_latency_profile_public_cropper_comparison_manifest.json"
+}

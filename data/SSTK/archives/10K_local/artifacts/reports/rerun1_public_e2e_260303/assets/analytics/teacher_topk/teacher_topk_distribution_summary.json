@@ -1,0 +1,34 @@
+{
+  "input_jsonl": "data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e_260303.jsonl",
+  "num_selected_rows": 11899,
+  "num_tasks": 2500,
+  "selected_k_distribution": {
+    "1": 86,
+    "2": 44,
+    "3": 49,
+    "4": 27,
+    "5": 2294
+  },
+  "source_group_distribution": {
+    "baseline": 4197,
+    "grid": 4569,
+    "jitter": 572,
+    "other": 223,
+    "phi": 131,
+    "teacher_seed": 2207
+  },
+  "rank_count": {
+    "1": 2500,
+    "2": 2414,
+    "3": 2370,
+    "4": 2321,
+    "5": 2294
+  },
+  "score_final": {
+    "mean": -5.9198324671821165,
+    "p50": -3.008357,
+    "p90": 1.0286084,
+    "min": -77.998021,
+    "max": 1.180863
+  }
+}

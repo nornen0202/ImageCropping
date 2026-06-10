@@ -1,0 +1,464 @@
+========================================================
+ GAIC e2e wrapper
+========================================================
+ data_dir              : data/GAIC/All
+ image_root            : data/Publics/GAIC/images
+ flat_image_dir        : data/GAIC/All/images
+ bucket                : gaic_all
+ run_tag               : gaic_260320_r0
+ prepare_max_images    : 0
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 1
+ run_c1                : 0
+ use_real_expensive    : 0
+ run_c6                : 1
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1
+ run_detailed_report   : 0
+ gaic_reference_json   : data/GAIC/All/gaic_reference_available.json
+========================================================
+{
+  "status": "ok",
+  "image_root": "/group-volume/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/images",
+  "output_parquet": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/filtered_gaic_all.parquet",
+  "flat_image_dir": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/images",
+  "bucket": "gaic_all",
+  "link_mode": "symlink",
+  "pseudo_tar_chunk_size": 256,
+  "max_images": 0,
+  "num_images_scanned_total": 1236,
+  "num_images_prepared": 1236,
+  "split_counts": {
+    "test": 200,
+    "train": 1036
+  },
+  "extension_counts": {
+    ".jpg": 1236
+  },
+  "link_counts": {
+    "symlink": 1236
+  },
+  "pseudo_tar_groups": 5,
+  "largest_pseudo_tar_group": 256,
+  "reference": {
+    "generated": true,
+    "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/gaic_reference_available.json",
+    "image_count": 1236,
+    "annotation_count": 0,
+    "source_annotation_jsons": [],
+    "source_stats": {}
+  }
+}
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : gaic_all
+ data_dir            : data/GAIC/All
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : gaic_260320_r0
+ skip_existing       : 1
+ precompute_mode     : unified
+ run_filter          : 0
+ filter_train_match  : 1
+ filter_tag_embed    : mgpu=-1 gpu_ids=auto bs=128 chunk=0 device=auto
+ filter_cpu_map      : workers=0 chunk=4096 sample_extract_workers=0
+ export_curated_img  : 0 (dir=data/GAIC/All/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/GAIC/All/images)
+ extract_mode        : auto (extract_multi_gpu=-1, gpu_ids=0,1,2, workers=3)
+ run_c1/c2/c3/c4/c5/c6 : 0/1/1/0/1/1
+ run_c3_enrich/merge : 1/1
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ run_component_viz   : 0 (out=data/GAIC/All/artifacts/precompute/visualizations/components_gaic_260320_r0, num_samples=120)
+ public proposals    : enable=0 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/GAIC/All/artifacts/public_teachers/raw/teacher_raw_public_gaic_260320_r0.jsonl | data/GAIC/All/artifacts/public_teachers/proposals/teacher_proposals_public_gaic_260320_r0.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=auto workers=auto
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 1
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 1 (real_expensive=0)
+ c1 source           : data/GAIC/All/artifacts/precompute/feats_c1.jsonl
+ teacher_multi_gpu   : 0 (gpu_ids=0,1,2, workers=3)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=24 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_public_ref  : save_public_teacher_ref_eval=1
+ teacher_aesthetic   : backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 0 (backend=heuristic fallback=none model=Qwen/Qwen3-VL-4B-Instruct)
+ run_training_labels : 1 (dir=data/GAIC/All/artifacts/training_labels/gaic_260320_r0)
+ gaic_reference_json : data/GAIC/All/gaic_reference_available.json
+ run_detailed_report : 0 (dir=data/GAIC/All/artifacts/reports/gaic_260320_r0_detailed examples_per_bucket=5)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=auto, workers=auto)
+ vlm out/meta/sum    : data/GAIC/All/artifacts/vlm_teacher/labels/crop_label_v1_gaic_260320_r0.jsonl | data/GAIC/All/artifacts/vlm_teacher/meta/meta_norm_v1_gaic_260320_r0.jsonl | data/GAIC/All/artifacts/vlm_teacher/summary/vlm_teacher_summary_gaic_260320_r0.json
+========================================================
+[info] using curated image cache dir: data/GAIC/All/images
+[run] 02_extract_precompute_unified
+[info] python_bin: python3
+[quality-defaults] C5_SCALELSD_CKPT=/group-volume/jaden.ju/Sources/ImageCropping/weights/scalelsd/scalelsd-vitbase-v1-train-sa1b.pt
+[quality-defaults] C6_GAZELLE_REPO=/group-volume/jaden.ju/Sources/ImageCropping/third_party/gazelle
+[quality-defaults] C6_GAZELLE_CKPT=/group-volume/jaden.ju/Sources/ImageCropping/.cache/torch/hub/checkpoints/gazelle_dinov2_vitb14_inout.pt
+[quality-defaults] C6_TORCH_HUB_DIR=/group-volume/jaden.ju/Sources/ImageCropping/.cache/torch/hub
+[quality-defaults] C6_GAZELLE_USE_TORCHHUB=1
+==============================================
+ Feature Extraction Component Runner
+==============================================
+  Input    : data/GAIC/All/filtered_gaic_all.parquet
+  Bucket   : gaic_all
+  Output   : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+  Component: c2 c3 c5 c6
+  Priority : quality_first
+  Mode     : multi  (Detected GPUs: 3)
+  Tar Dir  : /sstk/20230916/sstk_100
+  Image Dir: data/GAIC/All/images
+  WeightsDir: /group-volume/jaden.ju/Sources/ImageCropping/weights
+  Threads  : OMP=8 OPENBLAS=<unset> MKL=<unset>
+  C4 backend env: auto
+==============================================
+[MODE] Multi-GPU (No Ray, sharded single-process workers)
+[multi] gpu_ids=0,1,2 workers=3
+[multi] shard-local devices: C4_PPOCR_DEVICE=gpu:0, C5_SCALELSD_DEVICE=cuda:0, C6_GAZELLE_DEVICE=cuda:0
+[multi] launch shard=0/3 gpu=0 -> data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.450/part_0.jsonl
+[multi] launch shard=1/3 gpu=1 -> data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.450/part_1.jsonl
+[multi] launch shard=2/3 gpu=2 -> data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.450/part_2.jsonl
+[multi] merged output -> data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[multi] shard logs -> data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.450
+==============================================
+ Done.
+==============================================
+[run] 03_enrich_c3_unified
+[enrich_c3] running CPU-only JSONL post-process (no GPU inference).
+enrich_c3: 0it [00:00, ?it/s]enrich_c3: 230it [00:00, 2298.19it/s]enrich_c3: 460it [00:00, 2131.48it/s]enrich_c3: 714it [00:00, 2299.14it/s]enrich_c3: 945it [00:00, 2231.59it/s]enrich_c3: 1188it [00:00, 2294.97it/s]enrich_c3: 1236it [00:00, 2219.71it/s]
+[done] total=1236 enriched_records=517 missing_hw=0 use_actual_image_size=1 output=data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+[run] 07a_enrich_subject_mode
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 134it [00:00, 1328.82it/s]subject-mode-enrich: 305it [00:00, 1545.71it/s]subject-mode-enrich: 460it [00:00, 1508.84it/s]subject-mode-enrich: 614it [00:00, 1520.49it/s]subject-mode-enrich: 787it [00:00, 1592.74it/s]subject-mode-enrich: 947it [00:00, 1530.99it/s]subject-mode-enrich: 1123it [00:00, 1600.35it/s]subject-mode-enrich: 1236it [00:00, 1539.05it/s]
+[done] total=1236 routed=1236 missing_meta=0 output=data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[done] subject_mode_counts={'other_ambiguous': 664, 'portrait_group': 258, 'portrait_single': 262, 'scene_general': 52}
+[done] policy_counts={'generic_v1': 664, 'portrait_group_v1': 258, 'portrait_single_v1': 262, 'scene_v1': 52}
+[run] 09_generate_candidates
+==============================================
+ Candidate Generator Runner (Phase B1)
+==============================================
+  Input Parquet : data/GAIC/All/filtered_gaic_all.parquet
+  Feats C2      : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+  Feats C3      : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+  Output JSONL  : data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0.jsonl
+  Server Mode   : 1
+  TAR_DIR       : /sstk/20230916/sstk_100
+  IMAGE_DIR     : data/GAIC/All/images
+  use_actual    : 1
+  strict_actual : 1
+  Extra Args    : --actual_size_cache_json data/GAIC/All/cache/actual_image_size_map.json --max_images 0 --num_workers 0 --mp_chunksize 64 --mp_start_method auto --ar_list FREE 1:1 9:16 16:9 3:4 4:3
+==============================================
+[CandidateGen] Loading inputs...
+[CandidateGen] rows=1236 c2_seg=1236 c2_det=1236(nonempty=802) c3=1236(nonempty=517) routing=1236 teacher_proposals=0 cfg_hash=017981a75c07339d
+[CandidateGen] worker mode: multiprocess workers=16 chunksize=64 start=auto
+[CandidateGen] Building/loading actual TAR image-size map...
+[CandidateGen] actual_size_map loaded: 1236 images
+CandidateGen-MP:   0%|                                                           | 0/1236 [00:00<?, ?it/s]CandidateGen-MP:   0%|                                                 | 1/1236 [00:13<4:32:16, 13.23s/it]CandidateGen-MP:   0%|▏                                                  | 6/1236 [00:13<33:52,  1.65s/it]CandidateGen-MP:   1%|▍                                                 | 10/1236 [00:13<17:06,  1.19it/s]CandidateGen-MP:   1%|▌                                                 | 14/1236 [00:14<11:59,  1.70it/s]CandidateGen-MP:   4%|█▊                                                | 44/1236 [00:14<02:11,  9.06it/s]CandidateGen-MP:   6%|███                                               | 75/1236 [00:14<01:00, 19.30it/s]CandidateGen-MP:   9%|████▏                                            | 106/1236 [00:14<00:34, 32.75it/s]CandidateGen-MP:  11%|█████▍                                           | 137/1236 [00:14<00:22, 49.95it/s]CandidateGen-MP:  14%|██████▌                                          | 167/1236 [00:14<00:15, 70.15it/s]CandidateGen-MP:  16%|███████▊                                         | 197/1236 [00:15<00:11, 93.86it/s]CandidateGen-MP:  18%|████████▊                                       | 228/1236 [00:15<00:08, 121.57it/s]CandidateGen-MP:  21%|██████████                                      | 258/1236 [00:15<00:06, 148.94it/s]CandidateGen-MP:  23%|███████████▏                                    | 289/1236 [00:15<00:05, 177.66it/s]CandidateGen-MP:  26%|████████████▍                                   | 321/1236 [00:15<00:04, 205.96it/s]CandidateGen-MP:  28%|█████████████▋                                  | 351/1236 [00:15<00:03, 223.87it/s]CandidateGen-MP:  31%|██████████████▊                                 | 381/1236 [00:15<00:03, 239.66it/s]CandidateGen-MP:  33%|███████████████▉                                | 411/1236 [00:15<00:03, 249.42it/s]CandidateGen-MP:  36%|█████████████████▏                              | 442/1236 [00:15<00:03, 264.63it/s]CandidateGen-MP:  38%|██████████████████▍                             | 474/1236 [00:15<00:02, 277.65it/s]CandidateGen-MP:  41%|███████████████████▌                            | 505/1236 [00:16<00:02, 285.20it/s]CandidateGen-MP:  43%|████████████████████▊                           | 536/1236 [00:16<00:02, 289.18it/s]CandidateGen-MP:  46%|██████████████████████                          | 567/1236 [00:16<00:02, 294.19it/s]CandidateGen-MP:  48%|███████████████████████▏                        | 598/1236 [00:16<00:02, 293.30it/s]CandidateGen-MP:  51%|████████████████████████▍                       | 628/1236 [00:16<00:02, 294.43it/s]CandidateGen-MP:  53%|█████████████████████████▌                      | 659/1236 [00:16<00:01, 295.98it/s]CandidateGen-MP:  56%|██████████████████████████▊                     | 690/1236 [00:16<00:01, 298.63it/s]CandidateGen-MP:  58%|████████████████████████████                    | 721/1236 [00:16<00:01, 299.29it/s]CandidateGen-MP:  61%|█████████████████████████████▏                  | 752/1236 [00:16<00:01, 300.80it/s]CandidateGen-MP:  63%|██████████████████████████████▍                 | 783/1236 [00:17<00:01, 302.45it/s]CandidateGen-MP:  66%|███████████████████████████████▌                | 814/1236 [00:17<00:01, 304.36it/s]CandidateGen-MP:  68%|████████████████████████████████▊               | 845/1236 [00:17<00:01, 300.87it/s]CandidateGen-MP:  71%|██████████████████████████████████              | 876/1236 [00:17<00:01, 299.57it/s]CandidateGen-MP:  73%|███████████████████████████████████▏            | 907/1236 [00:17<00:01, 300.60it/s]CandidateGen-MP:  76%|████████████████████████████████████▍           | 938/1236 [00:17<00:01, 252.03it/s]CandidateGen-MP:  78%|█████████████████████████████████████▍          | 965/1236 [00:17<00:01, 190.01it/s]CandidateGen-MP:  81%|██████████████████████████████████████▋         | 996/1236 [00:17<00:01, 215.43it/s]CandidateGen-MP:  83%|██████████████████████████████████████▉        | 1025/1236 [00:18<00:00, 231.38it/s]CandidateGen-MP:  85%|████████████████████████████████████████▏      | 1056/1236 [00:18<00:00, 248.99it/s]CandidateGen-MP:  88%|█████████████████████████████████████████▎     | 1086/1236 [00:18<00:00, 261.19it/s]CandidateGen-MP:  90%|██████████████████████████████████████████▍    | 1117/1236 [00:18<00:00, 273.81it/s]CandidateGen-MP:  93%|███████████████████████████████████████████▌   | 1147/1236 [00:18<00:00, 280.43it/s]CandidateGen-MP:  95%|████████████████████████████████████████████▊  | 1178/1236 [00:18<00:00, 287.02it/s]CandidateGen-MP:  98%|█████████████████████████████████████████████▉ | 1208/1236 [00:18<00:00, 287.16it/s]CandidateGen-MP: 100%|████████████████████████████████████████████████| 1236/1236 [00:18<00:00, 65.70it/s]
+[CandidateGen] Done. written=1236 avg_total_candidates=440.22 elapsed=18.82s throughput=65.68 img/s
+[CandidateGen] size_source_counts={'tar_actual': 1236}
+[CandidateGen] output=data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0.jsonl
+[CandidateGen] Building overview from output jsonl...
+[CandidateGen] Overview saved: data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0_overview.json, data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0_overview_by_ar.csv, data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0_overview_by_source.csv, data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0_overview_by_subject_source.csv
+[CandidateGen] Visualization saved under: data/GAIC/All/artifacts/candidates/visualizations/candidates_ar_gaic_260320_r0_viz
+==============================================
+ Done.
+==============================================
+[run] 10_teacher_scorer
+[config] server_mode=1 tar_dir=/sstk/20230916/sstk_100 image_dir=data/GAIC/All/images
+[config] candidates=data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0.jsonl
+[config] features=data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[config] c1=data/SSTK/10K_local/artifacts/precompute/feats_c1.jsonl
+[config] parquet=data/GAIC/All/filtered_gaic_all.parquet
+[config] output_jsonl=data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260320_r0.jsonl
+[config] expensive_accel: batch=24 eval_top_m=0 preprocess_workers=0 pin_memory=1
+[config] public_teacher_ref_eval: save=1
+[config] aesthetic: backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+[config] portrait_safety: hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+[config] viz_image_ids=<none> viz_image_ids_file=<none>
+[1/3] Running teacher scorer...
+teacher-score: 0it [00:00, ?it/s]teacher-score: 1it [00:00,  4.51it/s]teacher-score: 2it [00:00,  4.42it/s]teacher-score: 3it [00:00,  5.08it/s]teacher-score: 4it [00:00,  5.21it/s]teacher-score: 5it [00:01,  4.60it/s]teacher-score: 6it [00:01,  4.85it/s]teacher-score: 7it [00:01,  4.97it/s]teacher-score: 8it [00:01,  4.68it/s]teacher-score: 9it [00:01,  5.03it/s]teacher-score: 10it [00:02,  5.15it/s]teacher-score: 11it [00:02,  5.28it/s]teacher-score: 12it [00:02,  4.93it/s]teacher-score: 13it [00:02,  5.13it/s]teacher-score: 14it [00:02,  5.21it/s]teacher-score: 15it [00:03,  4.57it/s]teacher-score: 16it [00:03,  4.26it/s]teacher-score: 17it [00:03,  4.63it/s]teacher-score: 18it [00:03,  4.06it/s]teacher-score: 19it [00:04,  4.49it/s]teacher-score: 20it [00:04,  4.43it/s]teacher-score: 21it [00:04,  4.16it/s]teacher-score: 22it [00:04,  4.76it/s]teacher-score: 23it [00:04,  4.20it/s]teacher-score: 24it [00:05,  4.16it/s]teacher-score: 25it [00:05,  4.62it/s]teacher-score: 26it [00:05,  4.78it/s]teacher-score: 27it [00:05,  4.53it/s]teacher-score: 28it [00:05,  4.90it/s]teacher-score: 29it [00:06,  4.89it/s]teacher-score: 30it [00:06,  3.30it/s]teacher-score: 31it [00:06,  3.41it/s]teacher-score: 32it [00:07,  3.67it/s]teacher-score: 33it [00:07,  3.94it/s]teacher-score: 34it [00:07,  4.25it/s]teacher-score: 35it [00:07,  4.38it/s]teacher-score: 36it [00:08,  4.49it/s]teacher-score: 37it [00:08,  4.61it/s]teacher-score: 38it [00:08,  3.59it/s]teacher-score: 39it [00:08,  3.84it/s]teacher-score: 40it [00:09,  4.21it/s]teacher-score: 41it [00:09,  4.57it/s]teacher-score: 42it [00:09,  4.58it/s]teacher-score: 43it [00:09,  4.76it/s]teacher-score: 44it [00:09,  4.85it/s]teacher-score: 45it [00:10,  2.69it/s]teacher-score: 46it [00:10,  2.79it/s]teacher-score: 47it [00:11,  3.24it/s]teacher-score: 48it [00:11,  3.54it/s]teacher-score: 49it [00:11,  3.86it/s]teacher-score: 50it [00:11,  4.00it/s]teacher-score: 51it [00:12,  4.06it/s]teacher-score: 52it [00:12,  3.18it/s]teacher-score: 53it [00:12,  3.62it/s]teacher-score: 54it [00:12,  4.07it/s]teacher-score: 55it [00:13,  3.34it/s]teacher-score: 56it [00:13,  3.72it/s]teacher-score: 57it [00:13,  3.94it/s]teacher-score: 58it [00:13,  4.09it/s]teacher-score: 59it [00:14,  4.14it/s]teacher-score: 60it [00:14,  4.18it/s]teacher-score: 61it [00:14,  4.45it/s]teacher-score: 62it [00:14,  4.82it/s]teacher-score: 63it [00:14,  4.69it/s]teacher-score: 64it [00:15,  4.79it/s]teacher-score: 65it [00:15,  5.01it/s]teacher-score: 66it [00:15,  4.89it/s]teacher-score: 67it [00:15,  5.30it/s]teacher-score: 68it [00:15,  5.46it/s]teacher-score: 69it [00:16,  5.26it/s]teacher-score: 70it [00:16,  5.42it/s]teacher-score: 71it [00:16,  5.71it/s]teacher-score: 72it [00:16,  5.33it/s]teacher-score: 73it [00:16,  5.23it/s]teacher-score: 74it [00:17,  5.18it/s]teacher-score: 75it [00:17,  4.80it/s]teacher-score: 76it [00:17,  4.86it/s]teacher-score: 77it [00:17,  5.26it/s]teacher-score: 78it [00:17,  4.84it/s]teacher-score: 79it [00:18,  5.13it/s]teacher-score: 80it [00:18,  5.30it/s]teacher-score: 81it [00:18,  5.13it/s]teacher-score: 82it [00:18,  5.39it/s]teacher-score: 83it [00:18,  5.45it/s]teacher-score: 84it [00:18,  5.19it/s]teacher-score: 85it [00:19,  5.43it/s]teacher-score: 86it [00:19,  5.60it/s]teacher-score: 87it [00:19,  5.10it/s]teacher-score: 88it [00:19,  5.23it/s]teacher-score: 89it [00:19,  5.42it/s]teacher-score: 90it [00:20,  5.09it/s]teacher-score: 91it [00:20,  4.51it/s]teacher-score: 92it [00:20,  4.76it/s]teacher-score: 93it [00:20,  4.77it/s]teacher-score: 94it [00:21,  4.70it/s]teacher-score: 95it [00:21,  5.03it/s]teacher-score: 96it [00:21,  5.09it/s]teacher-score: 97it [00:21,  4.72it/s]teacher-score: 98it [00:21,  4.85it/s]teacher-score: 99it [00:22,  4.72it/s]teacher-score: 100it [00:22,  5.23it/s]teacher-score: 101it [00:22,  5.45it/s]teacher-score: 102it [00:22,  4.88it/s]teacher-score: 103it [00:22,  4.93it/s]teacher-score: 104it [00:22,  5.02it/s]teacher-score: 105it [00:23,  3.86it/s]teacher-score: 106it [00:23,  4.31it/s]teacher-score: 107it [00:23,  4.69it/s]teacher-score: 108it [00:23,  4.92it/s]teacher-score: 109it [00:24,  4.88it/s]teacher-score: 110it [00:24,  5.34it/s]teacher-score: 111it [00:24,  5.53it/s]teacher-score: 112it [00:24,  5.21it/s]teacher-score: 113it [00:24,  5.11it/s]teacher-score: 114it [00:25,  5.17it/s]teacher-score: 115it [00:25,  5.14it/s]teacher-score: 116it [00:25,  5.32it/s]teacher-score: 117it [00:25,  5.67it/s]teacher-score: 118it [00:25,  5.34it/s]teacher-score: 119it [00:25,  5.47it/s]teacher-score: 120it [00:26,  5.33it/s]teacher-score: 121it [00:26,  4.80it/s]teacher-score: 122it [00:26,  5.18it/s]teacher-score: 123it [00:26,  5.63it/s]teacher-score: 124it [00:26,  5.30it/s]teacher-score: 125it [00:27,  3.30it/s]teacher-score: 126it [00:27,  3.54it/s]teacher-score: 127it [00:27,  3.62it/s]teacher-score: 128it [00:28,  3.89it/s]teacher-score: 129it [00:28,  4.29it/s]teacher-score: 130it [00:28,  4.50it/s]teacher-score: 131it [00:28,  4.41it/s]teacher-score: 132it [00:28,  4.86it/s]teacher-score: 133it [00:29,  5.13it/s]teacher-score: 134it [00:29,  5.08it/s]teacher-score: 135it [00:29,  4.95it/s]teacher-score: 136it [00:29,  5.29it/s]teacher-score: 137it [00:29,  4.56it/s]teacher-score: 138it [00:30,  4.86it/s]teacher-score: 139it [00:30,  4.85it/s]teacher-score: 140it [00:30,  5.08it/s]teacher-score: 141it [00:30,  4.91it/s]teacher-score: 142it [00:30,  4.80it/s]teacher-score: 143it [00:31,  5.14it/s]teacher-score: 144it [00:31,  4.96it/s]teacher-score: 145it [00:31,  5.05it/s]teacher-score: 146it [00:31,  5.18it/s]teacher-score: 147it [00:31,  4.98it/s]teacher-score: 148it [00:32,  5.40it/s]teacher-score: 149it [00:32,  5.67it/s]teacher-score: 150it [00:32,  5.04it/s]teacher-score: 151it [00:32,  4.96it/s]teacher-score: 152it [00:32,  5.15it/s]teacher-score: 153it [00:33,  4.78it/s]teacher-score: 154it [00:33,  5.17it/s]teacher-score: 155it [00:33,  5.10it/s]teacher-score: 156it [00:33,  4.71it/s]teacher-score: 157it [00:33,  5.00it/s]teacher-score: 158it [00:34,  5.12it/s]teacher-score: 159it [00:34,  4.96it/s]teacher-score: 160it [00:34,  5.16it/s]teacher-score: 161it [00:34,  4.84it/s]teacher-score: 162it [00:34,  4.90it/s]teacher-score: 163it [00:35,  4.97it/s]teacher-score: 164it [00:35,  4.09it/s]teacher-score: 165it [00:35,  4.11it/s]teacher-score: 166it [00:35,  4.30it/s]teacher-score: 167it [00:36,  4.40it/s]teacher-score: 168it [00:36,  4.40it/s]teacher-score: 169it [00:36,  4.72it/s]teacher-score: 170it [00:36,  5.00it/s]teacher-score: 171it [00:36,  4.91it/s]teacher-score: 172it [00:37,  5.17it/s]teacher-score: 173it [00:37,  5.31it/s]teacher-score: 174it [00:37,  5.27it/s]teacher-score: 175it [00:37,  5.43it/s]teacher-score: 176it [00:37,  4.98it/s]teacher-score: 177it [00:38,  4.80it/s]teacher-score: 178it [00:38,  4.70it/s]teacher-score: 179it [00:38,  5.05it/s]teacher-score: 180it [00:38,  4.41it/s]teacher-score: 181it [00:38,  4.63it/s]teacher-score: 182it [00:39,  4.85it/s]teacher-score: 183it [00:39,  5.02it/s]teacher-score: 184it [00:39,  5.04it/s]teacher-score: 185it [00:39,  5.17it/s]teacher-score: 186it [00:39,  4.93it/s]teacher-score: 187it [00:40,  3.75it/s]teacher-score: 188it [00:40,  3.98it/s]teacher-score: 189it [00:40,  3.38it/s]teacher-score: 190it [00:41,  3.88it/s]teacher-score: 191it [00:41,  3.81it/s]teacher-score: 192it [00:41,  4.05it/s]teacher-score: 193it [00:41,  3.68it/s]teacher-score: 194it [00:42,  3.71it/s]teacher-score: 195it [00:42,  3.90it/s]teacher-score: 196it [00:42,  3.99it/s]teacher-score: 197it [00:42,  4.13it/s]teacher-score: 198it [00:43,  4.19it/s]teacher-score: 199it [00:43,  4.36it/s]teacher-score: 200it [00:43,  4.73it/s]teacher-score: 201it [00:43,  4.57it/s]teacher-score: 202it [00:43,  4.85it/s]teacher-score: 203it [00:44,  5.10it/s]teacher-score: 204it [00:44,  4.95it/s]teacher-score: 205it [00:44,  5.19it/s]teacher-score: 206it [00:44,  4.89it/s]teacher-score: 207it [00:44,  4.77it/s]teacher-score: 208it [00:45,  5.24it/s]teacher-score: 209it [00:45,  5.55it/s]teacher-score: 210it [00:45,  5.68it/s]teacher-score: 211it [00:45,  5.25it/s]teacher-score: 212it [00:45,  4.60it/s]teacher-score: 213it [00:46,  4.59it/s]teacher-score: 214it [00:46,  4.93it/s]teacher-score: 215it [00:46,  5.17it/s]teacher-score: 216it [00:46,  4.90it/s]teacher-score: 217it [00:46,  5.02it/s]teacher-score: 218it [00:47,  5.12it/s]teacher-score: 219it [00:47,  4.85it/s]teacher-score: 220it [00:47,  5.01it/s]teacher-score: 221it [00:47,  5.21it/s]teacher-score: 222it [00:47,  4.93it/s]teacher-score: 223it [00:48,  5.02it/s]teacher-score: 224it [00:48,  5.20it/s]teacher-score: 225it [00:48,  4.59it/s]teacher-score: 226it [00:48,  4.92it/s]teacher-score: 227it [00:48,  5.04it/s]teacher-score: 228it [00:49,  3.62it/s]teacher-score: 229it [00:49,  4.07it/s]teacher-score: 230it [00:49,  4.40it/s]teacher-score: 231it [00:49,  4.32it/s]teacher-score: 232it [00:50,  4.67it/s]teacher-score: 233it [00:50,  5.06it/s]teacher-score: 234it [00:50,  4.82it/s]teacher-score: 235it [00:50,  5.00it/s]teacher-score: 236it [00:50,  4.61it/s]teacher-score: 237it [00:51,  4.64it/s]teacher-score: 238it [00:51,  3.92it/s]teacher-score: 239it [00:51,  4.01it/s]teacher-score: 240it [00:51,  4.25it/s]teacher-score: 241it [00:52,  4.53it/s]teacher-score: 242it [00:52,  4.42it/s]teacher-score: 243it [00:52,  4.62it/s]teacher-score: 244it [00:52,  4.95it/s]teacher-score: 245it [00:52,  4.85it/s]teacher-score: 246it [00:53,  5.21it/s]teacher-score: 247it [00:53,  4.83it/s]teacher-score: 248it [00:53,  4.92it/s]teacher-score: 249it [00:53,  5.11it/s]teacher-score: 250it [00:53,  5.17it/s]teacher-score: 251it [00:54,  4.38it/s]teacher-score: 252it [00:54,  4.65it/s]teacher-score: 253it [00:54,  4.91it/s]teacher-score: 254it [00:54,  4.97it/s]teacher-score: 255it [00:54,  4.80it/s]teacher-score: 256it [00:55,  4.39it/s]teacher-score: 257it [00:55,  4.68it/s]teacher-score: 258it [00:55,  4.59it/s]teacher-score: 259it [00:55,  4.71it/s]teacher-score: 260it [00:56,  4.87it/s]teacher-score: 261it [00:56,  4.83it/s]teacher-score: 262it [00:56,  5.03it/s]teacher-score: 263it [00:56,  5.29it/s]teacher-score: 264it [00:56,  5.02it/s]teacher-score: 265it [00:57,  4.93it/s]teacher-score: 266it [00:57,  5.19it/s]teacher-score: 267it [00:57,  5.03it/s]teacher-score: 268it [00:57,  5.13it/s]teacher-score: 269it [00:57,  5.24it/s]teacher-score: 270it [00:58,  5.02it/s]teacher-score: 271it [00:58,  5.19it/s]teacher-score: 272it [00:58,  5.20it/s]teacher-score: 273it [00:58,  5.21it/s]teacher-score: 274it [00:58,  5.55it/s]teacher-score: 275it [00:58,  5.10it/s]teacher-score: 276it [00:59,  4.92it/s]teacher-score: 277it [00:59,  4.81it/s]teacher-score: 278it [00:59,  5.08it/s]teacher-score: 279it [00:59,  4.89it/s]teacher-score: 280it [00:59,  5.13it/s]teacher-score: 281it [01:00,  5.04it/s]teacher-score: 282it [01:00,  4.69it/s]teacher-score: 283it [01:00,  4.91it/s]teacher-score: 284it [01:00,  4.67it/s]teacher-score: 285it [01:01,  4.42it/s]teacher-score: 286it [01:01,  4.20it/s]teacher-score: 287it [01:01,  3.97it/s]teacher-score: 288it [01:01,  4.33it/s]teacher-score: 289it [01:01,  4.86it/s]teacher-score: 290it [01:02,  4.58it/s]teacher-score: 291it [01:02,  4.57it/s]teacher-score: 292it [01:02,  3.69it/s]teacher-score: 293it [01:03,  3.91it/s]teacher-score: 294it [01:03,  4.14it/s]teacher-score: 295it [01:03,  4.45it/s]teacher-score: 296it [01:03,  4.88it/s]teacher-score: 297it [01:03,  4.83it/s]teacher-score: 298it [01:03,  5.05it/s]teacher-score: 299it [01:04,  5.25it/s]teacher-score: 300it [01:04,  4.79it/s]teacher-score: 301it [01:04,  5.15it/s]teacher-score: 302it [01:04,  4.91it/s]teacher-score: 303it [01:05,  4.84it/s]teacher-score: 304it [01:05,  3.81it/s]teacher-score: 305it [01:05,  3.96it/s]teacher-score: 306it [01:05,  4.32it/s]teacher-score: 307it [01:06,  4.65it/s]teacher-score: 308it [01:06,  4.99it/s]teacher-score: 309it [01:06,  4.82it/s]teacher-score: 310it [01:06,  5.06it/s]teacher-score: 311it [01:06,  4.71it/s]teacher-score: 312it [01:06,  5.14it/s]teacher-score: 313it [01:07,  5.38it/s]teacher-score: 314it [01:07,  3.94it/s]teacher-score: 315it [01:07,  3.81it/s]teacher-score: 316it [01:07,  4.29it/s]teacher-score: 317it [01:08,  4.53it/s]teacher-score: 318it [01:08,  4.30it/s]teacher-score: 319it [01:08,  4.67it/s]teacher-score: 320it [01:08,  5.00it/s]teacher-score: 321it [01:08,  5.13it/s]teacher-score: 322it [01:09,  5.55it/s]teacher-score: 323it [01:09,  5.61it/s]teacher-score: 324it [01:09,  5.24it/s]teacher-score: 325it [01:09,  4.47it/s]teacher-score: 326it [01:09,  4.75it/s]teacher-score: 327it [01:10,  4.43it/s]teacher-score: 328it [01:10,  4.71it/s]teacher-score: 329it [01:10,  4.71it/s]teacher-score: 330it [01:10,  4.58it/s]teacher-score: 331it [01:11,  4.42it/s]teacher-score: 332it [01:11,  4.76it/s]teacher-score: 333it [01:11,  4.65it/s]teacher-score: 334it [01:11,  4.97it/s]teacher-score: 335it [01:11,  5.16it/s]teacher-score: 336it [01:12,  5.39it/s]teacher-score: 337it [01:12,  5.02it/s]teacher-score: 338it [01:12,  5.57it/s]teacher-score: 339it [01:12,  4.53it/s]teacher-score: 340it [01:12,  4.59it/s]teacher-score: 341it [01:13,  4.41it/s]teacher-score: 342it [01:13,  3.69it/s]teacher-score: 343it [01:13,  4.21it/s]teacher-score: 344it [01:14,  3.65it/s]teacher-score: 345it [01:14,  4.12it/s]teacher-score: 346it [01:14,  3.21it/s]teacher-score: 347it [01:14,  3.75it/s]teacher-score: 348it [01:15,  2.99it/s]teacher-score: 349it [01:15,  3.35it/s]teacher-score: 350it [01:15,  3.12it/s]teacher-score: 351it [01:16,  2.91it/s]teacher-score: 352it [01:16,  3.49it/s]teacher-score: 353it [01:16,  3.65it/s]teacher-score: 354it [01:16,  4.07it/s]teacher-score: 355it [01:17,  4.40it/s]teacher-score: 356it [01:17,  4.59it/s]teacher-score: 357it [01:17,  4.99it/s]teacher-score: 358it [01:17,  5.25it/s]teacher-score: 359it [01:17,  4.77it/s]teacher-score: 360it [01:18,  4.32it/s]teacher-score: 361it [01:18,  4.64it/s]teacher-score: 362it [01:18,  4.48it/s]teacher-score: 363it [01:18,  4.85it/s]teacher-score: 364it [01:19,  4.39it/s]teacher-score: 365it [01:19,  4.12it/s]teacher-score: 366it [01:19,  4.43it/s]teacher-score: 367it [01:19,  4.80it/s]teacher-score: 368it [01:19,  4.76it/s]teacher-score: 369it [01:20,  5.08it/s]teacher-score: 370it [01:20,  5.31it/s]teacher-score: 371it [01:20,  4.98it/s]teacher-score: 372it [01:20,  5.19it/s]teacher-score: 373it [01:20,  5.37it/s]teacher-score: 374it [01:21,  4.87it/s]teacher-score: 375it [01:21,  5.05it/s]teacher-score: 376it [01:21,  5.29it/s]teacher-score: 377it [01:21,  4.99it/s]teacher-score: 378it [01:21,  4.78it/s]teacher-score: 379it [01:22,  4.94it/s]teacher-score: 380it [01:22,  5.30it/s]teacher-score: 381it [01:22,  5.00it/s]teacher-score: 382it [01:22,  5.12it/s]teacher-score: 383it [01:22,  4.58it/s]teacher-score: 384it [01:23,  4.90it/s]teacher-score: 385it [01:23,  5.07it/s]teacher-score: 386it [01:23,  5.00it/s]teacher-score: 387it [01:23,  4.19it/s]teacher-score: 388it [01:23,  4.52it/s]teacher-score: 389it [01:24,  3.90it/s]teacher-score: 390it [01:24,  3.24it/s]teacher-score: 391it [01:24,  3.69it/s]teacher-score: 392it [01:25,  3.17it/s]teacher-score: 393it [01:25,  3.75it/s]teacher-score: 394it [01:25,  3.65it/s]teacher-score: 395it [01:25,  4.09it/s]teacher-score: 396it [01:26,  3.92it/s]teacher-score: 397it [01:26,  4.34it/s]teacher-score: 398it [01:26,  4.76it/s]teacher-score: 399it [01:26,  4.62it/s]teacher-score: 400it [01:27,  4.44it/s]teacher-score: 401it [01:27,  4.44it/s]teacher-score: 402it [01:27,  4.65it/s]teacher-score: 403it [01:27,  3.91it/s]teacher-score: 404it [01:27,  4.25it/s]teacher-score: 405it [01:28,  4.13it/s]teacher-score: 406it [01:28,  4.25it/s]teacher-score: 407it [01:28,  4.16it/s]teacher-score: 408it [01:28,  4.58it/s]teacher-score: 409it [01:29,  3.86it/s]teacher-score: 410it [01:29,  4.27it/s]teacher-score: 411it [01:29,  4.29it/s]teacher-score: 412it [01:29,  4.77it/s]teacher-score: 413it [01:29,  5.14it/s]teacher-score: 414it [01:30,  4.99it/s]teacher-score: 415it [01:30,  4.93it/s]teacher-score: 416it [01:30,  4.93it/s]teacher-score: 417it [01:30,  4.30it/s]teacher-score: 418it [01:31,  4.71it/s]teacher-score: 419it [01:31,  4.97it/s]teacher-score: 420it [01:31,  4.25it/s]teacher-score: 421it [01:31,  4.66it/s]teacher-score: 422it [01:31,  5.07it/s]teacher-score: 423it [01:32,  5.00it/s]teacher-score: 424it [01:32,  5.11it/s]teacher-score: 425it [01:32,  5.08it/s]teacher-score: 426it [01:32,  4.51it/s]teacher-score: 427it [01:32,  4.61it/s]teacher-score: 428it [01:33,  4.81it/s]teacher-score: 429it [01:33,  4.66it/s]teacher-score: 430it [01:33,  4.16it/s]teacher-score: 431it [01:33,  4.57it/s]teacher-score: 432it [01:34,  4.39it/s]teacher-score: 433it [01:34,  4.77it/s]teacher-score: 434it [01:34,  5.16it/s]teacher-score: 435it [01:34,  5.11it/s]teacher-score: 436it [01:34,  5.38it/s]teacher-score: 437it [01:34,  5.64it/s]teacher-score: 438it [01:35,  5.40it/s]teacher-score: 439it [01:35,  5.51it/s]teacher-score: 440it [01:35,  5.31it/s]teacher-score: 441it [01:35,  5.09it/s]teacher-score: 442it [01:35,  5.35it/s]teacher-score: 443it [01:36,  5.42it/s]teacher-score: 444it [01:36,  5.30it/s]teacher-score: 445it [01:36,  5.34it/s]teacher-score: 446it [01:36,  5.41it/s]teacher-score: 447it [01:36,  4.94it/s]teacher-score: 448it [01:37,  5.20it/s]teacher-score: 449it [01:37,  5.36it/s]teacher-score: 450it [01:37,  4.61it/s]teacher-score: 451it [01:37,  4.90it/s]teacher-score: 452it [01:37,  5.16it/s]teacher-score: 453it [01:38,  5.02it/s]teacher-score: 454it [01:38,  5.19it/s]teacher-score: 455it [01:38,  5.44it/s]teacher-score: 456it [01:38,  5.29it/s]teacher-score: 457it [01:38,  5.24it/s]teacher-score: 458it [01:38,  5.36it/s]teacher-score: 459it [01:39,  5.15it/s]teacher-score: 460it [01:39,  5.31it/s]teacher-score: 461it [01:39,  5.49it/s]teacher-score: 462it [01:39,  5.44it/s]teacher-score: 463it [01:39,  5.43it/s]teacher-score: 464it [01:40,  5.31it/s]teacher-score: 465it [01:40,  5.52it/s]teacher-score: 466it [01:40,  5.25it/s]teacher-score: 467it [01:40,  5.41it/s]teacher-score: 468it [01:40,  5.54it/s]teacher-score: 469it [01:40,  5.42it/s]teacher-score: 470it [01:41,  5.59it/s]teacher-score: 471it [01:41,  5.71it/s]teacher-score: 472it [01:41,  4.99it/s]teacher-score: 473it [01:41,  4.82it/s]teacher-score: 474it [01:42,  3.99it/s]teacher-score: 475it [01:42,  4.16it/s]teacher-score: 476it [01:42,  4.34it/s]teacher-score: 477it [01:42,  4.68it/s]teacher-score: 478it [01:42,  5.05it/s]teacher-score: 479it [01:43,  4.95it/s]teacher-score: 480it [01:43,  5.06it/s]teacher-score: 481it [01:43,  5.15it/s]teacher-score: 482it [01:43,  4.94it/s]teacher-score: 483it [01:43,  4.95it/s]teacher-score: 484it [01:44,  4.34it/s]teacher-score: 485it [01:44,  4.33it/s]teacher-score: 486it [01:44,  4.69it/s]teacher-score: 487it [01:44,  5.09it/s]teacher-score: 488it [01:45,  4.70it/s]teacher-score: 489it [01:45,  4.85it/s]teacher-score: 490it [01:45,  4.87it/s]teacher-score: 491it [01:45,  4.80it/s]teacher-score: 492it [01:45,  4.68it/s]teacher-score: 493it [01:46,  4.36it/s]teacher-score: 494it [01:46,  4.43it/s]teacher-score: 495it [01:46,  4.80it/s]teacher-score: 496it [01:46,  5.31it/s]teacher-score: 497it [01:46,  4.87it/s]teacher-score: 498it [01:47,  5.01it/s]teacher-score: 499it [01:47,  5.24it/s]teacher-score: 500it [01:47,  5.10it/s]teacher-score: 501it [01:47,  5.23it/s]teacher-score: 502it [01:47,  5.05it/s]teacher-score: 503it [01:48,  4.77it/s]teacher-score: 504it [01:48,  5.05it/s]teacher-score: 505it [01:48,  5.27it/s]teacher-score: 506it [01:48,  5.17it/s]teacher-score: 507it [01:48,  5.43it/s]teacher-score: 508it [01:49,  4.56it/s]teacher-score: 509it [01:49,  4.32it/s]teacher-score: 510it [01:49,  4.50it/s]teacher-score: 511it [01:49,  4.88it/s]teacher-score: 512it [01:49,  5.42it/s]teacher-score: 513it [01:50,  4.88it/s]teacher-score: 514it [01:50,  4.51it/s]teacher-score: 515it [01:50,  4.50it/s]teacher-score: 516it [01:50,  4.55it/s]teacher-score: 517it [01:50,  5.08it/s]teacher-score: 518it [01:51,  4.74it/s]teacher-score: 519it [01:51,  5.03it/s]teacher-score: 520it [01:51,  5.26it/s]teacher-score: 521it [01:51,  5.14it/s]teacher-score: 522it [01:51,  5.00it/s]teacher-score: 523it [01:52,  5.29it/s]teacher-score: 524it [01:52,  4.99it/s]teacher-score: 525it [01:52,  5.39it/s]teacher-score: 526it [01:52,  5.46it/s]teacher-score: 527it [01:52,  5.13it/s]teacher-score: 528it [01:53,  5.35it/s]teacher-score: 529it [01:53,  5.31it/s]teacher-score: 530it [01:53,  4.59it/s]teacher-score: 531it [01:53,  4.85it/s]teacher-score: 532it [01:53,  4.64it/s]teacher-score: 533it [01:54,  4.53it/s]teacher-score: 534it [01:54,  4.83it/s]teacher-score: 535it [01:54,  5.22it/s]teacher-score: 536it [01:54,  4.82it/s]teacher-score: 537it [01:54,  5.02it/s]teacher-score: 538it [01:55,  5.31it/s]teacher-score: 539it [01:55,  5.26it/s]teacher-score: 540it [01:55,  5.49it/s]teacher-score: 541it [01:55,  5.13it/s]teacher-score: 542it [01:55,  4.65it/s]teacher-score: 543it [01:56,  5.04it/s]teacher-score: 544it [01:56,  5.27it/s]teacher-score: 545it [01:56,  5.36it/s]teacher-score: 546it [01:56,  5.18it/s]teacher-score: 547it [01:56,  5.43it/s]teacher-score: 548it [01:57,  5.46it/s]teacher-score: 549it [01:57,  5.13it/s]teacher-score: 550it [01:57,  5.10it/s]teacher-score: 551it [01:57,  5.09it/s]teacher-score: 552it [01:57,  4.98it/s]teacher-score: 553it [01:58,  5.24it/s]teacher-score: 554it [01:58,  5.43it/s]teacher-score: 555it [01:58,  5.05it/s]teacher-score: 556it [01:58,  5.03it/s]teacher-score: 557it [01:58,  5.21it/s]teacher-score: 558it [01:59,  4.75it/s]teacher-score: 559it [01:59,  5.01it/s]teacher-score: 560it [01:59,  5.45it/s]teacher-score: 561it [01:59,  5.12it/s]teacher-score: 562it [01:59,  5.20it/s]teacher-score: 563it [01:59,  5.27it/s]teacher-score: 564it [02:00,  5.02it/s]teacher-score: 565it [02:00,  5.16it/s]teacher-score: 566it [02:00,  5.33it/s]teacher-score: 567it [02:00,  4.96it/s]teacher-score: 568it [02:00,  5.01it/s]teacher-score: 569it [02:01,  5.17it/s]teacher-score: 570it [02:01,  5.39it/s]teacher-score: 571it [02:01,  5.08it/s]teacher-score: 572it [02:01,  5.27it/s]teacher-score: 573it [02:01,  5.35it/s]teacher-score: 574it [02:02,  4.63it/s]teacher-score: 575it [02:02,  5.00it/s]teacher-score: 576it [02:02,  4.74it/s]teacher-score: 577it [02:02,  5.06it/s]teacher-score: 578it [02:02,  5.23it/s]teacher-score: 579it [02:03,  5.47it/s]teacher-score: 580it [02:03,  4.83it/s]teacher-score: 581it [02:03,  5.15it/s]teacher-score: 582it [02:03,  5.06it/s]teacher-score: 583it [02:03,  4.91it/s]teacher-score: 584it [02:04,  5.23it/s]teacher-score: 585it [02:04,  4.97it/s]teacher-score: 586it [02:04,  4.33it/s]teacher-score: 587it [02:04,  4.85it/s]teacher-score: 588it [02:04,  5.03it/s]teacher-score: 589it [02:05,  4.85it/s]teacher-score: 590it [02:05,  4.85it/s]teacher-score: 591it [02:05,  4.90it/s]teacher-score: 592it [02:05,  4.84it/s]teacher-score: 593it [02:05,  4.88it/s]teacher-score: 594it [02:06,  5.18it/s]teacher-score: 595it [02:06,  4.95it/s]teacher-score: 596it [02:06,  5.19it/s]teacher-score: 597it [02:06,  5.19it/s]teacher-score: 598it [02:06,  5.07it/s]teacher-score: 599it [02:07,  5.48it/s]teacher-score: 600it [02:07,  5.53it/s]teacher-score: 601it [02:07,  5.13it/s]teacher-score: 602it [02:07,  5.13it/s]teacher-score: 603it [02:07,  5.25it/s]teacher-score: 604it [02:08,  3.21it/s]teacher-score: 605it [02:08,  3.79it/s]teacher-score: 606it [02:08,  4.30it/s]teacher-score: 607it [02:08,  4.43it/s]teacher-score: 608it [02:09,  4.73it/s]teacher-score: 609it [02:09,  4.93it/s]teacher-score: 610it [02:09,  4.91it/s]teacher-score: 611it [02:09,  4.89it/s]teacher-score: 612it [02:10,  4.63it/s]teacher-score: 613it [02:10,  4.56it/s]teacher-score: 614it [02:10,  4.96it/s]teacher-score: 615it [02:10,  5.01it/s]teacher-score: 616it [02:10,  4.98it/s]teacher-score: 617it [02:11,  4.94it/s]teacher-score: 618it [02:11,  5.41it/s]teacher-score: 619it [02:11,  5.06it/s]teacher-score: 620it [02:11,  4.93it/s]teacher-score: 621it [02:11,  5.20it/s]teacher-score: 622it [02:11,  4.86it/s]teacher-score: 623it [02:12,  5.13it/s]teacher-score: 624it [02:12,  5.33it/s]teacher-score: 625it [02:12,  5.24it/s]teacher-score: 626it [02:12,  5.26it/s]teacher-score: 627it [02:12,  4.93it/s]teacher-score: 628it [02:13,  4.78it/s]teacher-score: 629it [02:13,  5.16it/s]teacher-score: 630it [02:13,  5.20it/s]teacher-score: 631it [02:13,  5.18it/s]teacher-score: 632it [02:13,  5.29it/s]teacher-score: 633it [02:14,  5.32it/s]teacher-score: 634it [02:14,  4.95it/s]teacher-score: 635it [02:14,  5.20it/s]teacher-score: 636it [02:14,  5.25it/s]teacher-score: 637it [02:14,  4.95it/s]teacher-score: 638it [02:15,  5.14it/s]teacher-score: 639it [02:15,  5.36it/s]teacher-score: 640it [02:15,  5.06it/s]teacher-score: 641it [02:15,  3.75it/s]teacher-score: 642it [02:16,  4.17it/s]teacher-score: 643it [02:16,  4.44it/s]teacher-score: 644it [02:16,  4.68it/s]teacher-score: 645it [02:16,  4.28it/s]teacher-score: 646it [02:16,  4.52it/s]teacher-score: 647it [02:17,  4.59it/s]teacher-score: 648it [02:17,  4.76it/s]teacher-score: 649it [02:17,  4.46it/s]teacher-score: 650it [02:18,  3.33it/s]teacher-score: 651it [02:18,  3.74it/s]teacher-score: 652it [02:18,  3.92it/s]teacher-score: 653it [02:18,  4.31it/s]teacher-score: 654it [02:18,  4.66it/s]teacher-score: 655it [02:19,  4.54it/s]teacher-score: 656it [02:19,  4.96it/s]teacher-score: 657it [02:19,  3.59it/s]teacher-score: 658it [02:20,  3.44it/s]teacher-score: 659it [02:20,  3.69it/s]teacher-score: 660it [02:20,  4.27it/s]teacher-score: 661it [02:20,  4.69it/s]teacher-score: 662it [02:20,  4.55it/s]teacher-score: 663it [02:20,  4.68it/s]teacher-score: 664it [02:21,  4.66it/s]teacher-score: 665it [02:21,  4.59it/s]teacher-score: 666it [02:21,  4.93it/s]teacher-score: 667it [02:21,  5.03it/s]teacher-score: 668it [02:22,  4.66it/s]teacher-score: 669it [02:22,  4.78it/s]teacher-score: 670it [02:22,  5.02it/s]teacher-score: 671it [02:22,  4.81it/s]teacher-score: 672it [02:22,  5.03it/s]teacher-score: 673it [02:22,  5.41it/s]teacher-score: 674it [02:23,  5.71it/s]teacher-score: 675it [02:23,  5.29it/s]teacher-score: 676it [02:23,  5.09it/s]teacher-score: 677it [02:23,  5.22it/s]teacher-score: 678it [02:23,  5.13it/s]teacher-score: 679it [02:24,  5.33it/s]teacher-score: 680it [02:24,  5.42it/s]teacher-score: 681it [02:24,  5.16it/s]teacher-score: 682it [02:24,  5.28it/s]teacher-score: 683it [02:24,  5.42it/s]teacher-score: 684it [02:25,  5.04it/s]teacher-score: 685it [02:25,  5.50it/s]teacher-score: 686it [02:25,  5.67it/s]teacher-score: 687it [02:25,  5.47it/s]teacher-score: 688it [02:25,  4.88it/s]teacher-score: 689it [02:26,  5.04it/s]teacher-score: 690it [02:26,  5.28it/s]teacher-score: 691it [02:26,  5.23it/s]teacher-score: 692it [02:26,  5.30it/s]teacher-score: 693it [02:26,  5.59it/s]teacher-score: 694it [02:27,  4.70it/s]teacher-score: 695it [02:27,  5.22it/s]teacher-score: 696it [02:27,  5.31it/s]teacher-score: 697it [02:27,  4.86it/s]teacher-score: 698it [02:27,  5.12it/s]teacher-score: 699it [02:27,  5.37it/s]teacher-score: 700it [02:28,  5.09it/s]teacher-score: 701it [02:28,  5.07it/s]teacher-score: 702it [02:28,  5.15it/s]teacher-score: 703it [02:28,  4.98it/s]teacher-score: 704it [02:28,  5.16it/s]teacher-score: 705it [02:29,  5.38it/s]teacher-score: 706it [02:29,  5.10it/s]teacher-score: 707it [02:29,  5.37it/s]teacher-score: 708it [02:29,  5.75it/s]teacher-score: 709it [02:29,  5.36it/s]teacher-score: 710it [02:30,  5.50it/s]teacher-score: 711it [02:30,  5.44it/s]teacher-score: 712it [02:30,  5.36it/s]teacher-score: 713it [02:30,  5.50it/s]teacher-score: 714it [02:30,  5.40it/s]teacher-score: 715it [02:30,  5.02it/s]teacher-score: 716it [02:31,  5.11it/s]teacher-score: 717it [02:31,  5.31it/s]teacher-score: 718it [02:31,  4.98it/s]teacher-score: 719it [02:31,  5.34it/s]teacher-score: 720it [02:31,  5.57it/s]teacher-score: 721it [02:32,  5.73it/s]teacher-score: 722it [02:32,  5.12it/s]teacher-score: 723it [02:32,  5.39it/s]teacher-score: 724it [02:32,  5.42it/s]teacher-score: 725it [02:32,  4.99it/s]teacher-score: 726it [02:33,  5.19it/s]teacher-score: 727it [02:33,  5.46it/s]teacher-score: 728it [02:33,  5.19it/s]teacher-score: 729it [02:33,  5.37it/s]teacher-score: 730it [02:33,  5.57it/s]teacher-score: 731it [02:33,  5.32it/s]teacher-score: 732it [02:34,  5.59it/s]teacher-score: 733it [02:34,  5.40it/s]teacher-score: 734it [02:34,  4.91it/s]teacher-score: 735it [02:34,  5.14it/s]teacher-score: 736it [02:34,  5.39it/s]teacher-score: 737it [02:35,  5.00it/s]teacher-score: 738it [02:35,  4.99it/s]teacher-score: 739it [02:35,  5.33it/s]teacher-score: 740it [02:35,  5.68it/s]teacher-score: 741it [02:35,  5.33it/s]teacher-score: 742it [02:36,  5.18it/s]teacher-score: 743it [02:36,  5.39it/s]teacher-score: 744it [02:36,  4.81it/s]teacher-score: 745it [02:36,  5.12it/s]teacher-score: 746it [02:36,  4.78it/s]teacher-score: 747it [02:37,  4.63it/s]teacher-score: 748it [02:37,  5.01it/s]teacher-score: 749it [02:37,  4.87it/s]teacher-score: 750it [02:37,  4.79it/s]teacher-score: 751it [02:37,  5.11it/s]teacher-score: 752it [02:38,  5.05it/s]teacher-score: 753it [02:38,  4.45it/s]teacher-score: 754it [02:38,  4.36it/s]teacher-score: 755it [02:38,  4.77it/s]teacher-score: 756it [02:39,  4.71it/s]teacher-score: 757it [02:39,  4.96it/s]teacher-score: 758it [02:39,  4.87it/s]teacher-score: 759it [02:39,  4.80it/s]teacher-score: 760it [02:39,  5.20it/s]teacher-score: 761it [02:39,  5.35it/s]teacher-score: 762it [02:40,  5.17it/s]teacher-score: 763it [02:40,  5.29it/s]teacher-score: 764it [02:40,  5.05it/s]teacher-score: 765it [02:40,  4.90it/s]teacher-score: 766it [02:40,  5.18it/s]teacher-score: 767it [02:41,  5.19it/s]teacher-score: 768it [02:41,  4.99it/s]teacher-score: 769it [02:41,  5.15it/s]teacher-score: 770it [02:41,  5.15it/s]teacher-score: 771it [02:42,  4.21it/s]teacher-score: 772it [02:42,  4.62it/s]teacher-score: 773it [02:42,  4.76it/s]teacher-score: 774it [02:42,  4.30it/s]teacher-score: 775it [02:42,  4.16it/s]teacher-score: 776it [02:43,  4.12it/s]teacher-score: 777it [02:43,  4.33it/s]teacher-score: 778it [02:43,  4.32it/s]teacher-score: 779it [02:43,  4.59it/s]teacher-score: 780it [02:44,  4.81it/s]teacher-score: 781it [02:44,  4.70it/s]teacher-score: 782it [02:44,  5.02it/s]teacher-score: 783it [02:44,  4.56it/s]teacher-score: 784it [02:44,  4.59it/s]teacher-score: 785it [02:45,  4.68it/s]teacher-score: 786it [02:45,  4.91it/s]teacher-score: 787it [02:45,  4.76it/s]teacher-score: 788it [02:45,  5.11it/s]teacher-score: 789it [02:45,  4.95it/s]teacher-score: 790it [02:46,  4.85it/s]teacher-score: 791it [02:46,  5.09it/s]teacher-score: 792it [02:46,  4.68it/s]teacher-score: 793it [02:46,  4.82it/s]teacher-score: 794it [02:46,  5.00it/s]teacher-score: 795it [02:47,  5.08it/s]teacher-score: 796it [02:47,  4.63it/s]teacher-score: 797it [02:47,  4.90it/s]teacher-score: 798it [02:47,  4.87it/s]teacher-score: 799it [02:47,  4.79it/s]teacher-score: 800it [02:48,  4.62it/s]teacher-score: 801it [02:48,  5.15it/s]teacher-score: 802it [02:48,  4.88it/s]teacher-score: 803it [02:48,  5.14it/s]teacher-score: 804it [02:48,  5.38it/s]teacher-score: 805it [02:49,  5.09it/s]teacher-score: 806it [02:49,  5.31it/s]teacher-score: 807it [02:49,  5.27it/s]teacher-score: 808it [02:49,  4.96it/s]teacher-score: 809it [02:49,  5.09it/s]teacher-score: 810it [02:50,  4.98it/s]teacher-score: 811it [02:50,  4.89it/s]teacher-score: 812it [02:50,  5.11it/s]teacher-score: 813it [02:50,  5.12it/s]teacher-score: 814it [02:50,  4.88it/s]teacher-score: 815it [02:51,  5.16it/s]teacher-score: 816it [02:51,  5.07it/s]teacher-score: 817it [02:51,  4.80it/s]teacher-score: 818it [02:51,  5.00it/s]teacher-score: 819it [02:51,  5.20it/s]teacher-score: 820it [02:52,  5.04it/s]teacher-score: 821it [02:52,  4.94it/s]teacher-score: 822it [02:52,  4.78it/s]teacher-score: 823it [02:52,  5.00it/s]teacher-score: 824it [02:52,  5.19it/s]teacher-score: 825it [02:53,  4.73it/s]teacher-score: 826it [02:53,  4.97it/s]teacher-score: 827it [02:53,  5.05it/s]teacher-score: 828it [02:53,  4.52it/s]teacher-score: 829it [02:53,  4.88it/s]teacher-score: 830it [02:54,  5.02it/s]teacher-score: 831it [02:54,  4.42it/s]teacher-score: 832it [02:54,  4.55it/s]teacher-score: 833it [02:54,  4.55it/s]teacher-score: 834it [02:55,  4.61it/s]teacher-score: 835it [02:55,  4.65it/s]teacher-score: 836it [02:55,  4.17it/s]teacher-score: 837it [02:55,  4.18it/s]teacher-score: 838it [02:55,  4.64it/s]teacher-score: 839it [02:56,  4.88it/s]teacher-score: 840it [02:56,  4.63it/s]teacher-score: 841it [02:56,  4.96it/s]teacher-score: 842it [02:56,  4.95it/s]teacher-score: 843it [02:56,  4.69it/s]teacher-score: 844it [02:57,  4.88it/s]teacher-score: 845it [02:57,  5.15it/s]teacher-score: 846it [02:57,  4.95it/s]teacher-score: 847it [02:57,  5.12it/s]teacher-score: 848it [02:57,  5.39it/s]teacher-score: 849it [02:58,  5.01it/s]teacher-score: 850it [02:58,  5.15it/s]teacher-score: 851it [02:58,  5.23it/s]teacher-score: 852it [02:58,  4.93it/s]teacher-score: 853it [02:58,  4.82it/s]teacher-score: 854it [02:59,  4.89it/s]teacher-score: 855it [02:59,  4.91it/s]teacher-score: 856it [02:59,  4.60it/s]teacher-score: 857it [03:00,  3.16it/s]teacher-score: 858it [03:00,  3.47it/s]teacher-score: 859it [03:00,  3.82it/s]teacher-score: 860it [03:00,  4.23it/s]teacher-score: 861it [03:00,  4.35it/s]teacher-score: 862it [03:01,  4.50it/s]teacher-score: 863it [03:01,  4.51it/s]teacher-score: 864it [03:01,  4.47it/s]teacher-score: 865it [03:01,  4.26it/s]teacher-score: 866it [03:02,  4.62it/s]teacher-score: 867it [03:02,  4.30it/s]teacher-score: 868it [03:02,  4.67it/s]teacher-score: 869it [03:02,  4.88it/s]teacher-score: 870it [03:02,  4.82it/s]teacher-score: 871it [03:03,  4.81it/s]teacher-score: 872it [03:03,  4.68it/s]teacher-score: 873it [03:03,  4.68it/s]teacher-score: 874it [03:03,  5.01it/s]teacher-score: 875it [03:03,  5.18it/s]teacher-score: 876it [03:04,  4.39it/s]teacher-score: 877it [03:04,  4.79it/s]teacher-score: 878it [03:04,  4.78it/s]teacher-score: 879it [03:04,  4.62it/s]teacher-score: 880it [03:04,  4.96it/s]teacher-score: 881it [03:05,  5.14it/s]teacher-score: 882it [03:05,  4.61it/s]teacher-score: 883it [03:05,  3.51it/s]teacher-score: 884it [03:06,  3.61it/s]teacher-score: 885it [03:06,  3.90it/s]teacher-score: 886it [03:06,  3.97it/s]teacher-score: 887it [03:06,  4.34it/s]teacher-score: 888it [03:06,  4.37it/s]teacher-score: 889it [03:07,  4.26it/s]teacher-score: 890it [03:07,  4.58it/s]teacher-score: 891it [03:07,  4.39it/s]teacher-score: 892it [03:07,  4.42it/s]teacher-score: 893it [03:08,  4.77it/s]teacher-score: 894it [03:08,  3.93it/s]teacher-score: 895it [03:08,  4.46it/s]teacher-score: 896it [03:08,  4.67it/s]teacher-score: 897it [03:09,  4.45it/s]teacher-score: 898it [03:09,  4.93it/s]teacher-score: 899it [03:09,  4.52it/s]teacher-score: 900it [03:09,  4.24it/s]teacher-score: 901it [03:09,  4.41it/s]teacher-score: 902it [03:10,  4.60it/s]teacher-score: 903it [03:10,  4.65it/s]teacher-score: 904it [03:10,  4.70it/s]teacher-score: 905it [03:10,  4.98it/s]teacher-score: 906it [03:10,  5.14it/s]teacher-score: 907it [03:11,  5.02it/s]teacher-score: 908it [03:11,  4.84it/s]teacher-score: 909it [03:11,  4.82it/s]teacher-score: 910it [03:11,  4.46it/s]teacher-score: 911it [03:11,  4.85it/s]teacher-score: 912it [03:12,  5.12it/s]teacher-score: 913it [03:12,  4.66it/s]teacher-score: 914it [03:12,  4.84it/s]teacher-score: 915it [03:12,  4.44it/s]teacher-score: 916it [03:12,  4.79it/s]teacher-score: 917it [03:13,  4.72it/s]teacher-score: 918it [03:13,  4.36it/s]teacher-score: 919it [03:13,  4.85it/s]teacher-score: 920it [03:13,  4.19it/s]teacher-score: 921it [03:14,  4.63it/s]teacher-score: 922it [03:14,  3.69it/s]teacher-score: 923it [03:14,  4.29it/s]teacher-score: 924it [03:14,  4.37it/s]teacher-score: 925it [03:15,  4.54it/s]teacher-score: 926it [03:15,  4.83it/s]teacher-score: 927it [03:15,  4.10it/s]teacher-score: 928it [03:15,  4.30it/s]teacher-score: 929it [03:16,  3.88it/s]teacher-score: 930it [03:16,  4.09it/s]teacher-score: 931it [03:16,  4.48it/s]teacher-score: 932it [03:16,  4.72it/s]teacher-score: 933it [03:16,  4.51it/s]teacher-score: 934it [03:17,  4.60it/s]teacher-score: 935it [03:17,  4.47it/s]teacher-score: 936it [03:17,  4.84it/s]teacher-score: 937it [03:17,  4.69it/s]teacher-score: 938it [03:17,  5.02it/s]teacher-score: 939it [03:18,  4.79it/s]teacher-score: 940it [03:18,  4.96it/s]teacher-score: 941it [03:18,  4.70it/s]teacher-score: 942it [03:18,  4.83it/s]teacher-score: 943it [03:18,  4.70it/s]teacher-score: 944it [03:19,  4.55it/s]teacher-score: 945it [03:19,  4.45it/s]teacher-score: 946it [03:19,  4.68it/s]teacher-score: 947it [03:19,  4.10it/s]teacher-score: 948it [03:20,  4.44it/s]teacher-score: 949it [03:20,  3.13it/s]teacher-score: 950it [03:20,  3.41it/s]teacher-score: 951it [03:21,  3.83it/s]teacher-score: 952it [03:21,  4.31it/s]teacher-score: 953it [03:21,  4.70it/s]teacher-score: 954it [03:21,  4.27it/s]teacher-score: 955it [03:21,  4.18it/s]teacher-score: 956it [03:22,  4.35it/s]teacher-score: 957it [03:22,  3.89it/s]teacher-score: 958it [03:22,  3.91it/s]teacher-score: 959it [03:23,  3.74it/s]teacher-score: 960it [03:23,  3.79it/s]teacher-score: 961it [03:23,  4.00it/s]teacher-score: 962it [03:23,  4.16it/s]teacher-score: 963it [03:23,  4.17it/s]teacher-score: 964it [03:24,  4.41it/s]teacher-score: 965it [03:24,  4.30it/s]teacher-score: 966it [03:24,  4.64it/s]teacher-score: 967it [03:24,  4.99it/s]teacher-score: 968it [03:25,  4.56it/s]teacher-score: 969it [03:25,  4.77it/s]teacher-score: 970it [03:25,  5.06it/s]teacher-score: 971it [03:25,  4.64it/s]teacher-score: 972it [03:25,  4.95it/s]teacher-score: 973it [03:25,  5.09it/s]teacher-score: 974it [03:26,  4.25it/s]teacher-score: 975it [03:26,  4.69it/s]teacher-score: 976it [03:26,  4.62it/s]teacher-score: 977it [03:26,  4.68it/s]teacher-score: 978it [03:27,  4.93it/s]teacher-score: 979it [03:27,  5.19it/s]teacher-score: 980it [03:27,  4.98it/s]teacher-score: 981it [03:27,  5.01it/s]teacher-score: 982it [03:27,  5.30it/s]teacher-score: 983it [03:28,  5.05it/s]teacher-score: 984it [03:28,  5.14it/s]teacher-score: 985it [03:28,  5.35it/s]teacher-score: 986it [03:28,  5.02it/s]teacher-score: 987it [03:28,  5.01it/s]teacher-score: 988it [03:29,  4.64it/s]teacher-score: 989it [03:29,  4.92it/s]teacher-score: 990it [03:29,  5.17it/s]teacher-score: 991it [03:29,  4.87it/s]teacher-score: 992it [03:29,  4.93it/s]teacher-score: 993it [03:30,  5.24it/s]teacher-score: 994it [03:30,  5.35it/s]teacher-score: 995it [03:30,  4.81it/s]teacher-score: 996it [03:30,  4.77it/s]teacher-score: 997it [03:30,  4.84it/s]teacher-score: 998it [03:31,  4.80it/s]teacher-score: 999it [03:31,  4.93it/s]teacher-score: 1000it [03:31,  4.18it/s]teacher-score: 1001it [03:31,  4.53it/s]teacher-score: 1002it [03:31,  4.69it/s]teacher-score: 1003it [03:32,  4.65it/s]teacher-score: 1004it [03:32,  4.66it/s]teacher-score: 1005it [03:32,  4.93it/s]teacher-score: 1006it [03:32,  4.90it/s]teacher-score: 1007it [03:33,  4.65it/s]teacher-score: 1008it [03:33,  4.83it/s]teacher-score: 1009it [03:33,  5.11it/s]teacher-score: 1010it [03:33,  5.00it/s]teacher-score: 1011it [03:33,  5.33it/s]teacher-score: 1012it [03:33,  5.47it/s]teacher-score: 1013it [03:34,  5.24it/s]teacher-score: 1014it [03:34,  5.36it/s]teacher-score: 1015it [03:34,  5.72it/s]teacher-score: 1016it [03:34,  5.25it/s]teacher-score: 1017it [03:34,  5.05it/s]teacher-score: 1018it [03:35,  5.30it/s]teacher-score: 1019it [03:35,  5.09it/s]teacher-score: 1020it [03:35,  5.25it/s]teacher-score: 1021it [03:35,  5.24it/s]teacher-score: 1022it [03:35,  5.02it/s]teacher-score: 1023it [03:36,  5.17it/s]teacher-score: 1024it [03:36,  5.29it/s]teacher-score: 1025it [03:36,  4.99it/s]teacher-score: 1026it [03:36,  5.28it/s]teacher-score: 1027it [03:36,  5.36it/s]teacher-score: 1028it [03:37,  5.25it/s]teacher-score: 1029it [03:37,  4.84it/s]teacher-score: 1030it [03:37,  5.15it/s]teacher-score: 1031it [03:37,  4.98it/s]teacher-score: 1032it [03:37,  4.70it/s]teacher-score: 1033it [03:38,  4.83it/s]teacher-score: 1034it [03:38,  4.52it/s]teacher-score: 1035it [03:38,  5.01it/s]teacher-score: 1036it [03:38,  5.15it/s]teacher-score: 1037it [03:38,  5.04it/s]teacher-score: 1038it [03:39,  4.87it/s]teacher-score: 1039it [03:39,  4.95it/s]teacher-score: 1040it [03:39,  4.85it/s]teacher-score: 1041it [03:39,  4.74it/s]teacher-score: 1042it [03:39,  4.91it/s]teacher-score: 1043it [03:40,  5.15it/s]teacher-score: 1044it [03:40,  4.90it/s]teacher-score: 1045it [03:40,  5.22it/s]teacher-score: 1046it [03:40,  5.31it/s]teacher-score: 1047it [03:40,  5.05it/s]teacher-score: 1048it [03:41,  4.94it/s]teacher-score: 1049it [03:41,  4.75it/s]teacher-score: 1050it [03:41,  5.06it/s]teacher-score: 1051it [03:41,  5.02it/s]teacher-score: 1052it [03:41,  4.93it/s]teacher-score: 1053it [03:42,  5.10it/s]teacher-score: 1054it [03:42,  5.15it/s]teacher-score: 1055it [03:42,  5.44it/s]teacher-score: 1056it [03:42,  4.37it/s]teacher-score: 1057it [03:42,  4.57it/s]teacher-score: 1058it [03:43,  4.48it/s]teacher-score: 1059it [03:43,  4.48it/s]teacher-score: 1060it [03:43,  4.61it/s]teacher-score: 1061it [03:44,  3.62it/s]teacher-score: 1062it [03:44,  3.89it/s]teacher-score: 1063it [03:44,  4.35it/s]teacher-score: 1064it [03:44,  4.62it/s]teacher-score: 1065it [03:44,  4.57it/s]teacher-score: 1066it [03:45,  3.73it/s]teacher-score: 1067it [03:45,  4.13it/s]teacher-score: 1068it [03:45,  4.25it/s]teacher-score: 1069it [03:45,  4.10it/s]teacher-score: 1070it [03:46,  4.08it/s]teacher-score: 1071it [03:46,  4.03it/s]teacher-score: 1072it [03:46,  4.33it/s]teacher-score: 1073it [03:46,  4.31it/s]teacher-score: 1074it [03:46,  4.71it/s]teacher-score: 1075it [03:47,  4.75it/s]teacher-score: 1076it [03:47,  4.47it/s]teacher-score: 1077it [03:47,  4.60it/s]teacher-score: 1078it [03:47,  4.19it/s]teacher-score: 1079it [03:48,  4.45it/s]teacher-score: 1080it [03:48,  4.44it/s]teacher-score: 1081it [03:48,  4.79it/s]teacher-score: 1082it [03:48,  4.59it/s]teacher-score: 1083it [03:48,  4.66it/s]teacher-score: 1084it [03:49,  4.80it/s]teacher-score: 1085it [03:49,  4.48it/s]teacher-score: 1086it [03:49,  4.41it/s]teacher-score: 1087it [03:49,  4.92it/s]teacher-score: 1088it [03:49,  5.22it/s]teacher-score: 1089it [03:50,  5.03it/s]teacher-score: 1090it [03:50,  4.77it/s]teacher-score: 1091it [03:50,  4.69it/s]teacher-score: 1092it [03:50,  4.68it/s]teacher-score: 1093it [03:50,  5.02it/s]teacher-score: 1094it [03:51,  5.31it/s]teacher-score: 1095it [03:51,  5.07it/s]teacher-score: 1096it [03:51,  4.69it/s]teacher-score: 1097it [03:51,  4.93it/s]teacher-score: 1098it [03:52,  4.43it/s]teacher-score: 1099it [03:52,  4.85it/s]teacher-score: 1100it [03:52,  5.16it/s]teacher-score: 1101it [03:52,  5.25it/s]teacher-score: 1102it [03:52,  4.82it/s]teacher-score: 1103it [03:53,  5.11it/s]teacher-score: 1104it [03:53,  5.31it/s]teacher-score: 1105it [03:53,  4.93it/s]teacher-score: 1106it [03:53,  5.15it/s]teacher-score: 1107it [03:53,  5.23it/s]teacher-score: 1108it [03:53,  5.04it/s]teacher-score: 1109it [03:54,  3.66it/s]teacher-score: 1110it [03:54,  4.05it/s]teacher-score: 1111it [03:55,  3.05it/s]teacher-score: 1112it [03:55,  3.57it/s]teacher-score: 1113it [03:55,  4.02it/s]teacher-score: 1114it [03:55,  4.02it/s]teacher-score: 1115it [03:55,  4.34it/s]teacher-score: 1116it [03:56,  4.51it/s]teacher-score: 1117it [03:56,  3.98it/s]teacher-score: 1118it [03:56,  4.25it/s]teacher-score: 1119it [03:56,  4.49it/s]teacher-score: 1120it [03:57,  4.10it/s]teacher-score: 1121it [03:57,  4.51it/s]teacher-score: 1122it [03:57,  4.30it/s]teacher-score: 1123it [03:57,  3.43it/s]teacher-score: 1124it [03:58,  3.79it/s]teacher-score: 1125it [03:58,  4.20it/s]teacher-score: 1126it [03:58,  4.02it/s]teacher-score: 1127it [03:58,  4.36it/s]teacher-score: 1128it [03:58,  4.70it/s]teacher-score: 1129it [03:59,  4.84it/s]teacher-score: 1130it [03:59,  4.97it/s]teacher-score: 1131it [03:59,  4.84it/s]teacher-score: 1132it [03:59,  4.66it/s]teacher-score: 1133it [04:00,  4.91it/s]teacher-score: 1134it [04:00,  4.99it/s]teacher-score: 1135it [04:00,  4.57it/s]teacher-score: 1136it [04:00,  4.79it/s]teacher-score: 1137it [04:00,  5.07it/s]teacher-score: 1138it [04:01,  4.67it/s]teacher-score: 1139it [04:01,  4.70it/s]teacher-score: 1140it [04:01,  4.20it/s]teacher-score: 1141it [04:01,  4.60it/s]teacher-score: 1142it [04:01,  4.84it/s]teacher-score: 1143it [04:02,  4.67it/s]teacher-score: 1144it [04:02,  4.68it/s]teacher-score: 1145it [04:02,  4.95it/s]teacher-score: 1146it [04:02,  4.79it/s]teacher-score: 1147it [04:02,  5.14it/s]teacher-score: 1148it [04:03,  5.36it/s]teacher-score: 1149it [04:03,  5.53it/s]teacher-score: 1150it [04:03,  5.19it/s]teacher-score: 1151it [04:03,  5.31it/s]teacher-score: 1152it [04:04,  3.16it/s]teacher-score: 1153it [04:04,  3.52it/s]teacher-score: 1154it [04:04,  3.99it/s]teacher-score: 1155it [04:04,  4.48it/s]teacher-score: 1156it [04:05,  4.26it/s]teacher-score: 1157it [04:05,  4.43it/s]teacher-score: 1158it [04:05,  4.85it/s]teacher-score: 1159it [04:05,  4.90it/s]teacher-score: 1160it [04:05,  5.03it/s]teacher-score: 1161it [04:06,  5.23it/s]teacher-score: 1162it [04:06,  5.02it/s]teacher-score: 1163it [04:06,  5.10it/s]teacher-score: 1164it [04:06,  5.24it/s]teacher-score: 1165it [04:06,  3.94it/s]teacher-score: 1166it [04:07,  4.18it/s]teacher-score: 1167it [04:07,  4.53it/s]teacher-score: 1168it [04:07,  4.48it/s]teacher-score: 1169it [04:07,  4.66it/s]teacher-score: 1170it [04:07,  4.87it/s]teacher-score: 1171it [04:08,  4.66it/s]teacher-score: 1172it [04:08,  4.63it/s]teacher-score: 1173it [04:08,  5.01it/s]teacher-score: 1174it [04:08,  4.33it/s]teacher-score: 1175it [04:09,  4.51it/s]teacher-score: 1176it [04:09,  4.60it/s]teacher-score: 1177it [04:09,  4.60it/s]teacher-score: 1178it [04:09,  4.73it/s]teacher-score: 1179it [04:09,  4.97it/s]teacher-score: 1180it [04:10,  4.84it/s]teacher-score: 1181it [04:10,  4.95it/s]teacher-score: 1182it [04:10,  4.71it/s]teacher-score: 1183it [04:10,  4.66it/s]teacher-score: 1184it [04:11,  4.49it/s]teacher-score: 1185it [04:11,  4.88it/s]teacher-score: 1186it [04:11,  4.73it/s]teacher-score: 1187it [04:11,  4.92it/s]teacher-score: 1188it [04:11,  4.72it/s]teacher-score: 1189it [04:11,  5.01it/s]teacher-score: 1190it [04:12,  4.93it/s]teacher-score: 1191it [04:12,  5.29it/s]teacher-score: 1192it [04:12,  5.41it/s]teacher-score: 1193it [04:12,  4.99it/s]teacher-score: 1194it [04:12,  5.19it/s]teacher-score: 1195it [04:13,  5.26it/s]teacher-score: 1196it [04:13,  4.92it/s]teacher-score: 1197it [04:13,  5.05it/s]teacher-score: 1198it [04:13,  5.48it/s]teacher-score: 1199it [04:13,  5.21it/s]teacher-score: 1200it [04:14,  5.24it/s]teacher-score: 1201it [04:14,  5.14it/s]teacher-score: 1202it [04:14,  4.94it/s]teacher-score: 1203it [04:14,  5.19it/s]teacher-score: 1204it [04:14,  5.37it/s]teacher-score: 1205it [04:15,  4.77it/s]teacher-score: 1206it [04:15,  4.81it/s]teacher-score: 1207it [04:15,  4.72it/s]teacher-score: 1208it [04:15,  4.74it/s]teacher-score: 1209it [04:15,  4.94it/s]teacher-score: 1210it [04:16,  5.15it/s]teacher-score: 1211it [04:16,  4.81it/s]teacher-score: 1212it [04:16,  5.00it/s]teacher-score: 1213it [04:16,  5.14it/s]teacher-score: 1214it [04:17,  4.53it/s]teacher-score: 1215it [04:17,  4.64it/s]teacher-score: 1216it [04:17,  4.56it/s]teacher-score: 1217it [04:17,  4.82it/s]teacher-score: 1218it [04:17,  4.32it/s]teacher-score: 1219it [04:18,  4.45it/s]teacher-score: 1220it [04:18,  4.66it/s]teacher-score: 1221it [04:18,  4.96it/s]teacher-score: 1222it [04:18,  4.47it/s]teacher-score: 1223it [04:18,  5.04it/s]teacher-score: 1224it [04:19,  3.69it/s]teacher-score: 1225it [04:19,  4.17it/s]teacher-score: 1226it [04:19,  3.91it/s]teacher-score: 1227it [04:20,  3.88it/s]teacher-score: 1228it [04:20,  4.18it/s]teacher-score: 1229it [04:20,  4.47it/s]teacher-score: 1230it [04:20,  4.67it/s]teacher-score: 1231it [04:20,  4.88it/s]teacher-score: 1232it [04:21,  4.92it/s]teacher-score: 1233it [04:21,  4.37it/s]teacher-score: 1234it [04:21,  4.65it/s]teacher-score: 1235it [04:21,  4.57it/s]teacher-score: 1236it [04:21,  4.88it/s]teacher-score: 1236it [04:21,  4.72it/s]
+[done] images=1236 out_jsonl=data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260320_r0.jsonl
+[done] overview_json=data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260320_r0.json
+[done] overview_by_ar_csv=data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_gaic_260320_r0.csv
+[2/3] Building QA report...
+[done] report_json=data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_gaic_260320_r0.json
+[done] report_by_ar_csv=data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_gaic_260320_r0.csv
+[3/3] Rendering teacher scorer visualizations...
+[done] rendered=120 out_dir=data/GAIC/All/artifacts/teacher/visualizations/teacher_scorer_gaic_260320_r0
+[done] overview=data/GAIC/All/artifacts/teacher/visualizations/teacher_scorer_gaic_260320_r0/viz_overview.json
+[done] Teacher scorer outputs:
+  - data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260320_r0.jsonl
+  - data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260320_r0.json
+  - data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_gaic_260320_r0.csv
+  - data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_gaic_260320_r0.json
+  - data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_gaic_260320_r0.csv
+  - data/GAIC/All/artifacts/teacher/visualizations/teacher_scorer_gaic_260320_r0
+[run] 10b_teacher_repair_outputs
+[done] rebuilt overview: data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260320_r0.json
+[done] rebuilt overview csv: data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_by_ar_gaic_260320_r0.csv
+[done] report_json=data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_gaic_260320_r0.json
+[done] report_by_ar_csv=data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_gaic_260320_r0.csv
+[repair] final rows=1236 expensive_real_rows=0 expected_rows=1236 shard_dirs=0
+[repair] no promotable shard dir found (or strict expected match not satisfied).
+[run] 13_build_training_labels
+{
+  "out_dir": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0",
+  "counts": {
+    "train_pairwise.jsonl": 33167,
+    "train_listwise.jsonl": 7416,
+    "train_decision.jsonl": 7416,
+    "train_checklist.jsonl": 194780,
+    "train_regression.jsonl": 194780,
+    "train_conditional_detr_canonical.jsonl": 6642,
+    "train_conditional_detr_batch.jsonl": 6642,
+    "train_conditional_detr_skipped.jsonl": 774,
+    "report_examples": 8
+  },
+  "qa_summary_path": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/qa_summary.json",
+  "validation_summary_path": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/validation_summary.json",
+  "status": "ok"
+}
+[run] 13b_convert_training_labels_coco
+{
+  "canonical_json": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/instances_conditional_detr_canonical.json",
+  "batch_json": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/instances_conditional_detr_batch.json",
+  "canonical_validation": {
+    "status": "ok",
+    "image_count": 6642,
+    "annotation_count": 176672,
+    "gt_annotation_count": 31308,
+    "label_type_counts": {
+      "top1": 6642,
+      "soft_positive": 24187,
+      "near_negative": 41481,
+      "negative": 91036,
+      "baseline_positive": 495,
+      "hard_negative": 6119,
+      "unsafe_negative": 6712
+    },
+    "error_count": 0,
+    "errors": []
+  },
+  "batch_validation": {
+    "status": "ok",
+    "image_count": 6642,
+    "annotation_count": 31308,
+    "gt_annotation_count": 31308,
+    "label_type_counts": {
+      "": 31308
+    },
+    "error_count": 0,
+    "errors": []
+  }
+}
+[run] 13c_convert_training_labels_gaic_like
+{
+  "out_json": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/instances_conditional_detr_batch_gaic_like.json",
+  "out_summary_json": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/gaic_like_conversion_summary.json",
+  "out_guide_md": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md",
+  "validation": {
+    "status": "ok",
+    "image_count": 6642,
+    "annotation_count": 176672,
+    "gt_annotation_count": 31308,
+    "negative_annotation_count": 145364,
+    "subject_mode_id_counts": {
+      "0": 118837,
+      "1": 24335,
+      "2": 24232,
+      "3": 9268
+    },
+    "decision_id_counts": {
+      "0": 31211,
+      "1": 130984,
+      "2": 14477
+    },
+    "label_type_counts": {
+      "matching_target": 31308,
+      "near_negative": 41481,
+      "negative": 91036,
+      "hard_negative": 6119,
+      "unsafe_negative": 6712,
+      "top1": 16
+    },
+    "score_range": {
+      "min": 0.002473,
+      "max": 0.997527
+    },
+    "error_count": 0,
+    "warning_count": 0,
+    "errors": [],
+    "warnings": []
+  }
+}
+========================================================
+ Done
+========================================================
+ filtered parquet : data/GAIC/All/filtered_gaic_all.parquet
+ precompute raw    : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl (unified C1/C2/C3/C4/C5/C6)
+ feats c1 source   : data/GAIC/All/artifacts/precompute/feats_c1.jsonl
+ feats c1 alias    : data/GAIC/All/artifacts/precompute/feats_c1.jsonl
+ feats c2/c3e/c4/c5/c6: data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl | data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl | data/GAIC/All/artifacts/precompute/feats_c4.jsonl | data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl | data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ merged feats     : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ routed feats     : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ downstream feats : data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ candidates       : data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0.jsonl
+ cand overview    : data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0_overview.json
+ teacher jsonl    : data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260320_r0.jsonl
+ teacher overview : data/GAIC/All/artifacts/teacher/overview/teacher_scores_overview_gaic_260320_r0.json
+ teacher QA       : data/GAIC/All/artifacts/teacher/qa/teacher_scores_qa_report_gaic_260320_r0.json
+ teacher viz dir  : data/GAIC/All/artifacts/teacher/visualizations/teacher_scorer_gaic_260320_r0
+ training labels  : data/GAIC/All/artifacts/training_labels/gaic_260320_r0
+ detr canonical   : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/train_conditional_detr_canonical.jsonl
+ detr batch       : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/train_conditional_detr_batch.jsonl
+ detr skipped     : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/train_conditional_detr_skipped.jsonl
+ training report  : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/TRAINING_DATA_REPORT_KO.md
+ coco summary     : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/coco_conversion_summary.json
+ gaic-like json   : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/instances_conditional_detr_batch_gaic_like.json
+ gaic-like guide  : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/GAIC_INSTANCES_TRAIN_FORMAT_KO.md
+ training labels  : data/GAIC/All/artifacts/training_labels/gaic_260320_r0
+ training pairwise: data/GAIC/All/artifacts/training_labels/gaic_260320_r0/train_pairwise.jsonl
+ training detr canonical: data/GAIC/All/artifacts/training_labels/gaic_260320_r0/train_conditional_detr_canonical.jsonl
+ training detr batch: data/GAIC/All/artifacts/training_labels/gaic_260320_r0/train_conditional_detr_batch.jsonl
+ training detr skipped: data/GAIC/All/artifacts/training_labels/gaic_260320_r0/train_conditional_detr_skipped.jsonl
+ training qa      : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/qa_summary.json
+ training validation: data/GAIC/All/artifacts/training_labels/gaic_260320_r0/validation_summary.json
+ training report  : data/GAIC/All/artifacts/training_labels/gaic_260320_r0/TRAINING_DATA_REPORT_KO.md
+ logs             : data/GAIC/All/logs/e2e_gaic_260320_r0
+{
+  "status": "ok",
+  "manifest_rows": 1236,
+  "precompute_rows": 1236,
+  "errors": [],
+  "warnings": [],
+  "sections": {
+    "manifest": {
+      "rows": 1236,
+      "unique_image_ids": 1236,
+      "split_counts": {
+        "test": 200,
+        "train": 1036
+      }
+    },
+    "prepare_summary": {
+      "status": "ok",
+      "image_root": "/group-volume/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/images",
+      "output_parquet": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/filtered_gaic_all.parquet",
+      "flat_image_dir": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/images",
+      "bucket": "gaic_all",
+      "link_mode": "symlink",
+      "pseudo_tar_chunk_size": 256,
+      "max_images": 0,
+      "num_images_scanned_total": 1236,
+      "num_images_prepared": 1236,
+      "split_counts": {
+        "test": 200,
+        "train": 1036
+      },
+      "extension_counts": {
+        ".jpg": 1236
+      },
+      "link_counts": {
+        "symlink": 1236
+      },
+      "pseudo_tar_groups": 5,
+      "largest_pseudo_tar_group": 256,
+      "reference": {
+        "generated": true,
+        "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/gaic_reference_available.json",
+        "image_count": 1236,
+        "annotation_count": 0,
+        "source_annotation_jsons": [],
+        "source_stats": {}
+      }
+    },
+    "precompute": {
+      "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl",
+      "rows": 1236,
+      "has_c2_seg_rows": 1236,
+      "has_c3_pose_rows": 1236,
+      "has_c4_ocr_rows": 0,
+      "has_c5_geom_rows": 1236,
+      "unique_image_ids": 1236
+    },
+    "routed": {
+      "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl",
+      "rows": 1236,
+      "routing_rows": 1236,
+      "unique_image_ids": 1236
+    },
+    "candidates": {
+      "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/candidates/candidates_ar_gaic_260320_r0.jsonl",
+      "rows": 1236,
+      "unique_image_ids": 1236,
+      "subset_of_manifest": true
+    },
+    "teacher": {
+      "path": "/group-volume/jaden.ju/Sources/ImageCropping/data/GAIC/All/artifacts/teacher/scores/teacher_scores_ar_gaic_260320_r0.jsonl",
+      "rows": 1236,
+      "unique_image_ids": 1236,
+      "expected_vlm_tasks_all_ar": 7416
+    },
+    "training_validation": {
+      "status": "ok",
+      "error_count": 0,
+      "warning_count": 0,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "conditional_detr_canonical": 6642,
+        "conditional_detr_batch": 6642,
+        "conditional_detr_skipped": 774
+      }
+    },
+    "training_gaic_like": {
+      "out_json": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/coco/instances_conditional_detr_batch_gaic_like.json",
+      "source_batch_jsonl": "data/GAIC/All/artifacts/training_labels/gaic_260320_r0/train_conditional_detr_batch.jsonl",
+      "gaic_reference_json": "data/GAIC/All/gaic_reference_available.json",
+      "validation": {
+        "status": "ok",
+        "image_count": 6642,
+        "annotation_count": 176672,
+        "gt_annotation_count": 31308,
+        "negative_annotation_count": 145364,
+        "subject_mode_id_counts": {
+          "0": 118837,
+          "1": 24335,
+          "2": 24232,
+          "3": 9268
+        },
+        "decision_id_counts": {
+          "0": 31211,
+          "1": 130984,
+          "2": 14477
+        },
+        "label_type_counts": {
+          "matching_target": 31308,
+          "near_negative": 41481,
+          "negative": 91036,
+          "hard_negative": 6119,
+          "unsafe_negative": 6712,
+          "top1": 16
+        },
+        "score_range": {
+          "min": 0.002473,
+          "max": 0.997527
+        },
+        "error_count": 0,
+        "warning_count": 0,
+        "errors": [],
+        "warnings": []
+      }
+    }
+  }
+}
+[done] validation summary: data/GAIC/All/artifacts/validation/gaic_e2e_validation_gaic_260320_r0.json

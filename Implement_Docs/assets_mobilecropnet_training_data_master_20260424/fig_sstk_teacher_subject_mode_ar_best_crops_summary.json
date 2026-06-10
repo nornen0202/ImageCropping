@@ -1,0 +1,1197 @@
+{
+  "selection_policy": "manual visual audit of full-AR UCTR validation candidates, then reuse same image IDs for T1 and UCTR comparison",
+  "ar_order": [
+    "FREE",
+    "1:1",
+    "4:3",
+    "3:4",
+    "16:9",
+    "9:16"
+  ],
+  "figures": [
+    {
+      "method": "T1",
+      "source_path": "data/SSTK/Full_10000/artifacts/training_labels_t1_product_ar_260422_hashsplit_80_10_10_260422/val/train_conditional_detr_batch.jsonl",
+      "figure_path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_sstk_t1_subject_mode_ar_best_crops.png",
+      "representatives": [
+        {
+          "mode": "object_single",
+          "image_id": "sstk_image_689380903",
+          "label": "single object",
+          "audit_note": "single bird, no person flag",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_689380903.jpg",
+          "routing_subject_mode": "object_single",
+          "subject_set": null,
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.023804,
+                0.139252,
+                0.734212,
+                0.848938
+              ],
+              "label_score": 0.571574917,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.113704,
+                0.046148,
+                0.719629,
+                0.953852
+              ],
+              "label_score": 0.700169588,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 0.875
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.066836,
+                0.106953,
+                0.766497,
+                0.893047
+              ],
+              "label_score": 0.985829327,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.137011,
+                0.0,
+                0.637663,
+                1.0
+              ],
+              "label_score": 0.997527377,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.012717,
+                0.159611,
+                0.820616,
+                0.840389
+              ],
+              "label_score": 0.836806089,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.207415,
+                0.063125,
+                0.550601,
+                0.977097
+              ],
+              "label_score": 0.874496135,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "object_multi",
+          "image_id": "pond5_image_147935866",
+          "label": "multi object",
+          "audit_note": "dessert plate with multiple items",
+          "image_path": "data/SSTK/Full_10000/images/pond5_image_147935866.jpg",
+          "routing_subject_mode": "object_multi",
+          "subject_set": null,
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.104524,
+                0.077028,
+                0.915852,
+                1.0
+              ],
+              "label_score": 0.530251704,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.165796,
+                0.0,
+                0.834204,
+                1.0
+              ],
+              "label_score": 0.991205658,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.067763,
+                0.03,
+                0.932237,
+                1.0
+              ],
+              "label_score": 0.625982981,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.249347,
+                0.0,
+                0.750653,
+                1.0
+              ],
+              "label_score": 0.706715753,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.109425,
+                1.0,
+                0.950978
+              ],
+              "label_score": 0.777493101,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.31201,
+                0.0,
+                0.68799,
+                1.0
+              ],
+              "label_score": 0.763202159,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "portrait_single",
+          "image_id": "sstk_image_777178726",
+          "label": "single portrait",
+          "audit_note": "one person exercising",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_777178726.jpg",
+          "routing_subject_mode": "portrait_single",
+          "subject_set": null,
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.178091,
+                0.159488,
+                0.870832,
+                1.0
+              ],
+              "label_score": 0.515560529,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.322554,
+                0.155089,
+                0.885832,
+                0.997807
+              ],
+              "label_score": 0.886983678,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.124268,
+                0.147731,
+                0.875651,
+                0.990836
+              ],
+              "label_score": 0.681286307,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.38314,
+                0.0,
+                0.884446,
+                1.0
+              ],
+              "label_score": 0.868557264,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.158447,
+                1.0,
+                1.0
+              ],
+              "label_score": 0.673051002,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.485288,
+                0.017583,
+                0.848045,
+                0.982417
+              ],
+              "label_score": 0.540096537,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "portrait_group",
+          "image_id": "sstk_image_1896379945",
+          "label": "group portrait",
+          "audit_note": "two detected people, group route",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_1896379945.jpg",
+          "routing_subject_mode": "portrait_group",
+          "subject_set": null,
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.181004,
+                0.224134,
+                0.818996,
+                0.942532
+              ],
+              "label_score": 0.66747403,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.117382,
+                0.0,
+                0.784918,
+                1.0
+              ],
+              "label_score": 0.70304782,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.006126,
+                0.0,
+                0.896174,
+                1.0
+              ],
+              "label_score": 0.662507985,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.200824,
+                0.0,
+                0.701476,
+                1.0
+              ],
+              "label_score": 0.671143517,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.101478,
+                1.0,
+                0.94413
+              ],
+              "label_score": 0.662507985,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.312256,
+                0.0,
+                0.687744,
+                1.0
+              ],
+              "label_score": 0.802065263,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "scene_general",
+          "image_id": "sstk_image_1077646094",
+          "label": "scene",
+          "audit_note": "landscape scene, no detected subject",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_1077646094.jpg",
+          "routing_subject_mode": "scene_general",
+          "subject_set": null,
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.004479,
+                0.0,
+                0.93307,
+                0.925689
+              ],
+              "label_score": 0.514923744,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.168823,
+                0.0,
+                0.831177,
+                1.0
+              ],
+              "label_score": 0.705326186,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                0.883139,
+                1.0
+              ],
+              "label_score": 0.733293631,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.251617,
+                0.0,
+                0.748383,
+                1.0
+              ],
+              "label_score": 0.905118315,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.075378,
+                1.0,
+                0.924622
+              ],
+              "label_score": 0.958960891,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.486111,
+                0.015384,
+                0.847222,
+                0.984616
+              ],
+              "label_score": 0.662507985,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "background_texture_copyspace",
+          "image_id": "sstk_image_2325090935",
+          "label": "texture/copyspace",
+          "audit_note": "repeating wood texture, background-like route",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_2325090935.jpg",
+          "routing_subject_mode": "background_texture_copyspace",
+          "subject_set": null,
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.038426,
+                0.0,
+                0.987897,
+                1.0
+              ],
+              "label_score": 0.508345778,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.302632,
+                0.0,
+                0.864035,
+                1.0
+              ],
+              "label_score": 0.717643466,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.241813,
+                0.0325,
+                0.966023,
+                1.0
+              ],
+              "label_score": 0.662507985,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.360176,
+                0.0,
+                0.781228,
+                1.0
+              ],
+              "label_score": 0.675919048,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.016737,
+                0.031587,
+                0.983263,
+                1.0
+              ],
+              "label_score": 0.641219565,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.342634,
+                0.0,
+                0.658424,
+                1.0
+              ],
+              "label_score": 0.662507985,
+              "raw_external_ranker_score": null,
+              "sstk_crop_utility_prob": null,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "method": "UCTR",
+      "source_path": "data/SSTK/Full_10000/artifacts/training_labels_uctr_stage3_product_ar_260422_hashsplit_80_10_10_260422/val/train_conditional_detr_batch.jsonl",
+      "figure_path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_sstk_uctr_subject_mode_ar_best_crops.png",
+      "representatives": [
+        {
+          "mode": "object_single",
+          "image_id": "sstk_image_689380903",
+          "label": "single object",
+          "audit_note": "single bird, no person flag",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_689380903.jpg",
+          "routing_subject_mode": "object_single",
+          "subject_set": {
+            "num_person": 0,
+            "num_c2_instances": 1,
+            "num_subject_inst": 1,
+            "num_effective_subjects": 1,
+            "primary_subject_exists": true,
+            "union_box_xyxy": [
+              59.0,
+              164.0,
+              466.0,
+              385.0
+            ],
+            "primary_idx": 0,
+            "c2_primary_area_ratio": 0.047798,
+            "c2_primary_bg_like": false,
+            "person_union_area_ratio": 0.0,
+            "multi_subject": false
+          },
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9664731621742249,
+              "sstk_crop_utility_prob": 0.002472623,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                0.667536,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9314895272254944,
+              "sstk_crop_utility_prob": 0.692080838,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                0.890048,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9577290415763855,
+              "sstk_crop_utility_prob": 0.475962647,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.235688,
+                0.03,
+                0.721321,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9132851362228394,
+              "sstk_crop_utility_prob": 0.526204268,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                1.0,
+                0.842651
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9650514125823975,
+              "sstk_crop_utility_prob": 0.454560412,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.230883,
+                0.0,
+                0.606372,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8820647597312927,
+              "sstk_crop_utility_prob": 0.824886146,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "object_multi",
+          "image_id": "pond5_image_147935866",
+          "label": "multi object",
+          "audit_note": "dessert plate with multiple items",
+          "image_path": "data/SSTK/Full_10000/images/pond5_image_147935866.jpg",
+          "routing_subject_mode": "object_multi",
+          "subject_set": {
+            "num_person": 0,
+            "num_c2_instances": 3,
+            "num_subject_inst": 3,
+            "num_effective_subjects": 2,
+            "primary_subject_exists": true,
+            "union_box_xyxy": [
+              259.274,
+              177.764,
+              498.601,
+              431.667
+            ],
+            "primary_idx": 0,
+            "c2_primary_area_ratio": 0.00918,
+            "c2_primary_bg_like": false,
+            "person_union_area_ratio": 0.0,
+            "multi_subject": true
+          },
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9720877408981323,
+              "sstk_crop_utility_prob": 0.002472623,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.165796,
+                0.0,
+                0.834204,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9542883634567261,
+              "sstk_crop_utility_prob": 0.991205658,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.054395,
+                0.0,
+                0.945605,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9336831569671631,
+              "sstk_crop_utility_prob": 0.512617047,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.249347,
+                0.0,
+                0.750653,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9308541417121887,
+              "sstk_crop_utility_prob": 0.706715753,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.079224,
+                1.0,
+                0.920776
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9529050588607788,
+              "sstk_crop_utility_prob": 0.741154106,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.299661,
+                0.0,
+                0.675641,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8296049237251282,
+              "sstk_crop_utility_prob": 0.750588326,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "portrait_single",
+          "image_id": "sstk_image_777178726",
+          "label": "single portrait",
+          "audit_note": "one person exercising",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_777178726.jpg",
+          "routing_subject_mode": "portrait_single",
+          "subject_set": {
+            "num_person": 1,
+            "num_c2_instances": 2,
+            "num_subject_inst": 2,
+            "num_effective_subjects": 1,
+            "primary_subject_exists": true,
+            "union_box_xyxy": [
+              0.0,
+              110.0,
+              653.0,
+              488.0
+            ],
+            "primary_idx": 0,
+            "c2_primary_area_ratio": 0.046138,
+            "c2_primary_bg_like": false,
+            "person_union_area_ratio": 0.203147,
+            "multi_subject": false
+          },
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9633537530899048,
+              "sstk_crop_utility_prob": 0.002472623,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.185808,
+                0.0,
+                0.854215,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8978843092918396,
+              "sstk_crop_utility_prob": 0.886109504,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.054395,
+                0.0,
+                0.945605,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9484001398086548,
+              "sstk_crop_utility_prob": 0.662507985,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.38314,
+                0.0,
+                0.884446,
+                1.0
+              ],
+              "label_score": 0.8,
+              "raw_external_ranker_score": 0.9225390553474426,
+              "sstk_crop_utility_prob": 0.868557264,
+              "crop_utility_rank_pct": 0.8
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.158447,
+                1.0,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9381787180900574,
+              "sstk_crop_utility_prob": 0.673051002,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.445803,
+                0.0,
+                0.821783,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8166168332099915,
+              "sstk_crop_utility_prob": 0.531439298,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "portrait_group",
+          "image_id": "sstk_image_1896379945",
+          "label": "group portrait",
+          "audit_note": "two detected people, group route",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_1896379945.jpg",
+          "routing_subject_mode": "portrait_group",
+          "subject_set": {
+            "num_person": 2,
+            "num_c2_instances": 3,
+            "num_subject_inst": 3,
+            "num_effective_subjects": 2,
+            "primary_subject_exists": true,
+            "union_box_xyxy": [
+              231.04,
+              155.504,
+              530.833,
+              435.252
+            ],
+            "primary_idx": 0,
+            "c2_primary_area_ratio": 0.079225,
+            "c2_primary_bg_like": false,
+            "person_union_area_ratio": 0.125737,
+            "multi_subject": true
+          },
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.949704110622406,
+              "sstk_crop_utility_prob": 0.311926631,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.117382,
+                0.0,
+                0.784918,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9206981658935547,
+              "sstk_crop_utility_prob": 0.70304782,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.006126,
+                0.0,
+                0.896174,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9447672367095947,
+              "sstk_crop_utility_prob": 0.662507985,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.200824,
+                0.0,
+                0.701476,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9005110263824463,
+              "sstk_crop_utility_prob": 0.671143517,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.101478,
+                1.0,
+                0.94413
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9587299227714539,
+              "sstk_crop_utility_prob": 0.662507985,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.316684,
+                0.03,
+                0.680908,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8753684759140015,
+              "sstk_crop_utility_prob": 0.786526117,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "scene_general",
+          "image_id": "sstk_image_1077646094",
+          "label": "scene",
+          "audit_note": "landscape scene, no detected subject",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_1077646094.jpg",
+          "routing_subject_mode": "scene_general",
+          "subject_set": {
+            "num_person": 0,
+            "num_c2_instances": 1,
+            "num_subject_inst": 1,
+            "num_effective_subjects": 0,
+            "primary_subject_exists": false,
+            "union_box_xyxy": [
+              17.0,
+              0.0,
+              605.0,
+              112.0
+            ],
+            "primary_idx": -1,
+            "c2_primary_area_ratio": 0.0,
+            "c2_primary_bg_like": false,
+            "person_union_area_ratio": 0.0,
+            "multi_subject": false
+          },
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8830195665359497,
+              "sstk_crop_utility_prob": 0.002472623,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.168823,
+                0.0,
+                0.831177,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9213809967041016,
+              "sstk_crop_utility_prob": 0.705326186,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                0.883139,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9481629133224487,
+              "sstk_crop_utility_prob": 0.733293631,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.251617,
+                0.0,
+                0.748383,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9133956432342529,
+              "sstk_crop_utility_prob": 0.905118315,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.035241,
+                1.0,
+                0.884485
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9470149278640747,
+              "sstk_crop_utility_prob": 0.957879991,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.313713,
+                0.0,
+                0.686287,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8171510696411133,
+              "sstk_crop_utility_prob": 0.524320713,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        },
+        {
+          "mode": "background_texture_copyspace",
+          "image_id": "sstk_image_2325090935",
+          "label": "texture/copyspace",
+          "audit_note": "repeating wood texture, background-like route",
+          "image_path": "data/SSTK/Full_10000/images/sstk_image_2325090935.jpg",
+          "routing_subject_mode": "background_texture_copyspace",
+          "subject_set": {
+            "num_person": 0,
+            "num_c2_instances": 1,
+            "num_subject_inst": 1,
+            "num_effective_subjects": 0,
+            "primary_subject_exists": false,
+            "union_box_xyxy": [
+              385.0,
+              57.0,
+              522.0,
+              102.0
+            ],
+            "primary_idx": -1,
+            "c2_primary_area_ratio": 0.0,
+            "c2_primary_bg_like": false,
+            "person_union_area_ratio": 0.0,
+            "multi_subject": false
+          },
+          "target_ars": [
+            {
+              "target_ar": "FREE",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8323926329612732,
+              "sstk_crop_utility_prob": 0.002472623,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "1:1",
+              "bbox_norm_xyxy": [
+                0.219827,
+                0.0,
+                0.781231,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.8528882265090942,
+              "sstk_crop_utility_prob": 0.505113998,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "4:3",
+              "bbox_norm_xyxy": [
+                0.12626,
+                0.0,
+                0.874798,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9149307012557983,
+              "sstk_crop_utility_prob": 0.16222712,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "3:4",
+              "bbox_norm_xyxy": [
+                0.290003,
+                0.0,
+                0.711055,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.866075336933136,
+              "sstk_crop_utility_prob": 0.5,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "16:9",
+              "bbox_norm_xyxy": [
+                0.0,
+                0.0,
+                1.0,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.9493150115013123,
+              "sstk_crop_utility_prob": 0.002472623,
+              "crop_utility_rank_pct": 1.0
+            },
+            {
+              "target_ar": "9:16",
+              "bbox_norm_xyxy": [
+                0.342634,
+                0.0,
+                0.658424,
+                1.0
+              ],
+              "label_score": 1.0,
+              "raw_external_ranker_score": 0.7155675888061523,
+              "sstk_crop_utility_prob": 0.662507985,
+              "crop_utility_rank_pct": 1.0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

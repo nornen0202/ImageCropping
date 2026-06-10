@@ -1,0 +1,115 @@
+{
+  "dataset": "10K",
+  "run_tag": "e2e_260227_r0",
+  "samples": [
+    {
+      "super_cat": "animals",
+      "image_id": "sstk_image_2257975789",
+      "tar_name": "SSTK_002698.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 666,
+      "aes_score": 6.418116569519043
+    },
+    {
+      "super_cat": "architecture_exterior",
+      "image_id": "sstk_image_1165522843",
+      "tar_name": "SSTK_004658.tar",
+      "bucket": "",
+      "width": 770,
+      "height": 1000,
+      "aes_score": 6.391430854797363
+    },
+    {
+      "super_cat": "documents_text",
+      "image_id": "sstk_image_2129282159",
+      "tar_name": "SSTK_004811.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667,
+      "aes_score": 6.185339450836182
+    },
+    {
+      "super_cat": "food",
+      "image_id": "sstk_image_2024012429",
+      "tar_name": "SSTK_003419.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667,
+      "aes_score": 6.369629859924316
+    },
+    {
+      "super_cat": "indoor_interior",
+      "image_id": "sstk_image_629195588",
+      "tar_name": "SSTK_004477.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667,
+      "aes_score": 6.211565017700195
+    },
+    {
+      "super_cat": "landscape_nature",
+      "image_id": "sstk_image_1104016514",
+      "tar_name": "SSTK_001072.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667,
+      "aes_score": 6.651422023773193
+    },
+    {
+      "super_cat": "other_ambiguous",
+      "image_id": "sstk_image_174059567",
+      "tar_name": "SSTK_001159.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 825,
+      "aes_score": 6.255481243133545
+    },
+    {
+      "super_cat": "people_multi",
+      "image_id": "pond5_image_99604568",
+      "tar_name": "SSTK_003610.tar",
+      "bucket": "",
+      "width": 1000,
+      "height": 667,
+      "aes_score": 6.418779373168945
+    },
+    {
+      "super_cat": "people_single",
+      "image_id": "sstk_image_2190537205",
+      "tar_name": "SSTK_003116.tar",
+      "bucket": "",
+      "width": 789,
+      "height": 1000,
+      "aes_score": 6.854852676391602
+    },
+    {
+      "super_cat": "product_object",
+      "image_id": "sstk_image_1955755765",
+      "tar_name": "SSTK_002939.tar",
+      "bucket": "",
+      "width": 985,
+      "height": 1000,
+      "aes_score": 6.219361305236816
+    },
+    {
+      "super_cat": "sports",
+      "image_id": "sstk_image_1178976352",
+      "tar_name": "SSTK_000656.tar",
+      "bucket": "",
+      "width": 699,
+      "height": 1000,
+      "aes_score": 6.608759880065918
+    },
+    {
+      "super_cat": "transportation",
+      "image_id": "sstk_image_1977782153",
+      "tar_name": "SSTK_001721.tar",
+      "bucket": "",
+      "width": 750,
+      "height": 1000,
+      "aes_score": 6.341640472412109
+    }
+  ],
+  "missing_categories": []
+}

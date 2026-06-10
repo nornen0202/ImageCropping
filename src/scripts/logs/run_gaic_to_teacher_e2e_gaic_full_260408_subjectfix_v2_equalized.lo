@@ -1,0 +1,31 @@
+========================================================
+ GAIC e2e wrapper
+========================================================
+ data_dir              : data/GAIC/All
+ image_root            : data/Publics/GAIC/images
+ flat_image_dir        : data/GAIC/All/images
+ bucket                : gaic_all
+ run_tag               : gaic_full_260408_subjectfix_v2_equalized
+ prepare_max_images    : 0
+ prepare_num_workers   : 255 (cpu_cores=255)
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 0
+ shared_gpu_ids        : auto (workers=auto)
+ run_c1                : 0
+ use_real_expensive    : 0
+ run_c7_saliency       : 1 (priority=quality_first device=auto)
+ gaic_generate_caps    : 1 (preset=server_quality backend=auto multi_gpu=0 gpu_ids=auto workers=auto)
+ run_c6                : 0
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1 (policy=ignore)
+ score_profile         : single_stage2 (overrides=<none>)
+ training_debug_viz    : 1 (out=data/GAIC/All/artifacts/training_labels/gaic_full_260408_subjectfix_v2_equalized_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ auto_leftover_variants: 0 (policies=keep_negative,promote_soft_positive)
+ run_detailed_report   : 1
+ run_gaic_benchmark    : 1 (sample_count=16 max_images=0)
+ run_gaic_subject_ab   : 1 (run_tag=gaic_eval_gaic_full_260408_subjectfix_v2_equalized sample_count=16 max_images=0)
+ gaic_reference_json   : data/GAIC/All/gaic_reference_available.json
+ gaic_train_ref_json   : data/Publics/GAIC/annotations_json/instances_train.json
+ gaic_test_ref_json    : data/Publics/GAIC/annotations_json/instances_test.json
+========================================================

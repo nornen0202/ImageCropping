@@ -1,0 +1,649 @@
+{
+  "figures_dir": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424",
+  "training_contract_sources": [
+    "src/mobilecropnet_v4/data.py",
+    "src/scripts/train_mobilecropnet_v4.py"
+  ],
+  "sstk_main_batch": {
+    "counts": {
+      "pairwise": 151049,
+      "listwise": 48766,
+      "decision": 59998,
+      "checklist": 263083,
+      "regression": 263083,
+      "conditional_detr_canonical": 48766,
+      "conditional_detr_batch": 48766,
+      "conditional_detr_skipped": 11232
+    },
+    "decision_counts": {
+      "crop": 16598,
+      "minimal_crop": 43010,
+      "keep_full": 390
+    },
+    "pair_count_by_mode": {
+      "object_single": 61317,
+      "portrait_single": 21181,
+      "background_texture_copyspace": 26242,
+      "scene_general": 18170,
+      "object_multi": 20473,
+      "portrait_group": 3666
+    }
+  },
+  "sstk_multimode": {
+    "image_count": 200,
+    "image_task_count": 1200,
+    "annotation_count": 7090,
+    "positive_annotation_count": 2674,
+    "query_count": 5436,
+    "positive_query_count": 2674,
+    "no_positive_query_count": 2762,
+    "mode_summary": {
+      "landscape": {
+        "mode_id": 0,
+        "query_count": 1200,
+        "positive_query_count": 1062,
+        "no_positive_query_count": 138,
+        "positive_query_rate": 0.885,
+        "annotation_count": 3158,
+        "negative_annotation_count": 2096
+      },
+      "single_person_center": {
+        "mode_id": 1,
+        "query_count": 762,
+        "positive_query_count": 136,
+        "no_positive_query_count": 626,
+        "positive_query_rate": 0.178478,
+        "annotation_count": 349,
+        "negative_annotation_count": 213
+      },
+      "single_person_rot": {
+        "mode_id": 2,
+        "query_count": 762,
+        "positive_query_count": 141,
+        "no_positive_query_count": 621,
+        "positive_query_rate": 0.185039,
+        "annotation_count": 334,
+        "negative_annotation_count": 193
+      },
+      "group_center": {
+        "mode_id": 3,
+        "query_count": 198,
+        "positive_query_count": 69,
+        "no_positive_query_count": 129,
+        "positive_query_rate": 0.348485,
+        "annotation_count": 173,
+        "negative_annotation_count": 104
+      },
+      "group_rot": {
+        "mode_id": 4,
+        "query_count": 198,
+        "positive_query_count": 61,
+        "no_positive_query_count": 137,
+        "positive_query_rate": 0.308081,
+        "annotation_count": 158,
+        "negative_annotation_count": 97
+      },
+      "face": {
+        "mode_id": 5,
+        "query_count": 948,
+        "positive_query_count": 343,
+        "no_positive_query_count": 605,
+        "positive_query_rate": 0.361814,
+        "annotation_count": 872,
+        "negative_annotation_count": 529
+      },
+      "object_single_center": {
+        "mode_id": 6,
+        "query_count": 504,
+        "positive_query_count": 332,
+        "no_positive_query_count": 172,
+        "positive_query_rate": 0.65873,
+        "annotation_count": 825,
+        "negative_annotation_count": 493
+      },
+      "object_single_rot": {
+        "mode_id": 7,
+        "query_count": 504,
+        "positive_query_count": 316,
+        "no_positive_query_count": 188,
+        "positive_query_rate": 0.626984,
+        "annotation_count": 784,
+        "negative_annotation_count": 468
+      },
+      "object_multi_center": {
+        "mode_id": 8,
+        "query_count": 180,
+        "positive_query_count": 113,
+        "no_positive_query_count": 67,
+        "positive_query_rate": 0.627778,
+        "annotation_count": 230,
+        "negative_annotation_count": 117
+      },
+      "object_multi_rot": {
+        "mode_id": 9,
+        "query_count": 180,
+        "positive_query_count": 101,
+        "no_positive_query_count": 79,
+        "positive_query_rate": 0.561111,
+        "annotation_count": 207,
+        "negative_annotation_count": 106
+      }
+    },
+    "target_ar": {
+      "16:9": {
+        "query_count": 906,
+        "positive_query_count": 415
+      },
+      "1:1": {
+        "query_count": 906,
+        "positive_query_count": 483
+      },
+      "3:4": {
+        "query_count": 906,
+        "positive_query_count": 432
+      },
+      "4:3": {
+        "query_count": 906,
+        "positive_query_count": 485
+      },
+      "9:16": {
+        "query_count": 906,
+        "positive_query_count": 296
+      },
+      "FREE": {
+        "query_count": 906,
+        "positive_query_count": 563
+      }
+    }
+  },
+  "gaic_conversion": {
+    "T6 corrected_v2b": {
+      "Train": {
+        "written_rows": 2509.0,
+        "pairwise_rows": 240864.0,
+        "listwise_rows": 2509.0,
+        "candidate_count_mean": 86.37544838581108
+      },
+      "Val": {
+        "written_rows": 189.0,
+        "pairwise_rows": 18144.0,
+        "listwise_rows": 189.0,
+        "candidate_count_mean": 85.92592592592592
+      },
+      "Test": {
+        "written_rows": 475.0,
+        "pairwise_rows": 45600.0,
+        "listwise_rows": 475.0,
+        "candidate_count_mean": 86.15368421052632
+      }
+    },
+    "T6 product_ar_v1": {
+      "Train": {
+        "written_rows": 14915.0,
+        "pairwise_rows": 251239.0,
+        "listwise_rows": 14915.0,
+        "candidate_count_mean": 5.964465303385853
+      },
+      "Val": {
+        "written_rows": 1136.0,
+        "pairwise_rows": 19470.0,
+        "listwise_rows": 1136.0,
+        "candidate_count_mean": 6.035211267605634
+      },
+      "Test": {
+        "written_rows": 2824.0,
+        "pairwise_rows": 49060.0,
+        "listwise_rows": 2824.0,
+        "candidate_count_mean": 6.067280453257791
+      }
+    }
+  },
+  "uctr_warehouse": {
+    "task_count": 65847,
+    "pairwise_count": 1285896,
+    "candidate_count": 1437078,
+    "candidate_count_mean": 21.82450225522803
+  },
+  "teacher_equal4_top3": [
+    {
+      "method": "production_final_hybrid",
+      "family": "hybrid_teacher",
+      "fcdb_iou_top1": 0.9085,
+      "cpc_weighted_pairwise": 0.9135,
+      "gnmc_iou_top1": 0.9173,
+      "top1_mos": 3.9869,
+      "srcc": 0.853,
+      "accw4_of_top10": 0.6283,
+      "source": "Implement_Docs/UniversalCropTeacher_H_Implementation_Report_KO_2026-04-20.md:730",
+      "gaic_primary": 0.791485,
+      "z_fcdb_iou_top1": 1.289936710326782,
+      "z_cpc_weighted_pairwise": 1.0124351144086656,
+      "z_gnmc_iou_top1": 1.2685821401448383,
+      "z_gaic_primary": 1.021678272444904,
+      "equal4_raw_mean": 0.88269625,
+      "equal4_zscore": 1.1481580593312977,
+      "worst_dataset_z": 1.0124351144086656,
+      "rank_equal4_zscore": 1
+    },
+    {
+      "method": "universal_crop_teacher_h_stage3_gate128",
+      "family": "uctr_teacher",
+      "fcdb_iou_top1": 0.9085,
+      "cpc_weighted_pairwise": 0.9135,
+      "gnmc_iou_top1": 0.9173,
+      "top1_mos": 3.8461,
+      "srcc": 0.6294,
+      "accw4_of_top10": 0.4438,
+      "source": "Implement_Docs/UniversalCropTeacher_H_Implementation_Report_KO_2026-04-20.md:499",
+      "gaic_primary": 0.67147,
+      "z_fcdb_iou_top1": 1.289936710326782,
+      "z_cpc_weighted_pairwise": 1.0124351144086656,
+      "z_gnmc_iou_top1": 1.2685821401448383,
+      "z_gaic_primary": -0.11841208429591514,
+      "equal4_raw_mean": 0.8526925000000001,
+      "equal4_zscore": 0.8631354701460927,
+      "worst_dataset_z": -0.11841208429591514,
+      "rank_equal4_zscore": 2
+    },
+    {
+      "method": "universal_crop_teacher_h_stage2_fullhonest",
+      "family": "uctr_teacher",
+      "fcdb_iou_top1": 0.908,
+      "cpc_weighted_pairwise": 0.912,
+      "gnmc_iou_top1": 0.9168,
+      "top1_mos": 3.4324,
+      "srcc": 0.381,
+      "accw4_of_top10": 0.2272,
+      "source": "Implement_Docs/UniversalCropTeacher_H_Implementation_Report_KO_2026-04-20.md:498",
+      "gaic_primary": 0.51067,
+      "z_fcdb_iou_top1": 1.2841787069328456,
+      "z_cpc_weighted_pairwise": 0.9615802740030417,
+      "z_gnmc_iou_top1": 1.2622754926671103,
+      "z_gaic_primary": -1.645942221061518,
+      "equal4_raw_mean": 0.8118675,
+      "equal4_zscore": 0.46552306313537,
+      "worst_dataset_z": -1.645942221061518,
+      "rank_equal4_zscore": 3
+    }
+  ],
+  "hybrid_teacher_gaic_test": {
+    "gaic_component": 0.7914928716109999,
+    "image_count": 500,
+    "metrics": {
+      "acc1_of_top10": 0.81,
+      "acc1_of_top5": 0.626,
+      "acc2_of_top10": 0.781,
+      "acc2_of_top5": 0.581,
+      "acc3_of_top10": 0.7633333333333341,
+      "acc3_of_top5": 0.5413333333333331,
+      "acc4_of_top10": 0.7475,
+      "acc4_of_top5": 0.516,
+      "accw1_of_top10": 0.6466973311666256,
+      "accw1_of_top5": 0.49356330679179167,
+      "accw2_of_top10": 0.6380848901801922,
+      "accw2_of_top5": 0.48416059101100783,
+      "accw3_of_top10": 0.6292209507738312,
+      "accw3_of_top5": 0.46219981191458404,
+      "accw4_of_top10": 0.6282856033187789,
+      "accw4_of_top5": 0.45336291669970014,
+      "best_mos": 4.231899999999997,
+      "candidate_count": 86.246,
+      "pcc": 0.8547737688697835,
+      "srcc": 0.8530172317519522,
+      "top1_in_top10": 0.81,
+      "top1_in_top5": 0.626,
+      "top1_mos": 3.9869399999999984,
+      "top1_mos_regret": 0.2449599999999999,
+      "top1_rank": 6.978,
+      "top1_rank_percentile": 0.9297900258680941
+    },
+    "missing_image_count": 0
+  },
+  "student_shortlist": {
+    "entry_count": 19,
+    "completed_entry_count": 19,
+    "route_collapse_count": 19,
+    "default_winner": {
+      "track": "SSTK public",
+      "variant": "subjectprior_route_proposal_v1",
+      "profile": "balanced_288",
+      "run_name": "mcn-sstk-public-subjasync-r5bal-balanced-288-20260423-034145",
+      "run_dir": "artifacts/mobilecropnet_v4/head_variant_async_20260423/sstk_public_subjectprior_spot/mcn-sstk-public-subjasync-r5bal-balanced-288-20260423-034145",
+      "checkpoint": "artifacts/mobilecropnet_v4/head_variant_async_20260423/sstk_public_subjectprior_spot/mcn-sstk-public-subjasync-r5bal-balanced-288-20260423-034145/best.pt",
+      "eval_output_dir": "artifacts/mobilecropnet_v4/shortlist_final_eval_20260423/sstk-public/balanced-288",
+      "public_summary_exists": true,
+      "head_summary_exists": true,
+      "direct_summary_exists": true,
+      "official_top1_mos": 3.7235799999999992,
+      "official_regret": 0.5083200000000001,
+      "official_pcc": 0.6328113941048261,
+      "official_srcc": 0.6460449068374483,
+      "official_acc1_top5": 0.326,
+      "official_acc1_top10": 0.508,
+      "official_acc4_top10": 0.451,
+      "official_accw4_top10": 0.34810650359147155,
+      "input_size": 288,
+      "candidate_k": 24,
+      "backbone": "mobilenetv4_conv_medium.e250_r384_in12k_ft_in1k",
+      "selection_metric": "sstk_balanced_topreturn",
+      "latency_mean_ms": null,
+      "latency_p90_ms": null,
+      "latency_peak_memory_mb": null,
+      "latency_images_per_sec": null,
+      "fcdb_primary": 0.7660934364132411,
+      "cpc_primary": 0.8556545784330972,
+      "gnmc_primary": 0.7681809614054288,
+      "gaic_primary": 0.6506896929318275,
+      "equal4_raw_mean": 0.7601546672958988,
+      "route_accuracy": 0.31928586257006436,
+      "route_balanced_accuracy": 0.3613465886232005,
+      "decision_accuracy": 1.0,
+      "why_tag_micro_f1": 0.5859827858773933,
+      "macro_score_mean_pearson": 0.3291251049668663,
+      "checklist_safety_recall_mean": 0.38357324301439455,
+      "proposal_subject_hit_iou_0_5": 0.3302885613452356,
+      "proposal_to_subject_iou_mean": 0.4100438772727027,
+      "selected_to_subject_iou_mean": 0.39439182726343996,
+      "route_portrait_single_acc": 0.012036108324974924,
+      "route_portrait_group_acc": 0.717391304347826,
+      "route_collapse_flag": true,
+      "head_sanity_score": 0.5990930339996844,
+      "direct_val_final_positive_hit_iou_0_5": 0.9549221750555893,
+      "direct_test_final_positive_hit_iou_0_5": 0.9568195972597052,
+      "direct_test_final_best_iou_to_positive": 0.8412639785868155,
+      "direct_test_final_risk_hit_iou_0_5": 0.040274029478928795,
+      "direct_test_final_target_ar_compatible": 1.0,
+      "direct_test_proposal_positive_recall_at_5_iou_0_5": 0.9819389661615113,
+      "direct_test_proposal_target_ar_recall_at_5_iou_0_5": 0.9819389661615113,
+      "direct_test_route_acc": 0.545982976956612,
+      "direct_test_decision_acc": 1.0,
+      "direct_test_utility_top1_hit_iou_0_5": 0.9227735104837036,
+      "direct_alignment_score": 0.7618235271746658,
+      "fcdb_primary_z": 1.9571144580993223,
+      "cpc_primary_z": 0.6026249826461335,
+      "gnmc_primary_z": 1.6013179724790336,
+      "gaic_primary_z": 1.3598775915928194,
+      "equal4_zscore": 1.380233751204327,
+      "worst_dataset_z": 0.6026249826461335,
+      "worst_dataset_gap": 0.029690091864060242,
+      "crop_top_set": true,
+      "worst_dataset_gate": true,
+      "head_gate": true,
+      "direct_gate": true,
+      "hard_gate_target_ar": true,
+      "hard_gate_risk": true,
+      "hard_gate_prop_target": true,
+      "hard_gate_route_collapse": false,
+      "final_gate_pass": false
+    }
+  },
+  "qualitative_sources": {
+    "winner": "artifacts/mobilecropnet_v4/head_variant_async_20260423/sstk_public_subjectprior_spot/mcn-sstk-public-subjasync-r5bal-balanced-288-20260423-034145/viz_test/overlays/0001_sstk_image_1009275442_FREE.png",
+    "fallback": "artifacts/mobilecropnet_v4/head_variant_async_20260423/sstk_public_subjectprior_spot/mcn-sstk-public-subjasync-r1-rank-320-20260423-025404/viz_test/overlays/0001_sstk_image_1009275442_FREE.png",
+    "plus": "artifacts/mobilecropnet_v4/head_variant_async_20260423/sstk_public_subjectprior_spot/mcn-sstk-public-subjasync-r5plus-plus-384-20260423-034246/viz_test/overlays/0001_sstk_image_1009275442_FREE.png",
+    "contact_sheet": "Implement_Docs/assets_post_20260317_subject_c7/contact_sheet_subject_c7_before_after.png"
+  },
+  "section_visuals": [
+    {
+      "filename": "fig_public_dataset_annotation_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_public_dataset_annotation_examples.png",
+      "caption": "Public crop benchmark dataset annotation examples",
+      "section": "section 2"
+    },
+    {
+      "filename": "fig_public_cropper_inference_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_public_cropper_inference_examples.png",
+      "caption": "Public cropper inference examples",
+      "section": "section 2"
+    },
+    {
+      "filename": "fig_c1_c7_perception_stack_panel.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_c1_c7_perception_stack_panel.png",
+      "caption": "C1-C7 perception stack and downstream label use",
+      "section": "section 5"
+    },
+    {
+      "filename": "fig_c2_c3_c7_joint_overlay.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_c2_c3_c7_joint_overlay.png",
+      "caption": "C2/C3/C7 joint perception overlay",
+      "section": "section 5"
+    },
+    {
+      "filename": "fig_subject_support_map_region_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_subject_support_map_region_examples.png",
+      "caption": "Subject support-map region examples",
+      "section": "section 5"
+    },
+    {
+      "filename": "fig_c3_c6_portrait_failure_panel.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_c3_c6_portrait_failure_panel.png",
+      "caption": "Portrait-sensitive C3/C6 audit evidence",
+      "section": "section 5"
+    },
+    {
+      "filename": "fig_c7_subject_support_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_c7_subject_support_examples.png",
+      "caption": "C7 subject-support overlay examples",
+      "section": "section 5"
+    },
+    {
+      "filename": "fig_decoded_support_mass_only_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_decoded_support_mass_only_examples.png",
+      "caption": "Decoded support-mass only examples",
+      "section": "section 5"
+    },
+    {
+      "filename": "fig_subject_guidance_clean_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_subject_guidance_clean_examples.png",
+      "caption": "Clean subject and crop-guidance examples",
+      "section": "section 5"
+    },
+    {
+      "filename": "fig_route_subject_mode_gallery.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_route_subject_mode_gallery.png",
+      "caption": "Subject-mode routing examples",
+      "section": "section 6"
+    },
+    {
+      "filename": "fig_route_subject_mode_plain_gallery.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_route_subject_mode_plain_gallery.png",
+      "caption": "Subject-mode routing examples without crop-box overlays",
+      "section": "section 6"
+    },
+    {
+      "filename": "fig_route_collapse_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_route_collapse_examples.png",
+      "caption": "Route supervision distribution and collapse diagnostic",
+      "section": "section 6"
+    },
+    {
+      "filename": "fig_candidate_bank_by_ar.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_candidate_bank_by_ar.png",
+      "caption": "Candidate bank by AR",
+      "section": "section 7"
+    },
+    {
+      "filename": "fig_matching_candidate_pool_ignored_overflow.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_matching_candidate_pool_ignored_overflow.png",
+      "caption": "Candidate role split in a row",
+      "section": "section 7"
+    },
+    {
+      "filename": "fig_teacher_score_disagreement_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_teacher_score_disagreement_examples.png",
+      "caption": "Teacher score disagreement examples",
+      "section": "section 8"
+    },
+    {
+      "filename": "fig_uctr_stage3_deep_ranker_flow.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_uctr_stage3_deep_ranker_flow.png",
+      "caption": "UCTR stage3 deep-ranker scoring flow",
+      "section": "section 8"
+    },
+    {
+      "filename": "fig_sstk_t1_subject_mode_ar_best_crops.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_sstk_t1_subject_mode_ar_best_crops.png",
+      "caption": "SSTK T1 subject-mode AR best crops",
+      "section": "section 8"
+    },
+    {
+      "filename": "fig_sstk_uctr_subject_mode_ar_best_crops.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_sstk_uctr_subject_mode_ar_best_crops.png",
+      "caption": "SSTK UCTR subject-mode AR best crops",
+      "section": "section 8"
+    },
+    {
+      "filename": "fig_safe_conversion_demoted_candidates.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_safe_conversion_demoted_candidates.png",
+      "caption": "Safe conversion demotion evidence",
+      "section": "section 8"
+    },
+    {
+      "filename": "fig_training_row_contract_example.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_training_row_contract_example.png",
+      "caption": "Training row contract",
+      "section": "section 9"
+    },
+    {
+      "filename": "fig_batch_pairwise_listwise_join.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_batch_pairwise_listwise_join.png",
+      "caption": "Batch-sidecar join scale",
+      "section": "section 9"
+    },
+    {
+      "filename": "fig_product_ar_branch_materialization_status.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_product_ar_branch_materialization_status.png",
+      "caption": "Product-AR materialization status",
+      "section": "section 10"
+    },
+    {
+      "filename": "fig_decision_distribution_sstk_vs_product_ar.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_decision_distribution_sstk_vs_product_ar.png",
+      "caption": "Decision/action distribution",
+      "section": "section 10"
+    },
+    {
+      "filename": "fig_runtime_no_prior_action_executor_example.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_runtime_no_prior_action_executor_example.png",
+      "caption": "No-prior runtime action executor",
+      "section": "section 12"
+    },
+    {
+      "filename": "fig_runtime_pred_subject_box_without_prior.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_runtime_pred_subject_box_without_prior.png",
+      "caption": "Subject-box supervision under no-prior deployment",
+      "section": "section 12"
+    },
+    {
+      "filename": "fig_quant_sstk_factory_scale.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_quant_sstk_factory_scale.png",
+      "caption": "SSTK factory supervision scale",
+      "section": "section 13"
+    },
+    {
+      "filename": "fig_quant_gaic_label_lineage_comparison.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_quant_gaic_label_lineage_comparison.png",
+      "caption": "GAIC label lineage comparison",
+      "section": "section 13"
+    },
+    {
+      "filename": "fig_unified_equal4_teacher_cropper_leaderboard.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_unified_equal4_teacher_cropper_leaderboard.png",
+      "caption": "Unified public benchmark equal-4 teacher/public cropper leaderboard",
+      "section": "section 13"
+    },
+    {
+      "filename": "fig_unified_equal4_raw_mean_bar.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_unified_equal4_raw_mean_bar.png",
+      "caption": "Unified public benchmark equal-4 raw mean comparison",
+      "section": "section 13"
+    },
+    {
+      "filename": "fig_unified_public_benchmark_metric_matrix.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_unified_public_benchmark_metric_matrix.png",
+      "caption": "Unified public benchmark teacher/public cropper metric matrix",
+      "section": "section 13"
+    },
+    {
+      "filename": "fig_unified_selected_methods_comparison.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_unified_selected_methods_comparison.png",
+      "caption": "Selected Unified Public Benchmark teacher/public cropper comparison",
+      "section": "section 13"
+    },
+    {
+      "filename": "fig_quant_route_collapse_diagnostics.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_quant_route_collapse_diagnostics.png",
+      "caption": "Route-collapse quantitative diagnostic",
+      "section": "section 13"
+    },
+    {
+      "filename": "fig_quant_subject_box_v1_v2.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_quant_subject_box_v1_v2.png",
+      "caption": "Subject-box quantitative comparison",
+      "section": "section 13"
+    },
+    {
+      "filename": "fig_qualitative_failure_taxonomy_panel.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_qualitative_failure_taxonomy_panel.png",
+      "caption": "Qualitative failure taxonomy panel",
+      "section": "section 14"
+    },
+    {
+      "filename": "fig_subject_box_fp_fn_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_subject_box_fp_fn_examples.png",
+      "caption": "Subject-box FP/FN review examples",
+      "section": "section 14"
+    },
+    {
+      "filename": "fig_subject_coverage_good_bad_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_subject_coverage_good_bad_examples.png",
+      "caption": "Subject coverage good/bad examples",
+      "section": "section 14"
+    },
+    {
+      "filename": "fig_headroom_lookroom_good_bad_examples.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_headroom_lookroom_good_bad_examples.png",
+      "caption": "Headroom/lookroom good/bad examples",
+      "section": "section 14"
+    },
+    {
+      "filename": "fig_teacher_crop_head_success_gallery.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_teacher_crop_head_success_gallery.png",
+      "caption": "Teacher crop/head success overview with subject mode, checklist, and why-tags",
+      "section": "section 14"
+    },
+    {
+      "filename": "fig_mcn_crop_head_success_gallery.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_mcn_crop_head_success_gallery.png",
+      "caption": "MobileCropNet crop/head success overview with route/decision, checklist decode, why-tags, score, and IoU",
+      "section": "section 14"
+    },
+    {
+      "filename": "fig_deployment_leaderboard_summary.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_deployment_leaderboard_summary.png",
+      "caption": "Deployment leaderboard summary",
+      "section": "section 15"
+    },
+    {
+      "filename": "fig_final_gate_pass_fail_matrix.png",
+      "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/fig_final_gate_pass_fail_matrix.png",
+      "caption": "Final gate pass/fail matrix",
+      "section": "section 15"
+    }
+  ],
+  "section_visual_source_paths": {
+    "batch_jsonl": "data/SSTK/Full_10000/artifacts/training_labels/260413_v1_multimode_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl",
+    "candidate_jsonl": "data/SSTK/Full_10000/artifacts/candidates/candidates_ar_260413_v1_multimode.jsonl",
+    "public_score_export": "artifacts/mobilecropnet_v4/public_score_sstk_explain_260420/public_score_label_export_summary.json",
+    "public_score_distill": "artifacts/mobilecropnet_v4/public_score_sstk_explain_260420/public_score_distill_v2_label_convert_summary.json",
+    "release_gate": "artifacts/mobilecropnet_v4/unified_recovery_20260424/release_gate_base_strict_check/release_gate_manifest.json",
+    "final_leaderboard": "artifacts/mobilecropnet_v4/unified_recovery_20260424/final_deployment_leaderboard_base_strict_check/final_deployment_leaderboard.json"
+  },
+  "box_overlay_validation": {
+    "path": "Implement_Docs/assets_mobilecropnet_training_data_master_20260424/box_overlay_validation.json",
+    "status": "pass",
+    "checked_box_count": 118,
+    "invalid_box_count": 0,
+    "mapping_policy": "normalized boxes are mapped to the actual image rectangle after ImageOps.contain; letterbox padding is excluded"
+  }
+}

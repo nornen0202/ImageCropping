@@ -1,0 +1,595 @@
+[info] both --extract_mode and --extract_multi_gpu provided. keeping --extract_mode=auto
+[info] activated venv: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : sstk_100
+ data_dir            : data/SSTK/Test_100
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : 260316_macro_r1
+ skip_existing       : 1
+ precompute_mode     : unified
+ run_filter          : 1
+ filter_train_match  : 1
+ filter_tag_embed    : mgpu=1 gpu_ids=0,1,2 bs=128 chunk=0 device=auto
+ filter_cpu_map      : workers=0 chunk=4096 sample_extract_workers=0
+ export_curated_img  : 1 (dir=data/SSTK/Test_100/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/SSTK/Test_100/images)
+ extract_mode        : auto (extract_multi_gpu=1, gpu_ids=0,1,2, workers=3)
+ run_c1/c2/c3/c4/c5/c6 : 1/1/1/1/1/1
+ run_c3_enrich/merge : 1/1
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ run_component_viz   : 1 (out=data/SSTK/Test_100/artifacts/precompute/visualizations/components_260316_macro_r1, num_samples=120)
+ public proposals    : enable=1 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/SSTK/Test_100/artifacts/public_teachers/raw/teacher_raw_public_260316_macro_r1.jsonl | data/SSTK/Test_100/artifacts/public_teachers/proposals/teacher_proposals_public_260316_macro_r1.jsonl
+ public infer multi  : multi_gpu=1 gpu_ids=0,1,2,3,4,5,6,7 workers=8
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 1
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 1 (real_expensive=1)
+ c1 source           : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ teacher_multi_gpu   : 0 (gpu_ids=auto, workers=auto)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=512 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_public_ref  : save_public_teacher_ref_eval=1
+ teacher_aesthetic   : backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 0 (backend=qwen25_vl fallback=heuristic model=Qwen/Qwen3-VL-4B-Instruct)
+ run_detailed_report : 1 (dir=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed examples_per_bucket=5)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=auto, workers=auto)
+ vlm out/meta/sum    : data/SSTK/Test_100/artifacts/vlm_teacher/labels/crop_label_v1_260316_macro_r1.jsonl | data/SSTK/Test_100/artifacts/vlm_teacher/meta/meta_norm_v1_260316_macro_r1.jsonl | data/SSTK/Test_100/artifacts/vlm_teacher/summary/vlm_teacher_summary_260316_macro_r1.json
+========================================================
+[skip] exists: data/SSTK/Test_100/filtered_sstk_100.parquet
+[info] using curated image cache dir: data/SSTK/Test_100/images
+[skip] exists: data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[skip] exists: data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+[skip] exists: data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[run] 07b_visualize_components
+==============================================
+ Visualize Components Runner
+==============================================
+  Parquet   : data/SSTK/Test_100/filtered_sstk_100.parquet
+  Tar Dir   : /sstk/20230916/sstk_100
+  Out Dir   : data/SSTK/Test_100/artifacts/precompute/visualizations/components_260316_macro_r1
+  ServerMode: 1
+  Extra Args: --merged_jsonl data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl --num_samples 120 --draw_c2 1 --draw_c3 1 --draw_c4 1 --draw_c5 1 --draw_c6 1 --draw_combined 1 --image_dir data/SSTK/Test_100/images
+==============================================
+Loading parquet...
+Loading features...
+Selecting samples...
+Processing 100 sample(s)...
+Visualization complete.
+[done] rendered=100 missing=0 out_dir=data/SSTK/Test_100/artifacts/precompute/visualizations/components_260316_macro_r1
+==============================================
+ Done.
+==============================================
+[run] 08a_public_teacher_setup
+Including CUDA code.
+running build_ext
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/utils/cpp_extension.py:426: UserWarning: There are no x86_64-linux-gnu-g++ version bounds defined for CUDA version 12.1
+  warnings.warn(f'There are no {compiler_name} version bounds defined for CUDA version {cuda_str_version}')
+building 'roi_align_api' extension
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/utils/cpp_extension.py:1964: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
+Emitting ninja build file /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/build.ninja...
+Compiling objects...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+[1/1] c++ -MMD -MF /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o.d -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -g -fwrapv -O2 -fPIC -I/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/include -I/usr/include/python3.10 -c -c /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp -o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=roi_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++17
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp: In function ‘int roi_align_forward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:16:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   16 |     auto data_flat = features.data<float>();
+      |                                           ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:17:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   17 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:18:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   18 |     auto output_flat = output.data<float>();
+      |                                           ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp: In function ‘int roi_align_backward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:62:47: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   62 |     auto top_grad_flat = top_grad.data<float>();
+      |                                               ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:63:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   63 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:64:53: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   64 |     auto bottom_grad_flat = bottom_grad.data<float>();
+      |                                                     ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/src/roi_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+x86_64-linux-gnu-g++ -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -g -fwrapv -O2 -shared -Wl,-O1 -Wl,-Bsymbolic-functions /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_cuda.o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/roi_align/build/temp.linux-x86_64-cpython-310/src/roi_align_kernel.o -L/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/lib -L/usr/local/cuda-12.1/lib64 -L/usr/lib/x86_64-linux-gnu -lc10 -ltorch -ltorch_cpu -ltorch_python -lcudart -lc10_cuda -ltorch_cuda -o build/lib.linux-x86_64-cpython-310/roi_align_api.cpython-310-x86_64-linux-gnu.so
+copying build/lib.linux-x86_64-cpython-310/roi_align_api.cpython-310-x86_64-linux-gnu.so -> 
+Including CUDA code.
+running build_ext
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/utils/cpp_extension.py:426: UserWarning: There are no x86_64-linux-gnu-g++ version bounds defined for CUDA version 12.1
+  warnings.warn(f'There are no {compiler_name} version bounds defined for CUDA version {cuda_str_version}')
+building 'rod_align_api' extension
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/utils/cpp_extension.py:1964: UserWarning: TORCH_CUDA_ARCH_LIST is not set, all archs for visible cards are included for compilation. 
+If this is not desired, please set os.environ['TORCH_CUDA_ARCH_LIST'].
+  warnings.warn(
+Emitting ninja build file /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/build.ninja...
+Compiling objects...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+[1/2] /usr/local/cuda-12.1/bin/nvcc --generate-dependencies-with-compile --dependency-output /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o.d -I/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/include -I/usr/include/python3.10 -c -c /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_kernel.cu -o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o -D__CUDA_NO_HALF_OPERATORS__ -D__CUDA_NO_HALF_CONVERSIONS__ -D__CUDA_NO_BFLOAT16_CONVERSIONS__ -D__CUDA_NO_HALF2_OPERATORS__ --expt-relaxed-constexpr --compiler-options ''"'"'-fPIC'"'"'' -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=rod_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -gencode=arch=compute_86,code=compute_86 -gencode=arch=compute_86,code=sm_86 -std=c++17
+[2/2] c++ -MMD -MF /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o.d -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -g -fwrapv -O2 -fPIC -I/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/TH -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/THC -I/usr/local/cuda-12.1/include -I/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/include -I/usr/include/python3.10 -c -c /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp -o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o -DTORCH_API_INCLUDE_EXTENSION_H '-DPYBIND11_COMPILER_TYPE="_gcc"' '-DPYBIND11_STDLIB="_libstdcpp"' '-DPYBIND11_BUILD_ABI="_cxxabi1011"' -DTORCH_EXTENSION_NAME=rod_align_api -D_GLIBCXX_USE_CXX11_ABI=0 -std=c++17
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp: In function ‘int rod_align_forward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:17:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   17 |     auto data_flat = features.data<float>();
+      |                                           ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:18:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   18 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:19:43: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   19 |     auto output_flat = output.data<float>();
+      |                                           ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp: In function ‘int rod_align_backward_cuda(int, int, float, at::Tensor, at::Tensor, at::Tensor)’:
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:64:47: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   64 |     auto top_grad_flat = top_grad.data<float>();
+      |                                               ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:65:39: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   65 |     auto rois_flat = rois.data<float>();
+      |                                       ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:66:53: warning: ‘T* at::Tensor::data() const [with T = float]’ is deprecated: Tensor.data<T>() is deprecated. Please use Tensor.data_ptr<T>() instead. [-Wdeprecated-declarations]
+   66 |     auto bottom_grad_flat = bottom_grad.data<float>();
+      |                                                     ^
+In file included from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/Tensor.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/function_hook.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/cpp_hook.h:2,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/variable.h:6,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/autograd/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/autograd.h:3,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/csrc/api/include/torch/all.h:7,
+                 from /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/torch/extension.h:5,
+                 from /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/src/rod_align_cuda.cpp:2:
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/include/ATen/core/TensorBody.h:247:7: note: declared here
+  247 |   T * data() const {
+      |       ^~~~
+x86_64-linux-gnu-g++ -pthread -Wno-unused-result -Wsign-compare -DNDEBUG -g -fwrapv -O2 -Wall -g -fstack-protector-strong -Wformat -Werror=format-security -g -fwrapv -O2 -shared -Wl,-O1 -Wl,-Bsymbolic-functions /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_cuda.o /media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/third_party/public_cropping_teachers/cgs/rod_align/build/temp.linux-x86_64-cpython-310/src/rod_align_kernel.o -L/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/lib -L/usr/local/cuda-12.1/lib64 -L/usr/lib/x86_64-linux-gnu -lc10 -ltorch -ltorch_cpu -ltorch_python -lcudart -lc10_cuda -ltorch_cuda -o build/lib.linux-x86_64-cpython-310/rod_align_api.cpython-310-x86_64-linux-gnu.so
+copying build/lib.linux-x86_64-cpython-310/rod_align_api.cpython-310-x86_64-linux-gnu.so -> 
+[setup] repo exists: third_party/public_cropping_teachers/gaic
+[setup] repo exists: third_party/public_cropping_teachers/cacnet
+[setup] repo exists: third_party/public_cropping_teachers/cgs
+[setup] patching gaic repo for python3/torch2 compatibility: third_party/public_cropping_teachers/gaic
+[setup] patching cgs cuda extensions for torch2: third_party/public_cropping_teachers/cgs
+[setup] building cgs roi_align extension: third_party/public_cropping_teachers/cgs/roi_align
+[setup] building cgs rod_align extension: third_party/public_cropping_teachers/cgs/rod_align
+[setup] weight exists: weights/public_cropping_teachers/gaic/gaic_conference_pretrained.pth
+[setup] weight exists: weights/public_cropping_teachers/cacnet/best-FLMS_iou.pth
+[setup] weight exists: weights/public_cropping_teachers/cgs/cgs_pretrained.zip
+
+[setup] manual weight download guide
+- gaic:
+  url : https://drive.google.com/file/d/1OvLT_ul17zCK4ljAi4myGAgA50PmLy3Y/view?usp=sharing
+  save: weights/public_cropping_teachers/gaic/gaic_conference_pretrained.pth
+- cacnet:
+  url : https://drive.google.com/file/d/19LUhHK1viHu9TYqzk2te2orqzKMA_ZRQ/view?usp=sharing
+  save: weights/public_cropping_teachers/cacnet/best-FLMS_iou.pth
+- cgs:
+  url : https://drive.google.com/file/d/1CmMBcQdOc22Qnyle0xJlbO6BC8tdViWN/view?usp=sharing
+  save: weights/public_cropping_teachers/cgs/cgs_pretrained.zip
+
+[setup] done
+[run] 08b_public_teacher_infer
+[infer-wrapper] multi-gpu mode enabled: workers=8 gpu_ids=0,1,2,3,4,5,6,7
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:411: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  raw_state = torch.load(str(self.weight_path), map_location="cpu")
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:208: UserWarning: The parameter 'pretrained' is deprecated since 0.13 and may be removed in the future, please use 'weights' instead.
+  warnings.warn(
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torchvision/models/_utils.py:223: UserWarning: Arguments other than a weight enum or `None` for 'weights' are deprecated since 0.13 and may be removed in the future. The current behavior is equivalent to passing `weights=None`.
+  warnings.warn(msg)
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+[infer] device=cpu
+[infer] curated image source enabled: data/SSTK/Test_100/images
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=5 num_shards=8 shard_rows=12
+[infer][warn] failed to init gaic teacher: gaic requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer][warn] failed to init cgs teacher: cgs requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer] active teachers: ['cacnet']
+teacher-infer:   0%|          | 0/12 [00:00<?, ?it/s][infer] device=cpu
+[infer] curated image source enabled: data/SSTK/Test_100/images
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=1 num_shards=8 shard_rows=13
+[infer][warn] failed to init gaic teacher: gaic requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer][warn] failed to init cgs teacher: cgs requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer] active teachers: ['cacnet']
+teacher-infer:   0%|          | 0/13 [00:00<?, ?it/s][infer] device=cpu
+[infer] curated image source enabled: data/SSTK/Test_100/images
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=3 num_shards=8 shard_rows=13
+[infer][warn] failed to init gaic teacher: gaic requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer][warn] failed to init cgs teacher: cgs requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer] active teachers: ['cacnet']
+teacher-infer:   0%|          | 0/13 [00:00<?, ?it/s][infer] device=cpu
+[infer] curated image source enabled: data/SSTK/Test_100/images
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=2 num_shards=8 shard_rows=13
+[infer][warn] failed to init gaic teacher: gaic requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer][warn] failed to init cgs teacher: cgs requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer] active teachers: ['cacnet']
+teacher-infer:   0%|          | 0/13 [00:00<?, ?it/s][infer] device=cpu
+[infer] curated image source enabled: data/SSTK/Test_100/images
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=6 num_shards=8 shard_rows=12
+[infer][warn] failed to init gaic teacher: gaic requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer][warn] failed to init cgs teacher: cgs requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer] active teachers: ['cacnet']
+teacher-infer:   0%|          | 0/12 [00:00<?, ?it/s][infer] device=cpu
+[infer] curated image source enabled: data/SSTK/Test_100/images
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=7 num_shards=8 shard_rows=12
+[infer][warn] failed to init gaic teacher: gaic requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer][warn] failed to init cgs teacher: cgs requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer] active teachers: ['cacnet']
+teacher-infer:   0%|          | 0/12 [00:00<?, ?it/s][infer] device=cpu
+[infer] curated image source enabled: data/SSTK/Test_100/images
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=4 num_shards=8 shard_rows=12
+[infer][warn] failed to init gaic teacher: gaic requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer][warn] failed to init cgs teacher: cgs requires CUDA (ROI/RoDAlign extension is CUDA-only)
+[infer] active teachers: ['cacnet']
+teacher-infer:   0%|          | 0/12 [00:00<?, ?it/s]/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/torch/functional.py:534: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at ../aten/src/ATen/native/TensorShape.cpp:3595.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+/media/jyju25/T7_4TB_JY/Projects_26/Sources/ImageCropping/src/scripts/infer_public_cropping_teachers.py:563: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = unwrap_state_dict(torch.load(str(weight_path), map_location="cpu"))
+[infer] device=cuda
+[infer] curated image source enabled: data/SSTK/Test_100/images
+[infer][warn] tar_dir not found: /sstk/20230916/sstk_100
+[infer] sharding enabled: shard_index=0 num_shards=8 shard_rows=13
+[gaic] backbone=shufflenetv2 weight=shufflenet_0.682_0.641_0.607_0.566_0.858_0.825_0.805_0.778_0.850_0.872.pth
+[infer] active teachers: ['cacnet', 'cgs', 'gaic']
+teacher-infer:   0%|          | 0/13 [00:00<?, ?it/s]teacher-infer:   8%|▊         | 1/13 [00:00<00:10,  1.09it/s]teacher-infer:  15%|█▌        | 2/13 [00:01<00:04,  2.23it/s]teacher-infer:  31%|███       | 4/13 [00:01<00:01,  4.71it/s]teacher-infer:  46%|████▌     | 6/13 [00:01<00:01,  6.64it/s]teacher-infer:  62%|██████▏   | 8/13 [00:01<00:00,  8.25it/s]teacher-infer:  77%|███████▋  | 10/13 [00:01<00:00,  9.87it/s]teacher-infer:  92%|█████████▏| 12/13 [00:01<00:00,  8.06it/s]teacher-infer: 100%|██████████| 13/13 [00:02<00:00,  6.31it/s]
+[infer] image_source_stats local_hits=13 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.3DbDW3/shard_0.jsonl
+teacher-infer:   8%|▊         | 1/12 [00:13<02:32, 13.83s/it]teacher-infer:   8%|▊         | 1/13 [00:13<02:44, 13.70s/it]teacher-infer:   8%|▊         | 1/12 [00:13<02:33, 13.95s/it]teacher-infer:   8%|▊         | 1/13 [00:14<02:50, 14.20s/it]teacher-infer:   8%|▊         | 1/13 [00:14<02:52, 14.34s/it]teacher-infer:   8%|▊         | 1/12 [00:14<02:42, 14.77s/it]teacher-infer:   8%|▊         | 1/12 [00:14<02:40, 14.58s/it]teacher-infer:  15%|█▌        | 2/13 [00:27<02:29, 13.57s/it]teacher-infer:  15%|█▌        | 2/13 [00:27<02:30, 13.71s/it]teacher-infer:  17%|█▋        | 2/12 [00:27<02:19, 13.94s/it]teacher-infer:  17%|█▋        | 2/12 [00:27<02:18, 13.83s/it]teacher-infer:  15%|█▌        | 2/13 [00:28<02:34, 14.07s/it]teacher-infer:  17%|█▋        | 2/12 [00:28<02:22, 14.29s/it]teacher-infer:  17%|█▋        | 2/12 [00:30<02:34, 15.45s/it]teacher-infer:  23%|██▎       | 3/13 [00:38<02:04, 12.47s/it]teacher-infer:  23%|██▎       | 3/13 [00:38<02:05, 12.53s/it]teacher-infer:  25%|██▌       | 3/12 [00:39<01:55, 12.79s/it]teacher-infer:  23%|██▎       | 3/13 [00:39<02:06, 12.62s/it]teacher-infer:  25%|██▌       | 3/12 [00:42<02:08, 14.32s/it]teacher-infer:  25%|██▌       | 3/12 [00:43<02:10, 14.46s/it]teacher-infer:  25%|██▌       | 3/12 [00:45<02:18, 15.36s/it]teacher-infer:  31%|███       | 4/13 [00:47<01:41, 11.28s/it]teacher-infer:  33%|███▎      | 4/12 [00:48<01:31, 11.43s/it]teacher-infer:  31%|███       | 4/13 [00:48<01:43, 11.49s/it]teacher-infer:  31%|███       | 4/13 [00:53<01:58, 13.21s/it]teacher-infer:  33%|███▎      | 4/12 [00:53<01:43, 12.90s/it]teacher-infer:  33%|███▎      | 4/12 [00:55<01:45, 13.19s/it]teacher-infer:  33%|███▎      | 4/12 [00:56<01:50, 13.77s/it]teacher-infer:  38%|███▊      | 5/13 [00:58<01:27, 10.94s/it]teacher-infer:  38%|███▊      | 5/13 [00:59<01:30, 11.28s/it]teacher-infer:  42%|████▏     | 5/12 [01:02<01:25, 12.25s/it]teacher-infer:  42%|████▏     | 5/12 [01:08<01:37, 13.87s/it]teacher-infer:  38%|███▊      | 5/13 [01:09<01:53, 14.22s/it]teacher-infer:  42%|████▏     | 5/12 [01:11<01:40, 14.41s/it]teacher-infer:  42%|████▏     | 5/12 [01:12<01:40, 14.31s/it]teacher-infer:  46%|████▌     | 6/13 [01:13<01:26, 12.29s/it]teacher-infer:  46%|████▌     | 6/13 [01:14<01:28, 12.69s/it]teacher-infer:  50%|█████     | 6/12 [01:16<01:18, 13.07s/it]teacher-infer:  50%|█████     | 6/12 [01:19<01:16, 12.78s/it]teacher-infer:  46%|████▌     | 6/13 [01:20<01:31, 13.10s/it]teacher-infer:  50%|█████     | 6/12 [01:22<01:18, 13.15s/it]teacher-infer:  50%|█████     | 6/12 [01:26<01:25, 14.28s/it]teacher-infer:  54%|█████▍    | 7/13 [01:28<01:18, 13.11s/it]teacher-infer:  58%|█████▊    | 7/12 [01:28<01:03, 12.65s/it]teacher-infer:  54%|█████▍    | 7/13 [01:29<01:20, 13.46s/it]teacher-infer:  54%|█████▍    | 7/13 [01:36<01:24, 14.17s/it]teacher-infer:  58%|█████▊    | 7/12 [01:36<01:11, 14.21s/it]teacher-infer:  58%|█████▊    | 7/12 [01:37<01:09, 13.87s/it]teacher-infer:  62%|██████▏   | 8/13 [01:39<01:02, 12.55s/it]teacher-infer:  67%|██████▋   | 8/12 [01:40<00:49, 12.39s/it]teacher-infer:  58%|█████▊    | 7/12 [01:39<01:10, 14.03s/it]teacher-infer:  62%|██████▏   | 8/13 [01:46<01:13, 14.62s/it]teacher-infer:  62%|██████▏   | 8/13 [01:48<01:07, 13.59s/it]teacher-infer:  67%|██████▋   | 8/12 [01:49<00:54, 13.74s/it]teacher-infer:  69%|██████▉   | 9/13 [01:52<00:50, 12.54s/it]teacher-infer:  67%|██████▋   | 8/12 [01:51<00:55, 13.85s/it]teacher-infer:  75%|███████▌  | 9/12 [01:55<00:39, 13.31s/it]teacher-infer:  67%|██████▋   | 8/12 [01:55<00:58, 14.71s/it]teacher-infer:  69%|██████▉   | 9/13 [02:02<00:59, 14.85s/it]teacher-infer:  75%|███████▌  | 9/12 [02:04<00:42, 14.26s/it]teacher-infer:  69%|██████▉   | 9/13 [02:05<00:58, 14.63s/it]teacher-infer:  77%|███████▋  | 10/13 [02:10<00:42, 14.22s/it]teacher-infer:  75%|███████▌  | 9/12 [02:09<00:45, 15.06s/it]teacher-infer:  75%|███████▌  | 9/12 [02:11<00:45, 15.10s/it]teacher-infer:  83%|████████▎ | 10/12 [02:13<00:29, 14.68s/it]teacher-infer:  77%|███████▋  | 10/13 [02:17<00:44, 14.93s/it]teacher-infer:  83%|████████▎ | 10/12 [02:19<00:28, 14.46s/it]teacher-infer:  77%|███████▋  | 10/13 [02:22<00:46, 15.36s/it]teacher-infer:  83%|████████▎ | 10/12 [02:23<00:29, 14.69s/it]teacher-infer:  85%|████████▍ | 11/13 [02:24<00:28, 14.40s/it]teacher-infer:  83%|████████▎ | 10/12 [02:27<00:30, 15.35s/it]teacher-infer:  92%|█████████▏| 11/12 [02:30<00:15, 15.24s/it]teacher-infer:  85%|████████▍ | 11/13 [02:34<00:31, 15.71s/it]teacher-infer:  92%|█████████▏| 11/12 [02:35<00:14, 14.72s/it]teacher-infer:  85%|████████▍ | 11/13 [02:38<00:31, 15.53s/it]teacher-infer:  92%|█████████▏| 11/12 [02:37<00:14, 14.72s/it]teacher-infer:  92%|█████████▏| 12/13 [02:39<00:14, 14.40s/it]teacher-infer:  92%|█████████▏| 11/12 [02:45<00:16, 16.15s/it]teacher-infer: 100%|██████████| 12/12 [02:47<00:00, 16.01s/it]teacher-infer: 100%|██████████| 12/12 [02:47<00:00, 14.00s/it]
+[infer] image_source_stats local_hits=12 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.3DbDW3/shard_5.jsonl
+teacher-infer:  92%|█████████▏| 12/13 [02:49<00:15, 15.55s/it]teacher-infer: 100%|██████████| 12/12 [02:51<00:00, 15.28s/it]teacher-infer: 100%|██████████| 12/12 [02:51<00:00, 14.30s/it]
+[infer] image_source_stats local_hits=12 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.3DbDW3/shard_6.jsonl
+teacher-infer:  92%|█████████▏| 12/13 [02:54<00:15, 15.52s/it]teacher-infer: 100%|██████████| 12/12 [02:54<00:00, 15.21s/it]teacher-infer: 100%|██████████| 12/12 [02:54<00:00, 14.51s/it]
+[infer] image_source_stats local_hits=12 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.3DbDW3/shard_4.jsonl
+teacher-infer: 100%|██████████| 13/13 [02:55<00:00, 14.90s/it]teacher-infer: 100%|██████████| 13/13 [02:55<00:00, 13.48s/it]
+[infer] image_source_stats local_hits=13 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.3DbDW3/shard_1.jsonl
+teacher-infer: 100%|██████████| 12/12 [02:57<00:00, 14.69s/it]teacher-infer: 100%|██████████| 12/12 [02:57<00:00, 14.76s/it]
+[infer] image_source_stats local_hits=12 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.3DbDW3/shard_7.jsonl
+teacher-infer: 100%|██████████| 13/13 [02:58<00:00, 13.57s/it]teacher-infer: 100%|██████████| 13/13 [02:58<00:00, 13.76s/it]
+[infer] image_source_stats local_hits=13 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.3DbDW3/shard_2.jsonl
+teacher-infer: 100%|██████████| 13/13 [02:59<00:00, 12.41s/it]teacher-infer: 100%|██████████| 13/13 [02:59<00:00, 13.80s/it]
+[infer] image_source_stats local_hits=13 tar_hits=0 misses=0
+[infer] done -> /tmp/infer_public_teachers_multi.3DbDW3/shard_3.jsonl
+[infer-wrapper] multi-gpu inference succeeded -> data/SSTK/Test_100/artifacts/public_teachers/raw/teacher_raw_public_260316_macro_r1.jsonl
+[run] 08c_public_teacher_build_proposals
+[build] done. written=100 output=data/SSTK/Test_100/artifacts/public_teachers/proposals/teacher_proposals_public_260316_macro_r1.jsonl
+[info] teacher proposal injection paths: data/SSTK/Test_100/artifacts/public_teachers/proposals/teacher_proposals_public_260316_macro_r1.jsonl
+[run] 09_generate_candidates
+==============================================
+ Candidate Generator Runner (Phase B1)
+==============================================
+  Input Parquet : data/SSTK/Test_100/filtered_sstk_100.parquet
+  Feats C2      : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+  Feats C3      : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+  Output JSONL  : data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1.jsonl
+  Server Mode   : 1
+  TAR_DIR       : /sstk/20230916/sstk_100
+  IMAGE_DIR     : data/SSTK/Test_100/images
+  use_actual    : 1
+  strict_actual : 1
+  Extra Args    : --actual_size_cache_json data/SSTK/Test_100/cache/actual_image_size_map.json --max_images 0 --num_workers 0 --mp_chunksize 64 --mp_start_method auto --ar_list FREE 1:1 9:16 16:9 3:4 4:3 --teacher_proposals_jsonl data/SSTK/Test_100/artifacts/public_teachers/proposals/teacher_proposals_public_260316_macro_r1.jsonl --teacher_nms_iou 0.95 --teacher_max_seeds_per_teacher 1 --teacher_prefer_expand 1 --teacher_jitter_shift_fracs 0.03 --teacher_jitter_scales 0.92 1.0 1.08
+==============================================
+[CandidateGen] Loading inputs...
+[CandidateGen] rows=100 c2_seg=100 c2_det=100(nonempty=78) c3=100(nonempty=45) routing=100 teacher_proposals=100 cfg_hash=017981a75c07339d
+[CandidateGen] worker mode: single-process
+[CandidateGen] Building/loading actual TAR image-size map...
+[CandidateGen] actual_size_map loaded: 100 images
+CandidateGen:   0%|          | 0/100 [00:00<?, ?it/s]CandidateGen:   2%|▏         | 2/100 [00:00<00:06, 14.17it/s]CandidateGen:   4%|▍         | 4/100 [00:00<00:06, 15.47it/s]CandidateGen:   6%|▌         | 6/100 [00:00<00:05, 16.03it/s]CandidateGen:   8%|▊         | 8/100 [00:00<00:05, 17.33it/s]CandidateGen:  10%|█         | 10/100 [00:00<00:05, 17.35it/s]CandidateGen:  12%|█▏        | 12/100 [00:00<00:04, 17.71it/s]CandidateGen:  15%|█▌        | 15/100 [00:00<00:04, 19.40it/s]CandidateGen:  17%|█▋        | 17/100 [00:00<00:04, 18.22it/s]CandidateGen:  19%|█▉        | 19/100 [00:01<00:04, 18.13it/s]CandidateGen:  22%|██▏       | 22/100 [00:01<00:04, 18.65it/s]CandidateGen:  25%|██▌       | 25/100 [00:01<00:04, 17.74it/s]CandidateGen:  27%|██▋       | 27/100 [00:01<00:04, 17.15it/s]CandidateGen:  29%|██▉       | 29/100 [00:01<00:04, 16.02it/s]CandidateGen:  31%|███       | 31/100 [00:01<00:04, 16.72it/s]CandidateGen:  33%|███▎      | 33/100 [00:01<00:04, 15.26it/s]CandidateGen:  36%|███▌      | 36/100 [00:02<00:03, 16.21it/s]CandidateGen:  38%|███▊      | 38/100 [00:02<00:03, 16.46it/s]CandidateGen:  40%|████      | 40/100 [00:02<00:03, 16.72it/s]CandidateGen:  42%|████▏     | 42/100 [00:02<00:03, 17.10it/s]CandidateGen:  44%|████▍     | 44/100 [00:02<00:03, 16.56it/s]CandidateGen:  47%|████▋     | 47/100 [00:02<00:02, 18.29it/s]CandidateGen:  49%|████▉     | 49/100 [00:02<00:03, 15.92it/s]CandidateGen:  51%|█████     | 51/100 [00:03<00:03, 16.21it/s]CandidateGen:  53%|█████▎    | 53/100 [00:03<00:02, 15.98it/s]CandidateGen:  55%|█████▌    | 55/100 [00:03<00:02, 16.77it/s]CandidateGen:  57%|█████▋    | 57/100 [00:03<00:02, 15.92it/s]CandidateGen:  59%|█████▉    | 59/100 [00:03<00:02, 15.38it/s]CandidateGen:  61%|██████    | 61/100 [00:03<00:02, 15.87it/s]CandidateGen:  63%|██████▎   | 63/100 [00:03<00:02, 16.00it/s]CandidateGen:  65%|██████▌   | 65/100 [00:03<00:02, 15.03it/s]CandidateGen:  67%|██████▋   | 67/100 [00:04<00:02, 15.52it/s]CandidateGen:  69%|██████▉   | 69/100 [00:04<00:01, 15.73it/s]CandidateGen:  71%|███████   | 71/100 [00:04<00:01, 16.27it/s]CandidateGen:  73%|███████▎  | 73/100 [00:04<00:01, 15.05it/s]CandidateGen:  76%|███████▌  | 76/100 [00:04<00:01, 17.02it/s]CandidateGen:  78%|███████▊  | 78/100 [00:04<00:01, 17.58it/s]CandidateGen:  80%|████████  | 80/100 [00:04<00:01, 17.87it/s]CandidateGen:  82%|████████▏ | 82/100 [00:04<00:01, 15.78it/s]CandidateGen:  84%|████████▍ | 84/100 [00:05<00:00, 16.28it/s]CandidateGen:  86%|████████▌ | 86/100 [00:05<00:00, 16.40it/s]CandidateGen:  88%|████████▊ | 88/100 [00:05<00:00, 16.73it/s]CandidateGen:  90%|█████████ | 90/100 [00:05<00:00, 16.35it/s]CandidateGen:  92%|█████████▏| 92/100 [00:05<00:00, 15.99it/s]CandidateGen:  95%|█████████▌| 95/100 [00:05<00:00, 17.61it/s]CandidateGen:  97%|█████████▋| 97/100 [00:05<00:00, 16.40it/s]CandidateGen:  99%|█████████▉| 99/100 [00:05<00:00, 16.25it/s]CandidateGen: 100%|██████████| 100/100 [00:06<00:00, 16.56it/s]
+[CandidateGen] Done. written=100 avg_total_candidates=612.32 elapsed=6.05s throughput=16.54 img/s
+[CandidateGen] size_source_counts={'tar_actual': 100}
+[CandidateGen] output=data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1.jsonl
+[CandidateGen] Building overview from output jsonl...
+[CandidateGen] Overview saved: data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1_overview.json, data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1_overview_by_ar.csv, data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1_overview_by_source.csv, data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1_overview_by_subject_source.csv
+[CandidateGen] Visualization saved under: data/SSTK/Test_100/artifacts/candidates/visualizations/candidates_ar_260316_macro_r1_viz
+==============================================
+ Done.
+==============================================
+[run] 09b_check_public_proposal_injection_gate
+[gate] proposal_injected_rate=1.000000 (min=0.950000, num_images=100)
+[gate] PASS
+[run] 10_teacher_scorer
+[config] server_mode=1 tar_dir=/sstk/20230916/sstk_100 image_dir=data/SSTK/Test_100/images
+[config] candidates=data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1.jsonl
+[config] features=data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[config] c1=data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+[config] parquet=data/SSTK/Test_100/filtered_sstk_100.parquet
+[config] output_jsonl=data/SSTK/Test_100/artifacts/teacher/scores/teacher_scores_ar_260316_macro_r1.jsonl
+[config] expensive_accel: batch=512 eval_top_m=0 preprocess_workers=0 pin_memory=1
+[config] public_teacher_ref_eval: save=1
+[config] aesthetic: backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+[config] portrait_safety: hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+[config] viz_image_ids=<none> viz_image_ids_file=<none>
+[1/3] Running teacher scorer...
+/media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/lib/python3.10/site-packages/open_clip/factory.py:450: UserWarning: QuickGELU mismatch between final model config (quick_gelu=False) and pretrained tag 'openai' (quick_gelu=True).
+  warnings.warn(
+[expensive] align model: ViT-H-14/laion2b_s32b_b79k on cuda (text_dim=1024)
+[expensive] NIMA checkpoint variant=gap
+[expensive] aesthetic backend: requested=hybrid effective=hybrid nima_ready=True(ckpt_loaded=True) laion_ready=True laion_prior_w=0.150
+teacher-score: 0it [00:00, ?it/s]teacher-score: 1it [00:12, 12.90s/it]teacher-score: 2it [00:23, 11.70s/it]teacher-score: 3it [00:34, 11.39s/it]teacher-score: 4it [00:39,  8.77s/it]teacher-score: 5it [00:50,  9.55s/it]teacher-score: 6it [01:01,  9.98s/it]teacher-score: 7it [01:08,  9.20s/it]teacher-score: 8it [01:19,  9.76s/it]teacher-score: 9it [01:30, 10.15s/it]teacher-score: 10it [01:41, 10.36s/it]teacher-score: 11it [01:52, 10.47s/it]teacher-score: 12it [02:03, 10.60s/it]teacher-score: 13it [02:14, 10.69s/it]teacher-score: 14it [02:24, 10.68s/it]teacher-score: 15it [02:35, 10.66s/it]teacher-score: 16it [02:46, 10.67s/it]teacher-score: 17it [02:53,  9.60s/it]teacher-score: 18it [03:04,  9.98s/it]teacher-score: 19it [03:11,  9.29s/it]teacher-score: 20it [03:22,  9.72s/it]teacher-score: 21it [03:30,  9.06s/it]teacher-score: 22it [03:40,  9.57s/it]teacher-score: 23it [03:51,  9.90s/it]teacher-score: 24it [04:02, 10.16s/it]teacher-score: 25it [04:13, 10.48s/it]teacher-score: 26it [04:24, 10.65s/it]teacher-score: 27it [04:35, 10.77s/it]teacher-score: 28it [04:46, 10.70s/it]teacher-score: 29it [04:57, 10.77s/it]teacher-score: 30it [05:07, 10.81s/it]teacher-score: 31it [05:19, 10.93s/it]teacher-score: 32it [05:29, 10.89s/it]teacher-score: 33it [05:36,  9.51s/it]teacher-score: 34it [05:47,  9.92s/it]teacher-score: 35it [05:57, 10.19s/it]teacher-score: 36it [06:02,  8.41s/it]teacher-score: 37it [06:08,  7.85s/it]teacher-score: 38it [06:14,  7.36s/it]teacher-score: 39it [06:25,  8.31s/it]teacher-score: 40it [06:36,  9.09s/it]teacher-score: 41it [06:47,  9.65s/it]teacher-score: 42it [06:58, 10.01s/it]teacher-score: 43it [07:09, 10.35s/it]teacher-score: 44it [07:20, 10.55s/it]teacher-score: 45it [07:26,  9.37s/it]teacher-score: 46it [07:37,  9.79s/it]teacher-score: 47it [07:48, 10.14s/it]teacher-score: 48it [07:59, 10.28s/it]teacher-score: 49it [08:09, 10.28s/it]teacher-score: 50it [08:20, 10.44s/it]teacher-score: 51it [08:31, 10.56s/it]teacher-score: 52it [08:42, 10.73s/it]teacher-score: 53it [08:53, 10.80s/it]teacher-score: 54it [08:56,  8.52s/it]teacher-score: 55it [09:07,  9.17s/it]teacher-score: 56it [09:14,  8.58s/it]teacher-score: 57it [09:21,  8.28s/it]teacher-score: 58it [09:29,  8.09s/it]teacher-score: 59it [09:37,  8.09s/it]teacher-score: 60it [09:46,  8.23s/it]teacher-score: 61it [09:53,  8.04s/it]teacher-score: 62it [10:04,  8.84s/it]teacher-score: 63it [10:11,  8.19s/it]teacher-score: 64it [10:14,  6.83s/it]teacher-score: 65it [10:20,  6.31s/it]teacher-score: 66it [10:23,  5.59s/it]teacher-score: 67it [10:32,  6.63s/it]teacher-score: 68it [10:40,  6.97s/it]teacher-score: 69it [10:47,  6.77s/it]teacher-score: 70it [10:53,  6.66s/it]teacher-score: 71it [10:58,  6.05s/it]teacher-score: 72it [11:03,  5.97s/it]teacher-score: 73it [11:14,  7.49s/it]teacher-score: 74it [11:25,  8.44s/it]teacher-score: 75it [11:36,  9.16s/it]teacher-score: 76it [11:47,  9.63s/it]teacher-score: 77it [11:58, 10.06s/it]teacher-score: 78it [12:08, 10.27s/it]teacher-score: 79it [12:12,  8.31s/it]teacher-score: 80it [12:18,  7.68s/it]teacher-score: 81it [12:26,  7.55s/it]teacher-score: 82it [12:36,  8.39s/it]teacher-score: 83it [12:44,  8.17s/it]teacher-score: 84it [12:45,  6.11s/it]teacher-score: 85it [12:50,  5.77s/it]teacher-score: 86it [12:57,  6.29s/it]teacher-score: 87it [13:03,  6.22s/it]teacher-score: 88it [13:09,  6.13s/it]teacher-score: 89it [13:17,  6.59s/it]teacher-score: 90it [13:28,  7.87s/it]teacher-score: 91it [13:39,  8.83s/it]teacher-score: 92it [13:50,  9.42s/it]teacher-score: 93it [14:01,  9.88s/it]teacher-score: 94it [14:11,  9.85s/it]teacher-score: 95it [14:22, 10.23s/it]teacher-score: 96it [14:29,  9.52s/it]teacher-score: 97it [14:40,  9.91s/it]teacher-score: 98it [14:43,  7.75s/it]teacher-score: 99it [14:54,  8.75s/it]teacher-score: 100it [15:05,  9.42s/it]teacher-score: 100it [15:05,  9.06s/it]
+[expensive][warn] align batch OOM on GPU -> switching align model to ViT-B-32/openai on cuda
+[expensive][warn] NIMA batch OOM on GPU -> switching NIMA to CPU
+[done] images=100 out_jsonl=data/SSTK/Test_100/artifacts/teacher/scores/teacher_scores_ar_260316_macro_r1.jsonl
+[done] overview_json=data/SSTK/Test_100/artifacts/teacher/overview/teacher_scores_overview_260316_macro_r1.json
+[done] overview_by_ar_csv=data/SSTK/Test_100/artifacts/teacher/overview/teacher_scores_overview_by_ar_260316_macro_r1.csv
+[2/3] Building QA report...
+[done] report_json=data/SSTK/Test_100/artifacts/teacher/qa/teacher_scores_qa_report_260316_macro_r1.json
+[done] report_by_ar_csv=data/SSTK/Test_100/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_260316_macro_r1.csv
+[3/3] Rendering teacher scorer visualizations...
+[done] rendered=120 out_dir=data/SSTK/Test_100/artifacts/teacher/visualizations/teacher_scorer_260316_macro_r1
+[done] overview=data/SSTK/Test_100/artifacts/teacher/visualizations/teacher_scorer_260316_macro_r1/viz_overview.json
+[done] Teacher scorer outputs:
+  - data/SSTK/Test_100/artifacts/teacher/scores/teacher_scores_ar_260316_macro_r1.jsonl
+  - data/SSTK/Test_100/artifacts/teacher/overview/teacher_scores_overview_260316_macro_r1.json
+  - data/SSTK/Test_100/artifacts/teacher/overview/teacher_scores_overview_by_ar_260316_macro_r1.csv
+  - data/SSTK/Test_100/artifacts/teacher/qa/teacher_scores_qa_report_260316_macro_r1.json
+  - data/SSTK/Test_100/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_260316_macro_r1.csv
+  - data/SSTK/Test_100/artifacts/teacher/visualizations/teacher_scorer_260316_macro_r1
+[run] 10b_teacher_repair_outputs
+[done] rebuilt overview: data/SSTK/Test_100/artifacts/teacher/overview/teacher_scores_overview_260316_macro_r1.json
+[done] rebuilt overview csv: data/SSTK/Test_100/artifacts/teacher/overview/teacher_scores_overview_by_ar_260316_macro_r1.csv
+[done] report_json=data/SSTK/Test_100/artifacts/teacher/qa/teacher_scores_qa_report_260316_macro_r1.json
+[done] report_by_ar_csv=data/SSTK/Test_100/artifacts/teacher/qa/teacher_scores_qa_report_by_ar_260316_macro_r1.csv
+[repair] final rows=100 expensive_real_rows=100 expected_rows=100 shard_dirs=0
+[repair] no promotable shard dir found (or strict expected match not satisfied).
+[run] 12a_build_report_assets
+[done] summary=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/summary_260316_macro_r1.json
+[done] subject_count_examples=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/evidence/subject_count_examples_260316_macro_r1.json
+[done] subject_mode_examples=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/evidence/subject_mode_examples_260316_macro_r1.json
+[run] 12b_build_detailed_report_seed
+[done] report=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/REPORT_DRAFT_KO.md
+[done] teacher_rep=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/evidence/teacher_representative_examples_260316_macro_r1.json
+[done] checklist=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/checklist_label_examples_260316_macro_r1.json
+[done] rank_compare=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/topk_rank_comparison_260316_macro_r1.json
+[done] public_teacher_compare=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/public_teacher_comparison_260316_macro_r1.json
+[done] example_ids=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/report_example_image_ids_260316_macro_r1.txt
+[done] manifest=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/self_contained/self_contained_manifest.json
+[run] 12c_render_report_teacher_viz
+[done] rendered=288 out_dir=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/_staging_teacher_viz/teacher_scorer_260316_macro_r1
+[done] overview=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/_staging_teacher_viz/teacher_scorer_260316_macro_r1/viz_overview.json
+[run] 12d_build_detailed_report_final
+[done] report=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/REPORT_DRAFT_KO.md
+[done] teacher_rep=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/evidence/teacher_representative_examples_260316_macro_r1.json
+[done] checklist=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/checklist_label_examples_260316_macro_r1.json
+[done] rank_compare=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/topk_rank_comparison_260316_macro_r1.json
+[done] public_teacher_compare=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/public_teacher_comparison_260316_macro_r1.json
+[done] example_ids=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/analytics/report_example_image_ids_260316_macro_r1.txt
+[done] manifest=data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/self_contained/self_contained_manifest.json
+========================================================
+ Done
+========================================================
+ filtered parquet : data/SSTK/Test_100/filtered_sstk_100.parquet
+ precompute raw    : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl (unified C1/C2/C3/C4/C5/C6)
+ feats c1 source   : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ feats c1 alias    : data/SSTK/Test_100/artifacts/precompute/feats_c1.jsonl
+ feats c2/c3e/c4/c5/c6: data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl | data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl | data/SSTK/Test_100/artifacts/precompute/feats_c4.jsonl | data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl | data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ merged feats     : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ routed feats     : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ downstream feats : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ public raw       : data/SSTK/Test_100/artifacts/public_teachers/raw/teacher_raw_public_260316_macro_r1.jsonl
+ public proposals : data/SSTK/Test_100/artifacts/public_teachers/proposals/teacher_proposals_public_260316_macro_r1.jsonl
+ component viz    : data/SSTK/Test_100/artifacts/precompute/visualizations/components_260316_macro_r1
+ candidates       : data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1.jsonl
+ cand overview    : data/SSTK/Test_100/artifacts/candidates/candidates_ar_260316_macro_r1_overview.json
+ teacher jsonl    : data/SSTK/Test_100/artifacts/teacher/scores/teacher_scores_ar_260316_macro_r1.jsonl
+ teacher overview : data/SSTK/Test_100/artifacts/teacher/overview/teacher_scores_overview_260316_macro_r1.json
+ teacher QA       : data/SSTK/Test_100/artifacts/teacher/qa/teacher_scores_qa_report_260316_macro_r1.json
+ teacher viz dir  : data/SSTK/Test_100/artifacts/teacher/visualizations/teacher_scorer_260316_macro_r1
+ report dir       : data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed
+ report viz stage : data/SSTK/Test_100/artifacts/reports/260316_macro_r1_detailed/assets/_staging_teacher_viz/teacher_scorer_260316_macro_r1
+ logs             : data/SSTK/Test_100/logs/e2e_260316_macro_r1

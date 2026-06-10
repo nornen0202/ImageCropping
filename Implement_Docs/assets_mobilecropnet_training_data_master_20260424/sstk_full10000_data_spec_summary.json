@@ -1,0 +1,497 @@
+{
+  "scope": "repo-local SSTK Full_10000 materialized corpus",
+  "raw_pool_note": "The upstream Shutterstock raw pool size before local curation is not fully materialized in this repo snapshot; counts below are for the reproducible Full_10000 curated/materialized line.",
+  "image_files": 10000,
+  "curated_total_from_category_summary": 10000,
+  "category_total_row": {
+    "super_cat": "TOTAL",
+    "count": 10000,
+    "avg_aes_center": 5.592457516384124,
+    "avg_aes_pad": 5.587333660078048,
+    "avg_width": 957.4371,
+    "avg_height": 755.9885
+  },
+  "category_distribution": [
+    {
+      "super_cat": "architecture_exterior",
+      "count": 836,
+      "avg_aes_center": 5.622002332974849,
+      "avg_aes_pad": 5.639031904736204,
+      "avg_width": 962.2918660287081,
+      "avg_height": 747.0813397129186
+    },
+    {
+      "super_cat": "product_object",
+      "count": 834,
+      "avg_aes_center": 5.465673561004712,
+      "avg_aes_pad": 5.480932730279094,
+      "avg_width": 962.5323741007194,
+      "avg_height": 749.8321342925659
+    },
+    {
+      "super_cat": "animals",
+      "count": 833,
+      "avg_aes_center": 5.610404636250252,
+      "avg_aes_pad": 5.5913139643216905,
+      "avg_width": 962.171668667467,
+      "avg_height": 755.3181272509004
+    },
+    {
+      "super_cat": "documents_text",
+      "count": 833,
+      "avg_aes_center": 5.422370499064799,
+      "avg_aes_pad": 5.418766370912989,
+      "avg_width": 995.9579831932773,
+      "avg_height": 729.1752701080433
+    },
+    {
+      "super_cat": "food",
+      "count": 833,
+      "avg_aes_center": 5.65188672133282,
+      "avg_aes_pad": 5.701106044567791,
+      "avg_width": 943.9963985594238,
+      "avg_height": 768.8667466986794
+    },
+    {
+      "super_cat": "indoor_interior",
+      "count": 833,
+      "avg_aes_center": 5.520902541505189,
+      "avg_aes_pad": 5.565714865887151,
+      "avg_width": 959.9495798319327,
+      "avg_height": 758.6542617046819
+    },
+    {
+      "super_cat": "landscape_nature",
+      "count": 833,
+      "avg_aes_center": 5.670307049516584,
+      "avg_aes_pad": 5.66274222205667,
+      "avg_width": 964.9975990396158,
+      "avg_height": 736.0348139255702
+    },
+    {
+      "super_cat": "other_ambiguous",
+      "count": 833,
+      "avg_aes_center": 5.553947965637977,
+      "avg_aes_pad": 5.547840173361825,
+      "avg_width": 948.0264105642257,
+      "avg_height": 758.8691476590636
+    },
+    {
+      "super_cat": "people_multi",
+      "count": 833,
+      "avg_aes_center": 5.683519866572422,
+      "avg_aes_pad": 5.619333788126457,
+      "avg_width": 932.9735894357743,
+      "avg_height": 774.3421368547419
+    },
+    {
+      "super_cat": "people_single",
+      "count": 833,
+      "avg_aes_center": 5.7056381178646385,
+      "avg_aes_pad": 5.6511359369339775,
+      "avg_width": 909.953181272509,
+      "avg_height": 802.500600240096
+    },
+    {
+      "super_cat": "sports",
+      "count": 833,
+      "avg_aes_center": 5.714361097489228,
+      "avg_aes_pad": 5.670954258358922,
+      "avg_width": 939.218487394958,
+      "avg_height": 771.561824729892
+    },
+    {
+      "super_cat": "transportation",
+      "count": 833,
+      "avg_aes_center": 5.488521605121846,
+      "avg_aes_pad": 5.499073205446424,
+      "avg_width": 1007.1524609843938,
+      "avg_height": 719.6650660264106
+    }
+  ],
+  "candidate_overview": {
+    "num_images": 10000,
+    "avg_total_candidates": 753.3038,
+    "min_total_candidates": 173.0,
+    "p50_total_candidates": 747.0,
+    "p90_total_candidates": 896.0,
+    "max_total_candidates": 1052.0,
+    "total_candidates_sum_per_ar": 7533038,
+    "per_ar_summary": {
+      "16:9": {
+        "mean": 132.5602,
+        "min": 30.0,
+        "max": 235.0,
+        "p50": 140.0,
+        "p90": 173.0,
+        "total": 1325602.0
+      },
+      "1:1": {
+        "mean": 121.1483,
+        "min": 20.0,
+        "max": 232.0,
+        "p50": 119.0,
+        "p90": 148.0,
+        "total": 1211483.0
+      },
+      "3:4": {
+        "mean": 90.6683,
+        "min": 5.0,
+        "max": 226.0,
+        "p50": 76.0,
+        "p90": 157.0,
+        "total": 906683.0
+      },
+      "4:3": {
+        "mean": 135.0612,
+        "min": 28.0,
+        "max": 226.0,
+        "p50": 140.0,
+        "p90": 176.0,
+        "total": 1350612.0
+      },
+      "9:16": {
+        "mean": 78.6786,
+        "min": 0.0,
+        "max": 202.0,
+        "p50": 69.0,
+        "p90": 136.0,
+        "total": 786786.0
+      },
+      "FREE": {
+        "mean": 195.1872,
+        "min": 69.0,
+        "max": 240.0,
+        "p50": 199.0,
+        "p90": 240.0,
+        "total": 1951872.0
+      }
+    },
+    "subject_mode_counts_image_level": {
+      "object_single": 3034,
+      "portrait_single": 3100,
+      "background_texture_copyspace": 1199,
+      "object_multi": 1092,
+      "scene_general": 878,
+      "portrait_group": 697
+    },
+    "has_people_rate": 0.4154,
+    "source_counts_top15": {
+      "grid": 3147711,
+      "teacher:jitter": 2472253,
+      "saliency_jitter": 498609,
+      "phi_thirds": 348968,
+      "baseline_maxarea_slide": 222522,
+      "jitter": 159485,
+      "baseline_maxarea_subject": 148224,
+      "baseline_maxarea_center": 142240,
+      "portrait_seed_portrait_eye": 70398,
+      "object_template": 59647,
+      "guidance_support_cover_seed": 39469,
+      "guidance_center_seed": 37504,
+      "portrait_seed_portrait_anchor": 27422,
+      "teacher:cgs": 24024,
+      "teacher:cacnet": 23969
+    }
+  },
+  "training_label_counts": {
+    "pairwise": 151049,
+    "listwise": 48766,
+    "decision": 59998,
+    "checklist": 263083,
+    "regression": 263083,
+    "conditional_detr_canonical": 48766,
+    "conditional_detr_batch": 48766,
+    "conditional_detr_skipped": 11232
+  },
+  "conditional_detr_batch_actual": {
+    "rows": 48766,
+    "unique_images": 9722,
+    "unique_image_target_ar_tasks": 48766,
+    "target_ar_counts": {
+      "FREE": 9713,
+      "1:1": 8210,
+      "9:16": 7558,
+      "16:9": 6976,
+      "3:4": 7904,
+      "4:3": 8405
+    },
+    "mode_counts": {
+      "object_single": 17832,
+      "portrait_single": 10127,
+      "background_texture_copyspace": 7177,
+      "scene_general": 5217,
+      "object_multi": 6277,
+      "portrait_group": 2136
+    },
+    "decision_counts": {
+      "crop": 16598,
+      "minimal_crop": 31813,
+      "keep_full": 355
+    },
+    "role_counts": {
+      "matching_targets": 179494,
+      "candidate_pool": 83589,
+      "ignored_candidates": 62128,
+      "overflow_candidates": 16454
+    },
+    "candidate_slots_total": 341665,
+    "candidate_slots_distribution": {
+      "count": 48766,
+      "min": 2.0,
+      "p50": 6.0,
+      "mean": 7.006213345363573,
+      "p90": 10.0,
+      "max": 13.0
+    },
+    "matching_target_count_distribution": {
+      "count": 48766,
+      "min": 1.0,
+      "p50": 4.0,
+      "mean": 3.680720173891646,
+      "p90": 5.0,
+      "max": 5.0
+    },
+    "candidate_pool_count_distribution": {
+      "count": 48766,
+      "min": 0.0,
+      "p50": 1.0,
+      "mean": 1.7140835828240988,
+      "p90": 5.0,
+      "max": 6.0
+    },
+    "ignored_candidate_count_distribution": {
+      "count": 48766,
+      "min": 0.0,
+      "p50": 1.0,
+      "mean": 1.2740023787064758,
+      "p90": 4.0,
+      "max": 8.0
+    },
+    "overflow_candidate_count_distribution": {
+      "count": 48766,
+      "min": 0.0,
+      "p50": 0.0,
+      "mean": 0.3374072099413526,
+      "p90": 1.0,
+      "max": 1.0
+    }
+  },
+  "label_type_distribution_from_qa_listwise": {
+    "top1": 48766,
+    "soft_positive": 120996,
+    "baseline_positive": 9732,
+    "near_negative": 38370,
+    "negative": 45219
+  },
+  "positive_negative_summary": {
+    "positive_label_types": [
+      "top1",
+      "soft_positive",
+      "baseline_positive"
+    ],
+    "negative_label_types": [
+      "near_negative",
+      "negative"
+    ],
+    "positive_count": 179494,
+    "negative_count": 83589,
+    "total_pos_neg": 263083,
+    "positive_ratio": 0.6822713744331637,
+    "negative_ratio": 0.31772862556683634
+  },
+  "qa_pairwise": {
+    "pair_count_by_mode": {
+      "object_single": 61317,
+      "portrait_single": 21181,
+      "background_texture_copyspace": 26242,
+      "scene_general": 18170,
+      "object_multi": 20473,
+      "portrait_group": 3666
+    },
+    "pair_count_by_ar": {
+      "FREE": 17094,
+      "1:1": 26645,
+      "9:16": 28029,
+      "16:9": 25690,
+      "3:4": 27032,
+      "4:3": 26559
+    },
+    "pair_type_counts": {
+      "baseline_vs_best": 15193,
+      "top1_vs_near_negative": 31398,
+      "top1_vs_negative": 41989,
+      "topk_vs_negative": 62469
+    },
+    "margin_distribution": {
+      "count": 151049,
+      "min": 0.010001,
+      "p50": 0.049742,
+      "mean": 0.164738,
+      "p90": 0.342027,
+      "max": 3.50358
+    },
+    "unsafe_negative_ratio": 0.0
+  },
+  "qa_listwise": {
+    "candidate_count_distribution": {
+      "count": 48766,
+      "min": 1.0,
+      "p50": 5.0,
+      "mean": 5.394804,
+      "p90": 8.0,
+      "max": 11.0
+    },
+    "softmax_entropy_distribution": {
+      "count": 48766,
+      "min": 0.0,
+      "p50": 1.569404,
+      "mean": 1.494537,
+      "p90": 2.077126,
+      "max": 2.397548
+    },
+    "top1_prob_distribution": {
+      "count": 48766,
+      "min": 0.094458,
+      "p50": 0.258796,
+      "mean": 0.314767,
+      "p90": 0.534192,
+      "max": 1.0
+    },
+    "label_type_counts": {
+      "top1": 48766,
+      "soft_positive": 120996,
+      "baseline_positive": 9732,
+      "near_negative": 38370,
+      "negative": 45219
+    }
+  },
+  "qa_conditional_detr": {
+    "mode_counts": {
+      "object_single": 17832,
+      "portrait_single": 10127,
+      "background_texture_copyspace": 7177,
+      "scene_general": 5217,
+      "object_multi": 6277,
+      "portrait_group": 2136
+    },
+    "decision_counts": {
+      "crop": 16598,
+      "minimal_crop": 31813,
+      "keep_full": 355
+    },
+    "candidate_count_distribution": {
+      "count": 48766,
+      "min": 2.0,
+      "p50": 6.0,
+      "mean": 7.006213,
+      "p90": 10.0,
+      "max": 13.0
+    },
+    "matching_target_count_distribution": {
+      "count": 48766,
+      "min": 1.0,
+      "p50": 4.0,
+      "mean": 3.68072,
+      "p90": 5.0,
+      "max": 5.0
+    },
+    "candidate_pool_count_distribution": {
+      "count": 48766,
+      "min": 0.0,
+      "p50": 1.0,
+      "mean": 1.714084,
+      "p90": 5.0,
+      "max": 6.0
+    },
+    "ignored_candidate_count_distribution": {
+      "count": 48766,
+      "min": 0.0,
+      "p50": 1.0,
+      "mean": 1.274002,
+      "p90": 4.0,
+      "max": 8.0
+    },
+    "overflow_candidate_count_distribution": {
+      "count": 48766,
+      "min": 0.0,
+      "p50": 0.0,
+      "mean": 0.337407,
+      "p90": 1.0,
+      "max": 1.0
+    },
+    "route_conf_distribution": {
+      "count": 48766,
+      "min": 0.5,
+      "p50": 0.75,
+      "mean": 0.748701,
+      "p90": 0.85,
+      "max": 0.9
+    },
+    "target_reliability_distribution": {
+      "count": 48766,
+      "min": 0.327208,
+      "p50": 0.746103,
+      "mean": 0.729338,
+      "p90": 0.85,
+      "max": 0.95
+    },
+    "skipped_count": 11232,
+    "applicable_rate_by_key": {
+      "context": 1.0,
+      "copyspace": 1.0,
+      "face_cut": 0.275263,
+      "headroom": 0.275263,
+      "horizon_state": 0.474584,
+      "joint_cut": 0.275263,
+      "lookroom": 0.275263,
+      "subject_coverage": 1.0,
+      "subject_scale": 1.0,
+      "text_keep": 0.162769
+    },
+    "observed_rate_by_key": {
+      "context": 1.0,
+      "copyspace": 1.0,
+      "face_cut": 1.0,
+      "headroom": 0.273056,
+      "headroom_ratio": 0.273056,
+      "horizon_state": 0.011922,
+      "horizon_visible_ratio": 0.012702,
+      "horizon_y": 0.012702,
+      "joint_cut": 1.0,
+      "lookroom": 0.144412,
+      "lookroom_ratio": 0.144412,
+      "subject_coverage": 1.0,
+      "subject_coverage_ratio": 1.0,
+      "subject_scale": 1.0,
+      "symmetry_score": 1.0,
+      "text_keep": 0.0,
+      "text_keep_ratio": 0.0
+    },
+    "valid_rate_by_key": {
+      "context": 0.781235,
+      "copyspace": 1.0,
+      "face_cut": 0.275263,
+      "headroom": 0.272048,
+      "headroom_ratio": 0.272048,
+      "horizon_visible_ratio": 0.012702,
+      "horizon_y": 0.012702,
+      "joint_cut": 0.275263,
+      "lookroom": 0.143882,
+      "lookroom_ratio": 0.143882,
+      "subject_coverage": 1.0,
+      "subject_coverage_ratio": 1.0,
+      "subject_scale": 1.0,
+      "symmetry_score": 1.0,
+      "text_keep": 0.0,
+      "text_keep_ratio": 0.0
+    }
+  },
+  "source_paths": {
+    "filtered_summary_csv": "data/SSTK/Full_10000/filtered_sstk_100_summary.csv",
+    "candidate_overview_json": "data/SSTK/Full_10000/artifacts/candidates/candidates_ar_260413_v1_multimode_overview.json",
+    "qa_summary_json": "data/SSTK/Full_10000/artifacts/training_labels/260413_v1_multimode_leftover_ignore_monotonic/qa_summary.json",
+    "generation_counts_json": "data/SSTK/Full_10000/artifacts/training_labels/260413_v1_multimode_leftover_ignore_monotonic/generation_counts.json",
+    "batch_jsonl": "data/SSTK/Full_10000/artifacts/training_labels/260413_v1_multimode_leftover_ignore_monotonic/train_conditional_detr_batch.jsonl"
+  }
+}

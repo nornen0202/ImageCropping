@@ -1,0 +1,35 @@
+{
+  "notes": {
+    "environmental_portrait_policy": "not a standalone image route or v16 mode class; encode as context_intent=environmental with body shot face_headshot/upper_half_body/full_body",
+    "excluded_from_image_route_name": [
+      "placement_intent",
+      "context_intent",
+      "mode_feasible"
+    ],
+    "food_policy": "food/tableware evidence is retained only as audit/probe metadata and is folded into scene because food is not an active route class in this taxonomy.",
+    "included_in_image_route_name": [
+      "route_family_v2",
+      "person_shot_type when route_family_v2 == person_single"
+    ],
+    "placement_intent_policy": "use only as query/crop intent or ablation/auxiliary metadata, not as the primary image-level class target"
+  },
+  "route_count": 6,
+  "route_names": [
+    "scene",
+    "person_single_face_headshot",
+    "person_single_upper_half_body",
+    "person_single_full_body",
+    "person_group",
+    "pet_dogcat"
+  ],
+  "route_to_id": {
+    "person_group": 4,
+    "person_single_face_headshot": 1,
+    "person_single_full_body": 3,
+    "person_single_upper_half_body": 2,
+    "pet_dogcat": 5,
+    "scene": 0
+  },
+  "schema_version": "routing_v2_image_route_no_placement_v1",
+  "target_policy": "image-level routing target excludes placement_intent"
+}

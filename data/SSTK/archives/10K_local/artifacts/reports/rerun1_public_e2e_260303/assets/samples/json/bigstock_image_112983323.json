@@ -1,0 +1,891 @@
+{
+  "image_id": "bigstock_image_112983323",
+  "super_cat": "indoor_interior",
+  "meta": {
+    "width": 1000,
+    "height": 669,
+    "tags_top8": [],
+    "caption": ""
+  },
+  "precompute": {
+    "routing": {
+      "subject_mode": "text_document",
+      "subject_mode_conf": 0.95,
+      "subject_mode_reasons": [
+        "text_signal"
+      ],
+      "subject_mode_flags": {
+        "has_person": false,
+        "has_text_heavy": true,
+        "has_copyspace_tag": false,
+        "is_background_like": false
+      },
+      "subject_mode_conflict": false,
+      "shot_type": null,
+      "primary_subject_type": "text",
+      "primary_subject_source": "none",
+      "subject_set": {
+        "num_person": 0,
+        "num_subject_inst": 5,
+        "union_box_xyxy": [
+          147.972,
+          140.024,
+          724.0,
+          485.0
+        ],
+        "primary_idx": -1,
+        "c2_primary_area_ratio": 0.0,
+        "c2_primary_bg_like": false,
+        "multi_subject": false
+      },
+      "policy_id": "text_v1"
+    },
+    "c2_primary_idx": 0,
+    "c2_union_box_xyxy": [
+      147.972,
+      140.024,
+      724.0,
+      485.0
+    ],
+    "c2_topn": 5,
+    "c2_stats": {
+      "num_raw_masks": 1,
+      "num_raw_det": 5,
+      "num_kept": 5,
+      "importance_gap_1_2": 0.126328,
+      "max_area_ratio": 0.067383
+    }
+  },
+  "candidate": {
+    "proposal_injected": true,
+    "candidate_counts_by_ar": {
+      "1:1": 104,
+      "9:16": 53,
+      "16:9": 154,
+      "3:4": 56,
+      "4:3": 136
+    },
+    "total_candidates": 503
+  },
+  "teacher": {
+    "expensive_real_applied": true,
+    "decision_counts": {
+      "crop": 5
+    },
+    "by_ar": {
+      "1:1": {
+        "decision_type": "crop",
+        "delta_improve": 1.7450795315493381,
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "1x1_g12x12_smx1_i0003",
+          "1x1_g12x12_smaxc_i0001",
+          "1x1_g12x12_sjit0_i0022",
+          "1x1_g12x12_s3_i0038",
+          "1x1_g12x12_s2_i0046"
+        ],
+        "selected_top1": {
+          "candidate_id": "1x1_g12x12_smx1_i0003",
+          "bbox_norm_xyxy": [
+            0.235275,
+            0.0,
+            0.904557,
+            1.0
+          ],
+          "area_ratio": 0.669282,
+          "source": "baseline_maxarea_slide",
+          "must_keep": true,
+          "hard_reject": false,
+          "hard_reject_strict": false,
+          "scores": {
+            "cheap": 0.067567,
+            "expensive": -1.932343,
+            "final": -1.972498,
+            "final_norm_0_100": 100.0,
+            "components": {
+              "cov": 0.8888466860917584,
+              "p_cut": 0.7,
+              "p_text": 0.0,
+              "r_comp": 0.44756088679896683,
+              "r_headroom": 0.0,
+              "r_lookroom": 0.0,
+              "r_sym": 0.8176,
+              "r_context": -0.8689100000000006,
+              "r_copyspace": 0.0,
+              "r_edge": -3.084223590853085,
+              "aesthetic_proxy": 0.3956030045886273,
+              "ca_proxy": 0.7245433053513709,
+              "aesthetic_raw": 5.412873268127441,
+              "aesthetic_norm": 0.49031925201416016,
+              "cosine_img_text": 0.25008752942085266,
+              "expensive_source": "real"
+            }
+          },
+          "flags": {
+            "face_cut": false,
+            "joint_cutoff_score": 0.0,
+            "joint_severe_count": 0,
+            "subject_touch_border": true,
+            "subject_coverage": 0.8888466860917584,
+            "subject_area": 0.6737820000000001,
+            "ar_error": 1.6767620001356676e-06
+          },
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "balanced_crop",
+            "centered_subject",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry"
+          ],
+          "reject_tags": [],
+          "composition_checks": {
+            "headroom": {
+              "value": null,
+              "target_range": [
+                0.03,
+                0.11
+              ],
+              "pass": true
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": [
+                1.1,
+                1.8
+              ],
+              "pass": true,
+              "gaze_dir": "unknown"
+            },
+            "horizon": {
+              "y": 0.357706,
+              "roll_deg": 14.806,
+              "conf": 0.1219,
+              "third_dist": 0.02437266666666671,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8176,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.6737820000000001,
+              "target_range": [
+                0.3,
+                0.7
+              ],
+              "pass": true
+            },
+            "cutoff": {
+              "joint_cutoff_score": 0.0,
+              "joint_severe_count": 0,
+              "joint_violated": [],
+              "face_cut": false,
+              "pass": true
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "rank": 1
+        },
+        "num_input_candidates": 104,
+        "cheap_top_m_size": 30
+      },
+      "9:16": {
+        "decision_type": "crop",
+        "delta_improve": 3.0950789541786072,
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "9x16_g12x12_smx1_i0003",
+          "9x16_g12x12_smaxc_i0001",
+          "9x16_g12x12_s0_i0043",
+          "9x16_g12x12_s1_i0025",
+          "9x16_g12x12_smx0_i0002"
+        ],
+        "selected_top1": {
+          "candidate_id": "9x16_g12x12_smx1_i0003",
+          "bbox_norm_xyxy": [
+            0.381681,
+            0.0,
+            0.758151,
+            1.0
+          ],
+          "area_ratio": 0.37647,
+          "source": "baseline_maxarea_slide",
+          "must_keep": true,
+          "hard_reject": false,
+          "hard_reject_strict": false,
+          "scores": {
+            "cheap": -0.399079,
+            "expensive": -9.42963,
+            "final": -9.527321,
+            "final_norm_0_100": 100.0,
+            "components": {
+              "cov": 0.4999747668590584,
+              "p_cut": 0.7,
+              "p_text": 0.0,
+              "r_comp": 0.44756088679896683,
+              "r_headroom": 0.0,
+              "r_lookroom": 0.0,
+              "r_sym": 0.8176,
+              "r_context": -0.8689100000000012,
+              "r_copyspace": 0.0,
+              "r_edge": -17.66834896096192,
+              "aesthetic_proxy": 0.3178286207420873,
+              "ca_proxy": 0.47177655785011574,
+              "aesthetic_raw": 5.240659236907959,
+              "aesthetic_norm": 0.4711843729019165,
+              "cosine_img_text": 0.277910441160202,
+              "expensive_source": "real"
+            }
+          },
+          "flags": {
+            "face_cut": false,
+            "joint_cutoff_score": 0.0,
+            "joint_severe_count": 0,
+            "subject_touch_border": true,
+            "subject_coverage": 0.4999747668590584,
+            "subject_area": 0.6737820000000002,
+            "ar_error": 7.377299999777875e-07
+          },
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "balanced_crop",
+            "centered_subject",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry"
+          ],
+          "reject_tags": [],
+          "composition_checks": {
+            "headroom": {
+              "value": null,
+              "target_range": [
+                0.03,
+                0.11
+              ],
+              "pass": true
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": [
+                1.1,
+                1.8
+              ],
+              "pass": true,
+              "gaze_dir": "unknown"
+            },
+            "horizon": {
+              "y": 0.357706,
+              "roll_deg": 14.806,
+              "conf": 0.1219,
+              "third_dist": 0.02437266666666671,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8176,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.6737820000000002,
+              "target_range": [
+                0.3,
+                0.7
+              ],
+              "pass": true
+            },
+            "cutoff": {
+              "joint_cutoff_score": 0.0,
+              "joint_severe_count": 0,
+              "joint_violated": [],
+              "face_cut": false,
+              "pass": true
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "rank": 1
+        },
+        "num_input_candidates": 53,
+        "cheap_top_m_size": 30
+      },
+      "16:9": {
+        "decision_type": "crop",
+        "delta_improve": 2.4448423943330106,
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "16x9_g12x12_smy0_i0002",
+          "16x9_g12x12_smaxc_i0001",
+          "16x9_g12x12_sobj0_i0032",
+          "16x9_g12x12_smy1_i0003",
+          "16x9_g12x12_s5_i0072"
+        ],
+        "selected_top1": {
+          "candidate_id": "16x9_g12x12_smy0_i0002",
+          "bbox_norm_xyxy": [
+            0.0,
+            0.150261,
+            1.0,
+            0.990716
+          ],
+          "area_ratio": 0.840455,
+          "source": "baseline_maxarea_slide",
+          "must_keep": true,
+          "hard_reject": false,
+          "hard_reject_strict": false,
+          "scores": {
+            "cheap": 1.698241,
+            "expensive": 1.055997,
+            "final": 1.038616,
+            "final_norm_0_100": 100.0,
+            "components": {
+              "cov": 1.0,
+              "p_cut": 0.0,
+              "p_text": 0.0,
+              "r_comp": 0.5270595403082475,
+              "r_headroom": 0.0,
+              "r_lookroom": 0.0,
+              "r_sym": 0.8176,
+              "r_context": -0.5182640521860188,
+              "r_copyspace": 0.0,
+              "r_edge": -0.0,
+              "aesthetic_proxy": 0.6900298182786055,
+              "ca_proxy": 0.8584437253264194,
+              "aesthetic_raw": 5.3534345626831055,
+              "aesthetic_norm": 0.4837149381637573,
+              "cosine_img_text": 0.24094127118587494,
+              "expensive_source": "real"
+            }
+          },
+          "flags": {
+            "face_cut": false,
+            "joint_cutoff_score": 0.0,
+            "joint_severe_count": 0,
+            "subject_touch_border": false,
+            "subject_coverage": 1.0,
+            "subject_area": 0.6036528104372038,
+            "ar_error": 1.4542387425375836e-06
+          },
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "centered_subject",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry",
+            "wide_crop"
+          ],
+          "reject_tags": [],
+          "composition_checks": {
+            "headroom": {
+              "value": null,
+              "target_range": [
+                0.03,
+                0.11
+              ],
+              "pass": true
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": [
+                1.1,
+                1.8
+              ],
+              "pass": true,
+              "gaze_dir": "unknown"
+            },
+            "horizon": {
+              "y": 0.24682463665514515,
+              "roll_deg": 14.806,
+              "conf": 0.1219,
+              "third_dist": 0.08650869667818817,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8176,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.6036528104372038,
+              "target_range": [
+                0.3,
+                0.7
+              ],
+              "pass": true
+            },
+            "cutoff": {
+              "joint_cutoff_score": 0.0,
+              "joint_severe_count": 0,
+              "joint_violated": [],
+              "face_cut": false,
+              "pass": true
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "rank": 1
+        },
+        "num_input_candidates": 154,
+        "cheap_top_m_size": 30
+      },
+      "3:4": {
+        "decision_type": "crop",
+        "delta_improve": 2.3323556841004773,
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "3x4_g12x12_smx1_i0003",
+          "3x4_g12x12_smaxc_i0001",
+          "3x4_g12x12_s1_i0033",
+          "3x4_g12x12_s2_i0027",
+          "3x4_g12x12_s1_i0032"
+        ],
+        "selected_top1": {
+          "candidate_id": "3x4_g12x12_smx1_i0003",
+          "bbox_norm_xyxy": [
+            0.318936,
+            0.0,
+            0.820896,
+            1.0
+          ],
+          "area_ratio": 0.50196,
+          "source": "baseline_maxarea_slide",
+          "must_keep": true,
+          "hard_reject": false,
+          "hard_reject_strict": false,
+          "scores": {
+            "cheap": -0.199089,
+            "expensive": -5.171055,
+            "final": -5.239979,
+            "final_norm_0_100": 100.0,
+            "components": {
+              "cov": 0.6666330224787443,
+              "p_cut": 0.7,
+              "p_text": 0.0,
+              "r_comp": 0.44756088679896683,
+              "r_headroom": 0.0,
+              "r_lookroom": 0.0,
+              "r_sym": 0.8176,
+              "r_context": -0.8689100000000006,
+              "r_copyspace": 0.0,
+              "r_edge": -9.33459505405478,
+              "aesthetic_proxy": 0.3511602718660245,
+              "ca_proxy": 0.5801044240029117,
+              "aesthetic_raw": 5.3153557777404785,
+              "aesthetic_norm": 0.479483962059021,
+              "cosine_img_text": 0.2781391143798828,
+              "expensive_source": "real"
+            }
+          },
+          "flags": {
+            "face_cut": false,
+            "joint_cutoff_score": 0.0,
+            "joint_severe_count": 0,
+            "subject_touch_border": true,
+            "subject_coverage": 0.6666330224787443,
+            "subject_area": 0.6737820000000001,
+            "ar_error": 9.836400001184131e-07
+          },
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "balanced_crop",
+            "centered_subject",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry"
+          ],
+          "reject_tags": [],
+          "composition_checks": {
+            "headroom": {
+              "value": null,
+              "target_range": [
+                0.03,
+                0.11
+              ],
+              "pass": true
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": [
+                1.1,
+                1.8
+              ],
+              "pass": true,
+              "gaze_dir": "unknown"
+            },
+            "horizon": {
+              "y": 0.357706,
+              "roll_deg": 14.806,
+              "conf": 0.1219,
+              "third_dist": 0.02437266666666671,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8176,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.6737820000000001,
+              "target_range": [
+                0.3,
+                0.7
+              ],
+              "pass": true
+            },
+            "cutoff": {
+              "joint_cutoff_score": 0.0,
+              "joint_severe_count": 0,
+              "joint_violated": [],
+              "face_cut": false,
+              "pass": true
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "rank": 1
+        },
+        "num_input_candidates": 56,
+        "cheap_top_m_size": 30
+      },
+      "4:3": {
+        "decision_type": "crop",
+        "delta_improve": 1.9048059983938803,
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "4x3_g12x12_smx0_i0002",
+          "4x3_g12x12_smaxc_i0001",
+          "4x3_g12x12_sjit2_i0021",
+          "4x3_g12x12_s4_i0054",
+          "4x3_g12x12_smx1_i0003"
+        ],
+        "selected_top1": {
+          "candidate_id": "4x3_g12x12_smx0_i0002",
+          "bbox_norm_xyxy": [
+            0.096822,
+            0.0,
+            0.989197,
+            1.0
+          ],
+          "area_ratio": 0.892375,
+          "source": "baseline_maxarea_slide",
+          "must_keep": true,
+          "hard_reject": false,
+          "hard_reject_strict": false,
+          "scores": {
+            "cheap": 1.718193,
+            "expensive": 1.081386,
+            "final": 1.069999,
+            "final_norm_0_100": 100.0,
+            "components": {
+              "cov": 1.0,
+              "p_cut": 0.0,
+              "p_text": 0.0,
+              "r_comp": 0.46798784710396624,
+              "r_headroom": 0.0,
+              "r_lookroom": 0.0,
+              "r_sym": 0.8176,
+              "r_context": -0.34265596187701425,
+              "r_copyspace": 0.0,
+              "r_edge": -0.0,
+              "aesthetic_proxy": 0.6805968906208613,
+              "ca_proxy": 0.8984588386561785,
+              "aesthetic_raw": 5.542323589324951,
+              "aesthetic_norm": 0.504702627658844,
+              "cosine_img_text": 0.25561124086380005,
+              "expensive_source": "real"
+            }
+          },
+          "flags": {
+            "face_cut": false,
+            "joint_cutoff_score": 0.0,
+            "joint_severe_count": 0,
+            "subject_touch_border": false,
+            "subject_coverage": 1.0,
+            "subject_area": 0.5685311923754028,
+            "ar_error": 7.415416667377883e-07
+          },
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "centered_subject",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry",
+            "wide_crop"
+          ],
+          "reject_tags": [],
+          "composition_checks": {
+            "headroom": {
+              "value": null,
+              "target_range": [
+                0.03,
+                0.11
+              ],
+              "pass": true
+            },
+            "lookroom": {
+              "value": null,
+              "target_range": [
+                1.1,
+                1.8
+              ],
+              "pass": true,
+              "gaze_dir": "unknown"
+            },
+            "horizon": {
+              "y": 0.357706,
+              "roll_deg": 14.806,
+              "conf": 0.1219,
+              "third_dist": 0.02437266666666671,
+              "pass": true
+            },
+            "symmetry": {
+              "value": 0.8176,
+              "pass": true
+            },
+            "context": {
+              "subject_area": 0.5685311923754028,
+              "target_range": [
+                0.3,
+                0.7
+              ],
+              "pass": true
+            },
+            "cutoff": {
+              "joint_cutoff_score": 0.0,
+              "joint_severe_count": 0,
+              "joint_violated": [],
+              "face_cut": false,
+              "pass": true
+            },
+            "text": {
+              "text_keep_ratio": null,
+              "pass": true,
+              "skipped": "ocr_disabled"
+            }
+          },
+          "rank": 1
+        },
+        "num_input_candidates": 136,
+        "cheap_top_m_size": 30
+      }
+    }
+  },
+  "vlm_teacher": {
+    "decision_counts": {
+      "keep_full": 4,
+      "crop": 1
+    },
+    "by_ar": {
+      "1:1": {
+        "decision_type": "keep_full",
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "1x1_g12x12_smaxc_i0001",
+          "1x1_g12x12_smx1_i0003",
+          "1x1_g12x12_sjit0_i0022",
+          "1x1_g12x12_s3_i0038",
+          "1x1_g12x12_s2_i0046"
+        ],
+        "selected_top1": {
+          "rank": 1,
+          "candidate_id": "1x1_g12x12_smaxc_i0001",
+          "bbox_norm_xyxy": [
+            0.165359,
+            0.0,
+            0.834641,
+            1.0
+          ],
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "balanced_crop",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry"
+          ],
+          "why_text": "The baseline crop maintains full context and symmetry while avoiding face or person cuts, fitting the 1:1 aspect ratio well."
+        },
+        "explanations": {
+          "short": "The full frame preserves all context and symmetry with no face or person cuts.",
+          "long": "The baseline crop is optimal as it maintains the 1:1 aspect ratio while preserving the entire scene, including the furniture arrangement, plant, and floor. It avoids any face or person cuts and adheres to symmetry and rule of thirds. The alternative crop, while centered, loses context and is less balanced, making the baseline the superior choice."
+        },
+        "teacher_confidence": 0.5
+      },
+      "9:16": {
+        "decision_type": "crop",
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "9x16_g12x12_smx1_i0003",
+          "9x16_g12x12_smaxc_i0001",
+          "9x16_g12x12_s0_i0043",
+          "9x16_g12x12_s1_i0025",
+          "9x16_g12x12_smx0_i0002"
+        ],
+        "selected_top1": {
+          "rank": 1,
+          "candidate_id": "9x16_g12x12_smx1_i0003",
+          "bbox_norm_xyxy": [
+            0.381681,
+            0.0,
+            0.758151,
+            1.0
+          ],
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "balanced_crop",
+            "centered_subject",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds"
+          ],
+          "why_text": "This crop maintains the 9:16 aspect ratio while centering the subject and preserving context, with balanced composition and symmetry."
+        },
+        "explanations": {
+          "short": "The top crop balances subject and context with symmetry and rule of thirds.",
+          "long": "The selected crop maintains the 9:16 aspect ratio while centering the subject and preserving context, with balanced composition and symmetry. The baseline crop is rejected for being slightly tighter and losing context. All composition checks pass, ensuring headroom, lookroom, horizon, symmetry, context, and cutoff are preserved."
+        },
+        "teacher_confidence": 1.0
+      },
+      "16:9": {
+        "decision_type": "keep_full",
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "16x9_g12x12_smaxc_i0001",
+          "16x9_g12x12_smy0_i0002",
+          "16x9_g12x12_sobj0_i0032",
+          "16x9_g12x12_smy1_i0003",
+          "16x9_g12x12_s5_i0072"
+        ],
+        "selected_top1": {
+          "rank": 1,
+          "candidate_id": "16x9_g12x12_smaxc_i0001",
+          "bbox_norm_xyxy": [
+            0.0,
+            0.079773,
+            1.0,
+            0.920227
+          ],
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "centered_subject",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry"
+          ],
+          "why_text": "The baseline crop maintains full context with balanced composition, avoiding face or person cuts while preserving symmetry and wide crop coverage."
+        },
+        "explanations": {
+          "short": "The full frame preserves all context and symmetry with no face or person cuts.",
+          "long": "The selected crop maintains the original composition with full subject coverage, ensuring no loss of context or symmetry. It avoids face cuts and preserves the wide crop necessary for the scene. While other crops offer slight improvements in symmetry or crop tightness, they compromise context preservation, which is critical for this corporate-style shot."
+        },
+        "teacher_confidence": 0.5
+      },
+      "3:4": {
+        "decision_type": "keep_full",
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "3x4_g12x12_smaxc_i0001",
+          "3x4_g12x12_smx1_i0003",
+          "3x4_g12x12_s1_i0033",
+          "3x4_g12x12_s2_i0027",
+          "3x4_g12x12_s1_i0032"
+        ],
+        "selected_top1": {
+          "rank": 1,
+          "candidate_id": "3x4_g12x12_smaxc_i0001",
+          "bbox_norm_xyxy": [
+            0.24902,
+            0.0,
+            0.75098,
+            1.0
+          ],
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "balanced_crop",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry"
+          ],
+          "why_text": "The baseline crop maintains the full scene with optimal aspect ratio, avoids cutting subjects, preserves context, and aligns with compositional rules."
+        },
+        "explanations": {
+          "short": "The full scene is preserved with balanced composition and optimal aspect ratio.",
+          "long": "The selected crop maintains all key elements including furniture, flooring, and plant, ensuring context is preserved. It adheres to rule of thirds and symmetry, avoiding face or person cuts. While other crops offer slight improvements in composition, the baseline retains the most balanced and context-rich view, making it the optimal choice."
+        },
+        "teacher_confidence": 0.5
+      },
+      "4:3": {
+        "decision_type": "keep_full",
+        "selected_k": 5,
+        "selected_candidate_ids": [
+          "4x3_g12x12_smaxc_i0001",
+          "4x3_g12x12_smx0_i0002",
+          "4x3_g12x12_sjit2_i0021",
+          "4x3_g12x12_s4_i0054",
+          "4x3_g12x12_smx1_i0003"
+        ],
+        "selected_top1": {
+          "rank": 1,
+          "candidate_id": "4x3_g12x12_smaxc_i0001",
+          "bbox_norm_xyxy": [
+            0.053813,
+            0.0,
+            0.946187,
+            1.0
+          ],
+          "why_tags": [
+            "ar_fits_well",
+            "avoid_face_cut",
+            "avoid_person_cut",
+            "centered_subject",
+            "context_preserved",
+            "phi_grid",
+            "rule_of_thirds",
+            "symmetry"
+          ],
+          "why_text": "The centered subject with wide crop preserves full context and maintains symmetry, meeting all criteria for optimal composition."
+        },
+        "explanations": {
+          "short": "The centered, wide crop preserves full context and maintains symmetry, meeting all composition criteria.",
+          "long": "The selected crop is centered and captures the entire living room scene with wide framing, preserving all key elements including furniture, flooring, and plant. It maintains symmetry and avoids face or person cuts, while also adhering to the rule of thirds and phi grid. The baseline candidate is retained as the most balanced and context-preserving option, with no significant compositional flaws."
+        },
+        "teacher_confidence": 0.5
+      }
+    }
+  }
+}

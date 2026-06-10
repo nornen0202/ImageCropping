@@ -1,0 +1,88 @@
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-02-27.5
+ bucket              : sstk_100
+ data_dir            : data/SSTK/10K
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : e2e_260227_r0
+ skip_existing       : 0
+ precompute_mode     : unified
+ run_filter          : 0
+ export_curated_img  : 0 (dir=data/SSTK/10K/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/SSTK/10K/images)
+ extract_mode        : auto (gpu_ids=auto, workers=auto)
+ run_c1/c2/c3/c5    : 0/0/0/0
+ run_c3_enrich/merge : 0/0
+ run_component_viz   : 0 (out=data/SSTK/10K/artifacts/precompute/visualizations/components_e2e_260227_r0, num_samples=120)
+ public proposals    : enable=0 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/SSTK/10K/artifacts/public_teachers/raw/teacher_raw_public_e2e_260227_r0.jsonl | data/SSTK/10K/artifacts/public_teachers/proposals/teacher_proposals_public_e2e_260227_r0.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=auto workers=auto
+ run_candidates      : 0
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 0 (real_expensive=0)
+ teacher_multi_gpu   : 0 (gpu_ids=auto, workers=auto)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=24 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ run_vlm_teacher     : 1 (backend=qwen25_vl fallback=heuristic model=Qwen/Qwen2.5-VL-3B-Instruct)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm multi_gpu       : 1 (gpu_ids=0,1,2,3,4,5,6, workers=7)
+ vlm out/meta/sum    : data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl | data/SSTK/10K/artifacts/vlm_teacher/meta/meta_norm_v1_e2e_260227_r0.jsonl | data/SSTK/10K/artifacts/vlm_teacher/summary/vlm_teacher_summary_e2e_260227_r0.json
+========================================================
+[info] using curated image cache dir: data/SSTK/10K/images
+[run] 11_vlm_teacher_labeler
+==============================================
+ VLM Teacher Labeler Runner (Section 10)
+==============================================
+  teacher_scores_jsonl : data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl
+  output_jsonl         : data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl
+  output_meta_jsonl    : data/SSTK/10K/artifacts/vlm_teacher/meta/meta_norm_v1_e2e_260227_r0.jsonl
+  summary_json         : data/SSTK/10K/artifacts/vlm_teacher/summary/vlm_teacher_summary_e2e_260227_r0.json
+  backend/model        : qwen25_vl / Qwen/Qwen2.5-VL-3B-Instruct
+  fallback_backend     : heuristic
+  device/dtype         : auto / auto
+  image_dir            : data/SSTK/10K/images
+  target_ar            : all
+  top_m/top_k          : 12 / 5
+  max_images/retries   : 0 / 2
+  oom policy           : skip=1 cpu_fallback=1 cpu_max_images=3
+  strict_backend_init  : 1
+  multi_gpu            : 1 (gpu_ids=0,1,2,3,4,5,6, workers=7)
+==============================================
+[env] python=/usr/bin/python
+[env] transformers=4.52.4 has_qwen2_5=True has_qwen2=True
+[multi] vlm shard mode enabled: gpu_ids=0,1,2,3,4,5,6 workers=7
+[multi] launch shard=0/7 gpu=0 -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl.shards.361/labels_shard_0.jsonl
+[multi] launch shard=1/7 gpu=1 -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl.shards.361/labels_shard_1.jsonl
+[multi] launch shard=2/7 gpu=2 -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl.shards.361/labels_shard_2.jsonl
+[multi] launch shard=3/7 gpu=3 -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl.shards.361/labels_shard_3.jsonl
+[multi] launch shard=4/7 gpu=4 -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl.shards.361/labels_shard_4.jsonl
+[multi] launch shard=5/7 gpu=5 -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl.shards.361/labels_shard_5.jsonl
+[multi] launch shard=6/7 gpu=6 -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl.shards.361/labels_shard_6.jsonl
+[multi] merged output_jsonl -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl
+[multi] merged output_meta_jsonl -> data/SSTK/10K/artifacts/vlm_teacher/meta/meta_norm_v1_e2e_260227_r0.jsonl
+[multi] merged summary_json -> data/SSTK/10K/artifacts/vlm_teacher/summary/vlm_teacher_summary_e2e_260227_r0.json
+[multi] shard logs/outputs -> data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl.shards.361
+==============================================
+ Done.
+==============================================
+========================================================
+ Done
+========================================================
+ filtered parquet : data/SSTK/10K/filtered_sstk_100.parquet
+ precompute raw    : data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ feats c1          : data/SSTK/10K/artifacts/precompute/feats_c1.jsonl
+ feats c2/c3e/c5  : data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl | data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl | data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ merged feats     : data/SSTK/10K/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ candidates       : data/SSTK/10K/artifacts/candidates/candidates_ar_e2e_260227_r0.jsonl
+ teacher jsonl    : data/SSTK/10K/artifacts/teacher/scores/teacher_scores_ar_e2e_260227_r0.jsonl
+ teacher overview : data/SSTK/10K/artifacts/teacher/overview/teacher_scores_overview_e2e_260227_r0.json
+ teacher QA       : data/SSTK/10K/artifacts/teacher/qa/teacher_scores_qa_report_e2e_260227_r0.json
+ teacher viz dir  : data/SSTK/10K/artifacts/teacher/visualizations/teacher_scorer_e2e_260227_r0
+ vlm labels jsonl : data/SSTK/10K/artifacts/vlm_teacher/labels/crop_label_v1_e2e_260227_r0.jsonl
+ vlm meta jsonl   : data/SSTK/10K/artifacts/vlm_teacher/meta/meta_norm_v1_e2e_260227_r0.jsonl
+ vlm summary json : data/SSTK/10K/artifacts/vlm_teacher/summary/vlm_teacher_summary_e2e_260227_r0.json
+ logs             : data/SSTK/10K/logs/e2e_e2e_260227_r0

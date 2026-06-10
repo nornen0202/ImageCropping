@@ -1,0 +1,69 @@
+{
+  "animal_pose_jsonl": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/precompute/animal_pose_260609_routing_v2_simple_gpu_full_ap10k_nms_v2/animal_pose.jsonl",
+  "annotation_count": 201396,
+  "candidate_bank_empty_ar_counts": {},
+  "candidates_jsonl": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/candidates/candidates_ar_260529_v11_photo_primary_fullsstk_phaseA_strict_intent_subjectsafe_split9010_v17_complete_260609.jsonl",
+  "elapsed_sec": 1942.931,
+  "feature_jsonl": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl",
+  "image_count": 10000,
+  "image_route_counts": {
+    "person_group": 761,
+    "person_single_face_headshot": 473,
+    "person_single_full_body": 223,
+    "person_single_upper_half_body": 2136,
+    "pet_dogcat": 323,
+    "scene": 6084
+  },
+  "missing_candidate_image_count": 0,
+  "missing_candidate_image_ids_sample": [],
+  "negative_annotation_count": 153981,
+  "negative_mode_counts": {
+    "person_group_center": 3822,
+    "person_group_rot": 4433,
+    "person_single_face_headshot_center": 14593,
+    "person_single_full_body_center": 25320,
+    "person_single_full_body_rot": 25213,
+    "person_single_upper_half_body_center": 24900,
+    "person_single_upper_half_body_rot": 24610,
+    "pet_dogcat_center": 819,
+    "pet_dogcat_rot": 907,
+    "scene_center": 29364
+  },
+  "notes": {
+    "candidate_policy": "GAIC/CGS/CACNet enriched candidates_jsonl is required. Mode-local seeds may expand an existing bank, but an absent AR bank is not substituted inside the label factory.",
+    "scene_policy": "scene queries are scored against the same candidate bank; no image-level positive-vote override is used.",
+    "source_policy": "v14 label JSON is not used; perception precompute + image files + animal pose head ids are used."
+  },
+  "output_paths": {
+    "label_json": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/label_json",
+    "mode_query_status": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/mode_query_status_precompute_native.jsonl",
+    "training_labels": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5",
+    "training_labels_multimode": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5"
+  },
+  "phase_root": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529",
+  "positive_annotation_count": 47415,
+  "positive_mode_counts": {
+    "person_group_center": 1302,
+    "person_group_rot": 691,
+    "person_single_face_headshot_center": 7559,
+    "person_single_full_body_center": 876,
+    "person_single_full_body_rot": 983,
+    "person_single_upper_half_body_center": 1296,
+    "person_single_upper_half_body_rot": 1586,
+    "pet_dogcat_center": 1287,
+    "pet_dogcat_rot": 1199,
+    "scene_center": 30636
+  },
+  "positive_query_count": 47415,
+  "query_count": 201396,
+  "run_tag": "260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5",
+  "schema_version": "routing_v2_precompute_native_factory_v17_20260609",
+  "target_ars": [
+    "FREE",
+    "1:1",
+    "4:3",
+    "3:4",
+    "16:9",
+    "9:16"
+  ]
+}

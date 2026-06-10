@@ -1,0 +1,54 @@
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : sstk_100
+ data_dir            : data/SSTK/Test_100
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : 260309_r0
+ skip_existing       : 0
+ precompute_mode     : unified
+ run_filter          : 0
+ filter_train_match  : 1
+ filter_tag_embed    : mgpu=-1 gpu_ids=auto bs=128 chunk=0 device=auto
+ filter_cpu_map      : workers=0 chunk=4096 sample_extract_workers=0
+ export_curated_img  : 0 (dir=data/SSTK/Test_100/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/SSTK/Test_100/images)
+ extract_mode        : auto (extract_multi_gpu=-1, gpu_ids=auto, workers=auto)
+ run_c1/c2/c3/c4/c5/c6 : 0/0/0/0/0/0
+ run_c3_enrich/merge : 0/0
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ run_component_viz   : 0 (out=data/SSTK/Test_100/artifacts/precompute/visualizations/components_260309_r0, num_samples=120)
+ public proposals    : enable=1 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/SSTK/Test_100/artifacts/public_teachers/raw/teacher_raw_public_260309_r0.jsonl | data/SSTK/Test_100/artifacts/public_teachers/proposals/teacher_proposals_public_260309_r0.jsonl
+ public infer multi  : multi_gpu=1 gpu_ids=0,1,2,3,4,5,6,7 workers=8
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 1
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 1 (real_expensive=1)
+ c1 source           : data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ teacher_multi_gpu   : 1 (gpu_ids=auto, workers=auto)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=512 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_public_ref  : save_public_teacher_ref_eval=1
+ teacher_aesthetic   : backend=hybrid prior_laion_w=0.15 nima_ckpt=weights/nima/NIMA_VGG16_ava-dc4e8265.pth require_ckpt=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 0 (backend=qwen25_vl fallback=heuristic model=Qwen/Qwen3-VL-4B-Instruct)
+ run_detailed_report : 1 (dir=data/SSTK/Test_100/artifacts/reports/260309_r0_detailed examples_per_bucket=5)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=auto, workers=auto)
+ vlm out/meta/sum    : data/SSTK/Test_100/artifacts/vlm_teacher/labels/crop_label_v1_260309_r0.jsonl | data/SSTK/Test_100/artifacts/vlm_teacher/meta/meta_norm_v1_260309_r0.jsonl | data/SSTK/Test_100/artifacts/vlm_teacher/summary/vlm_teacher_summary_260309_r0.json
+========================================================
+[info] using curated image cache dir: data/SSTK/Test_100/images
+[run] 07a_enrich_subject_mode
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 36it [00:00, 355.63it/s]subject-mode-enrich: 73it [00:00, 358.60it/s]subject-mode-enrich: 100it [00:00, 352.61it/s]
+[done] total=100 routed=100 missing_meta=0 output=data/SSTK/Test_100/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[done] subject_mode_counts={'background_texture_copyspace': 18, 'other_ambiguous': 11, 'portrait_single': 28, 'scene_landscape': 13, 'object_single': 12, 'portrait_group': 15, 'object_multi': 3}
+[done] policy_counts={'copyspace_v1': 18, 'generic_v1': 11, 'portrait_single_v1': 28, 'scene_v1': 13, 'object_v1': 12, 'portrait_group_v1': 15, 'object_multi_v1': 3}
+[run] 08a_public_teacher_setup

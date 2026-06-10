@@ -1,0 +1,99 @@
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-02-27.6
+ bucket              : sstk_100
+ data_dir            : data/SSTK/10K_local
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : rerun1_public_e2e_subject_mode
+ skip_existing       : 0
+ precompute_mode     : unified
+ run_filter          : 0
+ export_curated_img  : 0 (dir=data/SSTK/10K_local/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/SSTK/10K_local/images)
+ extract_mode        : auto (gpu_ids=auto, workers=auto)
+ run_c1/c2/c3/c5    : 0/0/0/0
+ run_c3_enrich/merge : 0/0
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ run_component_viz   : 0 (out=data/SSTK/10K_local/artifacts/precompute/visualizations/components_rerun1_public_e2e_subject_mode, num_samples=120)
+ public proposals    : enable=0 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/SSTK/10K_local/artifacts/public_teachers/raw/teacher_raw_public_rerun1_public_e2e_subject_mode.jsonl | data/SSTK/10K_local/artifacts/public_teachers/proposals/teacher_proposals_public_rerun1_public_e2e_subject_mode.jsonl
+ public infer multi  : multi_gpu=-1 gpu_ids=auto workers=auto
+ run_candidates      : 0
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 0 (real_expensive=0)
+ teacher_multi_gpu   : 0 (gpu_ids=auto, workers=auto)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=24 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ run_vlm_teacher     : 1 (backend=qwen25_vl fallback=heuristic model=Qwen/Qwen3-VL-4B-Instruct)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm multi_gpu       : 1 (gpu_ids=0,1,2,3,4,5,6,7, workers=8)
+ vlm out/meta/sum    : data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl | data/SSTK/10K_local/artifacts/vlm_teacher/meta/meta_norm_v1_rerun1_public_e2e_subject_mode.jsonl | data/SSTK/10K_local/artifacts/vlm_teacher/summary/vlm_teacher_summary_rerun1_public_e2e_subject_mode.json
+========================================================
+[info] using curated image cache dir: data/SSTK/10K_local/images
+[run] 07a_enrich_subject_mode
+subject-mode-enrich: 0it [00:00, ?it/s]subject-mode-enrich: 41it [00:00, 400.83it/s]subject-mode-enrich: 84it [00:00, 414.27it/s]subject-mode-enrich: 126it [00:00, 415.63it/s]subject-mode-enrich: 169it [00:00, 419.23it/s]subject-mode-enrich: 211it [00:00, 413.98it/s]subject-mode-enrich: 253it [00:00, 412.67it/s]subject-mode-enrich: 295it [00:00, 413.39it/s]subject-mode-enrich: 337it [00:00, 413.45it/s]subject-mode-enrich: 379it [00:00, 407.64it/s]subject-mode-enrich: 421it [00:01, 408.84it/s]subject-mode-enrich: 462it [00:01, 408.37it/s]subject-mode-enrich: 500it [00:01, 411.85it/s]
+[done] total=500 routed=500 missing_meta=0 output=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+[done] subject_mode_counts={'scene_landscape': 53, 'portrait_single': 126, 'text_document': 76, 'background_texture_copyspace': 97, 'object_single': 34, 'portrait_group': 102, 'other_ambiguous': 4, 'object_multi': 8}
+[done] policy_counts={'scene_v1': 53, 'portrait_single_v1': 126, 'text_v1': 76, 'copyspace_v1': 97, 'object_v1': 34, 'portrait_group_v1': 102, 'generic_v1': 4, 'object_multi_v1': 8}
+[run] 11_vlm_teacher_labeler
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+==============================================
+ VLM Teacher Labeler Runner (Section 10)
+==============================================
+  teacher_scores_jsonl : data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e_subject_mode.jsonl
+  output_jsonl         : data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl
+  output_meta_jsonl    : data/SSTK/10K_local/artifacts/vlm_teacher/meta/meta_norm_v1_rerun1_public_e2e_subject_mode.jsonl
+  summary_json         : data/SSTK/10K_local/artifacts/vlm_teacher/summary/vlm_teacher_summary_rerun1_public_e2e_subject_mode.json
+  backend/model        : qwen25_vl / Qwen/Qwen3-VL-4B-Instruct
+  fallback_backend     : heuristic
+  device/dtype         : auto / auto
+  image_dir            : data/SSTK/10K_local/images
+  target_ar            : all
+  top_m/top_k          : 12 / 5
+  max_images/retries   : 0 / 2
+  oom policy           : skip=1 cpu_fallback=1 cpu_max_images=3
+  strict_backend_init  : 1
+  multi_gpu            : 1 (gpu_ids=0,1,2,3,4,5,6,7, workers=8)
+==============================================
+[env] python=/usr/bin/python
+[env] transformers=5.2.0 has_qwen3=True has_qwen2_5=True has_qwen2=True
+[multi] vlm shard mode enabled: gpu_ids=0,1,2,3,4,5,6,7 workers=8
+[multi] launch shard=0/8 gpu=0 -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803/labels_shard_0.jsonl
+[multi] launch shard=1/8 gpu=1 -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803/labels_shard_1.jsonl
+[multi] launch shard=2/8 gpu=2 -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803/labels_shard_2.jsonl
+[multi] launch shard=3/8 gpu=3 -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803/labels_shard_3.jsonl
+[multi] launch shard=4/8 gpu=4 -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803/labels_shard_4.jsonl
+[multi] launch shard=5/8 gpu=5 -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803/labels_shard_5.jsonl
+[multi] launch shard=6/8 gpu=6 -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803/labels_shard_6.jsonl
+[multi] launch shard=7/8 gpu=7 -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803/labels_shard_7.jsonl
+[multi] merged output_jsonl -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl
+[multi] merged output_meta_jsonl -> data/SSTK/10K_local/artifacts/vlm_teacher/meta/meta_norm_v1_rerun1_public_e2e_subject_mode.jsonl
+[multi] merged summary_json -> data/SSTK/10K_local/artifacts/vlm_teacher/summary/vlm_teacher_summary_rerun1_public_e2e_subject_mode.json
+[multi] shard logs/outputs -> data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl.shards.27803
+==============================================
+ Done.
+==============================================
+========================================================
+ Done
+========================================================
+ filtered parquet : data/SSTK/10K_local/filtered_sstk_100.parquet
+ precompute raw    : data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+ feats c1          : data/SSTK/10K_local/artifacts/precompute/feats_c1.jsonl
+ feats c2/c3e/c5  : data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl | data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl | data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ merged feats     : data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched.jsonl
+ routed feats     : data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ downstream feats : data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed.jsonl
+ candidates       : data/SSTK/10K_local/artifacts/candidates/candidates_ar_rerun1_public_e2e_subject_mode.jsonl
+ teacher jsonl    : data/SSTK/10K_local/artifacts/teacher/scores/teacher_scores_ar_rerun1_public_e2e_subject_mode.jsonl
+ teacher overview : data/SSTK/10K_local/artifacts/teacher/overview/teacher_scores_overview_rerun1_public_e2e_subject_mode.json
+ teacher QA       : data/SSTK/10K_local/artifacts/teacher/qa/teacher_scores_qa_report_rerun1_public_e2e_subject_mode.json
+ teacher viz dir  : data/SSTK/10K_local/artifacts/teacher/visualizations/teacher_scorer_rerun1_public_e2e_subject_mode
+ vlm labels jsonl : data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_rerun1_public_e2e_subject_mode.jsonl
+ vlm meta jsonl   : data/SSTK/10K_local/artifacts/vlm_teacher/meta/meta_norm_v1_rerun1_public_e2e_subject_mode.jsonl
+ vlm summary json : data/SSTK/10K_local/artifacts/vlm_teacher/summary/vlm_teacher_summary_rerun1_public_e2e_subject_mode.json
+ logs             : data/SSTK/10K_local/logs/e2e_rerun1_public_e2e_subject_mode

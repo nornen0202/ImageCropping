@@ -1,0 +1,10 @@
+{
+  "state": "completed",
+  "label_jsonl": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/routing_v2_v17_precompute_native_full.jsonl",
+  "multimode_json": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels_multimode/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/label_json/multimode_labels_full.json",
+  "feature_jsonl": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/precompute/feats_c2c3c5_v2_strict_enriched_routed_final.jsonl",
+  "animal_pose_jsonl": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/precompute/animal_pose_260609_routing_v2_simple_gpu_full_ap10k_nms_v2/animal_pose.jsonl",
+  "routing_cards": 49,
+  "animal_pose_cards": 32,
+  "output_dir": "data/SSTK/PhaseA_PhotoPrimary_10K_SigLIP2_v5_20260529/artifacts/training_labels/260609_v17_routing_v2_precompute_native_nofood_petstrict_cropstrict_nms_v5/qualitative_viz"
+}

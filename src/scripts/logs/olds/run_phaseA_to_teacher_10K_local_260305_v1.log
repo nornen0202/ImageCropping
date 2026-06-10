@@ -1,0 +1,442 @@
+[info] both --extract_mode and --extract_multi_gpu provided. keeping --extract_mode=auto
+[info] server_mode=1 and venv not found: /media/jyju25/Disk_JY/Projects_26/Venvs/ImageCropping_Py310/bin/activate (using current python)
+========================================================
+ E2E Config
+========================================================
+ script_version      : 2026-03-05.1
+ bucket              : sstk_100
+ data_dir            : data/SSTK/10K_local
+ server_mode         : 1
+ tar_dir             : /sstk/20230916/sstk_100
+ run_tag             : 260305_v1
+ skip_existing       : 0
+ precompute_mode     : unified
+ run_filter          : 1
+ export_curated_img  : 1 (dir=data/SSTK/10K_local/images, skip_existing=1)
+ prefer_curated_img  : 1 (effective=data/SSTK/10K_local/images)
+ extract_mode        : auto (extract_multi_gpu=1, gpu_ids=0,1,2,3,4,5,6,7, workers=8)
+ run_c1/c2/c3/c4/c5/c6 : 1/1/1/1/1/1
+ run_c3_enrich/merge : 1/1
+ subject routing     : run=1 top_n=5 union_top_m=3 det_proxy=1
+ run_component_viz   : 0 (out=data/SSTK/10K_local/artifacts/precompute/visualizations/components_260305_v1, num_samples=120)
+ public proposals    : enable=1 setup=1 teachers=gaic,cacnet,cgs max_images=0
+ public raw/proposal : data/SSTK/10K_local/artifacts/public_teachers/raw/teacher_raw_public_260305_v1.jsonl | data/SSTK/10K_local/artifacts/public_teachers/proposals/teacher_proposals_public_260305_v1.jsonl
+ public infer multi  : multi_gpu=1 gpu_ids=0,1,2,3,4,5,6,7 workers=8
+ proposal gate       : enable=1 min_rate=0.95 strict=1
+ run_candidates      : 1
+ candidate_ar_list   : FREE,1:1,9:16,16:9,3:4,4:3
+ candidate_mp       : workers=0 chunksize=64 start=auto
+ teacher proposals   : <none>
+ run_teacher         : 1 (real_expensive=1)
+ teacher_multi_gpu   : 1 (gpu_ids=auto, workers=auto)
+ teacher_auto_repair : 1 (strict=1)
+ teacher_accel       : exp_batch=512 exp_eval_top_m=0 preprocess_workers=0 pin_memory=1
+ teacher_safety      : hard_head_top=1 face_expand=0.35 kp_expand=0.06 min_margin=0.008 face_margin_alpha=0.20
+ run_vlm_teacher     : 1 (backend=qwen25_vl fallback=heuristic model=Qwen/Qwen3-VL-4B-Instruct)
+ vlm target/topm/k   : target_ar=all top_m=12 top_k=5 max_images=0 retries=2
+ vlm strict init     : 1
+ vlm qwen3 autofix   : 1 (github_fallback=0)
+ vlm multi_gpu       : -1 (gpu_ids=auto, workers=auto)
+ vlm out/meta/sum    : data/SSTK/10K_local/artifacts/vlm_teacher/labels/crop_label_v1_260305_v1.jsonl | data/SSTK/10K_local/artifacts/vlm_teacher/meta/meta_norm_v1_260305_v1.jsonl | data/SSTK/10K_local/artifacts/vlm_teacher/summary/vlm_teacher_summary_260305_v1.json
+========================================================
+[run] 01_filter
+=========================================
+Starting Filter Pipeline
+Project Root      : /group-volume/jaden.ju/Sources/ImageCropping
+SDP Directory     : /sstk/sdp-sstk
+Train Directory   : /group-volume/jaden.ju/Dataset/SSTK/SSTK_train_json/v1.0.1
+Tar Directory     : /sstk/20230916/sstk_100
+Bucket            : sstk_100
+Output Parquet    : data/SSTK/10K_local/filtered_sstk_100.parquet
+Curated Pool Size : 10000
+Top Percentile    : 20%
+Curated Image Dir : data/SSTK/10K_local/images
+Curated Img Skip  : 1
+=========================================
+[cache] root=data/SSTK/10K_local/cache/filter
+[cache] mapped_df=data/SSTK/10K_local/cache/filter/df_mapped_cache_sstk_100.parquet (read=data/SSTK/10K_local/cache/filter/df_mapped_cache_sstk_100.parquet)
+[cache] tag_probs=data/SSTK/10K_local/cache/filter/tag_cat_probs_cache_sstk_100.pkl (read=data/SSTK/10K_local/cache/filter/tag_cat_probs_cache_sstk_100.pkl)
+[cache] tmp_parquets=data/SSTK/10K_local/cache/filter/tmp_parquets_sstk_100 (read=data/SSTK/10K_local/cache/filter/tmp_parquets_sstk_100)
+Found 10000 file pairs to process in bucket 'sstk_100'.
+
+[CACHE DETECTED] Found fully mapped cache data/SSTK/10K_local/cache/filter/df_mapped_cache_sstk_100.parquet.
+Skipping multiprocessing JSON parsing AND category mapping phases completely.
+Total valid mapped images loaded from cache: 67419
+Applying category-wise aesthetic percentile filtering (top 20.0%)...
+Images remaining after percentile cut: 13488
+Stratified sampling to reach 10000 images...
+/group-volume/jaden.ju/Sources/ImageCropping/src/filter_sstk_dataset.py:748: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+  df_curated = df_filtered.groupby('super_cat', group_keys=False).apply(sample_group)
+Sampling remaining 1 images from leftover pool...
+Final pool size: 10000
+Category distribution:
+super_cat
+landscape_nature         1689
+food                     1688
+people_multi             1688
+people_single            1382
+product_object            886
+architecture_exterior     792
+animals                   561
+other_ambiguous           415
+documents_text            374
+sports                    252
+indoor_interior           177
+transportation             96
+Name: count, dtype: int64
+Generating Curated vs Rejected Qualitative Comparison Extract...
+1) Sampling 20 images per category for qualitative comparison...
+/group-volume/jaden.ju/Sources/ImageCropping/src/filter_sstk_dataset.py:114: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+  s_curated = df_curated.groupby('super_cat', group_keys=False).apply(lambda x: x.sample(n=min(len(x), 20), random_state=42))
+/group-volume/jaden.ju/Sources/ImageCropping/src/filter_sstk_dataset.py:115: FutureWarning: DataFrameGroupBy.apply operated on the grouping columns. This behavior is deprecated, and in a future version of pandas the grouping columns will be excluded from the operation. Either pass `include_groups=False` to exclude the groupings or explicitly select the grouping columns after groupby to silence this warning.
+  s_rejected = df_rejected.groupby('super_cat', group_keys=False).apply(lambda x: x.sample(n=min(len(x), 20), random_state=42))
+2) Metadata for samples saved to: data/SSTK/10K_local/comparison_samples_sstk_100/metadata_samples.csv
+3) Extracting sample images from 12 tars. This may take a minute...
+Extracting sample images:   0%|                                          | 0/12 [00:00<?, ?it/s]Failed to extract from tar SSTK_000003.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/rejected/sstk_image_1360095215.jpg'
+Extracting sample images:   8%|██▊                               | 1/12 [00:00<00:01,  8.10it/s]Failed to extract from tar SSTK_000009.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/curated/pond5_image_115906148.jpg'
+Failed to extract from tar SSTK_000008.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/curated/pond5_image_105945892.jpg'
+Extracting sample images:  25%|████████▌                         | 3/12 [00:00<00:01,  5.62it/s]Failed to extract from tar SSTK_000005.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/curated/bigstock_image_318073684.jpg'
+Extracting sample images:  33%|███████████▎                      | 4/12 [00:00<00:01,  5.61it/s]Failed to extract from tar SSTK_000011.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/rejected/sstk_image_2244836563.jpg'
+Failed to extract from tar SSTK_000007.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/rejected/pond5_image_79704587.jpg'
+Extracting sample images:  50%|█████████████████                 | 6/12 [00:00<00:00,  7.90it/s]Failed to extract from tar SSTK_000004.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/rejected/sstk_image_2213154887.jpg'
+Extracting sample images:  58%|███████████████████▊              | 7/12 [00:00<00:00,  8.35it/s]Failed to extract from tar SSTK_000001.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/rejected/pond5_image_81926667.jpg'
+Failed to extract from tar SSTK_000000.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/curated/bigstock_image_428555168.jpg'
+Extracting sample images:  75%|█████████████████████████▌        | 9/12 [00:01<00:00,  7.02it/s]Failed to extract from tar SSTK_000002.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/curated/bigstock_image_214464826.jpg'
+Extracting sample images:  83%|███████████████████████████▌     | 10/12 [00:01<00:00,  6.87it/s]Failed to extract from tar SSTK_000006.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/curated/sstk_image_139196354.jpg'
+Failed to extract from tar SSTK_000010.tar: [Errno 13] Permission denied: 'data/SSTK/10K_local/comparison_samples_sstk_100/rejected/pond5_image_202195911.jpg'
+Extracting sample images: 100%|█████████████████████████████████| 12/12 [00:01<00:00,  8.08it/s]Extracting sample images: 100%|█████████████████████████████████| 12/12 [00:01<00:00,  7.37it/s]
+4) Generating HTML comparison report...
+5) Qualitative HTML comparison report generated: data/SSTK/10K_local/comparison_report_sstk_100.html
+Exporting curated images to local dir: data/SSTK/10K_local/images
+Export curated images:   0%|                                             | 0/12 [00:00<?, ?it/s]Export curated images:   8%|███                                  | 1/12 [00:04<00:50,  4.62s/it]Export curated images:  17%|██████▏                              | 2/12 [00:09<00:46,  4.63s/it]Export curated images:  25%|█████████▎                           | 3/12 [00:13<00:41,  4.64s/it]Export curated images:  33%|████████████▎                        | 4/12 [00:18<00:37,  4.63s/it]Export curated images:  42%|███████████████▍                     | 5/12 [00:23<00:32,  4.65s/it]Export curated images:  50%|██████████████████▌                  | 6/12 [00:27<00:27,  4.65s/it]Export curated images:  58%|█████████████████████▌               | 7/12 [00:32<00:23,  4.65s/it]Export curated images:  67%|████████████████████████▋            | 8/12 [00:37<00:18,  4.65s/it]Export curated images:  75%|███████████████████████████▊         | 9/12 [00:41<00:13,  4.65s/it]Export curated images:  83%|██████████████████████████████      | 10/12 [00:46<00:09,  4.65s/it]Export curated images:  92%|█████████████████████████████████   | 11/12 [00:51<00:04,  4.64s/it]Export curated images: 100%|████████████████████████████████████| 12/12 [00:55<00:00,  4.65s/it]Export curated images: 100%|████████████████████████████████████| 12/12 [00:55<00:00,  4.65s/it]
+[export_curated_images] done. saved=0 skipped=10000 missing=0 total_targets=10000
+Generating summary CSV and visualization...
+Summary CSV saved to data/SSTK/10K_local/filtered_sstk_100_summary.csv
+Summary visualization saved to data/SSTK/10K_local/filtered_sstk_100_summary.png
+Saved results to data/SSTK/10K_local/filtered_sstk_100.parquet
+Filtering completed.
+[info] using curated image cache dir: data/SSTK/10K_local/images
+[run] 02_extract_precompute_unified
+[info] python_bin: python3
+==============================================
+ Feature Extraction Component Runner
+==============================================
+  Input    : data/SSTK/10K_local/filtered_sstk_100.parquet
+  Bucket   : sstk_100
+  Output   : data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl
+  Component: c1 c2 c3 c4 c5 c6
+  Priority : quality_first
+  Mode     : multi  (Detected GPUs: 8)
+  Tar Dir  : /sstk/20230916/sstk_100
+  Image Dir: data/SSTK/10K_local/images
+  WeightsDir: /group-volume/jaden.ju/Sources/ImageCropping/weights
+  Threads  : OMP=1 OPENBLAS=1 MKL=1
+==============================================
+[MODE] Multi-GPU (No Ray, sharded single-process workers)
+[multi] gpu_ids=0,1,2,3,4,5,6,7 workers=8
+[multi] shard-local devices: C4_PPOCR_DEVICE=gpu:0, C5_SCALELSD_DEVICE=cuda:0, C6_GAZELLE_DEVICE=cuda:0
+[multi] launch shard=0/8 gpu=0 -> data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_0.jsonl
+[multi] launch shard=1/8 gpu=1 -> data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_1.jsonl
+[multi] launch shard=2/8 gpu=2 -> data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_2.jsonl
+[multi] launch shard=3/8 gpu=3 -> data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_3.jsonl
+[multi] launch shard=4/8 gpu=4 -> data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_4.jsonl
+[multi] launch shard=5/8 gpu=5 -> data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_5.jsonl
+[multi] launch shard=6/8 gpu=6 -> data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_6.jsonl
+[multi] launch shard=7/8 gpu=7 -> data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_7.jsonl
+src/scripts/run_extract_component.sh: line 492: 78415 Floating point exception(core dumped) CUDA_VISIBLE_DEVICES="$GPU_ID" C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" --input_parquet "$INPUT_PARQUET" --bucket "$BUCKET" --tar_dir "$TAR_DIR" --output_jsonl "$SHARD_OUT" --component $COMPONENT --priority "$PRIORITY" --batch_size "$BATCH_SIZE" --weights_dir "$WEIGHTS_DIR" --c4_lang "$C4_LANG" "${IMAGE_DIR_ARGS[@]}" --num_shards "$WORKERS" --shard_index "$i" > "$SHARD_LOG" 2>&1
+src/scripts/run_extract_component.sh: line 492: 78416 Floating point exception(core dumped) CUDA_VISIBLE_DEVICES="$GPU_ID" C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" --input_parquet "$INPUT_PARQUET" --bucket "$BUCKET" --tar_dir "$TAR_DIR" --output_jsonl "$SHARD_OUT" --component $COMPONENT --priority "$PRIORITY" --batch_size "$BATCH_SIZE" --weights_dir "$WEIGHTS_DIR" --c4_lang "$C4_LANG" "${IMAGE_DIR_ARGS[@]}" --num_shards "$WORKERS" --shard_index "$i" > "$SHARD_LOG" 2>&1
+src/scripts/run_extract_component.sh: line 492: 78418 Floating point exception(core dumped) CUDA_VISIBLE_DEVICES="$GPU_ID" C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" --input_parquet "$INPUT_PARQUET" --bucket "$BUCKET" --tar_dir "$TAR_DIR" --output_jsonl "$SHARD_OUT" --component $COMPONENT --priority "$PRIORITY" --batch_size "$BATCH_SIZE" --weights_dir "$WEIGHTS_DIR" --c4_lang "$C4_LANG" "${IMAGE_DIR_ARGS[@]}" --num_shards "$WORKERS" --shard_index "$i" > "$SHARD_LOG" 2>&1
+src/scripts/run_extract_component.sh: line 492: 78421 Floating point exception(core dumped) CUDA_VISIBLE_DEVICES="$GPU_ID" C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" --input_parquet "$INPUT_PARQUET" --bucket "$BUCKET" --tar_dir "$TAR_DIR" --output_jsonl "$SHARD_OUT" --component $COMPONENT --priority "$PRIORITY" --batch_size "$BATCH_SIZE" --weights_dir "$WEIGHTS_DIR" --c4_lang "$C4_LANG" "${IMAGE_DIR_ARGS[@]}" --num_shards "$WORKERS" --shard_index "$i" > "$SHARD_LOG" 2>&1
+[error] shard=0 pid=78415 exit_code=136 log=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_0.log
+[hint] shard=0 terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log.
+[error] shard=1 pid=78416 exit_code=136 log=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_1.log
+[hint] shard=1 terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log.
+src/scripts/run_extract_component.sh: line 492: 78417 Floating point exception(core dumped) CUDA_VISIBLE_DEVICES="$GPU_ID" C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" --input_parquet "$INPUT_PARQUET" --bucket "$BUCKET" --tar_dir "$TAR_DIR" --output_jsonl "$SHARD_OUT" --component $COMPONENT --priority "$PRIORITY" --batch_size "$BATCH_SIZE" --weights_dir "$WEIGHTS_DIR" --c4_lang "$C4_LANG" "${IMAGE_DIR_ARGS[@]}" --num_shards "$WORKERS" --shard_index "$i" > "$SHARD_LOG" 2>&1
+src/scripts/run_extract_component.sh: line 492: 78419 Floating point exception(core dumped) CUDA_VISIBLE_DEVICES="$GPU_ID" C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" --input_parquet "$INPUT_PARQUET" --bucket "$BUCKET" --tar_dir "$TAR_DIR" --output_jsonl "$SHARD_OUT" --component $COMPONENT --priority "$PRIORITY" --batch_size "$BATCH_SIZE" --weights_dir "$WEIGHTS_DIR" --c4_lang "$C4_LANG" "${IMAGE_DIR_ARGS[@]}" --num_shards "$WORKERS" --shard_index "$i" > "$SHARD_LOG" 2>&1
+src/scripts/run_extract_component.sh: line 492: 78422 Floating point exception(core dumped) CUDA_VISIBLE_DEVICES="$GPU_ID" C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" --input_parquet "$INPUT_PARQUET" --bucket "$BUCKET" --tar_dir "$TAR_DIR" --output_jsonl "$SHARD_OUT" --component $COMPONENT --priority "$PRIORITY" --batch_size "$BATCH_SIZE" --weights_dir "$WEIGHTS_DIR" --c4_lang "$C4_LANG" "${IMAGE_DIR_ARGS[@]}" --num_shards "$WORKERS" --shard_index "$i" > "$SHARD_LOG" 2>&1
+[error] shard=2 pid=78417 exit_code=136 log=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_2.log
+[hint] shard=2 terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log.
+[error] shard=3 pid=78418 exit_code=136 log=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_3.log
+[hint] shard=3 terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log.
+[error] shard=4 pid=78419 exit_code=136 log=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_4.log
+[hint] shard=4 terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log.
+src/scripts/run_extract_component.sh: line 492: 78420 Floating point exception(core dumped) CUDA_VISIBLE_DEVICES="$GPU_ID" C4_PPOCR_DEVICE="$C4_DEVICE_SHARD" C5_SCALELSD_DEVICE="$C5_DEVICE_SHARD" C6_GAZELLE_DEVICE="$C6_DEVICE_SHARD" "$PYTHON_BIN" "${SRC_DIR}/extract_features_single.py" --input_parquet "$INPUT_PARQUET" --bucket "$BUCKET" --tar_dir "$TAR_DIR" --output_jsonl "$SHARD_OUT" --component $COMPONENT --priority "$PRIORITY" --batch_size "$BATCH_SIZE" --weights_dir "$WEIGHTS_DIR" --c4_lang "$C4_LANG" "${IMAGE_DIR_ARGS[@]}" --num_shards "$WORKERS" --shard_index "$i" > "$SHARD_LOG" 2>&1
+[error] shard=5 pid=78420 exit_code=136 log=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_5.log
+[hint] shard=5 terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log.
+[error] shard=6 pid=78421 exit_code=136 log=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_6.log
+[hint] shard=6 terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log.
+[error] shard=7 pid=78422 exit_code=136 log=data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_7.log
+[hint] shard=7 terminated by SIGFPE. Check Paddle CPU fallback/OpenBLAS thread settings and shard log.
+Error: one or more shard workers failed. logs under: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402
+----- tail: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_0.log -----
+/home/user/.local/lib/python3.10/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+/home/user/.local/lib/python3.10/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.0.1)/charset_normalizer (3.3.2) doesn't match a supported version!
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/mmengine/optim/optimizer/zero_optimizer.py:11: DeprecationWarning: `TorchScript` support for functional optimizers is deprecated and will be removed in a future PyTorch release. Consider using the `torch.compile` optimizer instead.
+  from torch.distributed.optim import \
+/home/user/.local/lib/python3.10/site-packages/mmengine/runner/checkpoint.py:347: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(filename, map_location=map_location)
+[33mConnectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `/home/user/.paddlex/official_models/PP-OCRv5_server_det`.[0m
+/home/user/.local/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+[33mThe specified device (GPU) is not available! Switching to CPU instead.[0m
+
+
+--------------------------------------
+C++ Traceback (most recent call last):
+--------------------------------------
+0   paddle::framework::ThreadPoolTempl<paddle::framework::StlThreadEnvironment>::WorkerLoop(int)
+1   paddle::framework::PirInterpreter::RunInstructionBaseAsync(unsigned long)
+2   paddle::framework::PirInterpreter::RunInstructionBase(paddle::framework::InstructionBase*)
+3   paddle::framework::PhiKernelInstruction::Run()
+4   vsDiv
+5   mkl_vml_serv_threader_s_2i_1o
+6   mkl_vml_serv_GetMinN
+
+----------------------
+Error Message Summary:
+----------------------
+FatalError: `Erroneous arithmetic operation` is detected by the operating system.
+  [TimeInfo: *** Aborted at 1772706806 (unix time) try "date -d @1772706806" if you are using GNU date ***]
+  [SignalInfo: *** SIGFPE (@0x7fac661247e7) received by PID 78415 (TID 0x7fac5ffff700) from PID 1712474087 ***]
+
+----- tail: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_1.log -----
+/home/user/.local/lib/python3.10/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+/home/user/.local/lib/python3.10/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.0.1)/charset_normalizer (3.3.2) doesn't match a supported version!
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/mmengine/optim/optimizer/zero_optimizer.py:11: DeprecationWarning: `TorchScript` support for functional optimizers is deprecated and will be removed in a future PyTorch release. Consider using the `torch.compile` optimizer instead.
+  from torch.distributed.optim import \
+/home/user/.local/lib/python3.10/site-packages/mmengine/runner/checkpoint.py:347: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(filename, map_location=map_location)
+[33mConnectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `/home/user/.paddlex/official_models/PP-OCRv5_server_det`.[0m
+/home/user/.local/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+[33mThe specified device (GPU) is not available! Switching to CPU instead.[0m
+
+
+--------------------------------------
+C++ Traceback (most recent call last):
+--------------------------------------
+0   paddle::framework::ThreadPoolTempl<paddle::framework::StlThreadEnvironment>::WorkerLoop(int)
+1   paddle::framework::PirInterpreter::RunInstructionBaseAsync(unsigned long)
+2   paddle::framework::PirInterpreter::RunInstructionBase(paddle::framework::InstructionBase*)
+3   paddle::framework::PhiKernelInstruction::Run()
+4   vsDiv
+5   mkl_vml_serv_threader_s_2i_1o
+6   mkl_vml_serv_GetMinN
+
+----------------------
+Error Message Summary:
+----------------------
+FatalError: `Erroneous arithmetic operation` is detected by the operating system.
+  [TimeInfo: *** Aborted at 1772706806 (unix time) try "date -d @1772706806" if you are using GNU date ***]
+  [SignalInfo: *** SIGFPE (@0x7fded9f157e7) received by PID 78416 (TID 0x7fded89ab700) from PID 18446744073071056871 ***]
+
+----- tail: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_2.log -----
+/home/user/.local/lib/python3.10/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+/home/user/.local/lib/python3.10/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.0.1)/charset_normalizer (3.3.2) doesn't match a supported version!
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/mmengine/optim/optimizer/zero_optimizer.py:11: DeprecationWarning: `TorchScript` support for functional optimizers is deprecated and will be removed in a future PyTorch release. Consider using the `torch.compile` optimizer instead.
+  from torch.distributed.optim import \
+/home/user/.local/lib/python3.10/site-packages/mmengine/runner/checkpoint.py:347: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(filename, map_location=map_location)
+[33mConnectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `/home/user/.paddlex/official_models/PP-OCRv5_server_det`.[0m
+/home/user/.local/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+[33mThe specified device (GPU) is not available! Switching to CPU instead.[0m
+
+
+--------------------------------------
+C++ Traceback (most recent call last):
+--------------------------------------
+0   paddle::framework::ThreadPoolTempl<paddle::framework::StlThreadEnvironment>::WorkerLoop(int)
+1   paddle::framework::PirInterpreter::RunInstructionBaseAsync(unsigned long)
+2   paddle::framework::PirInterpreter::RunInstructionBase(paddle::framework::InstructionBase*)
+3   paddle::framework::PhiKernelInstruction::Run()
+4   vsDiv
+5   mkl_vml_serv_threader_s_2i_1o
+6   mkl_vml_serv_GetMinN
+
+----------------------
+Error Message Summary:
+----------------------
+FatalError: `Erroneous arithmetic operation` is detected by the operating system.
+  [TimeInfo: *** Aborted at 1772706806 (unix time) try "date -d @1772706806" if you are using GNU date ***]
+  [SignalInfo: *** SIGFPE (@0x7fb8341247e7) received by PID 78417 (TID 0x7fb832e8a700) from PID 873613287 ***]
+
+----- tail: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_3.log -----
+/home/user/.local/lib/python3.10/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+/home/user/.local/lib/python3.10/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.0.1)/charset_normalizer (3.3.2) doesn't match a supported version!
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/mmengine/optim/optimizer/zero_optimizer.py:11: DeprecationWarning: `TorchScript` support for functional optimizers is deprecated and will be removed in a future PyTorch release. Consider using the `torch.compile` optimizer instead.
+  from torch.distributed.optim import \
+/home/user/.local/lib/python3.10/site-packages/mmengine/runner/checkpoint.py:347: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(filename, map_location=map_location)
+[33mConnectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `/home/user/.paddlex/official_models/PP-OCRv5_server_det`.[0m
+/home/user/.local/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+[33mThe specified device (GPU) is not available! Switching to CPU instead.[0m
+
+
+--------------------------------------
+C++ Traceback (most recent call last):
+--------------------------------------
+0   paddle::framework::ThreadPoolTempl<paddle::framework::StlThreadEnvironment>::WorkerLoop(int)
+1   paddle::framework::PirInterpreter::RunInstructionBaseAsync(unsigned long)
+2   paddle::framework::PirInterpreter::RunInstructionBase(paddle::framework::InstructionBase*)
+3   paddle::framework::PhiKernelInstruction::Run()
+4   vsDiv
+5   mkl_vml_serv_threader_s_2i_1o
+6   mkl_vml_serv_GetMinN
+
+----------------------
+Error Message Summary:
+----------------------
+FatalError: `Erroneous arithmetic operation` is detected by the operating system.
+  [TimeInfo: *** Aborted at 1772706806 (unix time) try "date -d @1772706806" if you are using GNU date ***]
+  [SignalInfo: *** SIGFPE (@0x7f4571c247e7) received by PID 78418 (TID 0x7f456b7fe700) from PID 1908557799 ***]
+
+----- tail: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_4.log -----
+/home/user/.local/lib/python3.10/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+/home/user/.local/lib/python3.10/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.0.1)/charset_normalizer (3.3.2) doesn't match a supported version!
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/mmengine/optim/optimizer/zero_optimizer.py:11: DeprecationWarning: `TorchScript` support for functional optimizers is deprecated and will be removed in a future PyTorch release. Consider using the `torch.compile` optimizer instead.
+  from torch.distributed.optim import \
+/home/user/.local/lib/python3.10/site-packages/mmengine/runner/checkpoint.py:347: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(filename, map_location=map_location)
+[33mConnectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `/home/user/.paddlex/official_models/PP-OCRv5_server_det`.[0m
+/home/user/.local/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+[33mThe specified device (GPU) is not available! Switching to CPU instead.[0m
+
+
+--------------------------------------
+C++ Traceback (most recent call last):
+--------------------------------------
+0   paddle::framework::ThreadPoolTempl<paddle::framework::StlThreadEnvironment>::WorkerLoop(int)
+1   paddle::framework::PirInterpreter::RunInstructionBaseAsync(unsigned long)
+2   paddle::framework::PirInterpreter::RunInstructionBase(paddle::framework::InstructionBase*)
+3   paddle::framework::PhiKernelInstruction::Run()
+4   vsDiv
+5   mkl_vml_serv_threader_s_2i_1o
+6   mkl_vml_serv_GetMinN
+
+----------------------
+Error Message Summary:
+----------------------
+FatalError: `Erroneous arithmetic operation` is detected by the operating system.
+  [TimeInfo: *** Aborted at 1772706806 (unix time) try "date -d @1772706806" if you are using GNU date ***]
+  [SignalInfo: *** SIGFPE (@0x7fec139247e7) received by PID 78419 (TID 0x7fec12c0b700) from PID 328353767 ***]
+
+----- tail: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_5.log -----
+/home/user/.local/lib/python3.10/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+/home/user/.local/lib/python3.10/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.0.1)/charset_normalizer (3.3.2) doesn't match a supported version!
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/mmengine/optim/optimizer/zero_optimizer.py:11: DeprecationWarning: `TorchScript` support for functional optimizers is deprecated and will be removed in a future PyTorch release. Consider using the `torch.compile` optimizer instead.
+  from torch.distributed.optim import \
+/home/user/.local/lib/python3.10/site-packages/mmengine/runner/checkpoint.py:347: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(filename, map_location=map_location)
+[33mConnectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `/home/user/.paddlex/official_models/PP-OCRv5_server_det`.[0m
+/home/user/.local/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+[33mThe specified device (GPU) is not available! Switching to CPU instead.[0m
+
+
+--------------------------------------
+C++ Traceback (most recent call last):
+--------------------------------------
+0   paddle::framework::ThreadPoolTempl<paddle::framework::StlThreadEnvironment>::WorkerLoop(int)
+1   paddle::framework::PirInterpreter::RunInstructionBaseAsync(unsigned long)
+2   paddle::framework::PirInterpreter::RunInstructionBase(paddle::framework::InstructionBase*)
+3   paddle::framework::PhiKernelInstruction::Run()
+4   vsDiv
+5   mkl_vml_serv_threader_s_2i_1o
+6   mkl_vml_serv_GetMinN
+
+----------------------
+Error Message Summary:
+----------------------
+FatalError: `Erroneous arithmetic operation` is detected by the operating system.
+  [TimeInfo: *** Aborted at 1772706806 (unix time) try "date -d @1772706806" if you are using GNU date ***]
+  [SignalInfo: *** SIGFPE (@0x7fe3381247e7) received by PID 78420 (TID 0x7fe33768b700) from PID 940722151 ***]
+
+----- tail: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_6.log -----
+/home/user/.local/lib/python3.10/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+/home/user/.local/lib/python3.10/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.0.1)/charset_normalizer (3.3.2) doesn't match a supported version!
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/mmengine/optim/optimizer/zero_optimizer.py:11: DeprecationWarning: `TorchScript` support for functional optimizers is deprecated and will be removed in a future PyTorch release. Consider using the `torch.compile` optimizer instead.
+  from torch.distributed.optim import \
+/home/user/.local/lib/python3.10/site-packages/mmengine/runner/checkpoint.py:347: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(filename, map_location=map_location)
+[33mConnectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `/home/user/.paddlex/official_models/PP-OCRv5_server_det`.[0m
+/home/user/.local/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+[33mThe specified device (GPU) is not available! Switching to CPU instead.[0m
+
+
+--------------------------------------
+C++ Traceback (most recent call last):
+--------------------------------------
+0   paddle::framework::ThreadPoolTempl<paddle::framework::StlThreadEnvironment>::WorkerLoop(int)
+1   paddle::framework::PirInterpreter::RunInstructionBaseAsync(unsigned long)
+2   paddle::framework::PirInterpreter::RunInstructionBase(paddle::framework::InstructionBase*)
+3   paddle::framework::PhiKernelInstruction::Run()
+4   vsDiv
+5   mkl_vml_serv_threader_s_2i_1o
+6   mkl_vml_serv_GetMinN
+
+----------------------
+Error Message Summary:
+----------------------
+FatalError: `Erroneous arithmetic operation` is detected by the operating system.
+  [TimeInfo: *** Aborted at 1772706806 (unix time) try "date -d @1772706806" if you are using GNU date ***]
+  [SignalInfo: *** SIGFPE (@0x7f65f30247e7) received by PID 78421 (TID 0x7f65f1389700) from PID 18446744073491597287 ***]
+
+----- tail: data/SSTK/10K_local/artifacts/precompute/feats_c2c3c5_v2_strict_raw.jsonl.shards.78402/part_7.log -----
+/home/user/.local/lib/python3.10/site-packages/torch/cuda/__init__.py:61: FutureWarning: The pynvml package is deprecated. Please install nvidia-ml-py instead. If you did not install pynvml directly, please report this to the maintainers of the package that installed pynvml for you.
+  import pynvml  # type: ignore[import]
+/home/user/.local/lib/python3.10/site-packages/requests/__init__.py:113: RequestsDependencyWarning: urllib3 (1.26.20) or chardet (7.0.1)/charset_normalizer (3.3.2) doesn't match a supported version!
+  warnings.warn(
+/home/user/.local/lib/python3.10/site-packages/mmengine/optim/optimizer/zero_optimizer.py:11: DeprecationWarning: `TorchScript` support for functional optimizers is deprecated and will be removed in a future PyTorch release. Consider using the `torch.compile` optimizer instead.
+  from torch.distributed.optim import \
+/home/user/.local/lib/python3.10/site-packages/mmengine/runner/checkpoint.py:347: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  checkpoint = torch.load(filename, map_location=map_location)
+[33mConnectivity check to the model hoster has been skipped because `PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK` is enabled.[0m
+[32mModel files already exist. Using cached files. To redownload, please delete the directory manually: `/home/user/.paddlex/official_models/PP-OCRv5_server_det`.[0m
+/home/user/.local/lib/python3.10/site-packages/paddle/utils/cpp_extension/extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+[33mThe specified device (GPU) is not available! Switching to CPU instead.[0m
+
+
+--------------------------------------
+C++ Traceback (most recent call last):
+--------------------------------------
+0   paddle::framework::ThreadPoolTempl<paddle::framework::StlThreadEnvironment>::WorkerLoop(int)
+1   paddle::framework::PirInterpreter::RunInstructionBaseAsync(unsigned long)
+2   paddle::framework::PirInterpreter::RunInstructionBase(paddle::framework::InstructionBase*)
+3   paddle::framework::PhiKernelInstruction::Run()
+4   vsDiv
+5   mkl_vml_serv_threader_s_2i_1o
+6   mkl_vml_serv_GetMinN
+
+----------------------
+Error Message Summary:
+----------------------
+FatalError: `Erroneous arithmetic operation` is detected by the operating system.
+  [TimeInfo: *** Aborted at 1772706806 (unix time) try "date -d @1772706806" if you are using GNU date ***]
+  [SignalInfo: *** SIGFPE (@0x7f0fc48637e7) received by PID 78422 (TID 0x7f0fc2b48700) from PID 18446744072711714791 ***]
+

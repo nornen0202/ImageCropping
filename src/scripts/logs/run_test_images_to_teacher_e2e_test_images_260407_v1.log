@@ -1,0 +1,52 @@
+========================================================
+ Test-images e2e wrapper
+========================================================
+ data_dir              : data/TestImages/All
+ image_root            : data/test_images
+ flat_image_dir        : data/TestImages/All/images
+ bucket                : test_images_all
+ run_tag               : test_images_260407_v1
+ prepare_max_images    : 0
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 0
+ run_c1                : 1
+ run_c2                : 1
+ run_c3                : 1
+ run_c3_enrich         : 1
+ run_c4                : 1
+ run_c5                : 1
+ run_c6                : 1
+ run_merge             : 1
+ run_subject_routing   : 1
+ run_candidates        : 1
+ run_teacher           : 1
+ use_real_expensive    : 1
+ run_c7_saliency       : 1 (priority=quality_first device=auto)
+ generate_captions     : 1 (preset=server_quality backend=auto)
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1 (policy=ignore)
+ training_debug_viz    : 1 (out=data/TestImages/All/artifacts/training_labels/test_images_260407_v1_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ auto_leftover_variants: 0 (policies=keep_negative,promote_soft_positive)
+ run_detailed_report   : 1
+ reference_json        : data/TestImages/All/test_images_reference.json
+========================================================
+{
+  "status": "ok",
+  "image_dir": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/test_images",
+  "input_parquet": "",
+  "output_jsonl": "/group-volume/users/jaden.ju/Sources/ImageCropping/data/TestImages/All/artifacts/metadata/test_images_captions_test_images_260407_v1.jsonl",
+  "preset": "server_quality",
+  "backend": "blip",
+  "model_id": "Salesforce/blip-image-captioning-large",
+  "caption_prompt": "",
+  "device": "cuda",
+  "dtype": "float16",
+  "num_rows_total": 33,
+  "num_existing_skipped": 0,
+  "num_rows_pending_after_skip": 33,
+  "num_rows_assigned_to_shard": 33,
+  "num_rows_generated_this_run": 33,
+  "num_shards": 1,
+  "shard_index": 0
+}

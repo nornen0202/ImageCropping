@@ -1,0 +1,39 @@
+========================================================
+ GAIC e2e wrapper
+========================================================
+ data_dir              : data/GAIC/All
+ image_root            : data/Publics/GAIC/images
+ flat_image_dir        : data/GAIC/All/images
+ bucket                : gaic_all
+ run_tag               : 
+ prepare_max_images    : 0
+ prepare_num_workers   : 255 (cpu_cores=255)
+ pseudo_tar_chunk_size : 256
+ link_mode             : symlink
+ skip_existing         : 0
+ shared_gpu_ids        : 0,1,2,3 (workers=4)
+ run_c1                : 0
+ use_real_expensive    : 0
+ run_c7_saliency       : 0 (priority=quality_first device=auto)
+ gaic_generate_caps    : 0 (preset=server_quality backend=auto multi_gpu=1 gpu_ids=0,1,2,3 workers=4)
+ run_c6                : 0
+ run_vlm_teacher       : 0 (backend=heuristic fallback=none)
+ run_training_labels   : 1 (policy=ignore)
+ score_profile         : single_stage2 (overrides=<none>)
+ training_debug_viz    : 1 (out=data/GAIC/All/artifacts/training_labels/latest_leftover_ignore_monotonic/debug_visualizations_balanced50_bottomneg sample_size=50 seed=42)
+ auto_leftover_variants: 0 (policies=keep_negative,promote_soft_positive)
+ run_detailed_report   : 1
+ run_gaic_benchmark    : 1 (sample_count=16 max_images=0)
+ run_gaic_subject_ab   : 1 (run_tag=gaic_eval_ sample_count=16 max_images=0)
+ gaic_reference_json   : data/GAIC/All/gaic_reference_available.json
+ gaic_train_ref_json   : data/Publics/GAIC/annotations_json/instances_train.json
+ gaic_test_ref_json    : data/Publics/GAIC/annotations_json/instances_test.json
+========================================================
+[progress 2026-04-08 03:02:23] prepare_gaic_curated_dataset: start | image_root=/group-volume/users/jaden.ju/Sources/ImageCropping/data/Publics/GAIC/images | output_parquet=/group-volume/users/jaden.ju/Sources/ImageCropping/data/GAIC/All/filtered_gaic_all.parquet
+[progress 2026-04-08 03:02:23] prepare_gaic_curated_dataset:scan_images: start total=1238 unit=paths
+[progress 2026-04-08 03:02:23] prepare_gaic_curated_dataset:scan_images: [========>...............] 500/1238 (40.4%) | 0.1s<0.1s | images=498
+[progress 2026-04-08 03:02:23] prepare_gaic_curated_dataset:scan_images: [==================>.....] 1000/1238 (80.8%) | 0.1s<0.0s | images=998
+[progress 2026-04-08 03:02:23] prepare_gaic_curated_dataset:scan_images: [========================] 1238/1238 (100.0%) | 0.2s | images=1236
+[progress 2026-04-08 03:02:23] prepare_gaic_curated_dataset:scan_images: [========================] 1238/1238 (100.0%) | 0.2s | images=1236
+[progress 2026-04-08 03:02:23] prepare_gaic_curated_dataset: scanned=1236 | num_workers=255 | captions=0
+[progress 2026-04-08 03:02:23] prepare_gaic_curated_dataset:prepare_manifest_rows: start total=1236 unit=images

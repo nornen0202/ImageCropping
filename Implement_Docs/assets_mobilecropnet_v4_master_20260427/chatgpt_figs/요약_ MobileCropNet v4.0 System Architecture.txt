@@ -1,0 +1,32 @@
+  MobileCropNet v4.0 System Architecture
+
+  핵심 메시지
+  MobileCropNet v4.0은 단일 crop box를 바로 회귀하는 모델이 아니라, image + target AR만으로 후보를 생성하고, 후보 간 관계를 비교한 뒤,
+  제품 정책과 안전성을 함께 판단하는 no-prior runtime cropper이다.
+
+  Runtime Flow
+
+  1. Input & Conditioning
+     입력은 image + target_ar로 제한한다. Image encoder의 global feature, target AR embedding, image aspect ratio 정보를 결합해 AR
+     condition token을 만든다.
+  2. AR-Conditioned Proposal Generation
+     learned proposal query가 target AR에 맞는 crop 후보를 직접 생성한다. 기존 static crop bank의 후보 공간 한계를 줄이고, 배포 시 외부
+     candidate bank 없이 동작한다.
+  3. ROI Candidate Tokenization & Relation Ranking
+     각 후보 box에서 inside / border / context feature와 box geometry를 추출해 candidate token을 만든다. RelationLite 또는 set-
+     transformer ranker가 같은 이미지 안의 후보들을 상대 비교한다.
+  4. Product Heads
+     모델은 crop score만 출력하지 않고 utility, risk, route, action, subject box, checklist, why-tag를 함께 예측한다. 이를 통해 crop 품
+     질, 안전성, 정책 판단, 실패 원인 추적을 동시에 지원한다.
+  5. Runtime Executor
+     full baseline, minimal target-AR crop, generated proposal winner를 함께 비교해 keep_full|minimal_crop|crop action을 선택한다. 마지
+     막으로 exact target-AR repair와 bounds clamp를 수행해 최종 crop을 반환한다.
+
+  중요 구분
+  Teacher candidate bank, public cropper score, subject prior는 학습 supervision으로만 사용된다. 배포 시에는 외부 prior 없이 모델 내부
+  proposal과 head 출력만으로 최종 crop을 결정한다.
+
+  Takeaway
+  v4 구조의 핵심은 public cropper의 ranking signal을 학습에 활용하되, 제품 배포에 필요한 no-prior proposal, target-AR 정합성, action
+  policy, subject safety, rationale을 하나의 lightweight student runtime으로 내재화하는 것이다.
+

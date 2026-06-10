@@ -1,0 +1,3666 @@
+{
+  "status": "pass",
+  "checked_box_count": 118,
+  "invalid_box_count": 0,
+  "mapping_policy": "normalized boxes are mapped to the actual image rectangle after ImageOps.contain; letterbox padding is excluded",
+  "checks": [
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "4910188666",
+      "target_ar": null,
+      "subject_mode": "public_fcdb",
+      "box_name": "fcdb_annotation_0",
+      "norm_box": [
+        0.259766,
+        0.007812,
+        0.999023,
+        0.527344
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        146,
+        0,
+        513,
+        275
+      ],
+      "pixel_box": [
+        241,
+        2,
+        512,
+        145
+      ],
+      "valid": true,
+      "source_image": "data/Publics/FCDB/images/4910188666_04cf9f487d_b.jpg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "ava_obj_0_10711",
+      "target_ar": null,
+      "subject_mode": "public_cpc",
+      "box_name": "cpc_annotation_0",
+      "norm_box": [
+        0.0,
+        0.196721,
+        1.0,
+        0.983607
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        137,
+        0,
+        523,
+        275
+      ],
+      "pixel_box": [
+        137,
+        54,
+        523,
+        270
+      ],
+      "valid": true,
+      "source_image": "data/Publics/CPCDataset/images/ava_obj_0_10711.jpg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "ava_obj_0_10711",
+      "target_ar": null,
+      "subject_mode": "public_cpc",
+      "box_name": "cpc_annotation_1",
+      "norm_box": [
+        0.210351,
+        0.0,
+        0.744574,
+        1.0
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        137,
+        0,
+        523,
+        275
+      ],
+      "pixel_box": [
+        218,
+        0,
+        424,
+        275
+      ],
+      "valid": true,
+      "source_image": "data/Publics/CPCDataset/images/ava_obj_0_10711.jpg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "ava_obj_0_10711",
+      "target_ar": null,
+      "subject_mode": "public_cpc",
+      "box_name": "cpc_annotation_2",
+      "norm_box": [
+        0.350584,
+        0.196721,
+        0.777963,
+        0.995316
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        137,
+        0,
+        523,
+        275
+      ],
+      "pixel_box": [
+        272,
+        54,
+        437,
+        273
+      ],
+      "valid": true,
+      "source_image": "data/Publics/CPCDataset/images/ava_obj_0_10711.jpg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "009473",
+      "target_ar": null,
+      "subject_mode": "public_gnmc",
+      "box_name": "gnmc_annotation_0",
+      "norm_box": [
+        0.24017,
+        0.01022,
+        0.98034,
+        0.98885
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        147,
+        0,
+        512,
+        275
+      ],
+      "pixel_box": [
+        234,
+        2,
+        504,
+        271
+      ],
+      "valid": true,
+      "source_image": "data/Publics/GNMC/train/009473.jpeg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "009473",
+      "target_ar": null,
+      "subject_mode": "public_gnmc",
+      "box_name": "gnmc_annotation_1",
+      "norm_box": [
+        0.01404,
+        0.0158,
+        0.98596,
+        0.97955
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        147,
+        0,
+        512,
+        275
+      ],
+      "pixel_box": [
+        152,
+        4,
+        506,
+        269
+      ],
+      "valid": true,
+      "source_image": "data/Publics/GNMC/train/009473.jpeg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "009473",
+      "target_ar": null,
+      "subject_mode": "public_gnmc",
+      "box_name": "gnmc_annotation_2",
+      "norm_box": [
+        0.37921,
+        0.01301,
+        0.93118,
+        0.98606
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        147,
+        0,
+        512,
+        275
+      ],
+      "pixel_box": [
+        285,
+        3,
+        486,
+        271
+      ],
+      "valid": true,
+      "source_image": "data/Publics/GNMC/train/009473.jpeg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "210333",
+      "target_ar": null,
+      "subject_mode": "public_gaic",
+      "box_name": "gaic_annotation_0",
+      "norm_box": [
+        0.02734375,
+        0.06342182890855458,
+        0.5244140625,
+        1.0
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        122,
+        0,
+        537,
+        275
+      ],
+      "pixel_box": [
+        133,
+        17,
+        339,
+        275
+      ],
+      "valid": true,
+      "source_image": "data/Publics/GAIC_v2/images/test/210333.jpg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "210333",
+      "target_ar": null,
+      "subject_mode": "public_gaic",
+      "box_name": "gaic_annotation_1",
+      "norm_box": [
+        0.1376953125,
+        0.06342182890855458,
+        0.5791015625,
+        1.0
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        122,
+        0,
+        537,
+        275
+      ],
+      "pixel_box": [
+        179,
+        17,
+        362,
+        275
+      ],
+      "valid": true,
+      "source_image": "data/Publics/GAIC_v2/images/test/210333.jpg"
+    },
+    {
+      "figure": "fig_public_dataset_annotation_examples.png",
+      "image_id": "210333",
+      "target_ar": null,
+      "subject_mode": "public_gaic",
+      "box_name": "gaic_annotation_2",
+      "norm_box": [
+        0.1376953125,
+        0.4410029498525074,
+        0.634765625,
+        1.0
+      ],
+      "display_size": [
+        660,
+        275
+      ],
+      "image_area_excluding_letterbox": [
+        122,
+        0,
+        537,
+        275
+      ],
+      "pixel_box": [
+        179,
+        121,
+        385,
+        275
+      ],
+      "valid": true,
+      "source_image": "data/Publics/GAIC_v2/images/test/210333.jpg"
+    },
+    {
+      "figure": "fig_public_cropper_inference_examples.png",
+      "image_id": "ava_obj_0_10711",
+      "target_ar": null,
+      "subject_mode": "public_cpc",
+      "box_name": "public_cropper_gaic_top1",
+      "norm_box": [
+        0.0,
+        0.196721,
+        1.0,
+        0.983607
+      ],
+      "display_size": [
+        509,
+        198
+      ],
+      "image_area_excluding_letterbox": [
+        115,
+        0,
+        393,
+        198
+      ],
+      "pixel_box": [
+        115,
+        38,
+        393,
+        194
+      ],
+      "valid": true,
+      "source_image": "data/Publics/CPCDataset/images/ava_obj_0_10711.jpg"
+    },
+    {
+      "figure": "fig_public_cropper_inference_examples.png",
+      "image_id": "ava_obj_0_10711",
+      "target_ar": null,
+      "subject_mode": "public_cpc",
+      "box_name": "public_cropper_cgs_top1",
+      "norm_box": [
+        0.0,
+        0.201405,
+        0.427379,
+        1.0
+      ],
+      "display_size": [
+        509,
+        198
+      ],
+      "image_area_excluding_letterbox": [
+        115,
+        0,
+        393,
+        198
+      ],
+      "pixel_box": [
+        115,
+        39,
+        233,
+        198
+      ],
+      "valid": true,
+      "source_image": "data/Publics/CPCDataset/images/ava_obj_0_10711.jpg"
+    },
+    {
+      "figure": "fig_public_cropper_inference_examples.png",
+      "image_id": "4910188666",
+      "target_ar": null,
+      "subject_mode": "public_fcdb",
+      "box_name": "public_cropper_gaic_top1",
+      "norm_box": [
+        0.173486,
+        0.0,
+        1.0,
+        0.580854
+      ],
+      "display_size": [
+        509,
+        198
+      ],
+      "image_area_excluding_letterbox": [
+        122,
+        0,
+        386,
+        198
+      ],
+      "pixel_box": [
+        167,
+        0,
+        386,
+        115
+      ],
+      "valid": true,
+      "source_image": "data/Publics/FCDB/images/4910188666_04cf9f487d_b.jpg"
+    },
+    {
+      "figure": "fig_public_cropper_inference_examples.png",
+      "image_id": "4910188666",
+      "target_ar": null,
+      "subject_mode": "public_fcdb",
+      "box_name": "public_cropper_cgs_top1",
+      "norm_box": [
+        0.173486,
+        0.0,
+        1.0,
+        0.580854
+      ],
+      "display_size": [
+        509,
+        198
+      ],
+      "image_area_excluding_letterbox": [
+        122,
+        0,
+        386,
+        198
+      ],
+      "pixel_box": [
+        167,
+        0,
+        386,
+        115
+      ],
+      "valid": true,
+      "source_image": "data/Publics/FCDB/images/4910188666_04cf9f487d_b.jpg"
+    },
+    {
+      "figure": "fig_public_cropper_inference_examples.png",
+      "image_id": "009473",
+      "target_ar": "1:1",
+      "subject_mode": "public_gnmc",
+      "box_name": "public_cropper_gaic_top1",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        509,
+        198
+      ],
+      "image_area_excluding_letterbox": [
+        123,
+        0,
+        386,
+        198
+      ],
+      "pixel_box": [
+        123,
+        0,
+        386,
+        198
+      ],
+      "valid": true,
+      "source_image": "data/Publics/GNMC/train/009473.jpeg"
+    },
+    {
+      "figure": "fig_public_cropper_inference_examples.png",
+      "image_id": "009473",
+      "target_ar": "1:1",
+      "subject_mode": "public_gnmc",
+      "box_name": "public_cropper_cgs_top1",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        509,
+        198
+      ],
+      "image_area_excluding_letterbox": [
+        123,
+        0,
+        386,
+        198
+      ],
+      "pixel_box": [
+        123,
+        0,
+        386,
+        198
+      ],
+      "valid": true,
+      "source_image": "data/Publics/GNMC/train/009473.jpeg"
+    },
+    {
+      "figure": "fig_c2_c3_c7_joint_overlay.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "c2_subject_union",
+      "norm_box": [
+        0.14949152542372882,
+        0.464400390625,
+        0.7223689700130378,
+        0.841037109375
+      ],
+      "display_size": [
+        980,
+        640
+      ],
+      "image_area_excluding_letterbox": [
+        10,
+        0,
+        969,
+        640
+      ],
+      "pixel_box": [
+        153,
+        297,
+        702,
+        538
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_c2_c3_c7_joint_overlay.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "c3_subject_prior",
+      "norm_box": [
+        0.035202,
+        0.255859,
+        1.0,
+        0.839844
+      ],
+      "display_size": [
+        980,
+        640
+      ],
+      "image_area_excluding_letterbox": [
+        10,
+        0,
+        969,
+        640
+      ],
+      "pixel_box": [
+        43,
+        163,
+        969,
+        537
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_c2_c3_c7_joint_overlay.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "c7_subject_support",
+      "norm_box": [
+        0.041667,
+        0.333333,
+        1.0,
+        0.833333
+      ],
+      "display_size": [
+        980,
+        640
+      ],
+      "image_area_excluding_letterbox": [
+        10,
+        0,
+        969,
+        640
+      ],
+      "pixel_box": [
+        49,
+        213,
+        969,
+        533
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_c2_c3_c7_joint_overlay.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "c7_subject_support_core",
+      "norm_box": [
+        0.041667,
+        0.375,
+        1.0,
+        0.791667
+      ],
+      "display_size": [
+        980,
+        640
+      ],
+      "image_area_excluding_letterbox": [
+        10,
+        0,
+        969,
+        640
+      ],
+      "pixel_box": [
+        49,
+        240,
+        969,
+        506
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_subject_support_map_region_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.041667,
+        0.125,
+        1.0,
+        0.958333
+      ],
+      "display_size": [
+        660,
+        245
+      ],
+      "image_area_excluding_letterbox": [
+        146,
+        0,
+        513,
+        245
+      ],
+      "pixel_box": [
+        161,
+        30,
+        513,
+        234
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_subject_support_map_region_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.041667,
+        0.333333,
+        1.0,
+        0.833333
+      ],
+      "display_size": [
+        660,
+        245
+      ],
+      "image_area_excluding_letterbox": [
+        146,
+        0,
+        513,
+        245
+      ],
+      "pixel_box": [
+        161,
+        81,
+        513,
+        204
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_subject_support_map_region_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        660,
+        245
+      ],
+      "image_area_excluding_letterbox": [
+        146,
+        0,
+        513,
+        245
+      ],
+      "pixel_box": [
+        146,
+        0,
+        513,
+        245
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_subject_support_map_region_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.25,
+        0.583333,
+        0.75,
+        0.916667
+      ],
+      "display_size": [
+        660,
+        245
+      ],
+      "image_area_excluding_letterbox": [
+        146,
+        0,
+        514,
+        245
+      ],
+      "pixel_box": [
+        238,
+        142,
+        422,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.047813,
+        0.134294,
+        0.952187,
+        0.920706
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        15,
+        35,
+        310,
+        206
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.041667,
+        0.125,
+        1.0,
+        0.958333
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        13,
+        33,
+        326,
+        214
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_support_core",
+      "norm_box": [
+        0.041667,
+        0.208333,
+        0.916667,
+        0.958333
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        13,
+        51,
+        298,
+        214
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.036506,
+        0.128906,
+        1.0,
+        0.964844
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        11,
+        34,
+        326,
+        216
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.137405,
+        0.258669,
+        0.976007,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        44,
+        62,
+        318,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.041667,
+        0.333333,
+        1.0,
+        0.833333
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        13,
+        78,
+        326,
+        187
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "subject_support_core",
+      "norm_box": [
+        0.041667,
+        0.375,
+        1.0,
+        0.791667
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        13,
+        87,
+        326,
+        178
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.035202,
+        0.255859,
+        1.0,
+        0.839844
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        11,
+        61,
+        326,
+        189
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "baseline",
+      "norm_box": [
+        0.084457,
+        0.043051,
+        0.904228,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        86,
+        0,
+        240,
+        230
+      ],
+      "pixel_box": [
+        99,
+        9,
+        225,
+        230
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.084457,
+        0.043051,
+        0.904228,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        86,
+        0,
+        240,
+        230
+      ],
+      "pixel_box": [
+        99,
+        9,
+        225,
+        230
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.178411,
+        0.155175,
+        0.767616,
+        0.767
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        86,
+        0,
+        240,
+        230
+      ],
+      "pixel_box": [
+        113,
+        35,
+        204,
+        176
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_support_core",
+      "norm_box": [
+        0.166667,
+        0.25,
+        0.958333,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        86,
+        0,
+        240,
+        230
+      ],
+      "pixel_box": [
+        111,
+        57,
+        233,
+        230
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.178411,
+        0.155175,
+        0.767616,
+        0.767
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        86,
+        0,
+        240,
+        230
+      ],
+      "pixel_box": [
+        113,
+        35,
+        204,
+        176
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.083743,
+        0.042639,
+        0.861257,
+        0.957361
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        27,
+        15,
+        280,
+        214
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.091,
+        0.10045,
+        0.581112,
+        0.716642
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        29,
+        27,
+        189,
+        162
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "subject_support_core",
+      "norm_box": [
+        0.166667,
+        0.166667,
+        0.75,
+        0.916667
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        54,
+        42,
+        244,
+        205
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.091,
+        0.10045,
+        0.581112,
+        0.716642
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        29,
+        27,
+        189,
+        162
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.016133,
+        0.0,
+        0.928867,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        5,
+        6,
+        302,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_core",
+      "norm_box": [
+        0.0,
+        0.041667,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        15,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.133,
+        0.223392,
+        0.687267,
+        0.797704
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        43,
+        54,
+        224,
+        179
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        223
+      ],
+      "pixel_box": [
+        0,
+        6,
+        326,
+        223
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.0,
+        0.05654,
+        1.0,
+        0.94346
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        223
+      ],
+      "pixel_box": [
+        0,
+        18,
+        326,
+        210
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.25,
+        0.583333,
+        0.75,
+        0.916667
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        223
+      ],
+      "pixel_box": [
+        81,
+        132,
+        244,
+        204
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_core",
+      "norm_box": [
+        0.333333,
+        0.625,
+        0.75,
+        0.875
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        223
+      ],
+      "pixel_box": [
+        108,
+        141,
+        244,
+        195
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.261719,
+        0.580078,
+        0.757812,
+        0.900391
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        223
+      ],
+      "pixel_box": [
+        85,
+        131,
+        247,
+        201
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_1543389905",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        83,
+        0,
+        242,
+        230
+      ],
+      "pixel_box": [
+        83,
+        0,
+        242,
+        230
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1543389905.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_1543389905",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.089294,
+        0.182861,
+        0.882506,
+        0.914617
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        83,
+        0,
+        242,
+        230
+      ],
+      "pixel_box": [
+        97,
+        42,
+        223,
+        210
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1543389905.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_1543389905",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.291667,
+        0.208333,
+        0.625,
+        0.875
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        83,
+        0,
+        242,
+        230
+      ],
+      "pixel_box": [
+        129,
+        47,
+        182,
+        201
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1543389905.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_1543389905",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_support_core",
+      "norm_box": [
+        0.333333,
+        0.25,
+        0.583333,
+        0.833333
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        83,
+        0,
+        242,
+        230
+      ],
+      "pixel_box": [
+        135,
+        57,
+        175,
+        191
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1543389905.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "sstk_image_1543389905",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.269531,
+        0.236486,
+        0.611328,
+        0.864865
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        83,
+        0,
+        242,
+        230
+      ],
+      "pixel_box": [
+        125,
+        54,
+        180,
+        198
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1543389905.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_81735906",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_81735906.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_81735906",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.008493,
+        0.100102,
+        0.991507,
+        0.954898
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        2,
+        27,
+        323,
+        214
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_81735906.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_81735906",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_81735906.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_81735906",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_core",
+      "norm_box": [
+        0.0,
+        0.083333,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        0,
+        24,
+        326,
+        224
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_81735906.jpg"
+    },
+    {
+      "figure": "fig_c7_subject_support_examples.png",
+      "image_id": "pond5_image_81735906",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.31137,
+        0.212894,
+        0.694437,
+        0.795675
+      ],
+      "display_size": [
+        326,
+        230
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        6,
+        326,
+        224
+      ],
+      "pixel_box": [
+        101,
+        52,
+        226,
+        179
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_81735906.jpg"
+    },
+    {
+      "figure": "fig_subject_guidance_clean_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "guidance_region",
+      "norm_box": [
+        0.041667,
+        0.125,
+        1.0,
+        0.958333
+      ],
+      "display_size": [
+        440,
+        220
+      ],
+      "image_area_excluding_letterbox": [
+        55,
+        0,
+        385,
+        220
+      ],
+      "pixel_box": [
+        68,
+        27,
+        385,
+        210
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_subject_guidance_clean_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "guidance_region",
+      "norm_box": [
+        0.232421875,
+        0.2023142112125163,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        440,
+        220
+      ],
+      "image_area_excluding_letterbox": [
+        146,
+        0,
+        293,
+        220
+      ],
+      "pixel_box": [
+        180,
+        44,
+        293,
+        220
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_subject_guidance_clean_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "guidance_region",
+      "norm_box": [
+        0.11864406779661017,
+        0.130859375,
+        0.7576427640156453,
+        0.93359375
+      ],
+      "display_size": [
+        440,
+        220
+      ],
+      "image_area_excluding_letterbox": [
+        55,
+        0,
+        385,
+        220
+      ],
+      "pixel_box": [
+        94,
+        28,
+        305,
+        205
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_subject_guidance_clean_examples.png",
+      "image_id": "sstk_image_1336721579",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "guidance_region",
+      "norm_box": [
+        5.6062581486310294e-05,
+        0.236328125,
+        0.7679269882659713,
+        0.9242734375
+      ],
+      "display_size": [
+        440,
+        220
+      ],
+      "image_area_excluding_letterbox": [
+        55,
+        0,
+        385,
+        220
+      ],
+      "pixel_box": [
+        55,
+        51,
+        308,
+        203
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1336721579.jpg"
+    },
+    {
+      "figure": "fig_subject_guidance_clean_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "guidance_region",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        440,
+        220
+      ],
+      "image_area_excluding_letterbox": [
+        55,
+        0,
+        385,
+        220
+      ],
+      "pixel_box": [
+        55,
+        0,
+        385,
+        220
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_subject_guidance_clean_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "guidance_region",
+      "norm_box": [
+        0.041667,
+        0.333333,
+        1.0,
+        0.833333
+      ],
+      "display_size": [
+        440,
+        220
+      ],
+      "image_area_excluding_letterbox": [
+        55,
+        0,
+        385,
+        220
+      ],
+      "pixel_box": [
+        68,
+        73,
+        385,
+        183
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_runtime_no_prior_action_executor_example.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.041667,
+        0.125,
+        1.0,
+        0.958333
+      ],
+      "display_size": [
+        720,
+        520
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        19,
+        720,
+        500
+      ],
+      "pixel_box": [
+        30,
+        79,
+        720,
+        479
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_runtime_no_prior_action_executor_example.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.047813,
+        0.134294,
+        0.952187,
+        0.920706
+      ],
+      "display_size": [
+        720,
+        520
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        19,
+        720,
+        500
+      ],
+      "pixel_box": [
+        34,
+        83,
+        685,
+        461
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.047813,
+        0.134294,
+        0.952187,
+        0.920706
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        51,
+        33,
+        391,
+        230
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "bigstock_image_71945659",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.041667,
+        0.125,
+        1.0,
+        0.958333
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        49,
+        31,
+        409,
+        239
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/bigstock_image_71945659.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.137405,
+        0.258669,
+        0.976007,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        85,
+        64,
+        400,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_476205934",
+      "target_ar": "FREE",
+      "subject_mode": "object_multi",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.041667,
+        0.333333,
+        1.0,
+        0.833333
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        49,
+        83,
+        409,
+        208
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_476205934.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "baseline",
+      "norm_box": [
+        0.084457,
+        0.043051,
+        0.904228,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        138,
+        0,
+        305,
+        250
+      ],
+      "pixel_box": [
+        152,
+        10,
+        289,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.084457,
+        0.043051,
+        0.904228,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        138,
+        0,
+        305,
+        250
+      ],
+      "pixel_box": [
+        152,
+        10,
+        289,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.178411,
+        0.155175,
+        0.767616,
+        0.767
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        138,
+        0,
+        305,
+        250
+      ],
+      "pixel_box": [
+        167,
+        38,
+        266,
+        191
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.083743,
+        0.042639,
+        0.861257,
+        0.957361
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        65,
+        10,
+        356,
+        239
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "pond5_image_95476634",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.091,
+        0.10045,
+        0.581112,
+        0.716642
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        68,
+        25,
+        251,
+        179
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/pond5_image_95476634.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.016133,
+        0.0,
+        0.928867,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        40,
+        0,
+        382,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_715944223",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_715944223.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.0,
+        0.05654,
+        1.0,
+        0.94346
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        34,
+        14,
+        409,
+        235
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_subject_box_fp_fn_examples.png",
+      "image_id": "sstk_image_87576424",
+      "target_ar": "FREE",
+      "subject_mode": "scene_general",
+      "box_name": "subject_support_overlay",
+      "norm_box": [
+        0.25,
+        0.583333,
+        0.75,
+        0.916667
+      ],
+      "display_size": [
+        444,
+        250
+      ],
+      "image_area_excluding_letterbox": [
+        34,
+        0,
+        409,
+        250
+      ],
+      "pixel_box": [
+        127,
+        145,
+        315,
+        229
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_87576424.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_1242934243",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_support",
+      "norm_box": [
+        0.118772,
+        0.077961,
+        0.686677,
+        0.767616
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        104,
+        438,
+        396
+      ],
+      "pixel_box": [
+        52,
+        126,
+        300,
+        328
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1242934243.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_1242934243",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.118772,
+        0.077961,
+        0.686677,
+        0.767616
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        104,
+        438,
+        396
+      ],
+      "pixel_box": [
+        52,
+        126,
+        300,
+        328
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1242934243.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_1242934243",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_union",
+      "norm_box": [
+        0.15485267275097783,
+        0.1015625,
+        0.8952764015645371,
+        1.0
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        104,
+        438,
+        396
+      ],
+      "pixel_box": [
+        67,
+        133,
+        392,
+        396
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1242934243.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_1242934243",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.111923,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        104,
+        438,
+        396
+      ],
+      "pixel_box": [
+        49,
+        104,
+        438,
+        396
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1242934243.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_1276179112",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "subject_support",
+      "norm_box": [
+        0.078389,
+        0.071172,
+        0.766685,
+        0.767616
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        104,
+        438,
+        396
+      ],
+      "pixel_box": [
+        34,
+        124,
+        335,
+        328
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1276179112.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_1276179112",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.078389,
+        0.071172,
+        0.766685,
+        0.767616
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        104,
+        438,
+        396
+      ],
+      "pixel_box": [
+        34,
+        124,
+        335,
+        328
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1276179112.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_1276179112",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "subject_union",
+      "norm_box": [
+        0.10430247718383312,
+        0.10546875,
+        0.9282920469361148,
+        1.0
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        104,
+        438,
+        396
+      ],
+      "pixel_box": [
+        45,
+        134,
+        406,
+        396
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1276179112.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_1276179112",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_group",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.055961,
+        0.0,
+        0.944039,
+        1.0
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        104,
+        438,
+        396
+      ],
+      "pixel_box": [
+        24,
+        104,
+        413,
+        396
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1276179112.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_support",
+      "norm_box": [
+        0.178411,
+        0.155175,
+        0.767616,
+        0.767
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        52,
+        0,
+        386,
+        500
+      ],
+      "pixel_box": [
+        111,
+        77,
+        308,
+        383
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_prior",
+      "norm_box": [
+        0.178411,
+        0.155175,
+        0.767616,
+        0.767
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        52,
+        0,
+        386,
+        500
+      ],
+      "pixel_box": [
+        111,
+        77,
+        308,
+        383
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "subject_union",
+      "norm_box": [
+        0.232421875,
+        0.2023142112125163,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        52,
+        0,
+        386,
+        500
+      ],
+      "pixel_box": [
+        129,
+        101,
+        386,
+        500
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_c3_c6_portrait_failure_panel.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.084457,
+        0.043051,
+        0.904228,
+        1.0
+      ],
+      "display_size": [
+        438,
+        500
+      ],
+      "image_area_excluding_letterbox": [
+        52,
+        0,
+        386,
+        500
+      ],
+      "pixel_box": [
+        80,
+        21,
+        354,
+        500
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_subject_coverage_good_bad_examples.png",
+      "image_id": "sstk_image_1157970946",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_coverage_good",
+      "norm_box": [
+        0.078334,
+        0.1,
+        0.921666,
+        0.866667
+      ],
+      "display_size": [
+        636,
+        380
+      ],
+      "image_area_excluding_letterbox": [
+        33,
+        0,
+        602,
+        380
+      ],
+      "pixel_box": [
+        77,
+        38,
+        557,
+        329
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1157970946.jpg"
+    },
+    {
+      "figure": "fig_subject_coverage_good_bad_examples.png",
+      "image_id": "sstk_image_1157970946",
+      "target_ar": "FREE",
+      "subject_mode": "object_single",
+      "box_name": "subject_coverage_good_support",
+      "norm_box": [
+        0.268,
+        0.118441,
+        0.666667,
+        0.791667
+      ],
+      "display_size": [
+        636,
+        380
+      ],
+      "image_area_excluding_letterbox": [
+        33,
+        0,
+        602,
+        380
+      ],
+      "pixel_box": [
+        185,
+        45,
+        412,
+        300
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1157970946.jpg"
+    },
+    {
+      "figure": "fig_subject_coverage_good_bad_examples.png",
+      "image_id": "sstk_image_1476557597",
+      "target_ar": "9:16",
+      "subject_mode": "object_multi",
+      "box_name": "subject_coverage_bad",
+      "norm_box": [
+        0.36983,
+        0.0,
+        0.81983,
+        1.0
+      ],
+      "display_size": [
+        636,
+        380
+      ],
+      "image_area_excluding_letterbox": [
+        80,
+        0,
+        555,
+        380
+      ],
+      "pixel_box": [
+        255,
+        0,
+        469,
+        380
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1476557597.jpg"
+    },
+    {
+      "figure": "fig_subject_coverage_good_bad_examples.png",
+      "image_id": "sstk_image_1476557597",
+      "target_ar": "9:16",
+      "subject_mode": "object_multi",
+      "box_name": "subject_coverage_bad_support",
+      "norm_box": [
+        0.0,
+        0.032526,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        636,
+        380
+      ],
+      "image_area_excluding_letterbox": [
+        80,
+        0,
+        555,
+        380
+      ],
+      "pixel_box": [
+        80,
+        12,
+        555,
+        380
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1476557597.jpg"
+    },
+    {
+      "figure": "fig_headroom_lookroom_good_bad_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "9:16",
+      "subject_mode": "portrait_single",
+      "box_name": "headroom_good",
+      "norm_box": [
+        0.116594,
+        0.03,
+        0.933965,
+        1.0
+      ],
+      "display_size": [
+        656,
+        350
+      ],
+      "image_area_excluding_letterbox": [
+        211,
+        0,
+        445,
+        350
+      ],
+      "pixel_box": [
+        238,
+        10,
+        429,
+        350
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_headroom_lookroom_good_bad_examples.png",
+      "image_id": "sstk_image_671450404",
+      "target_ar": "9:16",
+      "subject_mode": "portrait_single",
+      "box_name": "headroom_good_support",
+      "norm_box": [
+        0.125,
+        0.155175,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        656,
+        350
+      ],
+      "image_area_excluding_letterbox": [
+        211,
+        0,
+        445,
+        350
+      ],
+      "pixel_box": [
+        240,
+        54,
+        445,
+        350
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_671450404.jpg"
+    },
+    {
+      "figure": "fig_headroom_lookroom_good_bad_examples.png",
+      "image_id": "sstk_image_2236985255",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "headroom_bad",
+      "norm_box": [
+        0.166232,
+        0.0,
+        0.833768,
+        1.0
+      ],
+      "display_size": [
+        656,
+        350
+      ],
+      "image_area_excluding_letterbox": [
+        66,
+        0,
+        590,
+        350
+      ],
+      "pixel_box": [
+        153,
+        0,
+        502,
+        350
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_2236985255.jpg"
+    },
+    {
+      "figure": "fig_headroom_lookroom_good_bad_examples.png",
+      "image_id": "sstk_image_2236985255",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "headroom_bad_support",
+      "norm_box": [
+        0.139008,
+        0.064468,
+        0.708333,
+        1.0
+      ],
+      "display_size": [
+        656,
+        350
+      ],
+      "image_area_excluding_letterbox": [
+        66,
+        0,
+        590,
+        350
+      ],
+      "pixel_box": [
+        138,
+        22,
+        437,
+        350
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_2236985255.jpg"
+    },
+    {
+      "figure": "fig_headroom_lookroom_good_bad_examples.png",
+      "image_id": "sstk_image_2078623873",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "lookroom_good",
+      "norm_box": [
+        0.247355,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        656,
+        350
+      ],
+      "image_area_excluding_letterbox": [
+        66,
+        0,
+        590,
+        350
+      ],
+      "pixel_box": [
+        195,
+        0,
+        590,
+        350
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_2078623873.jpg"
+    },
+    {
+      "figure": "fig_headroom_lookroom_good_bad_examples.png",
+      "image_id": "sstk_image_2078623873",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "lookroom_good_support",
+      "norm_box": [
+        0.291667,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        656,
+        350
+      ],
+      "image_area_excluding_letterbox": [
+        66,
+        0,
+        590,
+        350
+      ],
+      "pixel_box": [
+        218,
+        0,
+        590,
+        350
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_2078623873.jpg"
+    },
+    {
+      "figure": "fig_headroom_lookroom_good_bad_examples.png",
+      "image_id": "sstk_image_2078623873",
+      "target_ar": "3:4",
+      "subject_mode": "portrait_single",
+      "box_name": "lookroom_bad",
+      "norm_box": [
+        0.499348,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        656,
+        350
+      ],
+      "image_area_excluding_letterbox": [
+        66,
+        0,
+        590,
+        350
+      ],
+      "pixel_box": [
+        327,
+        0,
+        590,
+        350
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_2078623873.jpg"
+    },
+    {
+      "figure": "fig_headroom_lookroom_good_bad_examples.png",
+      "image_id": "sstk_image_2078623873",
+      "target_ar": "3:4",
+      "subject_mode": "portrait_single",
+      "box_name": "lookroom_bad_support",
+      "norm_box": [
+        0.291667,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        656,
+        350
+      ],
+      "image_area_excluding_letterbox": [
+        66,
+        0,
+        590,
+        350
+      ],
+      "pixel_box": [
+        218,
+        0,
+        590,
+        350
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_2078623873.jpg"
+    },
+    {
+      "figure": "fig_matching_candidate_pool_ignored_overflow.png",
+      "image_id": "sstk_image_1242934243",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "baseline",
+      "norm_box": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        660,
+        520
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        39,
+        660,
+        480
+      ],
+      "pixel_box": [
+        0,
+        39,
+        660,
+        480
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1242934243.jpg"
+    },
+    {
+      "figure": "fig_matching_candidate_pool_ignored_overflow.png",
+      "image_id": "sstk_image_1242934243",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "matching_target_0",
+      "norm_box": [
+        0.111923,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        660,
+        520
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        39,
+        660,
+        480
+      ],
+      "pixel_box": [
+        73,
+        39,
+        660,
+        480
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1242934243.jpg"
+    },
+    {
+      "figure": "fig_matching_candidate_pool_ignored_overflow.png",
+      "image_id": "sstk_image_1242934243",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "matching_target_1",
+      "norm_box": [
+        0.237952,
+        0.0,
+        0.990597,
+        1.0
+      ],
+      "display_size": [
+        660,
+        520
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        39,
+        660,
+        480
+      ],
+      "pixel_box": [
+        157,
+        39,
+        653,
+        480
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1242934243.jpg"
+    },
+    {
+      "figure": "fig_matching_candidate_pool_ignored_overflow.png",
+      "image_id": "sstk_image_1242934243",
+      "target_ar": "FREE",
+      "subject_mode": "portrait_single",
+      "box_name": "winner_post_gate",
+      "norm_box": [
+        0.111923,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "display_size": [
+        660,
+        520
+      ],
+      "image_area_excluding_letterbox": [
+        0,
+        39,
+        660,
+        480
+      ],
+      "pixel_box": [
+        73,
+        39,
+        660,
+        480
+      ],
+      "valid": true,
+      "source_image": "data/SSTK/Full_10000/images/sstk_image_1242934243.jpg"
+    }
+  ]
+}

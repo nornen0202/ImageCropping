@@ -19,12 +19,11 @@
 - Notes: 링크 변동 가능, 사용 조건은 원 페이지 기준
 
 ## Unsplash
-- Dataset Access: https://unsplash.com/data
-- License: https://unsplash.com/license
+- Dataset Access: https://github.com/unsplash/datasets
 - Notes: 승인 기반 접근, 자동 다운로드 미지원
 
 ## GAICD / GAIC
-- Source reference: https://github.com/HuiZeng/Image-Cropping
+- Source reference: https://github.com/HuiZeng/Grid-Anchor-based-Image-Cropping-Pytorch
 - Notes: 공식 배포 경로 확인 후 사용
 
 ## ICIT (InstructCrop)
